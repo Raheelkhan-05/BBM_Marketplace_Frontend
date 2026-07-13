@@ -7,14 +7,6 @@ import { heroContent, TAGLINE } from "../../../data/content";
 export default function HeroSection() {
   return (
     <div className="px-4 pt-5 sm:px-6 sm:pt-1 lg:px-0">
-      <motion.p
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="inline-block rounded-full bg-[#f5d7d0] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#d2462b]"
-      >
-        {TAGLINE}
-      </motion.p>
 
       <motion.h1
         initial={{ opacity: 0, y: 16 }}
@@ -33,16 +25,16 @@ export default function HeroSection() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className="mt-3 max-w-md pe-16 text-[14px] text-slate-600 sm:text-lg lg:max-w-lg lg:text-lg"
+        className="mt-4 inline-block rounded-full bg-[#f5d7d0] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#d2462b]"
       >
-        {heroContent.subtitle}
+        {TAGLINE}
       </motion.p>
 
       <motion.ul
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.3 }}
-        className="mt-4 space-y-1.5"
+        className="mt-2 space-y-1.5"
       >
         {heroContent.bullets.map((b) => (
           <li

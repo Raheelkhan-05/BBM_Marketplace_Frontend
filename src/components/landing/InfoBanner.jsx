@@ -103,16 +103,9 @@ export default function InfoBanner() {
       onMouseLeave={resumeDelayed}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      className="mt-5 relative flex items-center gap-3 rounded-lg px-4 py-2.5 lg:max-w-xl overflow-hidden select-none"
+      className="mt-5 relative flex items-center gap-3 rounded-lg px-4 ps-3 py-2.5 lg:max-w-xl overflow-hidden select-none"
       style={{ backgroundColor: "rgba(130, 182, 192, 0.10)", borderWidth: 1, borderColor: "rgba(130, 182, 192, 0.30)" }}
     >
-      <button
-        onClick={goPrev}
-        aria-label="Previous"
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#057184] hover:bg-white/60 transition-colors"
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </button>
 
       <div className="flex-1 min-w-0 relative h-[38px] overflow-hidden">
         <AnimatePresence mode="wait" custom={direction}>
@@ -143,14 +136,6 @@ export default function InfoBanner() {
           </motion.div>
         </AnimatePresence>
       </div>
-
-      <button
-        onClick={goNext}
-        aria-label="Next"
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#057184] hover:bg-white/60 transition-colors"
-      >
-        <ChevronRight className="h-4 w-4" />
-      </button>
 
       <div className="hidden sm:flex items-center gap-1 shrink-0">
         {bannerCards.map((c, i) => (
