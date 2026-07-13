@@ -113,7 +113,7 @@ function PanelContent({ item }) {
 }
 
 export default function WhyBBMSection() {
-  const [activeId, setActiveId] = useState(whyBBM[0].id);
+  const [activeId, setActiveId] = useState(null);
   const activeItem = whyBBM.find((i) => i.id === activeId);
   const trackRef = useRef(null);
   const isOpen = Boolean(activeItem);

@@ -86,6 +86,23 @@ export const closingLine = "One platform. Every industry. Endless opportunities.
 
 export const whyBBM = [
   {
+    id: "platform",
+    heading: "Why choose BBM?",
+    hero: "Built for Indian Business.",
+    accent: "#d85a41",
+    tint: "rgba(216, 90, 65, 0.08)",
+    points: [
+      { icon: "flag", text: "Built for Indian businesses." },
+      { icon: "check-shield", text: "Verified marketplace." },
+      { icon: "users", text: "Buyers and sellers on one platform." },
+      { icon: "lock", text: "Secure business connections." },
+      { icon: "factory", text: "Industrial product focus." },
+      { icon: "eye", text: "Transparent procurement." },
+      { icon: "trending-up", text: "Increased business opportunities." },
+      { icon: "wallet", text: "Designed to reduce procurement costs." },
+    ],
+  },
+  {
     id: "buy",
     heading: "Why Buy from BBM",
     hero: "Buy Better. Save More.",
@@ -117,23 +134,6 @@ export const whyBBM = [
       { icon: "trending-down", text: "Reduce customer acquisition cost." },
       { icon: "layers", text: "Showcase unlimited products." },
       { icon: "tags", text: "Multiple pricing levels — retail to bulk." },
-    ],
-  },
-  {
-    id: "platform",
-    heading: "Why choose BBM?",
-    hero: "Built for Indian Business.",
-    accent: "#d85a41",
-    tint: "rgba(216, 90, 65, 0.08)",
-    points: [
-      { icon: "flag", text: "Built for Indian businesses." },
-      { icon: "check-shield", text: "Verified marketplace." },
-      { icon: "users", text: "Buyers and sellers on one platform." },
-      { icon: "lock", text: "Secure business connections." },
-      { icon: "factory", text: "Industrial product focus." },
-      { icon: "eye", text: "Transparent procurement." },
-      { icon: "trending-up", text: "Increased business opportunities." },
-      { icon: "wallet", text: "Designed to reduce procurement costs." },
     ],
   },
 ];
