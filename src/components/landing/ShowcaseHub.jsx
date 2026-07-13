@@ -1,7 +1,7 @@
 //ShowcaseHub.jsx
 
 import { useState, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { showcaseProducts, features } from "../../../data/content";
 
 // Custom exact matched SVG paths to match the icons in the screenshot
@@ -34,9 +34,6 @@ export default function ShowcaseHub() {
   const trackRef = useRef(null);
   const rafRef = useRef(null);
 
-  // Native CSS scroll-snap drives the swipe. The browser handles momentum,
-  // rubber-banding, and touch tracking on the compositor thread, which
-  // feels smoother and more native than a JS-driven drag/spring.
   const handleScroll = useCallback(() => {
     const el = trackRef.current;
     if (!el) return;
@@ -60,12 +57,12 @@ export default function ShowcaseHub() {
     <div className="w-full max-w-5xl mx-auto flex flex-col items-center bg-gradient-to-b from-[#f8fafc] via-[#edf2f7] to-white p-4 md:p-8 rounded-xl">
 
       {/* ========================================================================= */}
-      {/* 1. PRODUCT SHOWCASE CANVAS                                               */}
+      {/* 1. PRODUCT SHOWCASE CANVAS — 4:3 frame, image fills edge-to-edge         */}
       {/* ========================================================================= */}
       <div className="relative w-full overflow-hidden flex flex-col items-center justify-center">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(241,245,249,0.6)_0%,rgba(255,255,255,0)_70%)] pointer-events-none" />
 
-        {/* Mobile: Swipeable Carousel — native scroll-snap, no JS drag math */}
+        {/* Mobile: Swipeable Carousel — native scroll-snap, 4:3 frame per slide */}
         <div className="w-full lg:hidden relative">
           <div
             ref={trackRef}
@@ -77,12 +74,14 @@ export default function ShowcaseHub() {
                 key={p.id}
                 className="w-full shrink-0 snap-center flex justify-center items-center px-4"
               >
-                <img
-                  src={p.src}
-                  alt={p.alt}
-                  className="h-72 md:h-128 w-auto scale-70 object-contain select-none drop-shadow-[0_15px_25px_rgba(0,0,0,0.06)]"
-                  draggable={false}
-                />
+                <div className="relative w-full aspect-[4/3] max-w-sm overflow-hidden rounded-2xl">
+                  <img
+                    src={p.src}
+                    alt={p.alt}
+                    className="absolute inset-0 h-full w-full object-cover select-none drop-shadow-[0_15px_25px_rgba(0,0,0,0.06)]"
+                    draggable={false}
+                  />
+                </div>
               </div>
             ))}
           </div>
@@ -95,36 +94,36 @@ export default function ShowcaseHub() {
                 onClick={() => goTo(i)}
                 aria-label={`Go to slide ${i + 1}`}
                 className={`h-1 rounded-full transition-all duration-300 ${
-                  i === active ? "w-2 bg-blue-600" : "w-1 bg-slate-300/70"
+                  i === active ? "w-2 bg-[#d2462b]" : "w-1 bg-slate-300/70"
                 }`}
               />
             ))}
           </div>
         </div>
 
-        {/* Desktop Layout Display */}
+        {/* Desktop Layout Display — 4:3 frame, crossfade between slides */}
         <div className="hidden lg:flex w-full items-center justify-center p-6">
-          <div className="relative w-full max-w-3xl aspect-[16/9] flex items-center justify-center">
-            {showcaseProducts[active] && (
-              <motion.img
-                key={active}
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1.25 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.4, ease: "easeOut" }}
-                src={showcaseProducts[active].src}
-                alt={showcaseProducts[active].alt}
-                className="h-48 w-auto object-contain select-none drop-shadow-[0_20px_35px_rgba(0,0,0,0.07)]"
-              />
-            )}
+          <div className="relative w-full max-w-2xl aspect-[4/3] overflow-hidden rounded-2xl">
+            <AnimatePresence mode="wait">
+              {showcaseProducts[active] && (
+                <motion.img
+                  key={active}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.5, ease: "easeInOut" }}
+                  src={showcaseProducts[active].src}
+                  alt={showcaseProducts[active].alt}
+                  className="absolute inset-0 h-full w-full object-cover select-none drop-shadow-[0_20px_35px_rgba(0,0,0,0.07)]"
+                />
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. FEATURE CARDS — matched to reference: white rounded card, soft shadow, */}
-      {/* four columns, hairline dividers, circular tinted icon badge, bold title, */}
-      {/* muted two-line description underneath.                                   */}
+      {/* 2. FEATURE CARDS                                                          */}
       {/* ========================================================================= */}
       <div className="w-full bg-white rounded-xl border border-slate-100 shadow-[0_18px_50px_-12px_rgba(30,41,59,0.12)] px-3 py-5 sm:px-6 sm:py-2 md:px-2 md:py-5">
         <div className="grid grid-cols-4 w-full gap-x-1">
@@ -139,25 +138,21 @@ export default function ShowcaseHub() {
                 transition={{ duration: 0.4, delay: i * 0.05 }}
                 className="flex flex-col items-center text-center relative px-1.5 sm:px-3 min-w-0"
               >
-                {/* Hairline vertical divider between columns */}
                 {i !== 0 && (
                   <div className="absolute left-0 top-2 bottom-2 w-px bg-slate-100" />
                 )}
 
-                {/* Soft circular icon backdrop */}
                 <div
-                className="flex h-10 w-10 sm:h-[48px] sm:w-[48px] md:h-[56px] md:w-[56px] shrink-0 items-center justify-center rounded-full"
-                style={{ backgroundColor: f.bg, color: f.fg }}
+                  className="flex h-10 w-10 sm:h-[48px] sm:w-[48px] md:h-[56px] md:w-[56px] shrink-0 items-center justify-center rounded-full"
+                  style={{ backgroundColor: f.bg, color: f.fg }}
                 >
-                <IconComponent />
+                  <IconComponent />
                 </div>
 
-                {/* Title — bold, dark, two lines max, tight leading */}
                 <h3 className="mt-3 sm:mt-4 text-[12px] leading-[1.15] sm:text-[14px] md:text-[14px] font-bold tracking-tight text-slate-900 sm:leading-snug w-full">
                   {f.title}
                 </h3>
 
-                {/* Description — muted gray, smaller, two lines max */}
                 <p className="mt-1.5 sm:mt-2 max-w-[92px] sm:max-w-[150px] md:max-w-[165px] text-[10px] leading-[1.3] sm:text-[12px] md:text-[12px] sm:leading-relaxed text-slate-400 font-medium">
                   {f.desc}
                 </p>

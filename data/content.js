@@ -40,22 +40,22 @@ export const showcaseProducts = [
   {
     id: "bearing",
     alt: "Industrial ball bearing",
-    src: "./Test3.png",
+    src: "./1.jpeg",
   },
   {
     id: "motor",
     alt: "Electric industrial motor",
-    src: "./Test3.png",
+    src: "./2.jpeg",
   },
   {
     id: "oil",
     alt: "Lubricant oil container",
-    src: "./Test3.png",
+    src: "./3.jpeg",
   },
   {
     id: "pipes",
     alt: "Steel pipes and fittings",
-    src: "./Test3.png",
+    src: "./1.jpeg",
   },
 ];
 

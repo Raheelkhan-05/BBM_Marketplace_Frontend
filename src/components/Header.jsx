@@ -50,7 +50,7 @@ export default function Header() {
           <div className="flex items-center gap-3">
             <a
               href="#login"
-              className="hidden rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 md:inline-flex"
+              className="hidden rounded-full bg-[#057184] px-5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 md:inline-flex"
             >
               Sign In
             </a>
