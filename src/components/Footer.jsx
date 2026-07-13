@@ -17,7 +17,7 @@ const FOOTER_COLUMNS = [
   },
   {
     title: "Company",
-    links: ["About viaBBM", "Careers", "Press", "Contact Us"],
+    links: ["About BBM", "Careers", "Press", "Contact Us"],
   },
   {
     title: "Support",
@@ -114,7 +114,7 @@ export default function Footer() {
 
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-slate-200 pt-6 sm:flex-row">
           <p className="text-xs text-slate-400">
-            © {new Date().getFullYear()} viaBBM. All rights reserved.
+            © {new Date().getFullYear()} BBM. All rights reserved.
           </p>
           <div className="flex gap-5 text-xs text-slate-400">
             <a href="#" className="hover:text-blue-600">Privacy Policy</a>
