@@ -110,7 +110,7 @@ export const whyBBM = [
     tint: "rgba(5, 113, 132, 0.08)",
     points: [
       { icon: "map", text: "Reach new customers across India." },
-      { icon: "message-check", text: "Receive genuine business inquiries." },
+      { icon: "check-shield", text: "100% assured payment on delivery." },
       { icon: "store", text: "Build your digital storefront." },
       { icon: "link", text: "Share one store link with customers." },
       { icon: "clock", text: "Sell 24×7." },

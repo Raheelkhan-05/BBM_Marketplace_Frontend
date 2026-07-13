@@ -1,6 +1,6 @@
 //WhyBBMSection.jsx
 
-import { useState, useId } from "react";
+import { useState, useRef, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Scale, Wallet, ShieldCheck, Repeat, Boxes, Zap, BarChart3, CircleUserRound,
@@ -68,47 +68,45 @@ function HeadingCard({ item, isOpen, onToggle }) {
   );
 }
 
-function Panel({ item }) {
-  const panelId = useId();
+function PointRow({ point, accent, index }) {
+  const PointIcon = ICONS[point.icon] ?? Boxes;
 
   return (
     <motion.div
-      key={item.id}
-      id={panelId}
-      initial={{ height: 0, opacity: 0 }}
-      animate={{ height: "auto", opacity: 1 }}
-      exit={{ height: 0, opacity: 0 }}
-      transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-      className="overflow-hidden"
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: 0.04 * index }}
+      className="grid items-center gap-x-2.5"
+      style={{ gridTemplateColumns: "24px 1fr" }}
     >
-      <div
-        className="mt-3 rounded-2xl border px-4 py-5 sm:mt-4 sm:px-6 sm:py-6"
-        style={{ borderColor: item.accent + "33", backgroundColor: item.tint }}
+      <span
+        className="flex h-6 w-6 items-center justify-center self-center rounded-full bg-white"
+        style={{ color: accent }}
       >
-        <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-          {item.points.map((p, i) => {
-            const PointIcon = ICONS[p.icon] ?? Boxes;
-            return (
-              <motion.div
-                key={p.text}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.04 * i }}
-                className="flex items-start gap-2.5"
-              >
-                <span
-                  className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white"
-                  style={{ color: item.accent }}
-                >
-                  <PointIcon className="h-3.5 w-3.5" />
-                </span>
-                <span className="text-[13px] leading-snug text-slate-700 sm:text-[14px]">
-                  {p.text}
-                </span>
-              </motion.div>
-            );
-          })}
-        </div>
+        <PointIcon className="h-3.5 w-3.5" />
+      </span>
+      <span className="text-[13px] leading-snug text-slate-700 sm:text-[14px]">
+        {point.text}
+      </span>
+    </motion.div>
+  );
+}
+
+function PanelContent({ item }) {
+  return (
+    <motion.div
+      key={item.id}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="rounded-2xl border px-4 py-5 sm:px-6 sm:py-6"
+      style={{ borderColor: item.accent + "33", backgroundColor: item.tint }}
+    >
+      <div className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+        {item.points.map((p, i) => (
+          <PointRow key={p.text} point={p} accent={item.accent} index={i} />
+        ))}
       </div>
     </motion.div>
   );
@@ -117,6 +115,23 @@ function Panel({ item }) {
 export default function WhyBBMSection() {
   const [activeId, setActiveId] = useState(whyBBM[0].id);
   const activeItem = whyBBM.find((i) => i.id === activeId);
+  const trackRef = useRef(null);
+  const isOpen = Boolean(activeItem);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+
+    const handleTransitionEnd = (e) => {
+      if (e.propertyName !== "grid-template-rows") return;
+      if (isOpen) {
+        track.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    };
+
+    track.addEventListener("transitionend", handleTransitionEnd);
+    return () => track.removeEventListener("transitionend", handleTransitionEnd);
+  }, [isOpen]);
 
   return (
     <div className="mt-6 px-4 sm:px-6 lg:mt-14 lg:px-0">
@@ -138,9 +153,22 @@ export default function WhyBBMSection() {
           ))}
         </div>
 
-        <AnimatePresence mode="wait" initial={false}>
-          {activeItem && <Panel item={activeItem} />}
-        </AnimatePresence>
+        {/* CSS-grid accordion: animates 0fr -> 1fr so open/close is ONE
+            continuous transition. Switching between already-open items
+            never triggers this — only the inner content crossfades. */}
+        <div
+          ref={trackRef}
+          className="scroll-mt-24 grid transition-[grid-template-rows] duration-[450ms] ease-[cubic-bezier(0.4,0,0.2,1)]"
+          style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
+        >
+          <div className="overflow-hidden">
+            <div className="mt-3 sm:mt-4">
+              <AnimatePresence mode="wait" initial={false}>
+                {activeItem && <PanelContent item={activeItem} />}
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
       </motion.div>
     </div>
   );
