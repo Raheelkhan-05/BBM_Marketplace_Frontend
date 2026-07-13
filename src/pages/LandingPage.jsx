@@ -7,7 +7,8 @@ import SearchBar from "../components/landing/SearchBar.jsx";
 import InfoBanner from "../components/landing/InfoBanner.jsx";
 import ShowcaseHub from "../components/landing/ShowcaseHub.jsx";
 import CTASection from "../components/landing/CTASection.jsx";
-import StatsSection from "../components/landing/StatsSection.jsx";
+// import StatsSection from "../components/landing/StatsSection.jsx";
+import WhyBBMSection from "../components/landing/WhyBBMSection.jsx";
 
 export default function LandingPage() {
   return (
@@ -75,7 +76,7 @@ export default function LandingPage() {
 
           <div className="px-4 sm:px-6 lg:px-0">
             <CTASection />
-            <StatsSection />
+            <WhyBBMSection />
           </div>
         </main>
 
