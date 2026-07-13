@@ -1,0 +1,33 @@
+import { motion } from "framer-motion";
+import { ArrowRight, ShieldCheck } from "lucide-react";
+import { trustBadges } from "../../../data/content";
+
+export default function CTASection() {
+  return (
+    <div className="mt-6 flex flex-col items-center lg:mt-10">
+      <motion.a
+        href="#explore"
+        initial={{ opacity: 0, y: 16 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.6 }}
+        transition={{ duration: 0.4 }}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 text-[15px] font-semibold text-white shadow-md shadow-blue-600/20 transition-colors hover:bg-blue-700 lg:w-auto lg:px-14"
+      >
+        Explore Marketplace
+        <ArrowRight className="h-4 w-4" />
+      </motion.a>
+
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-slate-500 sm:text-sm">
+        <ShieldCheck className="h-4 w-4 text-green-600" />
+        {trustBadges.map((badge, i) => (
+          <span key={badge} className="flex items-center gap-2">
+            {i > 0 && <span className="text-slate-300">•</span>}
+            {badge}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
