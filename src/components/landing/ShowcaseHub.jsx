@@ -1,10 +1,9 @@
 //ShowcaseHub.jsx
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { showcaseProducts, features } from "../../../data/content";
 
-// Custom exact matched SVG paths to match the icons in the screenshot
 const ICONS = {
   tag: () => (
     <svg className="h-6 w-6 sm:h-7 sm:w-7" viewBox="0 0 24 24" fill="currentColor">
@@ -29,10 +28,50 @@ const ICONS = {
   ),
 };
 
+const AUTOPLAY_DELAY = 3500;
+
 export default function ShowcaseHub() {
   const [active, setActive] = useState(0);
   const trackRef = useRef(null);
   const rafRef = useRef(null);
+  const autoplayRef = useRef(null);
+  const isInteractingRef = useRef(false);
+
+  const goTo = useCallback((i) => {
+    const el = trackRef.current;
+    const total = showcaseProducts.length;
+    const next = (i + total) % total;
+    setActive(next);
+    if (el) {
+      el.scrollTo({ left: next * el.clientWidth, behavior: "smooth" });
+    }
+  }, []);
+
+  // Autoplay — advances every AUTOPLAY_DELAY ms, paused while user interacts
+  useEffect(() => {
+    autoplayRef.current = setInterval(() => {
+      if (!isInteractingRef.current) {
+        setActive((prev) => {
+          const next = (prev + 1) % showcaseProducts.length;
+          const el = trackRef.current;
+          if (el) el.scrollTo({ left: next * el.clientWidth, behavior: "smooth" });
+          return next;
+        });
+      }
+    }, AUTOPLAY_DELAY);
+    return () => clearInterval(autoplayRef.current);
+  }, []);
+
+  const pauseAutoplay = () => {
+    isInteractingRef.current = true;
+  };
+  // Resume shortly after the user stops interacting
+  const resumeAutoplayDelayed = () => {
+    window.clearTimeout(resumeAutoplayDelayed._t);
+    resumeAutoplayDelayed._t = window.setTimeout(() => {
+      isInteractingRef.current = false;
+    }, 4000);
+  };
 
   const handleScroll = useCallback(() => {
     const el = trackRef.current;
@@ -46,27 +85,21 @@ export default function ShowcaseHub() {
     });
   }, []);
 
-  const goTo = (i) => {
-    const el = trackRef.current;
-    if (!el) return;
-    el.scrollTo({ left: i * el.clientWidth, behavior: "smooth" });
-    setActive(i);
-  };
-
   return (
-    <div className="w-full max-w-5xl mx-auto flex flex-col items-center bg-gradient-to-b from-[#f8fafc] via-[#edf2f7] to-white p-4 md:p-8 rounded-xl">
+    <div className="w-full max-w-5xl mx-auto flex flex-col items-center bg-gradient-to-b from-[#f8fafc] via-[#edf2f7] to-white p-4 md:p-8 md:pt-4 rounded-xl">
 
-      {/* ========================================================================= */}
-      {/* 1. PRODUCT SHOWCASE CANVAS — 4:3 frame, image fills edge-to-edge         */}
-      {/* ========================================================================= */}
       <div className="relative w-full overflow-hidden flex flex-col items-center justify-center">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(241,245,249,0.6)_0%,rgba(255,255,255,0)_70%)] pointer-events-none" />
 
-        {/* Mobile: Swipeable Carousel — native scroll-snap, 4:3 frame per slide */}
+        {/* Mobile: Swipeable Carousel — autoplay + manual swipe/tap pause it */}
         <div className="w-full lg:hidden relative">
           <div
             ref={trackRef}
             onScroll={handleScroll}
+            onTouchStart={pauseAutoplay}
+            onTouchEnd={resumeAutoplayDelayed}
+            onMouseDown={pauseAutoplay}
+            onMouseUp={resumeAutoplayDelayed}
             className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           >
             {showcaseProducts.map((p) => (
@@ -86,12 +119,15 @@ export default function ShowcaseHub() {
             ))}
           </div>
 
-          {/* Dot indicators */}
           <div className="flex items-center justify-center gap-1.5 mt-2 pb-4">
             {showcaseProducts.map((p, i) => (
               <button
                 key={p.id}
-                onClick={() => goTo(i)}
+                onClick={() => {
+                  pauseAutoplay();
+                  goTo(i);
+                  resumeAutoplayDelayed();
+                }}
                 aria-label={`Go to slide ${i + 1}`}
                 className={`h-1 rounded-full transition-all duration-300 ${
                   i === active ? "w-2 bg-[#d2462b]" : "w-1 bg-slate-300/70"
@@ -101,8 +137,12 @@ export default function ShowcaseHub() {
           </div>
         </div>
 
-        {/* Desktop Layout Display — 4:3 frame, crossfade between slides */}
-        <div className="hidden lg:flex w-full items-center justify-center p-6">
+        {/* Desktop: crossfade, autoplay + hover pause */}
+        <div
+          className="hidden lg:flex w-full items-center justify-center p-6"
+          onMouseEnter={pauseAutoplay}
+          onMouseLeave={resumeAutoplayDelayed}
+        >
           <div className="relative w-full max-w-2xl aspect-[4/3] overflow-hidden rounded-2xl">
             <AnimatePresence mode="wait">
               {showcaseProducts[active] && (
@@ -118,13 +158,28 @@ export default function ShowcaseHub() {
                 />
               )}
             </AnimatePresence>
+
+            {/* Desktop dots, clickable */}
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+              {showcaseProducts.map((p, i) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    pauseAutoplay();
+                    goTo(i);
+                    resumeAutoplayDelayed();
+                  }}
+                  aria-label={`Go to slide ${i + 1}`}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    i === active ? "w-4 bg-[#d2462b]" : "w-1.5 bg-white/70"
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ========================================================================= */}
-      {/* 2. FEATURE CARDS                                                          */}
-      {/* ========================================================================= */}
       <div className="w-full bg-white rounded-xl border border-slate-100 shadow-[0_18px_50px_-12px_rgba(30,41,59,0.12)] px-3 py-5 sm:px-6 sm:py-2 md:px-2 md:py-5">
         <div className="grid grid-cols-4 w-full gap-x-1">
           {features.map((f, i) => {
@@ -141,18 +196,15 @@ export default function ShowcaseHub() {
                 {i !== 0 && (
                   <div className="absolute left-0 top-2 bottom-2 w-px bg-slate-100" />
                 )}
-
                 <div
                   className="flex h-10 w-10 sm:h-[48px] sm:w-[48px] md:h-[56px] md:w-[56px] shrink-0 items-center justify-center rounded-full"
                   style={{ backgroundColor: f.bg, color: f.fg }}
                 >
                   <IconComponent />
                 </div>
-
                 <h3 className="mt-3 sm:mt-4 text-[12px] leading-[1.15] sm:text-[14px] md:text-[14px] font-bold tracking-tight text-slate-900 sm:leading-snug w-full">
                   {f.title}
                 </h3>
-
                 <p className="mt-1.5 sm:mt-2 max-w-[92px] sm:max-w-[150px] md:max-w-[165px] text-[10px] leading-[1.3] sm:text-[12px] md:text-[12px] sm:leading-relaxed text-slate-400 font-medium">
                   {f.desc}
                 </p>

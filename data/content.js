@@ -35,6 +35,14 @@ export const infoBanner = {
   subtext: "Compare prices before you buy.",
 };
 
+export const bannerCards = [
+  { id: "compare", icon: "bar-chart", title: "Compare Multiple Quotations", desc: "Buy at competitive prices." },
+  { id: "reduce", icon: "wallet", title: "Reduce Procurement Costs", desc: "Save on every purchase." },
+  { id: "verified", icon: "building", title: "Verified Business Suppliers", desc: "Buy with confidence." },
+  { id: "reorder", icon: "repeat", title: "Easy Repeat Ordering", desc: "Reorder in one click." },
+  { id: "industries", icon: "boxes", title: "Buy Across Industries", desc: "Millions of products." },
+];
+
 // Stock/sample product photography (Unsplash) standing in for real catalogue shots.
 export const showcaseProducts = [
   {
