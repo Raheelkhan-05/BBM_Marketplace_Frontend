@@ -89,8 +89,8 @@ export const whyBBM = [
     id: "platform",
     heading: "Why choose BBM?",
     hero: "Built for Indian Business.",
-    accent: "#d85a41",
-    tint: "rgba(216, 90, 65, 0.08)",
+    accent: "#057184",
+    tint: "rgba(5, 113, 132, 0.08)",
     points: [
       { icon: "flag", text: "Built for Indian businesses." },
       { icon: "check-shield", text: "Verified marketplace." },
