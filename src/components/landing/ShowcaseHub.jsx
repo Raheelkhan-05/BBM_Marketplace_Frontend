@@ -1,3 +1,5 @@
+//ShowcaseHub.jsx
+
 import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { showcaseProducts, features } from "../../../data/content";
@@ -78,7 +80,7 @@ export default function ShowcaseHub() {
                 <img
                   src={p.src}
                   alt={p.alt}
-                  className="h-48 md:h-64 w-auto object-contain select-none drop-shadow-[0_15px_25px_rgba(0,0,0,0.06)]"
+                  className="h-72 md:h-128 w-auto scale-70 object-contain select-none drop-shadow-[0_15px_25px_rgba(0,0,0,0.06)]"
                   draggable={false}
                 />
               </div>
@@ -144,9 +146,10 @@ export default function ShowcaseHub() {
 
                 {/* Soft circular icon backdrop */}
                 <div
-                  className={`flex h-10 w-10 sm:h-[48px] sm:w-[48px] md:h-[56px] md:w-[56px] shrink-0 items-center justify-center rounded-full ${f.bg} ${f.fg}`}
+                className="flex h-10 w-10 sm:h-[48px] sm:w-[48px] md:h-[56px] md:w-[56px] shrink-0 items-center justify-center rounded-full"
+                style={{ backgroundColor: f.bg, color: f.fg }}
                 >
-                  <IconComponent />
+                <IconComponent />
                 </div>
 
                 {/* Title — bold, dark, two lines max, tight leading */}

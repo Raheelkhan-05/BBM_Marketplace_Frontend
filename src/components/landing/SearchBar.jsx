@@ -1,3 +1,5 @@
+//SearchBar.jsx
+
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Search } from "lucide-react";
@@ -7,7 +9,6 @@ export default function SearchBar() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // Wire this up to real search routing later.
     console.log("Search for:", query);
   };
 
@@ -16,7 +17,7 @@ export default function SearchBar() {
       onSubmit={handleSubmit}
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.3 }}
+      transition={{ duration: 0.5, delay: 0.4 }}
       className="mt-4 flex w-full items-center overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm lg:max-w-xl"
     >
       <Search className="ml-2 h-4 w-4 shrink-0 text-slate-400" />
@@ -30,7 +31,7 @@ export default function SearchBar() {
       <button
         type="submit"
         aria-label="Search"
-        className="m-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-700"
+        className="m-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#d2462b] text-white transition-colors hover:bg-[#d85a41]"
       >
         <Search className="h-4 w-4" />
       </button>
