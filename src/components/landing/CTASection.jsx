@@ -6,7 +6,7 @@ import { trustBadges } from "../../../data/content";
 
 export default function CTASection() {
   return (
-    <div className="mt-1 flex flex-col items-center lg:mt-10">
+    <div className="mt-4 flex flex-col items-center lg:mt-16">
       <motion.a
         href="#explore"
         initial={{ opacity: 0, y: 16 }}

@@ -12,7 +12,7 @@ export default function HeroSection() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="mt-1 text-[2.6rem] font-extrabold leading-[1.05] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl xl:text-7xl"
+        className="mt-1 text-[2.5rem] font-bold leading-[1.15] tracking-tight text-slate-900 sm:text-5xl lg:text-6xl xl:text-7xl"
       >
         {heroContent.titleLine1}{" "}
         <span className="text-[#d2462b]">{heroContent.titleAccent1}</span>
@@ -25,7 +25,7 @@ export default function HeroSection() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className="mt-4 inline-block rounded-full bg-[#f5d7d0] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#d2462b]"
+        className="mt-3 inline-block rounded-full bg-[#f5d7d0] px-2.5 py-1 text-[11px] font-bold text-[#d2462b]"
       >
         {TAGLINE}
       </motion.p>
@@ -39,7 +39,7 @@ export default function HeroSection() {
         {heroContent.bullets.map((b) => (
           <li
             key={b}
-            className="flex items-center gap-2 text-[13px] font-medium text-slate-700 sm:text-[15px]"
+            className="flex items-center gap-2 text-[12.5px] font-medium text-slate-700 sm:text-[14px]"
           >
             <CheckCircle2 className="h-4 w-4 shrink-0 text-[#057184]" />
             {b}

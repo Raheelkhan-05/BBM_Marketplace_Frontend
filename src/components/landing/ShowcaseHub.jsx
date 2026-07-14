@@ -29,61 +29,96 @@ const ICONS = {
 };
 
 const AUTOPLAY_DELAY = 3500;
+const SWIPE_THRESHOLD = 40;
 
 export default function ShowcaseHub() {
   const [active, setActive] = useState(0);
-  const trackRef = useRef(null);
-  const rafRef = useRef(null);
-  const autoplayRef = useRef(null);
+  const [direction, setDirection] = useState(1); // 1 = forward (R->L), -1 = backward (L->R)
   const isInteractingRef = useRef(false);
+  const resumeTimeoutRef = useRef(null);
+  const touchStartX = useRef(0);
 
-  const goTo = useCallback((i) => {
-    const el = trackRef.current;
-    const total = showcaseProducts.length;
-    const next = (i + total) % total;
-    setActive(next);
-    if (el) {
-      el.scrollTo({ left: next * el.clientWidth, behavior: "smooth" });
-    }
-  }, []);
-
-  // Autoplay — advances every AUTOPLAY_DELAY ms, paused while user interacts
+  // Autoplay always advances forward, regardless of which way the
+  // user last swiped manually.
   useEffect(() => {
-    autoplayRef.current = setInterval(() => {
+    const id = setInterval(() => {
       if (!isInteractingRef.current) {
-        setActive((prev) => {
-          const next = (prev + 1) % showcaseProducts.length;
-          const el = trackRef.current;
-          if (el) el.scrollTo({ left: next * el.clientWidth, behavior: "smooth" });
-          return next;
-        });
+        setDirection(1);
+        setActive((prev) => (prev + 1) % showcaseProducts.length);
       }
     }, AUTOPLAY_DELAY);
-    return () => clearInterval(autoplayRef.current);
+    return () => clearInterval(id);
   }, []);
 
-  const pauseAutoplay = () => {
+  const pauseAutoplay = useCallback(() => {
     isInteractingRef.current = true;
-  };
-  // Resume shortly after the user stops interacting
-  const resumeAutoplayDelayed = () => {
-    window.clearTimeout(resumeAutoplayDelayed._t);
-    resumeAutoplayDelayed._t = window.setTimeout(() => {
+    window.clearTimeout(resumeTimeoutRef.current);
+  }, []);
+
+  const resumeAutoplayDelayed = useCallback(() => {
+    window.clearTimeout(resumeTimeoutRef.current);
+    resumeTimeoutRef.current = window.setTimeout(() => {
       isInteractingRef.current = false;
     }, 4000);
-  };
+  }, []);
 
-  const handleScroll = useCallback(() => {
-    const el = trackRef.current;
-    if (!el) return;
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
-      const slideWidth = el.clientWidth;
-      if (!slideWidth) return;
-      const index = Math.round(el.scrollLeft / slideWidth);
-      setActive((prev) => (prev === index ? prev : index));
+  const goTo = useCallback((i) => {
+    setActive((prev) => {
+      const total = showcaseProducts.length;
+      const next = ((i % total) + total) % total;
+      setDirection(next > prev || (prev === total - 1 && next === 0) ? 1 : -1);
+      return next;
     });
   }, []);
+
+  const goNext = useCallback(() => {
+    setDirection(1);
+    setActive((prev) => (prev + 1) % showcaseProducts.length);
+  }, []);
+
+  const goPrev = useCallback(() => {
+    setDirection(-1);
+    setActive((prev) => (prev - 1 + showcaseProducts.length) % showcaseProducts.length);
+  }, []);
+
+  const onTouchStart = (e) => {
+    pauseAutoplay();
+    touchStartX.current = e.touches[0].clientX;
+  };
+
+  const onTouchEnd = (e) => {
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    if (delta < -SWIPE_THRESHOLD) goNext();      // swiped right -> left
+    else if (delta > SWIPE_THRESHOLD) goPrev();  // swiped left -> right
+    resumeAutoplayDelayed();
+  };
+
+  // direction-aware slide+fade, shared by mobile and desktop
+  const variants = {
+    enter: (dir) => ({ x: dir > 0 ? 60 : -60, opacity: 0 }),
+    center: { x: 0, opacity: 1 },
+    exit: (dir) => ({ x: dir > 0 ? -60 : 60, opacity: 0 }),
+  };
+
+  const slide = (className) => (
+    <AnimatePresence mode="popLayout" custom={direction} initial={false}>
+      {showcaseProducts[active] && (
+        <motion.img
+          key={active}
+          custom={direction}
+          variants={variants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{ duration: 0.55, ease: [0.4, 0, 0.2, 1] }}
+          src={showcaseProducts[active].src}
+          alt={showcaseProducts[active].alt}
+          className={className}
+          draggable={false}
+        />
+      )}
+    </AnimatePresence>
+  );
 
   return (
     <div className="w-full max-w-5xl mx-auto flex flex-col items-center bg-gradient-to-b from-[#f8fafc] via-[#edf2f7] to-white p-4 md:p-8 md:pt-4 rounded-xl">
@@ -91,32 +126,14 @@ export default function ShowcaseHub() {
       <div className="relative w-full overflow-hidden flex flex-col items-center justify-center">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(241,245,249,0.6)_0%,rgba(255,255,255,0)_70%)] pointer-events-none" />
 
-        {/* Mobile: Swipeable Carousel — autoplay + manual swipe/tap pause it */}
-        <div className="w-full lg:hidden relative">
-          <div
-            ref={trackRef}
-            onScroll={handleScroll}
-            onTouchStart={pauseAutoplay}
-            onTouchEnd={resumeAutoplayDelayed}
-            onMouseDown={pauseAutoplay}
-            onMouseUp={resumeAutoplayDelayed}
-            className="flex overflow-x-auto snap-x snap-mandatory scroll-smooth [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-          >
-            {showcaseProducts.map((p) => (
-              <div
-                key={p.id}
-                className="w-full shrink-0 snap-center flex justify-center items-center px-4"
-              >
-                <div className="relative w-full aspect-[4/3] max-w-sm overflow-hidden rounded-2xl">
-                  <img
-                    src={p.src}
-                    alt={p.alt}
-                    className="absolute inset-0 h-full w-full object-cover select-none drop-shadow-[0_15px_25px_rgba(0,0,0,0.06)]"
-                    draggable={false}
-                  />
-                </div>
-              </div>
-            ))}
+        {/* Mobile: swipe either direction, autoplay forward-only */}
+        <div
+          className="w-full lg:hidden relative flex flex-col items-center px-4"
+          onTouchStart={onTouchStart}
+          onTouchEnd={onTouchEnd}
+        >
+          <div className="relative w-full aspect-[4/3] max-w-sm overflow-hidden rounded-2xl">
+            {slide("absolute inset-0 h-full w-full object-cover select-none drop-shadow-[0_15px_25px_rgba(0,0,0,0.06)]")}
           </div>
 
           <div className="flex items-center justify-center gap-1.5 mt-2 pb-4">
@@ -137,30 +154,29 @@ export default function ShowcaseHub() {
           </div>
         </div>
 
-        {/* Desktop: crossfade, autoplay + hover pause */}
+        {/* Desktop: drag either direction, autoplay forward-only, hover pause */}
         <div
           className="hidden lg:flex w-full items-center justify-center p-6"
           onMouseEnter={pauseAutoplay}
           onMouseLeave={resumeAutoplayDelayed}
         >
           <div className="relative w-full max-w-2xl aspect-[4/3] overflow-hidden rounded-2xl">
-            <AnimatePresence mode="wait">
-              {showcaseProducts[active] && (
-                <motion.img
-                  key={active}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.5, ease: "easeInOut" }}
-                  src={showcaseProducts[active].src}
-                  alt={showcaseProducts[active].alt}
-                  className="absolute inset-0 h-full w-full object-cover select-none drop-shadow-[0_20px_35px_rgba(0,0,0,0.07)]"
-                />
-              )}
-            </AnimatePresence>
+            <motion.div
+              className="absolute inset-0"
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.15}
+              onDragStart={pauseAutoplay}
+              onDragEnd={(e, info) => {
+                if (info.offset.x < -SWIPE_THRESHOLD) goNext();
+                else if (info.offset.x > SWIPE_THRESHOLD) goPrev();
+                resumeAutoplayDelayed();
+              }}
+            >
+              {slide("absolute inset-0 h-full w-full object-cover select-none drop-shadow-[0_20px_35px_rgba(0,0,0,0.07)]")}
+            </motion.div>
 
-            {/* Desktop dots, clickable */}
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
               {showcaseProducts.map((p, i) => (
                 <button
                   key={p.id}
@@ -202,7 +218,7 @@ export default function ShowcaseHub() {
                 >
                   <IconComponent />
                 </div>
-                <h3 className="mt-3 sm:mt-4 text-[12px] leading-[1.15] sm:text-[14px] md:text-[14px] font-bold tracking-tight text-slate-900 sm:leading-snug w-full">
+                <h3 className="mt-3 sm:mt-4 text-[12px] leading-[1.15] px-0.5 sm:text-[14px] md:text-[14px] font-bold tracking-tight text-slate-900 sm:leading-snug w-full">
                   {f.title}
                 </h3>
                 <p className="mt-1.5 sm:mt-2 max-w-[92px] sm:max-w-[150px] md:max-w-[165px] text-[10px] leading-[1.3] sm:text-[12px] md:text-[12px] sm:leading-relaxed text-slate-400 font-medium">
