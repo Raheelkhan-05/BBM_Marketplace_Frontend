@@ -120,47 +120,47 @@ export default function ShowcaseHub() {
     </AnimatePresence>
   );
 
-  return (
-    <div className="w-full max-w-5xl mx-auto flex flex-col items-center bg-gradient-to-b from-[#f8fafc] via-[#edf2f7] to-white p-4 md:p-8 md:pt-4 rounded-xl">
-
+return (
+    <div className="w-full max-w-5xl mx-auto flex flex-col items-center p-4 md:p-8 md:pt-4">
       <div className="relative w-full overflow-hidden flex flex-col items-center justify-center">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(241,245,249,0.6)_0%,rgba(255,255,255,0)_70%)] pointer-events-none" />
-
-        {/* Mobile: swipe either direction, autoplay forward-only */}
         <div
-          className="w-full lg:hidden relative flex flex-col items-center px-4"
-          onTouchStart={onTouchStart}
-          onTouchEnd={onTouchEnd}
-        >
-          <div className="relative w-full aspect-[4/3] max-w-sm overflow-hidden rounded-2xl">
-            {slide("absolute inset-0 h-full w-full object-cover select-none drop-shadow-[0_15px_25px_rgba(0,0,0,0.06)]")}
+          className="absolute inset-0 rounded-[28px]"
+          style={{ background: "radial-gradient(ellipse at center, rgba(4,112,132,0.06) 0%, transparent 70%)" }}
+        />
+
+        {/* Mobile */}
+        <div className="w-full lg:hidden relative flex flex-col items-center px-4" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <div
+            className="relative w-full aspect-[4/3] max-w-sm overflow-hidden rounded-2xl ring-1 ring-black/5"
+            style={{ boxShadow: "0 24px 48px -20px rgba(4,112,132,0.35)" }}
+          >
+            {slide("absolute inset-0 h-full w-full object-cover select-none")}
+            <div
+              className="absolute left-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-bold text-white shadow-md"
+              style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
+            >
+              Verified Supplier
+            </div>
           </div>
 
-          <div className="flex items-center justify-center gap-1.5 mt-2 pb-4">
+          <div className="flex items-center justify-center gap-1.5 mt-3 pb-4">
             {showcaseProducts.map((p, i) => (
               <button
                 key={p.id}
-                onClick={() => {
-                  pauseAutoplay();
-                  goTo(i);
-                  resumeAutoplayDelayed();
-                }}
+                onClick={() => { pauseAutoplay(); goTo(i); resumeAutoplayDelayed(); }}
                 aria-label={`Go to slide ${i + 1}`}
-                className={`h-1 rounded-full transition-all duration-300 ${
-                  i === active ? "w-2 bg-[#d2462b]" : "w-1 bg-slate-300/70"
-                }`}
+                className={`h-1.5 rounded-full transition-all duration-300 ${i === active ? "w-5 bg-[#d2462b]" : "w-1.5 bg-slate-300/70"}`}
               />
             ))}
           </div>
         </div>
 
-        {/* Desktop: drag either direction, autoplay forward-only, hover pause */}
-        <div
-          className="hidden lg:flex w-full items-center justify-center p-6"
-          onMouseEnter={pauseAutoplay}
-          onMouseLeave={resumeAutoplayDelayed}
-        >
-          <div className="relative w-full max-w-2xl aspect-[4/3] overflow-hidden rounded-2xl">
+        {/* Desktop */}
+        <div className="hidden lg:flex w-full items-center justify-center p-6" onMouseEnter={pauseAutoplay} onMouseLeave={resumeAutoplayDelayed}>
+          <div
+            className="relative w-full max-w-2xl aspect-[4/3] overflow-hidden rounded-[28px] ring-1 ring-black/5"
+            style={{ boxShadow: "0 32px 64px -24px rgba(4,112,132,0.4)" }}
+          >
             <motion.div
               className="absolute inset-0"
               drag="x"
@@ -173,22 +173,24 @@ export default function ShowcaseHub() {
                 resumeAutoplayDelayed();
               }}
             >
-              {slide("absolute inset-0 h-full w-full object-cover select-none drop-shadow-[0_20px_35px_rgba(0,0,0,0.07)]")}
+              {slide("absolute inset-0 h-full w-full object-cover select-none")}
             </motion.div>
 
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
+            <div
+              className="absolute left-4 top-4 rounded-full px-3 py-1.5 text-[11px] font-bold text-white shadow-lg"
+              style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
+            >
+              Verified Supplier
+            </div>
+
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/35 to-transparent" />
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 z-10">
               {showcaseProducts.map((p, i) => (
                 <button
                   key={p.id}
-                  onClick={() => {
-                    pauseAutoplay();
-                    goTo(i);
-                    resumeAutoplayDelayed();
-                  }}
+                  onClick={() => { pauseAutoplay(); goTo(i); resumeAutoplayDelayed(); }}
                   aria-label={`Go to slide ${i + 1}`}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    i === active ? "w-4 bg-[#d2462b]" : "w-1.5 bg-white/70"
-                  }`}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${i === active ? "w-5 bg-white" : "w-1.5 bg-white/60"}`}
                 />
               ))}
             </div>
@@ -196,7 +198,7 @@ export default function ShowcaseHub() {
         </div>
       </div>
 
-      <div className="w-full bg-white rounded-xl border border-slate-100 shadow-[0_18px_50px_-12px_rgba(30,41,59,0.12)] px-3 py-5 sm:px-6 sm:py-2 md:px-2 md:py-5">
+      <div className="w-full bg-white rounded-2xl border border-slate-100 shadow-[0_20px_48px_-16px_rgba(4,112,132,0.18)] px-3 py-5 sm:px-6 sm:py-5 md:px-2">
         <div className="grid grid-cols-4 w-full gap-x-1">
           {features.map((f, i) => {
             const IconComponent = ICONS[f.icon];
@@ -206,22 +208,23 @@ export default function ShowcaseHub() {
                 initial={{ opacity: 0, y: 12 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.1 }}
-                transition={{ duration: 0.4, delay: i * 0.05 }}
+                transition={{ duration: 0.4, delay: i * 0.06 }}
                 className="flex flex-col items-center text-center relative px-1.5 sm:px-3 min-w-0"
               >
-                {i !== 0 && (
-                  <div className="absolute left-0 top-2 bottom-2 w-px bg-slate-100" />
-                )}
+                {i !== 0 && <div className="absolute left-0 top-2 bottom-2 w-px bg-slate-100" />}
                 <div
-                  className="flex h-10 w-10 sm:h-[48px] sm:w-[48px] md:h-[56px] md:w-[56px] shrink-0 items-center justify-center rounded-full"
+                  className="flex h-11 w-11 sm:h-[52px] sm:w-[52px] md:h-[58px] md:w-[58px] shrink-0 items-center justify-center rounded-2xl shadow-[0_6px_16px_-6px_rgba(4,112,132,0.35)]"
                   style={{ backgroundColor: f.bg, color: f.fg }}
                 >
                   <IconComponent />
                 </div>
-                <h3 className="mt-3 sm:mt-4 text-[12px] leading-[1.15] px-0.5 sm:text-[14px] md:text-[14px] font-bold tracking-tight text-slate-900 sm:leading-snug w-full">
+                <h3
+                  className="mt-3 sm:mt-4 text-[12px] leading-[1.15] px-0.5 sm:text-[14px] font-extrabold tracking-tight text-slate-900 sm:leading-snug w-full"
+                  style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
+                >
                   {f.title}
                 </h3>
-                <p className="mt-1.5 sm:mt-2 max-w-[92px] sm:max-w-[150px] md:max-w-[165px] text-[10px] leading-[1.3] sm:text-[12px] md:text-[12px] sm:leading-relaxed text-slate-400 font-medium">
+                <p className="mt-1.5 sm:mt-2 max-w-[92px] sm:max-w-[150px] md:max-w-[165px] text-[10px] leading-[1.3] sm:text-[12px] text-slate-400 font-medium">
                   {f.desc}
                 </p>
               </motion.div>
@@ -229,7 +232,6 @@ export default function ShowcaseHub() {
           })}
         </div>
       </div>
-
     </div>
   );
 }

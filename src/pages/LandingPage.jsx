@@ -9,54 +9,14 @@ import ShowcaseHub from "../components/landing/ShowcaseHub.jsx";
 import CTASection from "../components/landing/CTASection.jsx";
 // import StatsSection from "../components/landing/StatsSection.jsx";
 import WhyBBMSection from "../components/landing/WhyBBMSection.jsx";
+import BackgroundAmbience from "../components/landing/BackgroundAmbience.jsx";
 
 export default function LandingPage() {
   return (
-    <div className="relative min-h-screen bg-white overflow-hidden">
+    <div className="relative min-h-screen bg-white overflow-x-clip">
+      <BackgroundAmbience />
 
-      {/* ===================================================================== */}
-      {/* Background decoration: soft brand-colored blobs + light grain texture */}
-      {/* Inline rgba styles used instead of Tailwind arbitrary-opacity classes */}
-      {/* to avoid JIT/purge issues — guaranteed to render regardless of config */}
-      {/* ===================================================================== */}
-      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div
-          className="absolute -top-32 -left-32 h-[420px] w-[420px] rounded-full blur-3xl"
-          style={{ backgroundColor: "rgba(210, 70, 43, 0.14)" }}
-        />
-        <div
-          className="absolute -top-20 right-[-10%] h-[380px] w-[380px] rounded-full blur-3xl"
-          style={{ backgroundColor: "rgba(5, 113, 132, 0.12)" }}
-        />
-        <div
-          className="absolute top-[35%] -left-24 h-[320px] w-[320px] rounded-full blur-3xl"
-          style={{ backgroundColor: "rgba(229, 151, 138, 0.16)" }}
-        />
-        <div
-          className="absolute top-[55%] right-[-8%] h-[360px] w-[360px] rounded-full blur-3xl"
-          style={{ backgroundColor: "rgba(130, 182, 192, 0.15)" }}
-        />
-        <div
-          className="absolute bottom-[-10%] left-[20%] h-[450px] w-[450px] rounded-full blur-3xl"
-          style={{ backgroundColor: "rgba(216, 90, 65, 0.10)" }}
-        />
-        <div
-          className="absolute bottom-[-15%] right-[10%] h-[300px] w-[300px] rounded-full blur-3xl"
-          style={{ backgroundColor: "rgba(238, 190, 179, 0.20)" }}
-        />
-
-        {/* Subtle grain/noise texture overlay */}
-        <div
-          className="absolute inset-0 mix-blend-multiply"
-          style={{
-            opacity: 0.035,
-            backgroundImage:
-              "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
-          }}
-        />
-      </div>
-
-      <div className="relative z-10">
+      <div className="relative z-1">
         <Header />
 
         <main className="mx-auto max-w-7xl pb-8 lg:px-8 lg:pb-24">

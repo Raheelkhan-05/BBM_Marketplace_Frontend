@@ -93,20 +93,25 @@ export default function InfoBanner() {
     exit: (dir) => ({ x: dir > 0 ? -40 : 40, opacity: 0 }),
   };
 
+  // ...keep all existing state, refs, handlers, and `variants` unchanged above...
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.6 }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.5, delay: 0.1 }}
       onMouseEnter={pause}
       onMouseLeave={resumeDelayed}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      className="mt-5 relative flex items-center gap-3 rounded-lg px-4 ps-3 py-2.5 lg:max-w-xl overflow-hidden select-none"
-      style={{ backgroundColor: "rgba(130, 182, 192, 0.10)", borderWidth: 1, borderColor: "rgba(130, 182, 192, 0.30)" }}
+      className="mt-4 relative flex items-center gap-3 rounded-xl px-4 py-3 lg:max-w-xl overflow-hidden select-none shadow-[0_8px_24px_-14px_rgba(4,112,132,0.35)]"
+      style={{
+        background: "linear-gradient(135deg, rgba(4,112,132,0.07) 0%, rgba(127,179,189,0.12) 100%)",
+        borderWidth: 1,
+        borderColor: "rgba(4,112,132,0.18)",
+      }}
     >
-
       <div className="flex-1 min-w-0 relative h-[38px] overflow-hidden">
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
@@ -120,16 +125,16 @@ export default function InfoBanner() {
             className="absolute inset-0 flex items-center gap-2.5"
           >
             <span
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#057184]"
-              style={{ backgroundColor: "rgba(5, 113, 132, 0.14)" }}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white shadow-[0_4px_10px_-3px_rgba(4,112,132,0.5)]"
+              style={{ background: "linear-gradient(135deg, #047084 0%, #7fb3bd 100%)" }}
             >
               <Icon className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <p className="text-[13px] font-semibold text-slate-900 tracking-wide truncate">
+              <p className="text-[13px] font-bold text-slate-900 tracking-wide truncate">
                 {card.title}
               </p>
-              <p className="text-[11px] font-medium text-slate-600 truncate">
+              <p className="text-[11px] font-medium text-slate-500 truncate">
                 {card.desc}
               </p>
             </div>
@@ -143,10 +148,10 @@ export default function InfoBanner() {
             key={c.id}
             onClick={() => goTo(i)}
             aria-label={`Go to card ${i + 1}`}
-            className="h-1 rounded-full transition-all duration-300"
+            className="h-1.5 rounded-full transition-all duration-300"
             style={{
-              width: i === active ? 12 : 4,
-              backgroundColor: i === active ? "#057184" : "rgba(5,113,132,0.3)",
+              width: i === active ? 16 : 5,
+              backgroundColor: i === active ? "#d2462b" : "rgba(4,113,132,0.25)",
             }}
           />
         ))}
