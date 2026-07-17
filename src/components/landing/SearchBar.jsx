@@ -1,6 +1,7 @@
-//SearchBar.jsx
+//src/components/landing/SearchBar.jsx
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Search, SlidersHorizontal } from "lucide-react";
 
@@ -8,10 +9,22 @@ const QUICK_TAGS = ["Steel Pipes", "Bearings", "Motors", "Valves"];
 
 export default function SearchBar() {
   const [query, setQuery] = useState("");
+  const navigate = useNavigate();
+
+  const goToSearch = (q) => {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    navigate(`/search?q=${encodeURIComponent(trimmed)}`);
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    console.log("Search for:", query);
+    goToSearch(query);
+  };
+
+  const handleTagClick = (tag) => {
+    setQuery(tag);
+    goToSearch(tag);
   };
 
   return (
@@ -55,7 +68,7 @@ export default function SearchBar() {
         {QUICK_TAGS.map((tag) => (
           <button
             key={tag}
-            onClick={() => setQuery(tag)}
+            onClick={() => handleTagClick(tag)}
             className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-500 transition-colors hover:border-[#7fb3bd] hover:bg-[#e6ecee] hover:text-[#047084]"
           >
             {tag}

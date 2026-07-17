@@ -14,10 +14,8 @@ import BackgroundAmbience from "../components/landing/BackgroundAmbience.jsx";
 export default function LandingPage() {
   return (
     <div className="relative min-h-screen bg-white overflow-x-clip">
-      <BackgroundAmbience />
 
       <div className="relative z-1">
-        <Header />
 
         <main className="mx-auto max-w-7xl pb-8 lg:px-8 lg:pb-24">
           <div className="lg:grid lg:grid-cols-2 lg:items-center lg:gap-8 lg:pt-12 lg:pt-6">
@@ -40,9 +38,6 @@ export default function LandingPage() {
           </div>
         </main>
 
-        <div className="hidden md:block">
-          <Footer />
-        </div>
       </div>
     </div>
   );
