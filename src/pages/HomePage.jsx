@@ -325,13 +325,13 @@ function WelcomeBanner() {
         <div className="col-span-4 min-w-0">
           <h3
             className="font-extrabold leading-tight text-slate-900"
-            style={{ fontSize: "clamp(11px, 2cqw, 16px)" }}
+            style={{ fontSize: "clamp(12px, 2cqw, 16px)" }}
           >
             Welcome back, {userName} 👋
           </h3>
           <p
             className="font-medium leading-tight text-slate-500"
-            style={{ fontSize: "clamp(8px, 1.15cqw, 12px)", marginTop: "clamp(2px, 0.4cqw, 4px)" }}
+            style={{ fontSize: "clamp(9px, 1.15cqw, 12px)", marginTop: "clamp(2px, 0.4cqw, 4px)" }}
           >
             Here's what's new in your marketplace
           </p>
@@ -349,7 +349,7 @@ function WelcomeBanner() {
                   className="flex items-center rounded-md bg-white"
                   style={{
                     gap: "clamp(4px, 0.9cqw, 10px)",
-                    padding: "clamp(4px, 0.8cqw, 9px) clamp(5px, 0.9cqw, 10px)",
+                    padding: "clamp(5px, 0.8cqw, 9px) clamp(5px, 0.9cqw, 10px)",
                   }}
                 >
                   <span
@@ -357,28 +357,28 @@ function WelcomeBanner() {
                     style={{
                       background: tone.bg,
                       color: tone.fg,
-                      width: "clamp(20px, 3.4cqw, 36px)",
-                      height: "clamp(20px, 3.4cqw, 36px)",
+                      width: "clamp(22px, 3.4cqw, 36px)",
+                      height: "clamp(22px, 3.4cqw, 36px)",
                     }}
                   >
-                    <Icon style={{ width: "clamp(11px, 1.8cqw, 18px)", height: "clamp(11px, 1.8cqw, 18px)" }} />
+                    <Icon style={{ width: "clamp(12px, 1.8cqw, 18px)", height: "clamp(12px, 1.8cqw, 18px)" }} />
                   </span>
                   <div className="min-w-0">
                     <p
-                      className="truncate mt-1 font-bold leading-tight text-slate-900"
-                      style={{ fontSize: "clamp(7.5px, 1.5cqw, 13.5px)" }}
+                      className="truncate font-bold leading-tight text-slate-900"
+                      style={{ fontSize: "clamp(8.5px, 1.5cqw, 13.5px)" }}
                     >
                       {h.title}
                     </p>
                     <p
-                      className="mt-0.5 md:mt-1 font-medium leading-tight text-slate-400"
-                      style={{ fontSize: "clamp(6px, 0.95cqw, 11.5px)" }}
+                      className="mt-0.5 truncate font-medium leading-tight text-slate-400"
+                      style={{ fontSize: "clamp(7px, 0.95cqw, 11.5px)" }}
                     >
                       {h.desc}
                     </p>
                     <p
-                      className="mb-1 font-bold leading-tight"
-                      style={{ color: tone.fg, fontSize: "clamp(6.5px, 1.5cqw, 12px)", marginTop: "clamp(3px, 0.7cqw, 6px)" }}
+                      className="truncate font-bold leading-tight"
+                      style={{ color: tone.fg, fontSize: "clamp(7.5px, 1.5cqw, 12px)", marginTop: "clamp(2px, 0.7cqw, 6px)" }}
                     >
                       {h.value}
                     </p>
@@ -407,7 +407,7 @@ function WelcomeBanner() {
               borderColor: "#047084",
               color: "#047084",
               gap: "clamp(2px, 0.4cqw, 6px)",
-              fontSize: "clamp(5px, 1cqw, 12px)",
+              fontSize: "clamp(6.5px, 1cqw, 12px)",
               padding: "clamp(4px, 0.9cqw, 10px) clamp(3px, 0.8cqw, 8px)",
               marginTop: "clamp(3px, 0.6cqw, 8px)",
             }}
@@ -456,13 +456,13 @@ function TopOffers() {
               <div className="flex min-w-0 flex-1 flex-col justify-center">
                 <p
                   className="truncate font-bold leading-tight text-slate-900"
-                  style={{ fontSize: "clamp(10.5px, 4cqw, 11.5px)" }}
+                  style={{ fontSize: "clamp(12px, 4cqw, 13px)" }}
                 >
                   {offer.title}
                 </p>
                 <p
                   className="truncate font-medium leading-tight text-slate-500"
-                  style={{ fontSize: "clamp(8.5px, 4cqw, 9.5px)" }}
+                  style={{ fontSize: "clamp(10px, 4cqw, 11px)" }}
                 >
                   {offer.desc}
                 </p>
@@ -481,16 +481,16 @@ function TopOffers() {
                 {offer.detail ? (
                   <p
                     className="font-bold leading-tight"
-                    style={{ color: "#d2462b", fontSize: "clamp(9px, 5cqw, 10px)" }}
+                    style={{ color: "#d2462b", fontSize: "clamp(10.5px, 5cqw, 11.5px)" }}
                   >
                     {offer.detail}
                   </p>
                 ) : (
-                  <span style={{ fontSize: "clamp(8px, 2.6cqw, 10px)" }}>&nbsp;</span>
+                  <span style={{ fontSize: "clamp(9.5px, 2.6cqw, 11.5px)" }}>&nbsp;</span>
                 )}
                 <button
                   className="mt-0.5 flex items-center gap-0.5 truncate font-bold"
-                  style={{ color: "#047084", fontSize: "clamp(9.5px, 4.6cqw, 10px)" }}
+                  style={{ color: "#047084", fontSize: "clamp(11px, 4.6cqw, 11.5px)" }}
                 >
                   Shop Now <ChevronRight className="h-2.5 w-2.5 shrink-0" />
                 </button>
@@ -542,13 +542,13 @@ function BusinessAndMarketRow() {
                 >
                   <Icon className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
                 </span>
-                <span className="mt-1.5 text-[16px] font-extrabold leading-none sm:mt-2.5 sm:text-[26px]" style={{ color: h.fg }}>
+                <span className="mt-1.5 text-[18px] font-extrabold leading-none sm:mt-2.5 sm:text-[27px]" style={{ color: h.fg }}>
                   {h.value}
                 </span>
-                <p className="mt-1.5 text-[8.5px] font-semibold leading-tight text-slate-600 sm:text-[12px]">
+                <p className="mt-1.5 text-[10px] font-semibold leading-tight text-slate-600 sm:text-[13px]">
                   {h.label}
                 </p>
-                <button className="mt-1.5 flex items-center gap-0.5 text-[8px] font-bold sm:text-[11.5px]" style={{ color: h.fg }}>
+                <button className="mt-1.5 flex items-center gap-0.5 text-[9.5px] font-bold sm:text-[12.5px]" style={{ color: h.fg }}>
                   View Now <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                 </button>
               </motion.div>
@@ -562,8 +562,8 @@ function BusinessAndMarketRow() {
         style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 10px 22px -10px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.8)" }}
       >
         <div className="flex items-center justify-between">
-          <h4 className="text-[12.5px] font-extrabold text-slate-900 md:text-[14.5px]">Market Feed</h4>
-          <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600">
+          <h4 className="text-[14px] font-extrabold text-slate-900 md:text-[16px]">Market Feed</h4>
+          <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live
           </span>
         </div>
@@ -578,18 +578,18 @@ function BusinessAndMarketRow() {
                   <Icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] font-bold leading-tight text-slate-800">{item.title}</p>
-                  {item.detail && <p className="truncate text-[9.5px] font-medium leading-tight text-slate-400">{item.detail}</p>}
+                  <p className="truncate text-[12.5px] font-bold leading-tight text-slate-800">{item.title}</p>
+                  {item.detail && <p className="truncate text-[11px] font-medium leading-tight text-slate-400">{item.detail}</p>}
                 </div>
                 {item.change && (
-                  <span className="shrink-0 text-[10.5px] font-extrabold" style={{ color }}>{item.change}</span>
+                  <span className="shrink-0 text-[12px] font-extrabold" style={{ color }}>{item.change}</span>
                 )}
               </div>
             );
           })}
         </div>
         <div className="flex mt-3 text-center justify-center items-center">
-          <button className=" flex items-center gap-1 text-[11px] font-bold text-[#047084]">
+          <button className=" flex items-center gap-1 text-[12.5px] font-bold text-[#047084]">
             View Full Feed <ChevronRight className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -632,16 +632,16 @@ function ShopByCategory() {
                 <img src={cat.image} alt="" className="h-full w-full object-cover" />
               </div>
               <div className="flex w-full flex-col items-center px-2.5 pb-3 pt-2">
-                <p className="truncate text-[12px] font-bold leading-tight text-slate-900 sm:text-[13px]">
+                <p className="truncate text-[13.5px] font-bold leading-tight text-slate-900 sm:text-[14.5px]">
                   {cat.name}
                 </p>
-                <p className="mt-1 truncate text-[9.5px] font-medium leading-tight text-slate-400 sm:text-[10.5px]">
+                <p className="mt-1 truncate text-[11px] font-medium leading-tight text-slate-400 sm:text-[12px]">
                   {cat.count}
                 </p>
-                <p className="truncate text-[9.5px] font-medium leading-tight text-slate-400 sm:text-[10.5px]">
+                <p className="truncate text-[11px] font-medium leading-tight text-slate-400 sm:text-[12px]">
                   {cat.suppliers}
                 </p>
-                <p className="mt-1 text-[11px] font-extrabold sm:text-[12px]" style={{ color: "#047084" }}>
+                <p className="mt-1 text-[12.5px] font-extrabold sm:text-[13.5px]" style={{ color: "#047084" }}>
                   From {cat.from}
                 </p>
               </div>
@@ -667,11 +667,11 @@ function PriceListAndComparedRow() {
                 <img src={p.image} alt="" className="h-full w-full object-cover" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] font-bold leading-snug text-slate-900">{p.name}</p>
-                <p className="truncate mt-0.5 text-[11.5px] font-medium leading-snug text-slate-400">
+                <p className="truncate text-[13.5px] font-bold leading-snug text-slate-900">{p.name}</p>
+                <p className="truncate mt-0.5 text-[13px] font-medium leading-snug text-slate-400">
                   {p.suppliers} &middot; Lowest {p.price}
                 </p>
-                <p className="text-[10.5px] mt-0.5 font-medium leading-snug text-slate-400">{p.updated}</p>
+                <p className="text-[12px] mt-0.5 font-medium leading-snug text-slate-400">{p.updated}</p>
               </div>
               <MiniTrendIcon trend={p.trend} />
               <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
@@ -690,8 +690,8 @@ function PriceListAndComparedRow() {
                 <div className="h-9 w-9 overflow-hidden rounded-full bg-slate-50 ring-1 ring-slate-100">
                   <img src={item.image} alt="" className="h-full w-full object-cover" />
                 </div>
-                <p className="mt-1.5 line-clamp-2 text-[9.5px] font-bold leading-tight text-slate-900">{item.name}</p>
-                <p className="mt-0.5 text-[8.5px] font-medium leading-tight text-slate-400">{item.count}</p>
+                <p className="mt-1.5 line-clamp-2 text-[10.5px] font-bold leading-tight text-slate-900">{item.name}</p>
+                <p className="mt-0.5 text-[9.5px] font-medium leading-tight text-slate-400">{item.count}</p>
               </div>
             ))}
           </div>
@@ -704,7 +704,7 @@ function PriceListAndComparedRow() {
               <div key={s.id} className="flex flex-col rounded-xl border border-slate-100 bg-white p-3">
                 <div className="flex items-start gap-2.5">
                   <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold text-white"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold text-white"
                     style={{ background: s.tone }}
                   >
                     {s.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
@@ -712,20 +712,20 @@ function PriceListAndComparedRow() {
 
                   <div className="flex min-w-0 flex-1 flex-col">
                     {/* Name — fixed height row */}
-                    <div className="flex h-[17px] items-center">
-                      <p className="truncate text-[12.5px] font-bold text-slate-900">{s.name}</p>
+                    <div className="flex h-[19px] items-center">
+                      <p className="truncate text-[14px] font-bold text-slate-900">{s.name}</p>
                     </div>
 
                     {/* Rating — fixed height row */}
-                    <div className="flex mt-0.5 h-[15px] items-center">
-                      <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-500">
+                    <div className="flex mt-0.5 h-[16px] items-center">
+                      <span className="flex items-center gap-0.5 text-[11.5px] font-bold text-amber-500">
                         {s.rating}
                         <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                       </span>
                     </div>
 
                     {/* Description — fixed height row, clamps to 2 lines so it's always the same height */}
-                    <p className="line-clamp-2 mt-1 sm:h-[28px] text-[10.5px] font-medium leading-tight text-slate-400">
+                    <p className="line-clamp-2 mt-1 sm:h-[30px] text-[12px] font-medium leading-tight text-slate-400">
                       {s.desc}
                     </p>
                   </div>
@@ -733,7 +733,7 @@ function PriceListAndComparedRow() {
 
                 {/* Button — now full width across the whole card */}
                 <button
-                  className="mt-2.5 w-full shrink-0 rounded-md border px-2.5 py-1.5 text-[10.5px] font-bold"
+                  className="mt-2.5 w-full shrink-0 rounded-md border px-2.5 py-1.5 text-[12px] font-bold"
                   style={{ borderColor: '#047084', color: '#047084' }}
                 >
                   View Products
@@ -785,12 +785,12 @@ function QuickActions() {
                 <Icon className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-[11px] font-bold text-slate-900">{a.label}</p>
-                <p className="truncate text-[9.5px] font-medium text-slate-400">{a.desc}</p>
+                <p className="truncate text-[12.5px] font-bold text-slate-900">{a.label}</p>
+                <p className="truncate text-[11px] font-medium text-slate-400">{a.desc}</p>
               </div>
               {a.count && (
                 <span
-                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[8.5px] font-bold text-white"
+                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] font-bold text-white"
                   style={{ boxShadow: "0 1px 3px rgba(210,70,43,0.45)" }}
                 >
                   {a.count}
@@ -809,13 +809,13 @@ function SectionHeader({ title, showViewAll = true }) {
   return (
     <div className="flex items-center justify-between">
       <h3
-        className="text-[13.5px] font-extrabold tracking-tight text-slate-900 md:text-[15.5px]"
+        className="text-[15px] font-extrabold tracking-tight text-slate-900 md:text-[17px]"
         style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
       >
         {title}
       </h3>
       {showViewAll && (
-        <button className="text-[11px] font-bold text-[#047084]">View All</button>
+        <button className="text-[12.5px] font-bold text-[#047084]">View All</button>
       )}
     </div>
   );
