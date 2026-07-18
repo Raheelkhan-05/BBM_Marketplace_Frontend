@@ -8,7 +8,7 @@ export default function CTASection() {
   return (
     <div className="mt-4 flex flex-col items-center lg:mt-16">
       <motion.a
-        href="#explore"
+        href="/home"
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.6 }}

@@ -28,10 +28,11 @@ export default function ProductResultCard({ product }) {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.1 }}
       transition={{ duration: 0.4 }}
-      className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_16px_40px_-24px_rgba(4,112,132,0.3)]"
+      className="overflow-hidden border-b border-slate-100 bg-white sm:rounded-2xl sm:border sm:border-slate-100 sm:shadow-[0_16px_40px_-24px_rgba(4,112,132,0.3)]"
     >
+
       {/* Product header block */}
-      <div className="flex gap-4 p-4 sm:p-5">
+      <div className="flex gap-4 sm:p-5">
         <div className="w-24 shrink-0 self-start overflow-hidden rounded-xl bg-slate-50 ring-1 ring-slate-100 sm:w-28" style={{ aspectRatio: "2 / 3" }}>
           <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
         </div>
@@ -93,7 +94,7 @@ export default function ProductResultCard({ product }) {
       </div>
 
       {/* Market Price Snapshot */}
-      <div className="mx-4 mb-4 rounded-xl bg-slate-50 p-3.5 px-1 sm:mx-5 sm:p-4">
+      <div className="mb-4 mt-2 rounded-xl bg-slate-50 py-3 px-1 sm:mx-5 sm:p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 ps-2">
             <h4 className="text-[12px] font-extrabold text-slate-900 sm:text-[13px]">Market Price Snapshot</h4>
@@ -125,7 +126,7 @@ export default function ProductResultCard({ product }) {
       </div>
 
       {/* MOQ / Delivery / Payment row */}
-      <div className="mx-4 mb-4 grid grid-cols-3 divide-x divide-slate-100 rounded-xl border border-slate-100 bg-white sm:mx-5">
+      <div className="mb-4 grid grid-cols-3 divide-x divide-slate-100 rounded-xl border border-slate-100 bg-white sm:mx-5">
         <InfoCell icon={Package} label="MOQ Starts From" value={product.moq} fg="#16a34a" />
         <InfoCell icon={Truck} label="Delivery Starts In" value={product.deliveryDays} fg="#047084" />
         <InfoCell icon={CheckCircle2} label="Payment Terms" value={product.paymentTerms} fg="#d2462b" />
@@ -133,7 +134,7 @@ export default function ProductResultCard({ product }) {
 
 
       <div
-        className="mx-4 mb-4 rounded-xl p-4 sm:mx-5 sm:p-5"
+        className="mb-4 rounded-xl p-4 sm:mx-5 sm:p-5"
         style={{ background: "linear-gradient(135deg, rgba(4,112,132,0.06) 0%, rgba(210,70,43,0.06) 100%)", border: "1px solid rgba(4,112,132,0.14)" }}
       >
         <div className="flex items-center gap-4">

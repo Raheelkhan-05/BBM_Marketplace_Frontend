@@ -129,7 +129,7 @@ return (
         />
 
         {/* Mobile */}
-        <div className="w-full lg:hidden relative flex flex-col items-center px-4" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        <div className="w-full lg:hidden relative flex flex-col items-center sm:px-4" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <div
             className="relative w-full aspect-[4/3] max-w-sm overflow-hidden rounded-2xl ring-1 ring-black/5"
             style={{ boxShadow: "0 24px 48px -20px rgba(4,112,132,0.35)" }}
@@ -198,7 +198,7 @@ return (
         </div>
       </div>
 
-      <div className="w-full bg-white rounded-2xl border border-slate-100 shadow-[0_20px_48px_-16px_rgba(4,112,132,0.18)] px-3 py-5 sm:px-6 sm:py-5 md:px-2">
+      <div className="w-full bg-white rounded-2xl border border-slate-100 shadow-[0_20px_48px_-16px_rgba(4,112,132,0.18)] px-0 py-5 sm:px-6 sm:py-5 md:px-2">
         <div className="grid grid-cols-4 w-full gap-x-1">
           {features.map((f, i) => {
             const IconComponent = ICONS[f.icon];

@@ -129,7 +129,7 @@ function EmptyState({ query }) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="flex flex-col items-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-6 py-14 text-center"
+      className="flex flex-col items-center rounded-2xl  px-6 py-14 text-center"
     >
       <span
         className="flex h-14 w-14 items-center justify-center rounded-full"

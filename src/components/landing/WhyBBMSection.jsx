@@ -169,7 +169,7 @@ export default function WhyBBMSection() {
   };
 
   return (
-    <div className="mt-6 px-4 sm:px-6 lg:mt-14 lg:px-0">
+    <div className="mt-6 lg:mt-14 lg:px-0">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
