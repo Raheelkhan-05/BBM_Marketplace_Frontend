@@ -47,7 +47,7 @@ function makeProduct(id, seed) {
     badge: "Popular Choice",
     name: seed.name,
     subtitle: seed.subtitle,
-    image: seed.image || "./1.jpeg",
+    image: seed.image || "./1.avif",
     tags: SAMPLE_TAGS,
     packSizes: seed.packSizes || ["1 Ltr", "5 Ltr", "15 Ltr", "18 Ltr"],
     pricing: {
@@ -95,37 +95,37 @@ const CATALOGUE = [
   {
     name: "Heavy Duty Engine Oil",
     subtitle: "API CI-4 | Heavy Duty Diesel Engine Oil",
-    image: "./1.jpeg",
+    image: "./1.avif",
     keywords: ["engine oil", "15w40", "diesel oil", "lubricant", "rimula"],
   },
   {
     name: "Industrial Gear Oil",
     subtitle: "ISO VG 220 | High Load Gear Protection",
-    image: "./2.jpeg",
+    image: "./2.avif",
     keywords: ["gear oil", "industrial oil", "vg220", "gearbox oil"],
   },
   {
     name: "Multi-Purpose Grease",
     subtitle: "Lithium Complex | High Temperature Grease",
-    image: "./3.jpeg",
+    image: "./3.avif",
     keywords: ["grease", "lithium grease", "bearing grease"],
   },
   {
     name: "Steel Pipes",
     subtitle: "ASTM A106 | Seamless Carbon Steel Pipes",
-    image: "./p3.png",
+    image: "./p3.avif",
     keywords: ["steel pipes", "pipes", "pipe fittings", "steel pipe"],
   },
   {
     name: "Industrial Ball Bearings",
     subtitle: "Chrome Steel | High Precision Bearings",
-    image: "./p1.png",
+    image: "./p1.avif",
     keywords: ["bearings", "ball bearing", "bearing"],
   },
   {
     name: "Electric Industrial Motor",
     subtitle: "3-Phase | High Torque Induction Motor",
-    image: "./p2.png",
+    image: "./p2.avif",
     keywords: ["motor", "motors", "induction motor", "electric motor"],
   },
 ];
