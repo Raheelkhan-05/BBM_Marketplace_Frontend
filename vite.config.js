@@ -10,7 +10,7 @@ export default defineConfig({
       includeAssets: ["favicon.ico", "apple-touch-icon.png"],
       manifest: {
         name: "BBM Marketplace",
-        short_name: "BBM",
+        short_name: "BBM Marketplace",
         description: "BBM Marketplace",
         theme_color: "#2563eb",
         background_color: "#ffffff",
