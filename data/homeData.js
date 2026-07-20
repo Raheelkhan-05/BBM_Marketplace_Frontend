@@ -7,32 +7,32 @@ export const promoSlides = [
   {
     id: "bearings",
     tag: "LIVE QUOTES",
-    title: "Lowest Bearing Prices Today!",
-    subtitle: "Compare 150+ verified suppliers and save on bulk purchases.",
+    title: "Lowest Bearing Prices",
+    subtitle: "Compare 150+ verified suppliers for the best deals.",
     cta: "Compare Now",
     image: "./c2.avif",
-    badge: "SAVE UP TO 18% on Bulk Orders",
+    badge: "SAVE UP TO 18%",
   },
   {
     id: "oils",
     tag: "TRENDING",
-    title: "Best Engine Oil Deals Today!",
-    subtitle: "Compare trusted suppliers and get the best bulk prices fast.",
+    title: "Best Engine Oil Deals",
+    subtitle: "Compare trusted suppliers for better bulk prices.",
     cta: "Explore Deals",
     image: "./c1.avif",
-    badge: "SAVE UP TO 12% on Bulk Orders",
+    badge: "SAVE UP TO 12%",
   },
 ];
 
 export const welcomeHighlights = [
-  { id: "price-drop", icon: "trend-down", title: "32211 Bearing", desc: "Price dropped today", value: "₹15 / Pc", tone: "green" },
-  { id: "suppliers", icon: "users", title: "3 Suppliers", desc: "Updated quotations", value: "View Now", tone: "blue" },
-  { id: "reorder", icon: "cart", title: "Reorder", desc: "15W40 Engine Oil", value: "Reorder Now", tone: "orange" },
+  { id: "price-drop", icon: "trend-down", title: "32211 Bearing", desc: "Price dropped today by", value: "₹15 / Pc", tone: "green" },
+  { id: "suppliers", icon: "users", title: "3 Suppliers", desc: "Quotations are updated", value: "View Now", tone: "blue" },
+  { id: "reorder", icon: "cart", title: "Reorder", desc: "15W40 Engine Oil Inventory", value: "Reorder Now", tone: "orange" },
 ];
 
 export const topOffers = [
   { id: "skf", brand: "SKF", logo : "./skf.svg", brandTone: "#047084", title: "SKF Week", desc: "Special Discounts", detail: "Up to 12% Off", image: "./2.avif" },
-  { id: "shell", brand: "Shell", logo : "./shell.svg", brandTone: "#d2462b", title: "Shell", desc: "Bulk Purchase Offer", detail: "Extra Savings on Bulk Orders", image: "./1.avif" },
+  { id: "shell", brand: "Shell", logo : "./shell.svg", brandTone: "#d2462b", title: "Shell", desc: "Bulk Purchase Offer", detail: "Extra Savings on Bulk", image: "./1.avif" },
   { id: "vci", brand: "VCI Paper", logo : "./vci.svg", brandTone: "#16a34a", title: "VCI Paper", desc: "Best Price Today", detail: "₹132 / Kg", image: "./3.avif" },
   { id: "ntn", brand: "NTN", logo : "./ntn.svg", brandTone: "#2563eb", title: "Bearings in Stock", desc: "Ready to Ship", detail: "", image: "./2.avif" },
 ];
@@ -50,7 +50,7 @@ export const businessHighlights = [
     id: "quotes",
     icon: "file",
     value: "2,400+",
-    label: "New Quotes Added",
+    label: "New Quotations Added",
     fg: "#047084", // Brand Teal
     bg: "rgba(4,112,132,0.12)",
   },
@@ -105,8 +105,6 @@ export const mostCompared = [
   { id: "c1", name: "15W40 Engine Oil", count: "620+ Comparisons", image: "./1.avif" },
   { id: "c2", name: "6205 Bearing", count: "510+ Comparisons", image: "./2.avif" },
   { id: "c3", name: "VCI Paper", count: "430+ Comparisons", image: "./3.avif" },
-  { id: "c4", name: "PP Woven Bag", count: "380+ Comparisons", image: "./1.avif" },
-  { id: "c5", name: "Hydraulic Pump", count: "360+ Comparisons", image: "./2.avif" },
 ];
 
 export const recommendedSuppliers = [

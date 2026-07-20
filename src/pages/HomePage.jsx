@@ -59,13 +59,13 @@ function SearchWalletRow() {
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg sm:h-7 sm:w-7"
           style={{ background: "rgba(4,112,132,0.10)", color: "#047084" }}
         >
-          <Wallet className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+          <Wallet className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
         </span>
         <div className="min-w-0 flex-1 text-left">
-          <p className="truncate text-[8px] font-semibold leading-tight text-slate-400 sm:text-[9.5px]">
+          <p className="truncate text-[9px] font-semibold leading-tight text-slate-400 sm:text-[9.5px]">
             Wallet Balance
           </p>
-          <p className="truncate text-[11px] font-extrabold leading-tight text-slate-900 sm:text-[12.5px]">
+          <p className="truncate text-[13px] font-extrabold leading-tight text-slate-900 sm:text-[12.5px]">
             {walletBalance}
           </p>
         </div>
@@ -186,80 +186,80 @@ function PromoCarousel() {
                 style={{ background: "linear-gradient(135deg, #04303D 0%, #047084 50%, #04303D 100%)" }}
               >
                 <div className="mx-auto w-full max-w-[1000px]" style={{ containerType: "inline-size" }}>
-                  <div className="flex items-center" style={{ height: "clamp(160px, 24cqw, 230px)" }}>
-                    <div
-                      className="promo-text-block relative z-10 flex min-w-0 flex-[3] flex-col justify-center"
-                      style={{ paddingLeft: "clamp(10px, 3cqw, 34px)", paddingRight: "clamp(6px, 1.5cqw, 16px)" }}
-                    >
-                      <span
-                        className="inline-flex w-fit items-center justify-center rounded-xl font-extrabold tracking-wide text-slate-900"
-                        style={{ background: "#fbbf24", fontSize: "clamp(6px, 0.85cqw, 8px)", lineHeight: 1, padding: "2px 6px" }}
-                      >
-                        {slide.tag}
-                      </span>
-                      <h2
-                        className="break-words font-extrabold text-white"
-                        style={{
-                          fontFamily: "'Bricolage Grotesque', sans-serif",
-                          fontSize: "clamp(13px, 2.6cqw, 30px)",
-                          lineHeight: 1.15,
-                          marginTop: "clamp(5px, 1cqw, 10px)",
-                        }}
-                      >
-                        {slide.title}
-                      </h2>
-                      <p
-                        className="break-words font-medium leading-snug text-white/75"
-                        style={{ fontSize: "clamp(8.5px, 1.2cqw, 15px)", marginTop: "clamp(3px, 0.8cqw, 8px)" }}
-                      >
-                        {slide.subtitle}
-                      </p>
-                      <button
-                        className="flex w-fit shrink-0 items-center gap-1 rounded-lg bg-white font-bold text-[#047084] transition-transform hover:-translate-y-0.5"
-                        style={{
-                          fontSize: "clamp(8.5px, 1.15cqw, 14px)",
-                          padding: "clamp(5px, 1cqw, 11px) clamp(8px, 1.8cqw, 22px)",
-                          marginTop: "clamp(7px, 1.6cqw, 16px)",
-                        }}
-                      >
-                        {slide.cta}
-                        <ChevronRight className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
-                      </button>
-                    </div>
+                  <div className="flex items-center" style={{ height: "clamp(160px, 28cqw, 300px)" }}>
+  <div
+    className="promo-text-block relative z-10 flex min-w-0 flex-[3] flex-col justify-center"
+    style={{ paddingLeft: "clamp(10px, 3cqw, 34px)", paddingRight: "clamp(6px, 1.5cqw, 16px)" }}
+  >
+    <span
+      className="inline-flex w-fit items-center justify-center rounded-xl font-extrabold tracking-wider text-slate-900"
+      style={{ background: "#fbbf24", fontSize: "clamp(8px, 0.95cqw, 11px)", lineHeight: 1, padding: "2px 6px" }}
+    >
+      {slide.tag}
+    </span>
+    <h2
+      className="break-words font-extrabold tracking-[0.3px] text-white"
+      style={{
+        fontFamily: "'Bricolage Grotesque', sans-serif",
+        fontSize: "clamp(13px, 3.1cqw, 38px)",
+        lineHeight: 1.15,
+        marginTop: "clamp(5px, 1cqw, 12px)",
+      }}
+    >
+      {slide.title}
+    </h2>
+    <p
+      className="break-words font-medium tracking-wide leading-snug text-white/75"
+      style={{ fontSize: "clamp(10.5px, 1.35cqw, 18px)", marginTop: "clamp(3px, 0.8cqw, 10px)" }}
+    >
+      {slide.subtitle}
+    </p>
+    <button
+      className="flex w-fit shrink-0 items-center gap-1 rounded-md bg-white font-bold text-[#047084] transition-transform hover:-translate-y-0.5"
+      style={{
+        fontSize: "clamp(10px, 1.3cqw, 16px)",
+        padding: "clamp(5px, 1.1cqw, 13px) clamp(8px, 2cqw, 26px)",
+        marginTop: "clamp(7px, 1.8cqw, 20px)",
+      }}
+    >
+      {slide.cta}
+      <ChevronRight className="h-3 w-3 shrink-0 sm:h-4 sm:w-4" />
+    </button>
+  </div>
 
-                    <div className="relative h-full flex-[7] overflow-hidden">
-                      <img
-                        src={slide.image}
-                        alt=""
-                        draggable={false}
-                        className="h-full w-full object-cover object-center sm:object-right"
-                        style={{
-                          maskImage: "linear-gradient(to right, transparent 0%, black 10%, black 88%, transparent 100%)",
-                          WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 10%, black 88%, transparent 100%)",
-                        }}
-                      />
-                    </div>
-                  </div>
+  <div className="relative h-full flex-[7] overflow-hidden">
+    <img
+      src={slide.image}
+      alt=""
+      draggable={false}
+      className="h-full w-full object-cover object-center sm:object-right"
+      style={{
+        maskImage: "linear-gradient(to right, transparent 0%, black 10%, black 88%, transparent 100%)",
+        WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 10%, black 88%, transparent 100%)",
+      }}
+    />
+  </div>
+</div>
 
-                  <div
-                    className="promo-badge absolute z-10 flex flex-col items-center justify-center rounded-lg text-center shadow-lg"
-                    style={{
-                      background: "linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
-                      top: "clamp(8px, 1.6cqw, 20px)",
-                      right: "clamp(8px, 1.6cqw, 20px)",
-                      padding: "clamp(5px, 0.9cqw, 8px) clamp(7px, 1.3cqw, 14px)",
-                    }}
-                  >
-                    <p className="font-bold leading-tight tracking-wider text-white/85" style={{ fontSize: "clamp(6.5px, 0.7cqw, 9px)" }}>
-                      SAVE UP TO
-                    </p>
-                    <p className="mt-0.5 font-extrabold leading-none tracking-wide text-white" style={{ fontSize: "clamp(14px, 1.8cqw, 22px)" }}>
-                      {slide.badge.match(/\d+%/)?.[0]}
-                    </p>
-                    <p className="font-semibold leading-loose text-white/90" style={{ fontSize: "clamp(7px, 0.8cqw, 10px)" }}>
-                      on Bulk Orders
-                    </p>
-                  </div>
+<div
+  className="promo-badge absolute z-10 flex flex-col items-center justify-center rounded-lg text-center shadow-lg"
+  style={{
+    background: "linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
+    top: "clamp(8px, 1.6cqw, 20px)",
+    right: "clamp(8px, 1.6cqw, 20px)",
+    padding: "clamp(6px, 1cqw, 10px) clamp(9px, 1.5cqw, 17px)",
+  }}
+>
+  <p className="font-bold mt-0.5 leading-tight tracking-wider text-white/85" style={{ fontSize: "clamp(8.5px, 0.75cqw, 11px)" }}>
+    SAVE UP TO
+  </p>
+  <p className="mt-0.5 font-extrabold leading-none tracking-wide text-white" style={{ fontSize: "clamp(18px, 2.1cqw, 28px)" }}>
+    {slide.badge.match(/\d+%/)?.[0]}
+  </p>
+  <p className="font-semibold leading-loose text-white/90" style={{ fontSize: "clamp(9px, 0.85cqw, 12px)" }}>
+    on Bulk Orders
+  </p>
+</div>
                 </div>
               </div>
             </div>
@@ -295,9 +295,9 @@ function PromoCarousel() {
             padding: 3px 6px !important;
             border-radius: 6px !important;
           }
-          .promo-badge p:first-child { font-size: 5.5px !important; letter-spacing: 0.02em !important; }
-          .promo-badge p:nth-child(2) { font-size: 11px !important; }
-          .promo-badge p:last-child { font-size: 5.5px !important; line-height: 1.2 !important; }
+          .promo-badge p:first-child { font-size: 7px !important; letter-spacing: 0.02em !important; }
+          .promo-badge p:nth-child(2) { font-size: 14px !important; }
+          .promo-badge p:last-child { font-size: 7px !important; line-height: 1.9 !important; }
         }
       `}</style>
     </div>
@@ -305,6 +305,7 @@ function PromoCarousel() {
 }
 
 /* ---------- Welcome Banner ---------- */
+
 function WelcomeBanner() {
   return (
     <motion.div
@@ -320,24 +321,27 @@ function WelcomeBanner() {
         padding: "clamp(10px, 2cqw, 18px)",
       }}
     >
-      <div className="grid grid-cols-5" style={{ gap: "clamp(6px, 1.4cqw, 14px)" }}>
-        {/* Left: text + cards — 80% */}
-        <div className="col-span-4 min-w-0">
+      <div
+        className="grid grid-cols-1 sm:grid-cols-5"
+        style={{ gap: "clamp(6px, 1.4cqw, 14px)" }}
+      >
+        {/* Left: text + cards — full width on mobile, 80% on desktop */}
+        <div className="col-span-2 sm:col-span-4 min-w-0">
           <h3
             className="font-extrabold leading-tight text-slate-900"
-            style={{ fontSize: "clamp(12px, 2cqw, 16px)" }}
+            style={{ fontSize: "clamp(14px, 2cqw, 16px)" }}
           >
             Welcome back, {userName} 👋
           </h3>
           <p
             className="font-medium leading-tight text-slate-500"
-            style={{ fontSize: "clamp(9px, 1.15cqw, 12px)", marginTop: "clamp(2px, 0.4cqw, 4px)" }}
+            style={{ fontSize: "clamp(11.5px, 1.15cqw, 12px)", marginTop: "clamp(2px, 0.4cqw, 4px)" }}
           >
             Here's what's new in your marketplace
           </p>
 
           <div
-            className="grid grid-cols-3"
+            className="grid grid-cols-3 sm:grid-cols-3"
             style={{ gap: "clamp(4px, 0.9cqw, 10px)", marginTop: "clamp(6px, 1.2cqw, 12px)" }}
           >
             {welcomeHighlights.map((h) => {
@@ -346,39 +350,56 @@ function WelcomeBanner() {
               return (
                 <div
                   key={h.id}
-                  className="flex items-center rounded-md bg-white"
+                  className="flex flex-col sm:flex-row sm:items-center rounded-md bg-white transition-all duration-200 hover:-translate-y-0.5"
                   style={{
-                    gap: "clamp(4px, 0.9cqw, 10px)",
-                    padding: "clamp(5px, 0.8cqw, 9px) clamp(5px, 0.9cqw, 10px)",
+                    gap: "clamp(4px, 0.7cqw, 8px)",
+                    padding: "clamp(6px, 0.9cqw, 10px)",
+                    border: "1px solid rgba(15,23,42,0.06)",
+                    boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 2px 8px rgba(15,23,42,0.06)",
                   }}
                 >
-                  <span
-                    className="flex shrink-0 items-center justify-center rounded-lg"
-                    style={{
-                      background: tone.bg,
-                      color: tone.fg,
-                      width: "clamp(22px, 3.4cqw, 36px)",
-                      height: "clamp(22px, 3.4cqw, 36px)",
-                    }}
-                  >
-                    <Icon style={{ width: "clamp(12px, 1.8cqw, 18px)", height: "clamp(12px, 1.8cqw, 18px)" }} />
-                  </span>
-                  <div className="min-w-0">
+                  {/* Icon — beside title only on mobile, spans full card height on desktop */}
+                  <div className="flex mt-0.5 sm:mt-0 items-center min-w-0 sm:contents" style={{ gap: "clamp(4px, 0.7cqw, 8px)" }}>
+                    <span
+                      className="flex shrink-0 items-center justify-center rounded-lg"
+                      style={{
+                        background: tone.bg,
+                        color: tone.fg,
+                        width: "clamp(20px, 3cqw, 32px)",
+                        height: "clamp(20px, 3cqw, 32px)",
+                      }}
+                    >
+                      <Icon style={{ width: "clamp(14px, 1.6cqw, 18px)", height: "clamp(13px, 1.6cqw, 18px)" }} />
+                    </span>
+
+                    {/* Title — full row on mobile, hidden here on desktop (moves to text stack) */}
                     <p
-                      className="truncate font-bold leading-tight text-slate-900"
-                      style={{ fontSize: "clamp(8.5px, 1.5cqw, 13.5px)" }}
+                      className="font-bold leading-tight text-slate-900 sm:hidden"
+                      style={{ fontSize: "clamp(11.3px, 1.5cqw, 13.5px)" }}
                     >
                       {h.title}
                     </p>
+                  </div>
+
+                  {/* Text stack: title (desktop only here) + description + value */}
+                  <div className="min-w-0">
                     <p
-                      className="mt-0.5 truncate font-medium leading-tight text-slate-400"
-                      style={{ fontSize: "clamp(7px, 0.95cqw, 11.5px)" }}
+                      className="hidden sm:block font-bold leading-tight text-slate-900"
+                      style={{ fontSize: "clamp(11.3px, 1.5cqw, 13.5px)" }}
+                    >
+                      {h.title}
+                    </p>
+
+                    <p
+                      className="font-medium leading-tight tracking-wide ps-1 sm:mt-1 sm:ps-0 text-slate-400"
+                      style={{ fontSize: "clamp(10.5px, 1cqw, 12px)" }}
                     >
                       {h.desc}
                     </p>
+
                     <p
-                      className="truncate font-bold leading-tight"
-                      style={{ color: tone.fg, fontSize: "clamp(7.5px, 1.5cqw, 12px)", marginTop: "clamp(2px, 0.7cqw, 6px)" }}
+                      className="truncate font-bold leading-tight mt-1.5 mb-1 sm:mb-0 px-1 sm:px-0 italic underline sm:text-left sm:mt-1"
+                      style={{ color: tone.fg, fontSize: "clamp(11.5px, 1.5cqw, 12px)" }}
                     >
                       {h.value}
                     </p>
@@ -389,31 +410,32 @@ function WelcomeBanner() {
           </div>
         </div>
 
-        {/* Right: illustration + button — 20%, always beside content, never stacks */}
-        <div className="col-span-1 flex h-full flex-col items-center justify-between">
+        {/* Right: illustration + button — full row 2 on mobile, 20% col on desktop */}
+        <div className="col-span-1 flex flex-row sm:flex-col items-center justify-between gap-2 sm:h-full">
           <img
             src="./illustration-marketplace.svg"
             alt=""
-            className="w-full object-contain object-top"
+            className="object-contain hidden sm:block object-top"
             style={{
               maxHeight: "clamp(56px, 8cqw, 108px)",
+              width: "clamp(70px, 22cqw, 100%)",
               transform: "scale(1.25)",
               transformOrigin: "top center",
             }}
           />
           <button
-            className="flex w-full items-center justify-center rounded-md border font-bold leading-tight"
+            className="flex flex-1 sm:w-full items-center justify-center rounded-md border font-bold leading-tight"
             style={{
               borderColor: "#047084",
               color: "#047084",
               gap: "clamp(2px, 0.4cqw, 6px)",
-              fontSize: "clamp(6.5px, 1cqw, 12px)",
-              padding: "clamp(4px, 0.9cqw, 10px) clamp(3px, 0.8cqw, 8px)",
+              fontSize: "clamp(10.5px, 1cqw, 12px)",
+              padding: "clamp(6px, 0.9cqw, 10px) clamp(3px, 0.8cqw, 8px)",
               marginTop: "clamp(3px, 0.6cqw, 8px)",
             }}
           >
             <span>View My Price List</span>
-            <ChevronRight style={{ width: "clamp(8px, 1.2cqw, 14px)", height: "clamp(8px, 1.2cqw, 14px)" }} className="shrink-0" />
+            <ChevronRight style={{ width: "clamp(10px, 1.2cqw, 14px)", height: "clamp(10px, 1.2cqw, 14px)" }} className="shrink-0" />
           </button>
         </div>
       </div>
@@ -449,20 +471,20 @@ function TopOffers() {
             <div className="flex items-stretch" style={{ gap: "clamp(4px, 1.6cqw, 8px)" }}>
               <div
                 className="aspect-square shrink-0 overflow-hidden rounded-md bg-white"
-                style={{ width: "clamp(26px, 11cqw, 46px)", boxShadow: `0 1px 3px ${hexToRgba(offer.brandTone, 0.18)}` }}
+                style={{ width: "clamp(36px, 11cqw, 46px)", boxShadow: `0 1px 3px ${hexToRgba(offer.brandTone, 0.18)}` }}
               >
                 <img src={offer.logo} alt="" className="h-full w-full object-contain" />
               </div>
-              <div className="flex min-w-0 flex-1 flex-col justify-center">
+              <div className="flex min-w-0 ms-1 sm:ms-2 flex-1 flex-col justify-center">
                 <p
-                  className="truncate font-bold leading-tight text-slate-900"
-                  style={{ fontSize: "clamp(12px, 4cqw, 13px)" }}
+                  className="truncate font-bold tracking-[0.1px] leading-tight text-slate-900"
+                  style={{ fontSize: "clamp(13px, 4cqw, 13px)" }}
                 >
                   {offer.title}
                 </p>
                 <p
-                  className="truncate font-medium leading-tight text-slate-500"
-                  style={{ fontSize: "clamp(10px, 4cqw, 11px)" }}
+                  className="truncate font-medium tracking-wide leading-tight text-slate-500"
+                  style={{ fontSize: "clamp(11px, 5cqw, 12.5px)" }}
                 >
                   {offer.desc}
                 </p>
@@ -473,15 +495,15 @@ function TopOffers() {
             <div className="flex items-stretch" style={{ gap: "clamp(4px, 1.6cqw, 8px)" }}>
               <div
                 className="aspect-square shrink-0 overflow-hidden rounded-md bg-white"
-                style={{ width: "clamp(26px, 11cqw, 46px)", boxShadow: `0 1px 3px ${hexToRgba(offer.brandTone, 0.18)}` }}
+                style={{ width: "clamp(36px, 11cqw, 46px)", boxShadow: `0 1px 3px ${hexToRgba(offer.brandTone, 0.18)}` }}
               >
                 <img src={offer.image} alt="" className="h-full w-full object-cover" />
               </div>
-              <div className="flex min-w-0 flex-1 flex-col justify-center">
+              <div className="flex min-w-0 flex-1 ms-1 sm:ms-2 flex-col justify-center">
                 {offer.detail ? (
                   <p
                     className="font-bold leading-tight"
-                    style={{ color: "#d2462b", fontSize: "clamp(10.5px, 5cqw, 11.5px)" }}
+                    style={{ color: "#d2462b", fontSize: "clamp(11px, 5cqw, 11.5px)" }}
                   >
                     {offer.detail}
                   </p>
@@ -490,7 +512,7 @@ function TopOffers() {
                 )}
                 <button
                   className="mt-0.5 flex items-center gap-0.5 truncate font-bold"
-                  style={{ color: "#047084", fontSize: "clamp(11px, 4.6cqw, 11.5px)" }}
+                  style={{ color: "#047084", fontSize: "clamp(13px, 4.6cqw, 11.5px)" }}
                 >
                   Shop Now <ChevronRight className="h-2.5 w-2.5 shrink-0" />
                 </button>
@@ -529,7 +551,7 @@ function BusinessAndMarketRow() {
                 viewport={{ once: true, amount: 0.3 }}
                 transition={{ duration: 0.3, delay: i * 0.04 }}
                 whileHover={{ y: -3 }}
-                className="flex flex-col rounded-lg border p-2 transition-shadow duration-300 sm:p-3.5"
+                className="flex flex-col items-center rounded-lg border p-2 transition-shadow duration-300 sm:p-3.5"
                 style={{
                   background: `linear-gradient(210deg, ${hexToRgba(h.fg, 0.16)} 0%, ${hexToRgba(h.fg, 0.03)} 45%, #ffffff 75%)`,
                   borderColor: hexToRgba(h.fg, 0.2),
@@ -545,11 +567,11 @@ function BusinessAndMarketRow() {
                 <span className="mt-1.5 text-[18px] font-extrabold leading-none sm:mt-2.5 sm:text-[27px]" style={{ color: h.fg }}>
                   {h.value}
                 </span>
-                <p className="mt-1.5 text-[10px] font-semibold leading-tight text-slate-600 sm:text-[13px]">
+                <p className="mt-1.5 text-[10px] text-center tracking-wide font-semibold leading-tight text-slate-600 sm:text-[13px]">
                   {h.label}
                 </p>
-                <button className="mt-1.5 flex items-center gap-0.5 text-[9.5px] font-bold sm:text-[12.5px]" style={{ color: h.fg }}>
-                  View Now <ChevronRight className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                <button className="mt-1 sm:mt-1.5 flex italic sm:not-italic underline sm:no-underline items-center gap-0.5 text-[12px] font-bold sm:text-[13px]" style={{ color: h.fg }}>
+                  View Now <ChevronRight className="h-2.5 w-2.5 hidden sm:block sm:h-3 sm:w-3" />
                 </button>
               </motion.div>
             );
@@ -561,8 +583,9 @@ function BusinessAndMarketRow() {
         className="rounded-xl border border-slate-100 bg-white p-3.5"
         style={{ boxShadow: "0 1px 2px rgba(15,23,42,0.04), 0 10px 22px -10px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.8)" }}
       >
-        <div className="flex items-center justify-between">
-          <h4 className="text-[14px] font-extrabold text-slate-900 md:text-[16px]">Market Feed</h4>
+        <div className="flex items-center justify-between" 
+          style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}>
+          <h4 className="text-[15px] font-extrabold text-slate-900 md:text-[16px]">Market Feed</h4>
           <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Live
           </span>
@@ -578,18 +601,18 @@ function BusinessAndMarketRow() {
                   <Icon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12.5px] font-bold leading-tight text-slate-800">{item.title}</p>
-                  {item.detail && <p className="truncate text-[11px] font-medium leading-tight text-slate-400">{item.detail}</p>}
+                  <p className="truncate text-[13.5px] font-semibold tracking-[0.2px] leading-tight text-slate-800">{item.title}</p>
+                  {item.detail && <p className="truncate text-[12.5px] tracking-wide font-medium leading-tight text-slate-400">{item.detail}</p>}
                 </div>
                 {item.change && (
-                  <span className="shrink-0 text-[12px] font-extrabold" style={{ color }}>{item.change}</span>
+                  <span className="shrink-0 text-[13.5px] font-extrabold" style={{ color }}>{item.change}</span>
                 )}
               </div>
             );
           })}
         </div>
         <div className="flex mt-3 text-center justify-center items-center">
-          <button className=" flex items-center gap-1 text-[12.5px] font-bold text-[#047084]">
+          <button className=" flex items-center gap-1 text-[13.5px] font-bold text-[#047084]">
             View Full Feed <ChevronRight className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -604,7 +627,7 @@ function ShopByCategory() {
     <div className="mt-5">
       <SectionHeader title="Shop by Category" />
       <div
-        className="mt-2.5 flex gap-2.5 overflow-x-auto pb-1"
+        className="mt-2.5 flex gap-2.5 overflow-x-auto overflow-y-hidden pb-1"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         <style>{`
@@ -621,7 +644,7 @@ function ShopByCategory() {
               whileHover={{ y: -2 }}
               className="flex shrink-0 flex-col items-center overflow-hidden rounded-xl border border-slate-100 bg-white text-center transition-shadow duration-300"
               style={{
-                width: "clamp(108px, 26vw, 138px)",
+                width: "clamp(138px, 26vw, 156px)",
                 background: "linear-gradient(160deg, rgba(4,112,132,0.07) 0%, rgba(4,112,132,0.01) 40%, #ffffff 70%)",
                 borderColor: "rgba(4,112,132,0.14)",
                 boxShadow:
@@ -632,16 +655,16 @@ function ShopByCategory() {
                 <img src={cat.image} alt="" className="h-full w-full object-cover" />
               </div>
               <div className="flex w-full flex-col items-center px-2.5 pb-3 pt-2">
-                <p className="truncate text-[13.5px] font-bold leading-tight text-slate-900 sm:text-[14.5px]">
+                <p className="truncate text-[13.5px] tracking-[0.2px] font-bold leading-tight text-slate-900 sm:text-[14.5px]">
                   {cat.name}
                 </p>
-                <p className="mt-1 truncate text-[11px] font-medium leading-tight text-slate-400 sm:text-[12px]">
+                <p className="mt-1 truncate text-[12px] tracking-wide font-medium leading-tight text-slate-400 sm:text-[12px]">
                   {cat.count}
                 </p>
-                <p className="truncate text-[11px] font-medium leading-tight text-slate-400 sm:text-[12px]">
+                <p className="truncate text-[12px] tracking-wide font-medium leading-tight text-slate-400 sm:text-[12px]">
                   {cat.suppliers}
                 </p>
-                <p className="mt-1 text-[12.5px] font-extrabold sm:text-[13.5px]" style={{ color: "#047084" }}>
+                <p className="mt-1 text-[13.5px] font-extrabold sm:text-[13.5px]" style={{ color: "#047084" }}>
                   From {cat.from}
                 </p>
               </div>
@@ -656,22 +679,22 @@ function ShopByCategory() {
 /* ---------- My Price List + Recommended + Most Compared ---------- */
 function PriceListAndComparedRow() {
   return (
-    <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-2">
+    <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-5">
       {/* Left: My Price List */}
-      <div>
+      <div className="lg:col-span-2">
         <SectionHeader title="My Price List (Recent)" />
         <div className="mt-2.5 divide-y divide-slate-100 rounded-xl border border-slate-100 bg-white">
           {myPriceList.map((p) => (
             <div key={p.id} className="flex items-center gap-3.5 px-3.5 py-4">
-              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-100">
+              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-100">
                 <img src={p.image} alt="" className="h-full w-full object-cover" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-bold leading-snug text-slate-900">{p.name}</p>
-                <p className="truncate mt-0.5 text-[13px] font-medium leading-snug text-slate-400">
+                <p className="truncate text-[14px] tracking-[0.2px] font-semibold leading-snug text-slate-900">{p.name}</p>
+                <p className="truncate mt-0.5 text-[12px] tracking-wide font-medium leading-snug text-slate-400">
                   {p.suppliers} &middot; Lowest {p.price}
                 </p>
-                <p className="text-[12px] mt-0.5 font-medium leading-snug text-slate-400">{p.updated}</p>
+                <p className="text-[13px] mt-0.5 font-medium leading-snug text-slate-400">{p.updated}</p>
               </div>
               <MiniTrendIcon trend={p.trend} />
               <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
@@ -681,17 +704,17 @@ function PriceListAndComparedRow() {
       </div>
 
       {/* Right: Recommended for You (top) + Most Compared Today (below) */}
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5 lg:col-span-3">
         <div>
           <SectionHeader title="Most Compared Today" />
-          <div className="mt-2.5 grid grid-cols-5 gap-2">
+          <div className="mt-2.5 grid grid-cols-3 gap-2">
             {mostCompared.map((item) => (
               <div key={item.id} className="flex flex-col items-center rounded-lg border border-slate-100 bg-white p-2 text-center">
-                <div className="h-9 w-9 overflow-hidden rounded-full bg-slate-50 ring-1 ring-slate-100">
+                <div className="h-16 w-16 overflow-hidden rounded-full bg-slate-50 ring-1 ring-slate-100">
                   <img src={item.image} alt="" className="h-full w-full object-cover" />
                 </div>
-                <p className="mt-1.5 line-clamp-2 text-[10.5px] font-bold leading-tight text-slate-900">{item.name}</p>
-                <p className="mt-0.5 text-[9.5px] font-medium leading-tight text-slate-400">{item.count}</p>
+                <p className="mt-1.5 line-clamp-2 text-[12.5px] font-bold leading-tight text-slate-900">{item.name}</p>
+                <p className="mt-0.5 text-[11.5px] font-medium leading-tight text-slate-400">{item.count}</p>
               </div>
             ))}
           </div>
@@ -704,7 +727,7 @@ function PriceListAndComparedRow() {
               <div key={s.id} className="flex flex-col rounded-xl border border-slate-100 bg-white p-3">
                 <div className="flex items-start gap-2.5">
                   <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold text-white"
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[16px] font-extrabold text-white"
                     style={{ background: s.tone }}
                   >
                     {s.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
@@ -713,19 +736,19 @@ function PriceListAndComparedRow() {
                   <div className="flex min-w-0 flex-1 flex-col">
                     {/* Name — fixed height row */}
                     <div className="flex h-[19px] items-center">
-                      <p className="truncate text-[14px] font-bold text-slate-900">{s.name}</p>
+                      <p className="truncate text-[14px] tracking-[0.2px] font-bold text-slate-900">{s.name}</p>
                     </div>
 
                     {/* Rating — fixed height row */}
                     <div className="flex mt-0.5 h-[16px] items-center">
-                      <span className="flex items-center gap-0.5 text-[11.5px] font-bold text-amber-500">
+                      <span className="flex items-center gap-0.5 text-[12px] font-bold text-amber-500">
                         {s.rating}
                         <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
                       </span>
                     </div>
 
                     {/* Description — fixed height row, clamps to 2 lines so it's always the same height */}
-                    <p className="line-clamp-2 mt-1 sm:h-[30px] text-[12px] font-medium leading-tight text-slate-400">
+                    <p className="line-clamp-2 mt-1 sm:h-[30px] text-[12px] tracking-wide font-medium leading-tight text-slate-400">
                       {s.desc}
                     </p>
                   </div>
@@ -733,7 +756,7 @@ function PriceListAndComparedRow() {
 
                 {/* Button — now full width across the whole card */}
                 <button
-                  className="mt-2.5 w-full shrink-0 rounded-md border px-2.5 py-1.5 text-[12px] font-bold"
+                  className="mt-2.5 w-full shrink-0 rounded-md border px-2.5 py-1.5 text-[13px] font-bold"
                   style={{ borderColor: '#047084', color: '#047084' }}
                 >
                   View Products
@@ -785,12 +808,12 @@ function QuickActions() {
                 <Icon className="h-4 w-4" />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-[12.5px] font-bold text-slate-900">{a.label}</p>
-                <p className="truncate text-[11px] font-medium text-slate-400">{a.desc}</p>
+                <p className="truncate text-[13.5px] font-bold text-slate-900">{a.label}</p>
+                <p className="truncate text-[11.5px] font-medium text-slate-400">{a.desc}</p>
               </div>
               {a.count && (
                 <span
-                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] font-bold text-white"
+                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[10.5px] font-bold text-white"
                   style={{ boxShadow: "0 1px 3px rgba(210,70,43,0.45)" }}
                 >
                   {a.count}
@@ -809,7 +832,7 @@ function SectionHeader({ title, showViewAll = true }) {
   return (
     <div className="flex items-center justify-between">
       <h3
-        className="text-[15px] font-extrabold tracking-tight text-slate-900 md:text-[17px]"
+        className="text-[16px] font-extrabold tracking-tight text-slate-900 md:text-[18px]"
         style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
       >
         {title}
