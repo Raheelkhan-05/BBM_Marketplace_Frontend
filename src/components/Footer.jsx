@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Mail, Phone, MapPin } from "lucide-react";
 import { FaFacebookF, FaTwitter, FaLinkedinIn, FaInstagram } from "react-icons/fa";
 import { TAGLINE } from "../../data/content";
+import SmartLink from "./SmartLink.jsx";
 
 const FOOTER_COLUMNS = [
   { title: "Marketplace", links: ["Explore Products", "Verified Suppliers", "Post RFQ", "Categories"] },
@@ -27,14 +28,12 @@ export default function Footer() {
       transition={{ duration: 0.5 }}
       className="relative border-t border-slate-200/70 bg-[#0f2530] text-slate-300"
     >
-      {/* brand hairline echoing the header */}
       <div
         className="h-[2px] w-full"
         style={{
           background: "linear-gradient(90deg, #c71f11 0%, #e08775 25%, #f1d1c8 50%, #7fb3bd 75%, #047084 100%)",
         }}
       />
-      {/* faint radial glow so it doesn't feel like a flat dark slab */}
       <div
         className="pointer-events-none absolute inset-0 opacity-40"
         style={{ background: "radial-gradient(circle at 15% 0%, rgba(4,112,132,0.25) 0%, transparent 55%)" }}
@@ -42,9 +41,8 @@ export default function Footer() {
 
       <div className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
-          {/* Brand block */}
           <div className="lg:col-span-2">
-            <a href="/" className="flex items-center gap-2">
+            <SmartLink to="/" className="flex items-center gap-2">
               <img src="./Logo.png" alt="BBM" className="h-6 w-auto object-contain" />
               <h1
                 className="text-lg font-extrabold tracking-tight text-white"
@@ -52,7 +50,7 @@ export default function Footer() {
               >
                 BBM
               </h1>
-            </a>
+            </SmartLink>
             <p className="mt-2 text-sm font-bold text-[#7fb3bd]">{TAGLINE}</p>
             <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-400">
               India&apos;s trusted B2B marketplace connecting buyers and verified
@@ -87,7 +85,6 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Link columns */}
           {FOOTER_COLUMNS.map((col) => (
             <div key={col.title}>
               <h4 className="text-[13px] font-bold uppercase tracking-wider text-white">{col.title}</h4>

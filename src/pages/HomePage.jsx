@@ -7,6 +7,7 @@ import {
   Tag, FileText, Zap, BadgePercent, TrendingUp, TrendingDown, Circle, Truck,
   CreditCard, Plus, ScanLine, ClipboardList, Repeat, Star, Bell,
 } from "lucide-react";
+import HomePageSkeleton from "../components/skeletons/HomePageSkeleton.jsx";
 import {
   walletBalance, userName, promoSlides, welcomeHighlights, topOffers,
   businessHighlights, marketFeed, categories, myPriceList, mostCompared,
@@ -27,6 +28,8 @@ const TONE_MAP = {
 };
 
 export default function HomePage() {
+
+
   return (
     <div className="mx-auto max-w-7xl px-4 pb-10 pt-3 sm:px-6 lg:px-8">
       <SearchWalletRow />

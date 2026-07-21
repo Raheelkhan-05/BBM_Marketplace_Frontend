@@ -13,3 +13,7 @@ body {
   color: #101828;
   letter-spacing: -0.01em;
 }
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}

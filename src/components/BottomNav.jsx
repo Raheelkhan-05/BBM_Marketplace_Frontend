@@ -1,10 +1,12 @@
 //src/components/BottomNav.jsx
 
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { Home, LayoutGrid, FileText, Package, User } from "lucide-react";
+import { useAuth } from "../context/AuthContext.jsx";
+import SmartLink from "./SmartLink.jsx";
 
 const NAV_ITEMS = [
-  { label: "Home", icon: Home, href: "/" },
+  { label: "Home", icon: Home, href: "/home" },
   { label: "Categories", icon: LayoutGrid, href: "/#" },
   { label: "RFQ", icon: FileText, href: "/#" },
   { label: "Orders", icon: Package, href: "/#" },
@@ -13,6 +15,7 @@ const NAV_ITEMS = [
 
 export default function BottomNav() {
   const { pathname } = useLocation();
+  const { isLoggedIn } = useAuth();
 
   return (
     <nav
@@ -20,11 +23,15 @@ export default function BottomNav() {
       style={{ boxShadow: "0 -8px 24px -16px rgba(15,23,42,0.15)" }}
     >
       {NAV_ITEMS.map(({ label, icon: Icon, href }) => {
-        const active = pathname === href;
+        // "Home" means different things depending on auth state — the
+        // guest landing page ("/") vs the logged-in marketplace ("/home").
+        const resolvedHref = label === "Home" && !isLoggedIn ? "/" : href;
+        const active = pathname === resolvedHref;
+
         return (
-          <Link
+          <SmartLink
             key={label}
-            to={href}
+            to={resolvedHref}
             className="flex flex-col items-center gap-0.5 px-2 py-1"
           >
             <Icon
@@ -38,7 +45,7 @@ export default function BottomNav() {
             >
               {label}
             </span>
-          </Link>
+          </SmartLink>
         );
       })}
     </nav>
