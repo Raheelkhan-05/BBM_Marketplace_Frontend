@@ -63,6 +63,8 @@ export async function verifyOtp(identifier, otp) {
     return { success: false, message: "Enter a valid phone number or email." };
   }
 
+  // Replace the verifyOtp function's tail (everything from the meRes fetch onward)
+
   if (!token) return { success: false, message: "No session returned. Try again." };
 
   try {
@@ -70,10 +72,25 @@ export async function verifyOtp(identifier, otp) {
       headers: { Authorization: `Bearer ${token}` },
     });
     const me = await meRes.json();
-    const isNewUser = !me?.profile?.name;
-    return { success: true, isNewUser, token };
+    const p = me?.profile;
+    const onboardingStep = p?.onboarding_step || "contact";
+    return {
+      success: true,
+      isNewUser: onboardingStep !== "done",
+      onboardingStep,
+      phoneVerified: !!p?.phone_verified,
+      emailVerified: !!p?.email_verified,
+      token,
+    };
   } catch {
-    return { success: true, isNewUser: true, token };
+    return {
+      success: true,
+      isNewUser: true,
+      onboardingStep: "contact",
+      phoneVerified: type === "phone",
+      emailVerified: type === "email",
+      token,
+    };
   }
 }
 
@@ -99,6 +116,36 @@ export async function submitCompany(token, business) {
 export async function fetchMe(token) {
   const res = await fetch(`${API_BASE}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  return { ...data, status: res.status };
+}
+
+// Add these three exports; keep everything else in the file as-is.
+
+export async function requestContactOtp(token, field, value) {
+  const res = await fetch(`${API_BASE}/auth/contact/request-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ field, value }),
+  });
+  return res.json();
+}
+
+export async function verifyContactOtp(token, field, value, otp) {
+  const res = await fetch(`${API_BASE}/auth/contact/verify-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ field, value, otp }),
+  });
+  return res.json();
+}
+
+export async function lookupGstin(token, gstin) {
+  const res = await fetch(`${API_BASE}/auth/gst-lookup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ gstin }),
   });
   return res.json();
 }

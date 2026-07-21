@@ -4,26 +4,39 @@ import { useAuth } from "../context/AuthContext.jsx";
 import HomePageSkeleton from "./skeletons/HomePageSkeleton.jsx";
 
 export function RequireAuth({ children }) {
-  const { isLoggedIn, initializing } = useAuth();
+  const { isLoggedIn, profile, initializing } = useAuth();
   const location = useLocation();
 
-  // Skeleton matches /home's layout specifically, since that's the
-  // overwhelmingly common destination for an authenticated route check.
   if (initializing) return <HomePageSkeleton />;
   if (!isLoggedIn) return <Navigate to="/login" replace state={{ from: location }} />;
+
+  // Session exists but onboarding isn't finished — e.g. they closed the
+  // tab mid-signup and came back via a bookmarked /home, or a stale link.
+  // Send them back to finish it rather than rendering a page that
+  // expects a completed profile + business_profiles row.
+  if (profile && profile.onboarding_step !== "done") {
+    return <Navigate to="/login" replace />;
+  }
+
   return children;
 }
 
 export function RequireGuest({ children }) {
-  const { isLoggedIn, initializing } = useAuth();
+  const { isLoggedIn, profile, initializing } = useAuth();
 
   if (initializing) return <GuestLoadingScreen />;
-  if (isLoggedIn) return <Navigate to="/home" replace />;
+
+  // The bug this fixes: `profile.name` gets saved after the CONTACT step,
+  // well before onboarding is actually complete. Gating on name alone
+  // meant a reload mid-company-step looked "done" and bounced the user
+  // to /home, silently discarding everything they'd filled in. Only
+  // redirect once onboarding_step is genuinely "done".
+  if (isLoggedIn && profile?.onboarding_step === "done") {
+    return <Navigate to="/home" replace />;
+  }
   return children;
 }
 
-// Landing/search/login don't have one dominant layout shape the way
-// /home does, so a lightweight centered spinner stays appropriate there.
 function GuestLoadingScreen() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-white">

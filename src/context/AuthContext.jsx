@@ -12,6 +12,15 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [initializing, setInitializing] = useState(true);
 
+  const clearSession = useCallback(async () => {
+    localStorage.removeItem(DEV_TOKEN_KEY);
+    setSession(null);
+    setProfile(null);
+    // Also tell Supabase's own client its session is dead, so it stops
+    // trying to recover/refresh it on every visibility change.
+    await supabase.auth.signOut().catch(() => {});
+  }, []);
+
   const loadProfile = useCallback(async (token) => {
     if (!token) {
       setProfile(null);
@@ -19,11 +28,27 @@ export function AuthProvider({ children }) {
     }
     try {
       const res = await fetchMe(token);
-      setProfile(res?.success ? res.profile : null);
+      if (res?.success) {
+        setProfile(res.profile);
+        return;
+      }
+      if (res?.success) {
+        setProfile(res.profile);
+        return;
+      }
+      if (res?.status === 401) {
+        await clearSession();
+      } else {
+        setProfile(null);
+      }
+      // fetchMe() doesn't currently expose HTTP status, so treat any
+      // !success as "this token is dead" and clear it — see fetchMe fix below.
+      await clearSession();
     } catch {
+      // Network error etc. — don't nuke the session for a transient failure.
       setProfile(null);
     }
-  }, []);
+  }, [clearSession]);
 
   useEffect(() => {
     let mounted = true;
@@ -67,6 +92,7 @@ export function AuthProvider({ children }) {
       } else if (!localStorage.getItem(DEV_TOKEN_KEY)) {
         // Only clear if there's no dev-bypass token backing us up.
         setSession(null);
+        clearSession();
         setProfile(null);
       }
     });

@@ -22,7 +22,7 @@ const STATS = [
 ];
 
 const TESTIMONIALS = [
-  { quote: "Cut our procurement time in half \u2014 every supplier here is GST-verified before we even talk.", author: "Priya Nair", role: "Ops Lead, Coastline Textiles" },
+  { quote: "Cut our procurement time in half — every supplier here is GST-verified before we even talk.", author: "Priya Nair", role: "Ops Lead, Coastline Textiles" },
   { quote: "Opened a shop with the same login I used to buy raw material. Took ten minutes.", author: "Arvind Rao", role: "Founder, Rao Alloys" },
   { quote: "Escrow payments mean we ship first-time buyers without the usual back-and-forth.", author: "Meera Shah", role: "Sales Head, Vertex Bearings" },
 ];
@@ -52,7 +52,7 @@ export default function TrustPanel() {
 
   return (
     <div
-      className="relative hidden h-full w-full flex-col overflow-hidden rounded-[28px] px-9 py-8 lg:flex xl:px-11"
+      className="relative flex h-full w-full flex-col overflow-hidden rounded-[28px] px-7 py-7 xl:px-10 xl:py-8"
       style={{ background: "linear-gradient(160deg, #047084 0%, #035c6c 55%, #023f4b 100%)" }}
     >
       <div
@@ -71,28 +71,31 @@ export default function TrustPanel() {
         style={{ background: "radial-gradient(circle, rgba(210,70,43,0.18) 0%, transparent 70%)" }}
       />
 
-      <div className="relative flex flex-1 flex-col justify-between">
+      <div className="relative flex flex-1 flex-col justify-between gap-6">
         <div>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/90 backdrop-blur-sm">
-            <Sparkles className="h-3 w-3" />
+            <Sparkles className="h-3 w-3 shrink-0" />
             One account, both sides of the deal
           </span>
 
           <h2
-            className="mt-5 max-w-xs text-3xl font-extrabold leading-[1.15] text-white xl:text-[2.1rem]"
+            className="mt-5 max-w-sm text-[clamp(1.5rem,2.6vw,2.1rem)] font-extrabold leading-[1.15] text-white"
             style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
           >
             Buy today. List tomorrow. Same login.
           </h2>
-          <p className="mt-3 max-w-[19rem] text-[13px] font-medium leading-relaxed text-white/70">
-            Every account can source materials and open a storefront \u2014 we just
+          <p className="mt-3 max-w-[21rem] text-[13px] font-medium leading-relaxed text-white/70">
+            Every account can source materials and open a storefront — we just
             verify a bit more once you're ready to sell.
           </p>
 
           <div className="mt-6 grid grid-cols-3 gap-2 border-y border-white/10 py-4">
             {STATS.map((s) => (
-              <div key={s.label}>
-                <p className="text-[17px] font-extrabold text-white xl:text-[19px]" style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}>
+              <div key={s.label} className="min-w-0">
+                <p
+                  className="truncate text-[clamp(0.95rem,1.4vw,1.2rem)] font-extrabold text-white"
+                  style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
+                >
                   {s.value}
                 </p>
                 <p className="mt-0.5 text-[10.5px] font-medium leading-tight text-white/55">
@@ -103,8 +106,8 @@ export default function TrustPanel() {
           </div>
         </div>
 
-        <div className="relative min-h-[92px] rounded-2xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur-sm">
-          <Quote className="absolute right-4 top-4 h-5 w-5 text-white/15" />
+        <div className="relative min-h-[100px] rounded-2xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur-sm">
+          <Quote className="absolute right-4 top-4 h-5 w-5 shrink-0 text-white/15" />
           <AnimatePresence mode="wait">
             <motion.div
               key={activeQuote}
@@ -118,7 +121,7 @@ export default function TrustPanel() {
               </p>
               <p className="mt-2 text-[11.5px] font-bold text-white">
                 {testimonial.author}
-                <span className="ml-1.5 font-medium text-white/50">\u2014 {testimonial.role}</span>
+                <span className="ml-1.5 font-medium text-white/50">— {testimonial.role}</span>
               </p>
             </motion.div>
           </AnimatePresence>
@@ -169,4 +172,4 @@ export default function TrustPanel() {
       </div>
     </div>
   );
-}    
+}

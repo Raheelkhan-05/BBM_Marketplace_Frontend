@@ -8,7 +8,7 @@ import { formatPhoneForDisplay, identifierType } from "../../utils/validators";
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
 
-export default function OtpStep({ phone, onVerify, onResend, onEditNumber, loading, serverError }) {
+export default function OtpStep({ identifier, onVerify, onResend, onEditNumber, loading, serverError }) {
   const [digits, setDigits] = useState(Array(OTP_LENGTH).fill(""));
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const inputsRef = useRef([]);
@@ -71,24 +71,30 @@ export default function OtpStep({ phone, onVerify, onResend, onEditNumber, loadi
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
-      className="flex flex-col"
+      className="flex w-full flex-col"
     >
       <h1
-        className="text-[26px] font-extrabold leading-tight text-slate-900 sm:text-[28px]"
+        className="text-[clamp(1.35rem,3.6vw,1.75rem)] font-extrabold leading-[1.15] text-slate-900"
         style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
       >
         Enter the code
       </h1>
 
-    <p className="mt-1.5 text-[13.5px] font-medium text-slate-500">
-        Sent to {identifierType(phone) === "email" ? phone : `+91 ${formatPhoneForDisplay(phone)}`}.{" "}
-        <button type="button" onClick={onEditNumber} className="inline-flex items-center gap-1 font-bold text-[#047084] hover:underline">
-            <Pencil className="h-3 w-3" />
-            Edit
+      <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-[13px] font-medium leading-relaxed text-slate-500 sm:text-[13.5px]">
+        <span className="break-all">
+          Sent to {identifierType(identifier) === "email" ? identifier : `+91 ${formatPhoneForDisplay(identifier)}`}.
+        </span>
+        <button
+          type="button"
+          onClick={onEditNumber}
+          className="inline-flex shrink-0 items-center gap-1 font-bold text-[#047084] hover:underline"
+        >
+          <Pencil className="h-3 w-3" />
+          Edit
         </button>
-    </p>
+      </p>
 
-      <div className="mt-7 flex justify-between gap-2 sm:gap-2.5">
+      <div className="mt-6 grid grid-cols-6 gap-2 sm:mt-7 sm:gap-2.5">
         {digits.map((d, i) => (
           <input
             key={i}
@@ -100,7 +106,7 @@ export default function OtpStep({ phone, onVerify, onResend, onEditNumber, loadi
             onChange={(e) => handleChange(i, e.target.value)}
             onKeyDown={(e) => handleKeyDown(i, e)}
             onPaste={handlePaste}
-            className="h-12 w-full max-w-[46px] rounded-xl border-2 text-center text-[19px] font-extrabold text-slate-800 transition-colors focus:outline-none sm:h-14"
+            className="aspect-square w-full min-w-0 rounded-xl border-2 text-center text-[17px] font-extrabold text-slate-800 transition-colors focus:outline-none sm:text-[19px]"
             style={{ borderColor: serverError ? "#c71f11" : d ? "#7fb3bd" : "#e2e8f0" }}
           />
         ))}
@@ -119,7 +125,7 @@ export default function OtpStep({ phone, onVerify, onResend, onEditNumber, loadi
         {loading ? "Verifying…" : "Verify & continue"}
       </button>
 
-      <p className="mt-4 text-center text-[12.5px] font-medium text-slate-400">
+      <p className="mt-4 text-center text-[12px] font-medium text-slate-400 sm:text-[12.5px]">
         {secondsLeft > 0 ? (
           <>Resend code in {secondsLeft}s</>
         ) : (
