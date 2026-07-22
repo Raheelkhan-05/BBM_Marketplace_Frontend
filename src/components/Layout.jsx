@@ -9,7 +9,7 @@ import BackgroundAmbience from "./landing/BackgroundAmbience.jsx";
 export default function Layout() {
   return (
     <div className="relative min-h-screen bg-white overflow-x-clip">
-      <BackgroundAmbience />
+      {/* <BackgroundAmbience /> */}
 
       <div className="relative z-1">
         <Header />

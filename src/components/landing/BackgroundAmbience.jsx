@@ -1,22 +1,42 @@
-//BackgroundAmbience.jsx
+// src/components/landing/BackgroundAmbience.jsx
+import { motion } from "framer-motion";
 
-// Minimal by design: two soft brand-color glows and nothing else.
-// The foreground components now carry their own visual weight —
-// this just keeps the canvas from being flat white.
+// A quiet, premium surface: cool near-white base, a single faint dot grid,
+// and two soft diffused color blooms — enough depth to feel considered,
+// restrained enough to stay well behind content.
 export default function BackgroundAmbience() {
   return (
-    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-white">
+    <div className="pointer-events-none fixed inset-0 overflow-hidden bg-[#fafbfb]">
+      {/* Single faint dot grid */}
       <div
-        className="absolute -left-32 -top-32 h-[380px] w-[380px] rounded-full blur-[100px] sm:h-[500px] sm:w-[500px] lg:h-[620px] lg:w-[620px]"
-        style={{ background: "radial-gradient(circle, rgba(4,112,132,0.10) 0%, rgba(4,112,132,0) 70%)" }}
+        className="absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 1px 1px, rgba(4,55,64,0.06) 1px, transparent 0)",
+          backgroundSize: "28px 28px",
+        }}
       />
+
+      {/* Very subtle top-down light falloff, keeps the page from feeling flat */}
       <div
-        className="absolute right-[-15%] top-[45%] h-[320px] w-[320px] rounded-full blur-[90px] sm:h-[440px] sm:w-[440px] lg:h-[560px] lg:w-[560px]"
-        style={{ background: "radial-gradient(circle, rgba(210,70,43,0.08) 0%, rgba(210,70,43,0) 70%)" }}
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(4,55,64,0.025) 0%, transparent 22%, transparent 78%, rgba(4,55,64,0.02) 100%)",
+        }}
       />
-      <div
-        className="absolute bottom-[-10%] left-[20%] h-[300px] w-[300px] rounded-full blur-[90px] sm:h-[420px] sm:w-[420px]"
-        style={{ background: "radial-gradient(circle, rgba(127,179,189,0.09) 0%, rgba(127,179,189,0) 70%)" }}
+
+      <motion.div
+        className="absolute -left-40 -top-40 h-[34rem] w-[34rem] rounded-full blur-[110px]"
+        style={{ background: "radial-gradient(circle, rgba(4,112,132,0.09) 0%, transparent 70%)" }}
+        animate={{ x: [0, 26, 0], y: [0, 18, 0] }}
+        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute -bottom-44 -right-36 h-[32rem] w-[32rem] rounded-full blur-[110px]"
+        style={{ background: "radial-gradient(circle, rgba(199,31,17,0.05) 0%, transparent 70%)" }}
+        animate={{ x: [0, -20, 0], y: [0, -14, 0] }}
+        transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
       />
     </div>
   );

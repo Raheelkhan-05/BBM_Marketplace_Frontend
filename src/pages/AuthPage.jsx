@@ -54,18 +54,19 @@ function StepRail({ step, isNewUser }) {
   const idx = long ? steps.indexOf(step) : (step === "identifier" ? 0 : 1);
 
   return (
-    <div className="mb-6 flex items-center gap-1.5 sm:mb-7">
+    <div className="mb-7 flex items-center gap-2 sm:mb-8">
       {labels.map((label, i) => (
-        <div key={label} className="flex flex-1 flex-col gap-1.5">
-          <div className="h-[3px] w-full overflow-hidden rounded-full bg-slate-100">
+        <div key={label} className="flex flex-1 flex-col gap-2">
+          <div className="h-[3px] w-full overflow-hidden rounded-full bg-[#047084]/10">
             <motion.div
-              className="h-full rounded-full bg-[#047084]"
+              className="h-full rounded-full"
+              style={{ background: "linear-gradient(90deg, #0a95ab, #047084)" }}
               initial={false}
               animate={{ width: i < idx || (i === idx && step === "done") ? "100%" : i === idx ? "45%" : "0%" }}
               transition={{ duration: 0.45, ease: "easeOut" }}
             />
           </div>
-          <span className={`text-[10.5px] font-bold uppercase tracking-wider transition-colors duration-300 ${i <= idx ? "text-[#047084]" : "text-slate-300"}`}>
+          <span className={`text-[10.5px] font-bold uppercase tracking-[0.08em] transition-colors duration-300 ${i <= idx ? "text-[#047084]" : "text-slate-300"}`}>
             {label}
           </span>
         </div>
@@ -137,45 +138,36 @@ export default function AuthPage() {
     });
 
   return (
-    <div className="w-full bg-[#f6f8f8]">
-      <div
-        className="pointer-events-none fixed inset-0 opacity-[0.5]"
-        style={{
-          backgroundImage: "radial-gradient(circle, rgba(4,112,132,0.08) 1px, transparent 1px)",
-          backgroundSize: "22px 22px",
-        }}
-      />
-      <motion.div
-        className="pointer-events-none fixed -left-32 -top-32 h-[30rem] w-[30rem] rounded-full blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(199,31,17,0.09) 0%, transparent 70%)" }}
-        animate={{ x: [0, 24, 0], y: [0, 16, 0] }}
-        transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <motion.div
-        className="pointer-events-none fixed -bottom-40 -right-32 h-[30rem] w-[30rem] rounded-full blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(4,112,132,0.12) 0%, transparent 70%)" }}
-        animate={{ x: [0, -20, 0], y: [0, -14, 0] }}
-        transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
-      />
-
-      <main className="relative z-10 mx-auto flex w-full max-w-[1160px] flex-col items-stretch justify-center min-h-screen px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+    <div className="w-full">
+      <main className={`relative z-10 mx-auto flex w-full max-w-[1160px] flex-col items-stretch justify-center min-h-screen px-4 py-5 ${step === "onboarding" ? "" : "pt-24"} sm:px-6 sm:py-8 lg:px-8 lg:py-10`}>
         <div className="grid w-full grid-cols-1 items-stretch gap-5 lg:grid-cols-[1fr_1.05fr] lg:gap-7 xl:grid-cols-[1fr_0.95fr]">
           <div className="hidden lg:block">
             <TrustPanel />
           </div>
 
           <div className="flex flex-col">
+
             <motion.div
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: "easeOut" }}
-              className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white/90 shadow-[0_30px_70px_-28px_rgba(4,112,132,0.28)] backdrop-blur-sm sm:rounded-[28px]"
+              className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-[#047084]/12 bg-white shadow-[0_40px_90px_-32px_rgba(4,55,64,0.2)] sm:rounded-[28px]"
             >
-              <div
-                className="h-[3px] w-full shrink-0 sm:h-1"
-                style={{ background: "linear-gradient(90deg, #047084 0%, #0a95ab 70%, #d2462b 100%)" }}
-              />
+
               <div className="flex flex-1 flex-col px-5 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
+                <div className="relative mb-6 sm:mb-0 flex items-center gap-2.5">
+                  <img src="./Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
+                  <span
+                    className="text-[19px] font-extrabold tracking-tight text-slate-900"
+                    style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
+                  >
+                    BBM
+                  </span>
+                  <span className="ml-auto hidden items-center gap-1.5 rounded-full border border-[#047084]/15 bg-[#047084]/[0.04] px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide text-[#047084] sm:flex">
+                    <ShieldCheck className="h-3 w-3" />
+                    Verified network
+                  </span>
+                </div>
                 {step === "onboarding" && <StepRail step={step} isNewUser={isNewUser} />}
                 <div className="flex flex-1 flex-col justify-center">
                   <AnimatePresence mode="wait">
@@ -240,30 +232,33 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
   };
 
   return (
+
     <motion.form
       initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
       onSubmit={handleSubmit} noValidate className="flex w-full flex-col"
     >
+
       <h1
-        className="text-[clamp(1.5rem,3.8vw,2rem)] font-semibold leading-[1.1] text-slate-900"
+        className="text-[clamp(1.55rem,3.8vw,2.05rem)] font-semibold leading-[1.1] text-slate-900"
         style={{ fontFamily: "'Fraunces', serif" }}
       >
-        Log in or create an account
+        Welcome to BBM
       </h1>
       <p className="mt-2.5 text-[13.5px] font-medium leading-relaxed text-slate-500">
-        One account to buy and sell. We&apos;ll send you a one-time code — no password to remember.
-      </p>
+       One verified account to buy and sell. We'll send a one-time code —
+       no password to remember.
+     </p>
 
-      <label htmlFor="identifier" className="mt-7 text-[12px] font-bold text-slate-600">Mobile number or email</label>
+      <label htmlFor="identifier" className="mt-8 text-[12px] font-bold uppercase tracking-wide text-slate-500">Mobile number or email</label>
       <div
-        className="mt-2 flex w-full items-center overflow-hidden rounded-xl border-2 bg-white transition-all duration-200"
+        className="mt-2.5 flex w-full items-center overflow-hidden rounded-md border-2 bg-white transition-all duration-200"
         style={{
-          borderColor: showError || serverError ? "#c71f11" : focused ? "#047084" : "#e2e8f0",
+          borderColor: showError || serverError ? "#c71f11" : focused ? "#047084" : "#e5e9ea",
           boxShadow: focused ? "0 0 0 4px rgba(4,112,132,0.1)" : "none",
         }}
       >
-        <span className="flex shrink-0 items-center gap-1.5 border-r border-slate-100 px-3 py-3.5 text-[13.5px] font-bold text-slate-500 sm:px-3.5">
+        <span className="flex shrink-0 items-center gap-1.5 border-r border-slate-100 bg-slate-50/60 px-3 py-3.5 text-[13.5px] font-bold text-slate-500 sm:px-3.5">
           {mode === null && (<><Phone className="h-3.5 w-3.5 text-slate-400" /><Mail className="h-3.5 w-3.5 text-slate-400" /></>)}
           {mode === "phone" && (<><Phone className="h-3.5 w-3.5 text-slate-400" />+91</>)}
           {mode === "email" && <Mail className="h-3.5 w-3.5 text-slate-400" />}
@@ -274,7 +269,7 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
           onFocus={() => setFocused(true)}
           onBlur={() => { setFocused(false); setTouched(true); }}
           placeholder="98765 43210 or you@company.com"
-          className="w-full min-w-0 bg-transparent px-3 py-3.5 text-[15px] font-semibold tracking-wide text-slate-800 placeholder:font-normal placeholder:text-slate-300 focus:outline-none disabled:opacity-60 sm:px-3.5"
+          className="w-full min-w-0 bg-transparent px-3 py-3 text-[12px] font-semibold tracking-wide text-slate-800 placeholder:font-normal placeholder:text-slate-300 focus:outline-none disabled:opacity-60 sm:px-3.5"
         />
       </div>
 
@@ -286,18 +281,18 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
       <motion.button
         type="submit" disabled={!valid || loading}
         whileTap={{ scale: 0.98 }}
-        className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-[0_14px_28px_-10px_rgba(199,31,17,0.55)] transition-all duration-200 enabled:hover:-translate-y-0.5 enabled:hover:shadow-[0_18px_34px_-10px_rgba(199,31,17,0.6)] disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-[0_16px_30px_-10px_rgba(199,31,17,0.55)] transition-all duration-200 enabled:hover:-translate-y-0.5 enabled:hover:shadow-[0_20px_36px_-10px_rgba(199,31,17,0.6)] disabled:cursor-not-allowed disabled:opacity-40"
         style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
       >
         {loading ? (<><Loader2 className="h-4 w-4 animate-spin" />Sending OTP…</>) : (<>Send OTP<ArrowRight className="h-4 w-4" /></>)}
       </motion.button>
 
-      <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-[11.5px] font-medium text-slate-400">
+      <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11.5px] font-medium text-slate-400">
         <ShieldCheck className="h-3.5 w-3.5 text-[#047084]/60" />
         By continuing, you agree to our{" "}
-        <a href="/terms" className="font-semibold text-slate-500 underline underline-offset-2">Terms</a>{" "}
+        <a href="/terms" className="font-semibold text-slate-500 underline underline-offset-2 hover:text-[#047084]">Terms</a>{" "}
         and{" "}
-        <a href="/privacy" className="font-semibold text-slate-500 underline underline-offset-2">Privacy</a>.
+        <a href="/privacy" className="font-semibold text-slate-500 underline underline-offset-2 hover:text-[#047084]">Privacy</a>.
       </p>
     </motion.form>
   );
@@ -346,10 +341,10 @@ function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled }) {
             onChange={(e) => handleChange(i, e.target.value)}
             onKeyDown={(e) => handleKeyDown(i, e)}
             onPaste={handlePaste}
-            className="aspect-square w-full min-w-0 rounded-xl border-2 text-center text-[18px] font-extrabold text-slate-800 transition-colors focus:outline-none sm:text-[20px]"
+            className="aspect-square w-full min-w-0 rounded-xl border-2 text-center text-[18px] font-extrabold text-slate-800 shadow-[0_1px_2px_rgba(4,55,64,0.04)] transition-colors focus:outline-none sm:text-[20px]"
             style={{
-              borderColor: error ? "#c71f11" : d ? "#047084" : "#e2e8f0",
-              background: d ? "rgba(4,112,132,0.04)" : "white",
+              borderColor: error ? "#c71f11" : d ? "#047084" : "#e5e9ea",
+              background: d ? "rgba(4,112,132,0.05)" : "white",
             }}
           />
         ))}
@@ -380,10 +375,10 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
       initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.3, ease: "easeOut" }} className="flex w-full flex-col"
     >
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-[0_8px_18px_-6px_rgba(4,112,132,0.5)]" style={{ background: "linear-gradient(135deg, #047084 0%, #7fb3bd 100%)" }}>
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-[0_10px_22px_-8px_rgba(4,112,132,0.55)]" style={{ background: "linear-gradient(135deg, #047084 0%, #7fb3bd 100%)" }}>
         {channel === "email" ? <Mail className="h-5 w-5" /> : <Phone className="h-5 w-5" />}
       </span>
-      <h1 className="mt-4 text-[clamp(1.5rem,3.8vw,2rem)] font-semibold leading-[1.1] text-slate-900" style={{ fontFamily: "'Fraunces', serif" }}>
+      <h1 className="mt-4 text-[clamp(1.55rem,3.8vw,2.05rem)] font-semibold leading-[1.1] text-slate-900" style={{ fontFamily: "'Fraunces', serif" }}>
         Enter the code
       </h1>
       <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-[13.5px] font-medium leading-relaxed text-slate-500">
@@ -397,7 +392,7 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
         <OtpBoxes onComplete={(code) => !loading && onVerify(code)} error={serverError} disabled={loading} />
       </div>
 
-      <p className="mt-4 text-center text-[12px] font-medium text-slate-400">
+      <p className="mt-5 text-center text-[12px] font-medium text-slate-400">
         {secondsLeft > 0 ? <>Resend code in {secondsLeft}s</> : (
           <button type="button" onClick={handleResend} className="font-bold text-[#047084] hover:underline">Resend code</button>
         )}
@@ -454,14 +449,16 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
   if (stage === "verified") {
     return (
       <div className="flex flex-col">
-        <label className="text-[12px] font-bold text-slate-600">{label}</label>
+        <label className="text-[12px] font-bold uppercase tracking-wide text-slate-500">{label}</label>
         <motion.div
           initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
-          className="mt-2 flex items-center gap-2 rounded-xl border-2 border-[#7fb3bd] bg-[#047084]/5 px-3.5 py-3"
+          className="mt-1 flex items-center gap-2 rounded-md border-2 border-[#7fb3bd]/70 bg-[#047084]/[0.06] px-3.5 py-2"
         >
           <CheckCircle2 className="h-4 w-4 shrink-0 text-[#047084]" />
           <span className="truncate text-[14px] font-semibold text-slate-800">{formatValue(value)}</span>
-          <span className="ml-auto shrink-0 text-[11px] font-bold text-[#047084]">Verified</span>
+          <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-[#047084] px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-white">
+            Verified
+          </span>
         </motion.div>
       </div>
     );
@@ -469,31 +466,28 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
 
   return (
     <div className="flex flex-col">
-      <label className="text-[12px] font-bold text-slate-600">
+      <label className="text-[12px] font-bold uppercase tracking-wide text-slate-500">
         {label}{" "}
-        <span className={`font-medium ${required ? "text-[#c71f11]" : "text-slate-400"}`}>
-          {required ? "(required — verify to continue)" : "(optional — verify to add)"}
-        </span>
       </label>
 
       {stage !== "otp" ? (
-        <div className="mt-2 flex gap-2">
+        <div className="mt-1 flex gap-2">
           <input
             inputMode={inputMode} value={value}
             onChange={(e) => { setValue(e.target.value); onVerified?.(false, ""); }}
             placeholder={placeholder} disabled={stage === "sending"}
-            className="w-full min-w-0 rounded-xl border-2 border-slate-200 bg-white px-3.5 py-3 text-[14.5px] font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-300 focus:border-[#047084] focus:outline-none"
+            className="w-full min-w-0 rounded-md border-2 border-slate-200 bg-white px-3.5 py-0 text-[14px] font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-300 focus:border-[#047084] focus:outline-none focus:ring-4 focus:ring-[#047084]/10"
           />
           <button
             type="button" onClick={sendCode} disabled={!valid || stage === "sending"}
-            className="shrink-0 rounded-xl px-4 py-3 text-[12.5px] font-bold text-white transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ background: "#047084" }}
+            className="shrink-0 rounded-xl px-4 py-3 text-[12.5px] font-bold text-white shadow-[0_8px_16px_-6px_rgba(4,112,132,0.5)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ background: "linear-gradient(135deg, #0a95ab 0%, #047084 100%)" }}
           >
             {stage === "sending" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
           </button>
         </div>
       ) : (
-        <div className="mt-2 max-w-[280px]">
+        <div className="mt-2.5 max-w-[280px]">
           <OtpBoxes length={6} onComplete={confirmCode} error={error} />
         </div>
       )}
@@ -505,13 +499,13 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
 // OnboardingPanel — replace the fetchMe useEffect with this
 function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverError }) {
   const [name, setName] = useState(profile?.name || "");
-  
+
   const [resumed, setResumed] = useState(
     !!(profile?.name || (profile?.phone_verified && loginType !== "phone"))
   );
   const [phoneVerified, setPhoneVerified] = useState(loginType === "phone" || !!profile?.phone_verified);
   const [verifiedPhoneValue, setVerifiedPhoneValue] = useState(profile?.phone_verified ? profile.phone : null);
-  
+
   const [gstin, setGstin] = useState("");
   const [gstStage, setGstStage] = useState("idle");
   const [gstError, setGstError] = useState(null);
@@ -591,10 +585,10 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
       initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }}
       transition={{ duration: 0.3 }} onSubmit={handleSubmit} className="flex w-full flex-col"
     >
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-[0_8px_18px_-6px_rgba(4,112,132,0.5)]" style={{ background: "linear-gradient(135deg, #047084 0%, #7fb3bd 100%)" }}>
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-[0_10px_22px_-8px_rgba(4,112,132,0.55)]" style={{ background: "linear-gradient(135deg, #047084 0%, #7fb3bd 100%)" }}>
         <Building2 className="h-5 w-5" />
       </span>
-      <h1 className="mt-4 text-[clamp(1.5rem,3.8vw,2rem)] font-semibold leading-[1.1] text-slate-900" style={{ fontFamily: "'Fraunces', serif" }}>
+      <h1 className="mt-4 text-[clamp(1.55rem,3.8vw,2.05rem)] font-semibold leading-[1.1] text-slate-900" style={{ fontFamily: "'Fraunces', serif" }}>
         Set up your account
       </h1>
       <p className="mt-2 text-[13.5px] font-medium leading-relaxed text-slate-500">
@@ -603,13 +597,13 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
       {resumed && (
         <motion.p
           initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="mt-3 rounded-lg border border-[#7fb3bd]/60 bg-[#047084]/5 px-3 py-2 text-[12px] font-semibold text-[#047084]"
+          className="mt-3.5 rounded-lg border border-[#7fb3bd]/60 bg-[#047084]/[0.06] px-3 py-2 text-[12px] font-semibold text-[#047084]"
         >
           Welcome back — we picked up where you left off.
         </motion.p>
       )}
 
-      <div className="mt-5">
+      <div className="mt-4">
         <Field label="Full name">
           <input
             autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName}
@@ -619,7 +613,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
       </div>
 
       {/* Phone is always required and verified, regardless of login channel. */}
-      <div className="mt-5">
+      <div className="mt-3">
         <AltContactVerify
           token={token} field="phone" label="Mobile number" placeholder="98765 43210" inputMode="numeric"
           formatValue={(v) => `+91 ${v}`} validate={(v) => PHONE_RE.test(v)} required
@@ -629,7 +623,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
       </div>
 
       {loginType === "phone" && (
-        <div className="mt-5">
+        <div className="mt-3">
           <AltContactVerify
             token={token} field="email" label="Email" placeholder="you@company.com" inputMode="email"
             formatValue={(v) => v} validate={(v) => EMAIL_RE.test(v)}
@@ -638,22 +632,22 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
       )}
 
       {/* GSTIN lookup */}
-      <div className="mt-5 flex flex-col">
-        <label className="text-[12px] font-bold text-slate-600">GSTIN</label>
-        <div className="mt-2 flex gap-2">
+      <div className="mt-3 flex flex-col">
+        <label className="text-[12px] font-bold uppercase tracking-wide text-slate-500">GSTIN</label>
+        <div className="mt-1 flex gap-2">
           <div className="relative flex-1">
             <input
               maxLength={15} value={gstin}
               onChange={(e) => { setGstin(e.target.value.toUpperCase().replace(/\s/g, "")); setGstStage("idle"); setGstData(null); }}
               placeholder="22AAAAA0000A1Z5"
-              className={`${inputClass(touched && gstin.length === 15 && !isValidGstinShape(gstin))} pr-10 uppercase tracking-wide`}
+              className={`${inputClass(touched && gstin.length === 15 && !isValidGstinShape(gstin))} pr-10 font-mono uppercase tracking-wide`}
             />
             {gstStage === "found" && <CheckCircle2 className="absolute right-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-[#047084]" />}
           </div>
           <button
             type="button" onClick={runLookup} disabled={!isValidGstinShape(gstin) || gstStage === "looking_up"}
-            className="shrink-0 rounded-xl px-4 py-3 text-[12.5px] font-bold text-white transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ background: "#047084" }}
+            className="shrink-0 rounded-xl px-4 text-[12.5px] font-bold text-white shadow-[0_8px_16px_-6px_rgba(4,112,132,0.5)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ background: "linear-gradient(135deg, #0a95ab 0%, #047084 100%)" }}
           >
             {gstStage === "looking_up" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
           </button>
@@ -666,7 +660,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
         {gstStage === "found" && gstData && (
           <motion.div
             initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-            className="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 px-4 py-4 sm:grid-cols-2"
+            className="mt-4 grid grid-cols-1 gap-x-5 gap-y-3.5 overflow-hidden rounded-xl border border-[#047084]/12 bg-[#047084]/[0.03] px-4 py-4 sm:grid-cols-2"
           >
             <ReadOnlyField label="Legal name" value={gstData.legal_name} />
             <ReadOnlyField label="Trade name" value={gstData.trade_name} />
@@ -682,16 +676,16 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
 
       {gstStage === "found" && (
         <>
-          <div className="mt-5">
+          <div className="mt-3">
             <Field label="Display name" hint="shown to buyers">
               <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Mehta Steel" className={inputClass(touched && displayName.trim().length < 2)} />
             </Field>
           </div>
 
-          <div className="mt-5 flex flex-col">
-            <label className="text-[12px] font-bold text-slate-600">Dispatch address</label>
-            <label className="mt-2 flex items-center gap-2 text-[13px] font-medium text-slate-600">
-              <input type="checkbox" checked={dispatchSame} onChange={(e) => setDispatchSame(e.target.checked)} className="h-4 w-4 rounded border-slate-300" />
+          <div className="mt-3 flex flex-col">
+            <label className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Dispatch address</label>
+            <label className="mt-2.5 flex items-center gap-2 text-[13px] font-medium text-slate-600">
+              <input type="checkbox" checked={dispatchSame} onChange={(e) => setDispatchSame(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-[#047084]" />
               Same as GST registered address
             </label>
 
@@ -715,12 +709,12 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
         </>
       )}
 
-      {serverError && <p className="mt-3 text-[12px] font-semibold text-[#c71f11]">{serverError}</p>}
+      {serverError && <p className="mt-3.5 text-[12px] font-semibold text-[#c71f11]">{serverError}</p>}
 
       <motion.button
         type="submit" disabled={!canSubmit || loading}
         whileTap={{ scale: 0.98 }}
-        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-[0_14px_28px_-10px_rgba(199,31,17,0.55)] transition-all duration-200 enabled:hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-7 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-[0_16px_30px_-10px_rgba(199,31,17,0.55)] transition-all duration-200 enabled:hover:-translate-y-0.5 enabled:hover:shadow-[0_20px_36px_-10px_rgba(199,31,17,0.6)] disabled:cursor-not-allowed disabled:opacity-40"
         style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
       >
         {loading ? "Saving…" : "Finish setting up"}
@@ -733,10 +727,10 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
 function Field({ label, hint, className = "", children }) {
   return (
     <div className={`flex flex-col ${className}`}>
-      <label className="text-[12px] font-bold text-slate-600">
-        {label} {hint && <span className="font-medium text-slate-400">({hint})</span>}
+      <label className="text-[12px] font-bold uppercase tracking-wide text-slate-500">
+        {label} {hint && <span className="normal-case font-medium text-slate-400">({hint})</span>}
       </label>
-      <div className="mt-2">{children}</div>
+      <div className="mt-1">{children}</div>
     </div>
   );
 }
@@ -749,5 +743,5 @@ function ReadOnlyField({ label, value, className = "" }) {
   );
 }
 function inputClass(error) {
-  return `w-full min-w-0 rounded-xl border-2 bg-white px-3.5 py-3 text-[14.5px] font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-300 transition-colors focus:border-[#047084] focus:outline-none sm:py-3.5 ${error ? "border-[#c71f11]" : "border-slate-200"}`;
+  return `w-full min-w-0 rounded-md border-2 bg-white px-3.5 py-2 text-[14.5px] font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-300 transition-colors focus:border-[#047084] focus:outline-none focus:ring-4 focus:ring-[#047084]/10 sm:py-3.5 ${error ? "border-[#c71f11]" : "border-slate-200"}`;
 }
