@@ -106,7 +106,7 @@ export default function IdentifierStep({ identifier, onSubmit, loading, serverEr
           id="identifier"
           name="identifier"
           type="text"
-          inputMode={mode === "email" ? "email" : "numeric"}
+          inputMode="text"
           autoComplete="username"
           autoCorrect="off"
           autoCapitalize="none"
