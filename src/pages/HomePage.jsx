@@ -28,6 +28,14 @@ const TONE_MAP = {
 };
 
 export default function HomePage() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  if (!ready) return <HomePageSkeleton />;
 
 
   return (
@@ -235,6 +243,8 @@ function PromoCarousel() {
       src={slide.image}
       alt=""
       draggable={false}
+      fetchPriority={i === 1 ? "high" : "low"}
+      loading={i === 1 ? "eager" : "lazy"}
       className="h-full w-full object-cover object-center sm:object-right"
       style={{
         maskImage: "linear-gradient(to right, transparent 0%, black 10%, black 88%, transparent 100%)",
@@ -418,6 +428,8 @@ function WelcomeBanner() {
           <img
             src="./illustration-marketplace.svg"
             alt=""
+            loading="lazy" 
+            decoding="async"
             className="object-contain hidden sm:block object-top"
             style={{
               maxHeight: "clamp(56px, 8cqw, 108px)",
@@ -458,7 +470,7 @@ function TopOffers() {
             initial={{ opacity: 0, y: 8 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 0.3, delay: i * 0.04 }}
+            transition={{ duration: 0.3, delay: Math.min(i * 0.06, 0.3) }}
             whileHover={{ y: -3 }}
             className="flex flex-col rounded-lg border transition-shadow duration-300"
             style={{
@@ -476,7 +488,7 @@ function TopOffers() {
                 className="aspect-square shrink-0 overflow-hidden rounded-md bg-white"
                 style={{ width: "clamp(36px, 11cqw, 46px)", boxShadow: `0 1px 3px ${hexToRgba(offer.brandTone, 0.18)}` }}
               >
-                <img src={offer.logo} alt="" className="h-full w-full object-contain" />
+                <img src={offer.logo} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain" />
               </div>
               <div className="flex min-w-0 ms-1 sm:ms-2 flex-1 flex-col justify-center">
                 <p
@@ -500,7 +512,7 @@ function TopOffers() {
                 className="aspect-square shrink-0 overflow-hidden rounded-md bg-white"
                 style={{ width: "clamp(36px, 11cqw, 46px)", boxShadow: `0 1px 3px ${hexToRgba(offer.brandTone, 0.18)}` }}
               >
-                <img src={offer.image} alt="" className="h-full w-full object-cover" />
+                <img src={offer.image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
               </div>
               <div className="flex min-w-0 flex-1 ms-1 sm:ms-2 flex-col justify-center">
                 {offer.detail ? (
@@ -552,7 +564,7 @@ function BusinessAndMarketRow() {
                 initial={{ opacity: 0, y: 8 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, amount: 0.3 }}
-                transition={{ duration: 0.3, delay: i * 0.04 }}
+                transition={{ duration: 0.3, delay: Math.min(i * 0.06, 0.3) }}
                 whileHover={{ y: -3 }}
                 className="flex flex-col items-center rounded-lg border p-2 transition-shadow duration-300 sm:p-3.5"
                 style={{
@@ -643,7 +655,7 @@ function ShopByCategory() {
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.3, delay: i * 0.03 }}
+              transition={{ duration: 0.3, delay: Math.min(i * 0.06, 0.3) }}
               whileHover={{ y: -2 }}
               className="flex shrink-0 flex-col items-center overflow-hidden rounded-xl border border-slate-100 bg-white text-center transition-shadow duration-300"
               style={{
@@ -655,7 +667,7 @@ function ShopByCategory() {
               }}
             >
               <div className="aspect-video w-full overflow-hidden bg-slate-50">
-                <img src={cat.image} alt="" className="h-full w-full object-cover" />
+                <img src={cat.image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
               </div>
               <div className="flex w-full flex-col items-center px-2.5 pb-3 pt-2">
                 <p className="truncate text-[13.5px] tracking-[0.2px] font-bold leading-tight text-slate-900 sm:text-[14.5px]">
@@ -690,7 +702,7 @@ function PriceListAndComparedRow() {
           {myPriceList.map((p) => (
             <div key={p.id} className="flex items-center gap-3.5 px-3.5 py-4">
               <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-100">
-                <img src={p.image} alt="" className="h-full w-full object-cover" />
+                <img src={p.image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[14px] tracking-[0.2px] font-semibold leading-snug text-slate-900">{p.name}</p>
@@ -714,7 +726,7 @@ function PriceListAndComparedRow() {
             {mostCompared.map((item) => (
               <div key={item.id} className="flex flex-col items-center rounded-lg border border-slate-100 bg-white p-2 text-center">
                 <div className="h-16 w-16 overflow-hidden rounded-full bg-slate-50 ring-1 ring-slate-100">
-                  <img src={item.image} alt="" className="h-full w-full object-cover" />
+                  <img src={item.image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                 </div>
                 <p className="mt-1.5 line-clamp-2 text-[12.5px] font-bold leading-tight text-slate-900">{item.name}</p>
                 <p className="mt-0.5 text-[11.5px] font-medium leading-tight text-slate-400">{item.count}</p>

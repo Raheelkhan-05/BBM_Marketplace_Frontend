@@ -331,23 +331,36 @@ function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled }) {
 
   return (
     <div>
-      <div className="grid gap-2 sm:gap-2.5" style={{ gridTemplateColumns: `repeat(${length}, minmax(0, 1fr))` }}>
-        {digits.map((d, i) => (
-          <motion.input
-            key={i} ref={(el) => (inputsRef.current[i] = el)} type="text" inputMode="numeric" maxLength={1}
-            value={d} disabled={disabled}
-            animate={d ? { scale: [1.12, 1] } : {}}
-            transition={{ duration: 0.2 }}
-            onChange={(e) => handleChange(i, e.target.value)}
-            onKeyDown={(e) => handleKeyDown(i, e)}
-            onPaste={handlePaste}
-            className="aspect-square w-full min-w-0 rounded-xl border-2 text-center text-[18px] font-extrabold text-slate-800 shadow-[0_1px_2px_rgba(4,55,64,0.04)] transition-colors focus:outline-none sm:text-[20px]"
-            style={{
-              borderColor: error ? "#c71f11" : d ? "#047084" : "#e5e9ea",
-              background: d ? "rgba(4,112,132,0.05)" : "white",
-            }}
-          />
-        ))}
+      <div className="relative">
+        <div className="grid gap-2 sm:gap-2.5" style={{ gridTemplateColumns: `repeat(${length}, minmax(0, 1fr))` }}>
+          {digits.map((d, i) => (
+            <motion.input
+              key={i} ref={(el) => (inputsRef.current[i] = el)} type="text" inputMode="numeric" maxLength={1}
+              value={d} disabled={disabled}
+              animate={d ? { scale: [1.12, 1] } : {}}
+              transition={{ duration: 0.2 }}
+              onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              onPaste={handlePaste}
+              className="aspect-square w-full min-w-0 rounded-xl border-2 text-center text-[18px] font-extrabold text-slate-800 shadow-[0_1px_2px_rgba(4,55,64,0.04)] transition-colors focus:outline-none disabled:opacity-60 sm:text-[20px]"
+              style={{
+                borderColor: error ? "#c71f11" : d ? "#047084" : "#e5e9ea",
+                background: d ? "rgba(4,112,132,0.05)" : "white",
+              }}
+            />
+          ))}
+        </div>
+        {disabled && !error && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-white/55 backdrop-blur-[1px]"
+          >
+            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11.5px] font-bold text-[#047084] shadow-[0_6px_16px_-6px_rgba(4,55,64,0.3)]">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Verifying…
+            </span>
+          </motion.div>
+        )}
       </div>
       {error && <p className="mt-2.5 text-[12px] font-semibold text-[#c71f11]">{error}</p>}
     </div>
