@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight, Loader2, Mail, Phone, CheckCircle2, Pencil,
-  Building2, ShieldCheck,
+  Building2, ShieldCheck, ArrowLeft,
 } from "lucide-react";
 
 import TrustPanel from "../components/auth/TrustPanel.jsx";
@@ -86,6 +86,22 @@ export default function AuthPage() {
   const navigate = useNavigate();
   const [isNewUser, setIsNewUser] = useState(null);
 
+  const handleBack = () => {
+    if (step === "identifier") {
+      // React Router v6 stamps history.state.idx = 0 on the entry point of
+      // the app's history stack — if that's us, navigate(-1) would leave
+      // the app entirely (e.g. land on about:blank) instead of going back
+      // to a real previous page.
+      if (window.history.state?.idx === 0) {
+        navigate("/");
+      } else {
+        navigate(-1);
+      }
+    } else if (step === "otp") {
+      setStep("identifier");
+    }
+    // no back action from "onboarding" — user is already authenticated
+  };
 
   const withLoading = useCallback(async (fn) => {
     setError(null);
@@ -156,6 +172,17 @@ export default function AuthPage() {
 
               <div className="flex flex-1 flex-col px-5 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-9">
                 <div className="relative mb-6 sm:mb-0 flex items-center gap-2.5">
+                  {step !== "onboarding" && (
+                    <motion.button
+                      type="button"
+                      onClick={handleBack}
+                      whileTap={{ scale: 0.92 }}
+                      aria-label="Go back"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:border-[#047084]/30 hover:text-[#047084]"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </motion.button>
+                  )}
                   <img src="./Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
                   <span
                     className="text-[19px] font-extrabold tracking-tight text-slate-900"
