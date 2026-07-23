@@ -43,37 +43,6 @@ function isValidGstinShape(v) {
   return v.length === 15 && GSTIN_FORMAT.test(v);
 }
 
-// -----------------------------------------------------------------------
-// Step progress rail
-// -----------------------------------------------------------------------
-function StepRail({ step, isNewUser }) {
-  const long = isNewUser === true;
-  const steps = long ? ["identifier", "otp", "onboarding", "done"] : ["identifier", "otp"];
-  const labels = long ? ["Sign in", "Verify", "Set up", "Ready"] : ["Sign in", "Verify"];
-  // "done" for a returning user maps onto the last real segment (otp) as complete.
-  const idx = long ? steps.indexOf(step) : (step === "identifier" ? 0 : 1);
-
-  return (
-    <div className="mb-7 flex items-center gap-2 sm:mb-8">
-      {labels.map((label, i) => (
-        <div key={label} className="flex flex-1 flex-col gap-2">
-          <div className="h-[3px] w-full overflow-hidden rounded-full bg-[#047084]/10">
-            <motion.div
-              className="h-full rounded-full"
-              style={{ background: "linear-gradient(90deg, #0a95ab, #047084)" }}
-              initial={false}
-              animate={{ width: i < idx || (i === idx && step === "done") ? "100%" : i === idx ? "45%" : "0%" }}
-              transition={{ duration: 0.45, ease: "easeOut" }}
-            />
-          </div>
-          <span className={`text-[10.5px] font-bold uppercase tracking-[0.08em] transition-colors duration-300 ${i <= idx ? "text-[#047084]" : "text-slate-300"}`}>
-            {label}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function AuthPage() {
   const [step, setStep] = useState("identifier");
@@ -195,8 +164,8 @@ export default function AuthPage() {
                     Verified network
                   </span>
                 </div>
-                {step === "onboarding" && <StepRail step={step} isNewUser={isNewUser} />}
-                <div className="flex flex-1 flex-col justify-center">
+                {/* {step === "onboarding" && <StepRail step={step} isNewUser={isNewUser} />} */}
+                <div className="flex mt-8 flex-1 flex-col justify-center">
                   <AnimatePresence mode="wait">
                     {step === "identifier" && (
                       <IdentifierPanel key="identifier" onSubmit={handleIdentifierSubmit} loading={loading} serverError={error} />
@@ -783,5 +752,5 @@ function ReadOnlyField({ label, value, className = "" }) {
   );
 }
 function inputClass(error) {
-  return `w-full min-w-0 rounded-md border-2 bg-white px-3.5 py-2 text-[14.5px] font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-300 transition-colors focus:border-[#047084] focus:outline-none focus:ring-4 focus:ring-[#047084]/10 sm:py-3.5 ${error ? "border-[#c71f11]" : "border-slate-200"}`;
+  return `w-full min-w-0 rounded-md border-2 bg-white px-3.5 py-2 text-[14.5px] font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-300 transition-colors focus:border-[#047084] focus:outline-none focus:ring-4 focus:ring-[#047084]/10 sm:py-2 ${error ? "border-[#c71f11]" : "border-slate-200"}`;
 }

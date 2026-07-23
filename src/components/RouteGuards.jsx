@@ -21,6 +21,13 @@ export function RequireAuth({ children }) {
   return children;
 }
 
+export function RequireAdmin({ children }) {
+  const { profile, isLoggedIn } = useAuth();
+  if (!isLoggedIn) return <Navigate to="/login" replace />;
+  if (profile?.role !== "admin") return <Navigate to="/home" replace />;
+  return children;
+}
+
 export function RequireGuest({ children }) {
   const { isLoggedIn, profile, initializing } = useAuth();
 

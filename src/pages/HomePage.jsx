@@ -8,6 +8,7 @@ import {
   CreditCard, Plus, ScanLine, ClipboardList, Repeat, Star, Bell,
 } from "lucide-react";
 import HomePageSkeleton from "../components/skeletons/HomePageSkeleton.jsx";
+import StartSellingBanner from "../components/home/StartSellingBanner.jsx";
 import {
   walletBalance, userName, promoSlides, welcomeHighlights, topOffers,
   businessHighlights, marketFeed, categories, myPriceList, mostCompared,
@@ -43,6 +44,7 @@ export default function HomePage() {
       <SearchWalletRow />
       <PromoCarousel />
       <WelcomeBanner />
+      <StartSellingBanner />
       <TopOffers />
       <BusinessAndMarketRow />
       <ShopByCategory />

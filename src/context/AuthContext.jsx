@@ -113,6 +113,7 @@ async function init() {
     <AuthContext.Provider
       value={{
         session,
+        token: session?.access_token,
         profile,
         initializing,
         isLoggedIn,

@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ArrowUpRight, User, LogOut, ChevronDown } from "lucide-react";
+import { Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck, Clock3 } from "lucide-react";
 import { TAGLINE } from "../../data/content";
 import { useAuth } from "../context/AuthContext.jsx";
+import NotificationBell from "../components/NotificationBell.jsx";
 import SmartLink from "./SmartLink.jsx";
 
 const NAV_LINKS = [
@@ -13,6 +14,23 @@ const NAV_LINKS = [
   { label: "Nav3", href: "#nav3" },
   { label: "Nav4", href: "#nav4" },
 ];
+
+// Resolves the single seller-related menu entry based on onboarding/review status.
+// One entry only (instead of always "Start Selling") keeps the menu uncluttered
+// for sellers who are already set up or mid-review.
+function getSellerMenuItem(profile) {
+  const status = profile?.seller_status;
+  if (status === "approved") {
+    return { label: "My Shop", href: `/shop/${profile.shop_slug}`, icon: Store };
+  }
+  if (status === "draft" || status === "rejected") {
+    return { label: "Finish Seller Setup", href: "/seller/onboarding", icon: Clock3 };
+  }
+  if (status === "pending_review") {
+    return { label: "Seller Status", href: "/seller/status", icon: Clock3 };
+  }
+  return { label: "Start Selling", href: "/seller/onboarding", icon: Store };
+}
 
 export default function Header() {
   const [open, setOpen] = useState(false);
@@ -27,13 +45,17 @@ export default function Header() {
   }, []);
 
   const displayName = profile?.name?.trim().split(" ")[0] || "Account";
+  const sellerItem = getSellerMenuItem(profile);
+  const SellerIcon = sellerItem.icon;
+  // console.log(profile);
+  const isAdmin = profile?.role === "admin";
 
   return (
     <>
-      <header className="relative z-50 bg-white/60 backdrop-blur-md transition-all duration-300">
+      <header className="relative z-50 bg-white/60 backdrop-blur-md shadow-[0_4px_20px_-2px_rgba(15,23,42,0.08)] transition-all duration-300">
         <div className="relative mx-auto flex h-12 max-w-7xl items-center justify-between px-5 lg:px-8">
           <SmartLink to="/" className="flex items-center gap-2 shrink-0">
-            <img src="./Logo.png" alt="BBM" className="h-6 w-auto object-contain" />
+            <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
             <h1 className="text-[17px] font-extrabold tracking-tight text-slate-900" style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}>
               BBM
             </h1>
@@ -50,7 +72,10 @@ export default function Header() {
 
           <div className="flex items-center gap-3">
             {isLoggedIn ? (
+              <>
+              <NotificationBell />
               <div className="relative hidden md:block">
+                
                 <button
                   onClick={() => setAccountOpen((v) => !v)}
                   className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[13px] font-bold text-slate-700 transition hover:border-[#7fb3bd]"
@@ -69,11 +94,32 @@ export default function Header() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -6 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute right-0 mt-2 w-44 overflow-hidden rounded-xl border border-slate-100 bg-white py-1.5 shadow-xl"
+                      className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-slate-100 bg-white py-1.5 shadow-xl"
                     >
                       <SmartLink to="/home" onClick={() => setAccountOpen(false)} className="block px-4 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
                         Marketplace
                       </SmartLink>
+
+                      <SmartLink
+                        to={sellerItem.href}
+                        onClick={() => setAccountOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        <SellerIcon className="h-3.5 w-3.5 text-[#047084]" />
+                        {sellerItem.label}
+                      </SmartLink>
+
+                      {isAdmin && (
+                        <SmartLink
+                          to="/admin/sellers"
+                          onClick={() => setAccountOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5 text-[#047084]" />
+                          Admin Panel
+                        </SmartLink>
+                      )}
+
                       <button
                         onClick={() => { setAccountOpen(false); signOut(); }}
                         className="flex w-full items-center gap-2 px-4 py-2 text-left text-[13px] font-semibold text-[#c71f11] hover:bg-slate-50"
@@ -85,6 +131,7 @@ export default function Header() {
                   )}
                 </AnimatePresence>
               </div>
+              </>
             ) : (
               <SmartLink
                 to="/login"
@@ -143,6 +190,33 @@ export default function Header() {
                       <SmartLink to="/home" onClick={() => setOpen(false)} className="mt-3 rounded-lg px-4 py-3 text-center text-sm font-bold text-slate-700 border border-slate-200">
                         Marketplace
                       </SmartLink>
+
+                      <SmartLink
+                        to={sellerItem.href}
+                        onClick={() => setOpen(false)}
+                        className="mt-2 flex items-center justify-center gap-1.5 rounded-lg px-4 py-3 text-center text-sm font-bold text-[#047084] border border-[#047084]/25"
+                      >
+                        <SellerIcon className="h-4 w-4" />
+                        {sellerItem.label}
+                      </SmartLink>
+
+                      {isAdmin && (
+                        <SmartLink
+                          to="/admin/sellers"
+                          onClick={() => setOpen(false)}
+                          className="mt-2 flex items-center justify-center gap-1.5 rounded-lg px-4 py-3 text-center text-sm font-bold text-slate-700 border border-slate-200"
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          Admin Panel
+                        </SmartLink>
+                      )}
+                      {isAdmin && (
+                        <SmartLink to="/admin/admins" onClick={() => setAccountOpen(false)} className="flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-50">
+                          <ShieldCheck className="h-3.5 w-3.5 text-[#047084]" />
+                          Manage Admins
+                        </SmartLink>
+                      )}
+
                       <button
                         onClick={() => { setOpen(false); signOut(); }}
                         className="mt-2 rounded-lg px-4 py-3 text-center text-sm font-bold text-[#c71f11] border border-[#c71f11]/20"
