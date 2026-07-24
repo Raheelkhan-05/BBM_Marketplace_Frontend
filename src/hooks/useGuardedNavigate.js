@@ -11,7 +11,7 @@ export function useGuardedNavigate() {
 
   return (to, options) => {
     const path = typeof to === "string" ? to : to.pathname;
-    if (isLoggedIn && GUEST_ONLY.includes(path)) return; // cancel — already home
+    if (isLoggedIn && GUEST_ONLY.includes(path)) return navigate("/home", options);
     if (!isLoggedIn && AUTH_ONLY.includes(path)) return navigate("/login", options);
     navigate(to, options);
   };

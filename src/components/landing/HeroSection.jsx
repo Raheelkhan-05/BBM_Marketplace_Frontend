@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, ArrowRight, Sparkles } from "lucide-react";
 import { heroContent, TAGLINE } from "../../../data/content";
+import SmartLink from "../SmartLink";
 
 export default function HeroSection() {
   return (
@@ -81,14 +82,14 @@ export default function HeroSection() {
         transition={{ duration: 0.5, delay: 0.4 }}
         className="mt-7 flex flex-wrap items-center gap-3"
       >
-        <a
-          href="/home"
+        <SmartLink
+          to="/home"
           className="group inline-flex items-center gap-2 rounded-full px-6 py-3 text-[14px] font-bold text-white shadow-[0_10px_24px_-8px_rgba(199,31,17,0.5)] transition-transform duration-200 hover:-translate-y-0.5"
           style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
         >
           Explore Marketplace
           <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-        </a>
+        </SmartLink>
       </motion.div>
     </div>
   );

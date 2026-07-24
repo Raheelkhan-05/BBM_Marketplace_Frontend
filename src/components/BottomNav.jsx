@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import SmartLink from "./SmartLink.jsx";
 
 function getAccountNavItem(profile) {
+  // console.log(profile);
   const status = profile?.seller_status;
   if (status === "approved") return { label: "My Shop", icon: Store, href: `/shop/${profile.shop_slug}` };
   if (status === "draft" || status === "rejected") return { label: "Sell", icon: Store, href: "/seller/onboarding", pending: true };

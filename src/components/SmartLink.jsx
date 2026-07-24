@@ -6,17 +6,10 @@ const GUEST_ONLY = ["/", "/login", "/search"];
 
 export default function SmartLink({ to, onClick, children, ...rest }) {
   const { isLoggedIn } = useAuth();
-
-  const handleClick = (e) => {
-    if (isLoggedIn && GUEST_ONLY.includes(to)) {
-      e.preventDefault(); // cancel — don't even start the navigation
-      return;
-    }
-    onClick?.(e);
-  };
+  const target = isLoggedIn && GUEST_ONLY.includes(to) ? "/home" : to;
 
   return (
-    <Link to={to} onClick={handleClick} {...rest}>
+    <Link to={target} onClick={onClick} {...rest}>
       {children}
     </Link>
   );

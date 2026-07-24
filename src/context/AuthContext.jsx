@@ -20,7 +20,12 @@ export function AuthProvider({ children }) {
     try {
       const res = await fetchMe(token);
       if (res?.success) {
-        setProfile(res.profile);
+        setProfile({
+        ...res.profile,
+        seller_status: res.seller_status,
+        businessProfile: res.businessProfile,
+        shop_slug: res.businessProfile?.shop_slug ?? res.shop_slug ?? null,
+      });
         return;
       }
       if (res?.status === 401) {
