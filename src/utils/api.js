@@ -234,3 +234,9 @@ export async function deleteSellerProduct(token, id) {
   const res = await fetch(`${API_BASE}/seller/products/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
   return res.json();
 } 
+
+export async function searchShops(query, limit = 8) {
+  const params = new URLSearchParams({ q: query, limit });
+  const res = await fetch(`${API_BASE}/shop/search?${params}`);
+  return res.json();
+}

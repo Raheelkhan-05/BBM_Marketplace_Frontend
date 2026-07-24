@@ -155,7 +155,6 @@ function SearchWalletRowSkeleton() {
   return (
     <div className="flex items-stretch gap-2">
       <Shimmer className="h-[42px] flex-[5] rounded-md md:flex-[9]" />
-      <Shimmer className="h-[42px] flex-[2] rounded-md" />
     </div>
   );
 }

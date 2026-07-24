@@ -2,7 +2,7 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
-const GUEST_ONLY = ["/", "/login", "/search"];
+const GUEST_ONLY = ["/", "/login"];
 const AUTH_ONLY = ["/home"];
 
 export function useGuardedNavigate() {

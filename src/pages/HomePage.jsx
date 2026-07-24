@@ -1,6 +1,7 @@
 //src/pages/HomePage.jsx
 
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { animate, motion, useMotionValue } from "framer-motion";
 import {
   Search, Camera, Wallet, ChevronRight, ArrowDown, Users, ShoppingCart,
@@ -54,37 +55,26 @@ export default function HomePage() {
   );
 }
 
-/* ---------- Search + Wallet ---------- */
 function SearchWalletRow() {
+  const [query, setQuery] = useState("");
+  const navigate = useNavigate();
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (query.trim()) navigate(`/search?q=${encodeURIComponent(query.trim())}`);
+  };
   return (
-    <div className="flex items-stretch gap-2">
-      <div className="flex flex-[5] md:flex-[9] items-center overflow-hidden rounded-md border border-slate-200 bg-white">
+    <form onSubmit={handleSubmit} className="flex items-stretch">
+      <div className="flex flex-1 items-center overflow-hidden rounded-md border border-slate-200 bg-white">
         <Search className="ml-2.5 h-4 w-4 shrink-0 text-slate-400 sm:ml-3" />
         <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
           placeholder="Search products, brands or suppliers..."
           className="w-full min-w-0 bg-transparent px-2 py-3 text-[9.5px] font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none sm:px-2.5 sm:text-[12.5px]"
         />
         <Camera className="mr-2.5 h-4 w-4 shrink-0 text-slate-400 sm:mr-3" />
       </div>
-
-      <button className="flex flex-[2] items-center gap-1.5 overflow-hidden rounded-md border border-slate-200 bg-white px-2 py-2 sm:gap-2 sm:px-4">
-        <span
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg sm:h-7 sm:w-7"
-          style={{ background: "rgba(4,112,132,0.10)", color: "#047084" }}
-        >
-          <Wallet className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-        </span>
-        <div className="min-w-0 flex-1 text-left">
-          <p className="truncate text-[9px] font-semibold leading-tight text-slate-400 sm:text-[9.5px]">
-            Wallet Balance
-          </p>
-          <p className="truncate text-[13px] font-extrabold leading-tight text-slate-900 sm:text-[12.5px]">
-            {walletBalance}
-          </p>
-        </div>
-        <ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-400 sm:block" />
-      </button>
-    </div>
+    </form>
   );
 }
 

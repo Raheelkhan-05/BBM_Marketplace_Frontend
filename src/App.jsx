@@ -28,7 +28,8 @@ function App() {
 
           <Route element={<Layout />}>
             <Route path="/" element={<RequireGuest><LandingPage /></RequireGuest>} />
-            <Route path="/search" element={<RequireGuest><SearchResultsPage /></RequireGuest>} />
+            
+            <Route path="/search" element={<SearchResultsPage />} />
             <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><HomePage /></RequireAuth>} />
             <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage/></RequireAuth>} />
             <Route path="/seller/status" element={<RequireAuth><SellerStatusPage/></RequireAuth>} />
