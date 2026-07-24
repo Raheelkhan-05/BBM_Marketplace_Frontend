@@ -221,6 +221,7 @@ function ContactStep({ form, update }) {
   );
 }
 
+
 function AddressStep({ form, update }) {
   const [looking, setLooking] = useState(false);
   const handlePincode = async (v) => {
@@ -235,16 +236,20 @@ function AddressStep({ form, update }) {
   };
   return (
     <div className="flex flex-col gap-4">
+      <p className="text-[12px] font-medium text-slate-500">
+        This is your shop's operating / dispatch address — shown to buyers and used for shipments. It can differ from your GST registered address, which you can review in the Credentials step.
+      </p>
       <TextAreaField label="Detailed address" value={form.address} onChange={(v) => update("address", v)} />
       <TextField label="PIN code" value={form.pincode} onChange={handlePincode} inputMode="numeric" trailing={looking ? <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" /> : null} />
       <div className="grid grid-cols-2 gap-3">
-        <ReadOnlyPill label="City" value={form.city || "—"} />
-        <ReadOnlyPill label="State" value={form.state || "—"} />
+        <TextField label="City" value={form.city} onChange={(v) => update("city", v)} />
+        <TextField label="State" value={form.state} onChange={(v) => update("state", v)} />
       </div>
-      <ReadOnlyPill label="Country" value={form.country || "India"} />
+      <TextField label="Country" value={form.country || "India"} onChange={(v) => update("country", v)} />
     </div>
   );
 }
+
 
 function ProfileStep({ form, update, token }) {
   return (
@@ -293,12 +298,17 @@ function PhotosStep({ photos, setPhotos, token }) {
 
 function CredentialsStep({ form, update, gstData }) {
   return (
-    <div className="flex flex-col gap-4">
-      <ReadOnlyPill label="GSTIN (verified)" value={gstData?.gstin || form.gstin || "—"} verified />
-      <TextField label="PAN" optional value={form.pan} onChange={(v) => update("pan", v.toUpperCase())} />
-      <TextField label="IEC code" optional value={form.iec_code} onChange={(v) => update("iec_code", v)} />
-      <TextField label="MSME / Udyam number" optional value={form.udyam_number} onChange={(v) => update("udyam_number", v)} />
-      <TextField label="CIN" optional value={form.cin} onChange={(v) => update("cin", v)} />
+    <div className="flex flex-col gap-5">
+      <GstReferencePanel gstData={gstData} />
+      <div>
+        <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-slate-500">Your business credentials</p>
+        <div className="flex flex-col gap-4">
+          <TextField label="PAN" optional value={form.pan} onChange={(v) => update("pan", v.toUpperCase())} />
+          <TextField label="IEC code" optional value={form.iec_code} onChange={(v) => update("iec_code", v)} />
+          <TextField label="MSME / Udyam number" optional value={form.udyam_number} onChange={(v) => update("udyam_number", v)} />
+          <TextField label="CIN" optional value={form.cin} onChange={(v) => update("cin", v)} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -550,6 +560,43 @@ function ColorField({ label, value, onChange }) {
         ))}
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-8 w-8 rounded-full border border-slate-200" />
         <span className="text-[12.5px] font-bold text-slate-500">{value}</span>
+      </div>
+    </div>
+  );
+}
+
+function GstReferencePanel({ gstData }) {
+  if (!gstData) return null;
+  const rows = [
+    ["Legal name", gstData.legal_name],
+    ["Trade name", gstData.trade_name],
+    ["GSTIN status", gstData.gstin_status],
+    ["Constitution", gstData.constitution],
+    ["Taxpayer type", gstData.taxpayer_type],
+    ["GST registration date", gstData.gst_registration_date],
+    ["GST last updated", gstData.gst_last_updated],
+    ["Registered address", gstData.registered_address],
+    ["District", gstData.district],
+    ["Pincode", gstData.pincode],
+    ["State", gstData.state],
+    ["State code", gstData.state_code],
+    ["PAN (GST record)", gstData.pan],
+    ["Nature of business", Array.isArray(gstData.nature_of_business) ? gstData.nature_of_business.join(", ") : gstData.nature_of_business],
+  ].filter(([, v]) => v);
+
+  return (
+    <div className="rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.04] p-4">
+      <div className="flex items-center gap-1.5">
+        <ShieldCheck className="h-4 w-4 text-[#047084]" />
+        <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#047084]">GST registered details (reference only)</p>
+      </div>
+      <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-3 border-b border-[#047084]/10 py-1.5 text-[12px]">
+            <span className="font-semibold text-slate-500">{label}</span>
+            <span className="max-w-[60%] truncate text-right font-bold text-slate-800">{value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

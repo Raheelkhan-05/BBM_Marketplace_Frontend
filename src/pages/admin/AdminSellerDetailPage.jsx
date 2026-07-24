@@ -1,15 +1,18 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Loader2, CheckCircle2, XCircle, ArrowLeft, Save } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, ArrowLeft, Save, Award, FileText } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { adminGetSeller, adminUpdateSeller, adminApproveSeller, adminRejectSeller } from "../../utils/api.js";
 
+// AdminSellerDetailPage.jsx
+
 const SECTIONS = [
-  { title: "Basics", fields: ["display_name", "business_type", "industry", "year_established", "employee_range"] },
+  { title: "Basics", fields: ["display_name", "business_type", "industry", "year_established", "employee_range", "annual_turnover"] },
   { title: "Contact", fields: ["contact_person", "designation", "whatsapp_number", "website"] },
-  { title: "Address", fields: ["address", "pincode", "city", "state", "country"] },
+  { title: "Dispatch / operating address", fields: ["address", "pincode", "city", "state", "country"] },
   { title: "Credentials", fields: ["pan", "iec_code", "udyam_number", "cin"] },
+  { title: "Operations", fields: ["manufacturing_facility", "production_capacity"] },
   { title: "Digital Presence", fields: ["linkedin_url", "facebook_url", "instagram_url", "youtube_url"] },
 ];
 
@@ -21,6 +24,7 @@ export default function AdminSellerDetailPage() {
   const [seller, setSeller] = useState(null);
   const [photos, setPhotos] = useState([]);
   const [certifications, setCertifications] = useState([]);
+  const [products, setProducts] = useState([]);
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -28,10 +32,28 @@ export default function AdminSellerDetailPage() {
   const [rejectReason, setRejectReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
+  // inside the component, after the state hooks:
+  const [business, setBusiness] = useState(null);
+
   useEffect(() => {
     if (!token) return;
     adminGetSeller(token, id).then((res) => {
-      if (res?.success) { setSeller(res.seller); setForm(res.seller); setPhotos(res.photos); setCertifications(res.certifications); }
+      if (res?.success) {
+        setSeller(res.seller); setForm(res.seller);
+        setPhotos(res.photos); setCertifications(res.certifications); setProducts(res.products || []);
+        setBusiness(res.business);
+      }
+      setLoading(false);
+    });
+  }, [id, token]);
+
+  useEffect(() => {
+    if (!token) return;
+    adminGetSeller(token, id).then((res) => {
+      if (res?.success) {
+        setSeller(res.seller); setForm(res.seller);
+        setPhotos(res.photos); setCertifications(res.certifications); setProducts(res.products || []);
+      }
       setLoading(false);
     });
   }, [id, token]);
@@ -44,14 +66,12 @@ export default function AdminSellerDetailPage() {
     if (res?.success) setSeller(res.seller);
     setSaving(false);
   };
-
   const handleApprove = async () => {
     setActionLoading(true);
     const res = await adminApproveSeller(token, id);
     if (res?.success) setSeller(res.seller);
     setActionLoading(false);
   };
-
   const handleReject = async () => {
     if (!rejectReason.trim()) return;
     setActionLoading(true);
@@ -63,6 +83,10 @@ export default function AdminSellerDetailPage() {
   if (loading) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#047084]" /></div>;
   if (!seller) return <p className="py-16 text-center text-slate-400">Seller not found.</p>;
 
+  const hasReviewable = seller.status === "pending_review" || (seller.status === "approved" && seller.has_pending_changes);
+  const pendingPhotos = photos.filter((p) => p.pending);
+  const pendingCerts = certifications.filter((c) => c.pending);
+
   return (
     <div className="mx-auto max-w-3xl px-4 pb-20 pt-6 sm:px-6">
       <button onClick={() => navigate("/admin/sellers")} className="flex items-center gap-1.5 text-[13px] font-bold text-slate-500">
@@ -70,18 +94,47 @@ export default function AdminSellerDetailPage() {
       </button>
 
       <div className="mt-3 flex items-center gap-3">
-        {seller.logo_url && <img src={seller.logo_url} alt="" className="h-14 w-14 rounded-lg border border-slate-200 object-cover" />}
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+          {seller.logo_url && <img src={seller.logo_url} alt="" className="h-full w-full object-contain p-1" />}
+        </div>
         <div>
           <h1 className="text-[20px] font-extrabold text-slate-900">{seller.display_name}</h1>
-          <p className="text-[12.5px] font-semibold text-slate-400">Status: <span className="uppercase">{seller.status.replace("_", " ")}</span></p>
+          <p className="text-[12.5px] font-semibold text-slate-400">
+            Status: <span className="uppercase">{seller.status.replace("_", " ")}</span>
+            {seller.has_pending_changes && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-bold text-amber-700">Edit pending review</span>}
+          </p>
         </div>
       </div>
 
-      {seller.status === "pending_review" && (
+      {seller.banner_url && (
+        <div className="mt-4 aspect-[21/6] w-full overflow-hidden rounded-xl border border-slate-100">
+          <img src={seller.banner_url} alt="" className="h-full w-full object-cover" />
+        </div>
+      )}
+
+      <GstReferencePanel gstData={business ? mapBusinessToDisplay(business) : null} />
+
+      {/* Tag-list fields not covered by SECTIONS */}
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {[
+          ["Categories", seller.categories], ["Products / Brands", seller.products_brands],
+          ["Export countries", seller.export_countries], ["Industries served", seller.industries_served],
+        ].map(([label, arr]) => (arr?.length ? (
+          <div key={label}>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {arr.map((t) => <span key={t} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11.5px] font-bold text-slate-600">{t}</span>)}
+            </div>
+          </div>
+        ) : null))}
+      </div>
+
+      {hasReviewable && (
         <div className="mt-5 flex gap-2.5">
           <button onClick={handleApprove} disabled={actionLoading}
             className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-[13px] font-bold text-white">
-            {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Approve & Go Live
+            {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            {seller.status === "pending_review" ? "Approve & Go Live" : "Approve Changes"}
           </button>
           <button onClick={() => setRejectOpen(true)} className="flex items-center gap-1.5 rounded-xl border border-[#c71f11]/30 px-4 py-2.5 text-[13px] font-bold text-[#c71f11]">
             <XCircle className="h-4 w-4" /> Reject
@@ -100,7 +153,23 @@ export default function AdminSellerDetailPage() {
         </motion.div>
       )}
 
-      {seller.status === "approved" && (
+      {seller.has_pending_changes && seller.pending_changes && (
+        <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h3 className="text-[12.5px] font-extrabold uppercase tracking-wide text-amber-700">Proposed changes (not yet live)</h3>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {Object.entries(seller.pending_changes).map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-3 text-[12.5px]">
+                <span className="font-semibold text-slate-500">{k.replace(/_/g, " ")}</span>
+                <span className="max-w-[60%] truncate text-right font-bold text-slate-800">
+                  {typeof v === "boolean" ? String(v) : Array.isArray(v) ? v.join(", ") : String(v || "—")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {seller.status === "approved" && !seller.has_pending_changes && (
         <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-[12.5px] font-semibold text-emerald-700">
           This shop is live. Edits below save immediately and stay visible to buyers — the seller is notified of changes.
         </p>
@@ -120,6 +189,73 @@ export default function AdminSellerDetailPage() {
           </div>
         </div>
       ))}
+
+      <div className="mt-6">
+        <h3 className="text-[13px] font-extrabold uppercase tracking-wide text-slate-500">Description</h3>
+        <p className="mt-2 whitespace-pre-line rounded-md border border-slate-200 bg-slate-50 px-3.5 py-3 text-[13px] text-slate-700">{seller.description || "—"}</p>
+      </div>
+
+      <div className="mt-6 flex flex-wrap gap-4">
+        {seller.brochure_url && (
+          <a href={seller.brochure_url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-[12.5px] font-bold text-[#047084]">
+            <FileText className="h-4 w-4" /> Brochure
+          </a>
+        )}
+        {seller.video_url && (
+          <a href={seller.video_url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-[12.5px] font-bold text-[#047084]">
+            Video
+          </a>
+        )}
+      </div>
+
+      {photos.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-[13px] font-extrabold uppercase tracking-wide text-slate-500">
+            Gallery {pendingPhotos.length > 0 && <span className="ml-1.5 text-amber-600">({pendingPhotos.length} pending)</span>}
+          </h3>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {photos.map((p) => (
+              <div key={p.id} className="relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200">
+                <img src={p.url} alt="" className="h-full w-full object-cover" />
+                {p.pending && <span className="absolute left-0.5 top-0.5 rounded bg-amber-500 px-1 text-[9px] font-bold text-white">Pending</span>}
+                <span className="absolute bottom-0 left-0 right-0 truncate bg-black/50 px-1 text-[9px] font-bold text-white">{p.category}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {certifications.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-[13px] font-extrabold uppercase tracking-wide text-slate-500">
+            Certifications {pendingCerts.length > 0 && <span className="ml-1.5 text-amber-600">({pendingCerts.length} pending)</span>}
+          </h3>
+          <div className="mt-2.5 flex flex-wrap gap-2.5">
+            {certifications.map((c) => (
+              <a key={c.id} href={c.file_url || "#"} target="_blank" rel="noreferrer"
+                className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-3 py-2">
+                <Award className="h-4 w-4 text-[#047084]" />
+                <span className="text-[12.5px] font-bold text-slate-700">{c.name}</span>
+                {c.pending && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-700">Pending</span>}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {products.length > 0 && (
+        <div className="mt-6">
+          <h3 className="text-[13px] font-extrabold uppercase tracking-wide text-slate-500">Products ({products.length})</h3>
+          <div className="mt-2.5 grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+            {products.map((p) => (
+              <div key={p.id} className="overflow-hidden rounded-lg border border-slate-100">
+                <div className="aspect-square bg-slate-50">{p.image_url && <img src={p.image_url} className="h-full w-full object-cover" alt="" />}</div>
+                <p className="truncate px-1.5 py-1 text-[11px] font-bold text-slate-700">{p.name}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <button onClick={handleSave} disabled={saving}
         className="mt-7 flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-[13.5px] font-bold text-white"

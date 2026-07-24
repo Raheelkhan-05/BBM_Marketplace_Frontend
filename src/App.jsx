@@ -15,6 +15,7 @@ import AdminSellersPage from "./pages/admin/AdminSellersPage.jsx";
 import AdminSellerDetailPage from "./pages/admin/AdminSellerDetailPage.jsx";
 import AdminManageAdminsPage from "./pages/admin/AdminManageAdminsPage.jsx";
 import ShopPage from "./pages/ShopPage.jsx";
+import ShopRoute from "./pages/ShopRoute.jsx";
 
 function App() {
   return (
@@ -35,7 +36,7 @@ function App() {
             <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
             <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
             <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
-            <Route path="/shop/:slug" element={<ShopPage />} />
+            <Route path="/shop/:slug" element={<ShopRoute />} />
           </Route>
         </Routes>
       </BrowserRouter>

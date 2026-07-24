@@ -177,3 +177,60 @@ export async function adminDemoteUser(token, userId) {
   });
   return res.json();
 }
+
+export async function fetchSellerDashboard(token) {
+  const res = await fetch(`${API_BASE}/seller/dashboard`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function updateSellerProfile(token, payload) {
+  const res = await fetch(`${API_BASE}/seller/profile`, {
+    method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+export async function updateSellerTheme(token, payload) {
+  const res = await fetch(`${API_BASE}/seller/theme`, {
+    method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+export async function addSellerPhoto(token, category, url) {
+  const res = await fetch(`${API_BASE}/seller/photos`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ category, url }),
+  });
+  return res.json();
+}
+export async function deleteSellerPhoto(token, id) {
+  const res = await fetch(`${API_BASE}/seller/photos/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function addSellerCertification(token, payload) {
+  const res = await fetch(`${API_BASE}/seller/certifications`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+export async function deleteSellerCertification(token, id) {
+  const res = await fetch(`${API_BASE}/seller/certifications/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function fetchSellerProducts(token) {
+  const res = await fetch(`${API_BASE}/seller/products`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function createSellerProduct(token, payload) {
+  const res = await fetch(`${API_BASE}/seller/products`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+export async function updateSellerProduct(token, id, payload) {
+  const res = await fetch(`${API_BASE}/seller/products/${id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+export async function deleteSellerProduct(token, id) {
+  const res = await fetch(`${API_BASE}/seller/products/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+} 
