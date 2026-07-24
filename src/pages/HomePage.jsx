@@ -11,10 +11,12 @@ import {
 import HomePageSkeleton from "../components/skeletons/HomePageSkeleton.jsx";
 import StartSellingBanner from "../components/home/StartSellingBanner.jsx";
 import {
-  walletBalance, userName, promoSlides, welcomeHighlights, topOffers,
+  promoSlides, welcomeHighlights, topOffers,
   businessHighlights, marketFeed, categories, myPriceList, mostCompared,
   recommendedSuppliers, quickActions,
 } from "../../data/homeData";
+import { useAuth } from "../context/AuthContext.jsx";
+
 
 const ICONS = {
   "trend-down": ArrowDown, users: Users, cart: ShoppingCart,
@@ -311,7 +313,11 @@ function PromoCarousel() {
 
 /* ---------- Welcome Banner ---------- */
 
+// WelcomeBanner — pull the name from profile, first name only, sane fallback
 function WelcomeBanner() {
+  const { profile } = useAuth();
+  const firstName = profile?.name?.trim().split(" ")[0] || "there";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -319,24 +325,12 @@ function WelcomeBanner() {
       viewport={{ once: true, amount: 0.3 }}
       transition={{ duration: 0.4 }}
       className="mt-4 w-full rounded-md border"
-      style={{
-        background: "rgba(4,112,132,0.05)",
-        borderColor: "rgba(4,112,132,0.14)",
-        containerType: "inline-size",
-        padding: "clamp(10px, 2cqw, 18px)",
-      }}
+      style={{ background: "rgba(4,112,132,0.05)", borderColor: "rgba(4,112,132,0.14)", containerType: "inline-size", padding: "clamp(10px, 2cqw, 18px)" }}
     >
-      <div
-        className="grid grid-cols-1 sm:grid-cols-5"
-        style={{ gap: "clamp(6px, 1.4cqw, 14px)" }}
-      >
-        {/* Left: text + cards — full width on mobile, 80% on desktop */}
+      <div className="grid grid-cols-1 sm:grid-cols-5" style={{ gap: "clamp(6px, 1.4cqw, 14px)" }}>
         <div className="col-span-2 sm:col-span-4 min-w-0">
-          <h3
-            className="font-extrabold leading-tight text-slate-900"
-            style={{ fontSize: "clamp(14px, 2cqw, 16px)" }}
-          >
-            Welcome back, {userName} 👋
+          <h3 className="font-extrabold leading-tight text-slate-900" style={{ fontSize: "clamp(14px, 2cqw, 16px)" }}>
+            Welcome back, {firstName} 👋
           </h3>
           <p
             className="font-medium leading-tight text-slate-500"

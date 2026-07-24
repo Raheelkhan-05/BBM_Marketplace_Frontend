@@ -1,6 +1,5 @@
 //src/data/dashboardData.js
 
-export const walletBalance = "₹1,40,000";
 export const userName = "User_Name";
 
 export const promoSlides = [
