@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Loader2, CheckCircle2, XCircle, ArrowLeft, Save, Award, FileText, ShieldCheck } from "lucide-react";
+import { Image as ImageIcon, X as XIcon } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { adminGetSeller, adminUpdateSeller, adminApproveSeller, adminRejectSeller } from "../../utils/api.js";
 
-// AdminSellerDetailPage.jsx
 
 const SECTIONS = [
   { title: "Basics", fields: ["display_name", "business_type", "industry", "year_established", "employee_range", "annual_turnover"] },
@@ -20,6 +20,7 @@ export default function AdminSellerDetailPage() {
   const { id } = useParams();
   const { token } = useAuth();
   const navigate = useNavigate();
+  const [lightbox, setLightbox] = useState(null);
 
   const [seller, setSeller] = useState(null);
   const [photos, setPhotos] = useState([]);
@@ -94,22 +95,20 @@ export default function AdminSellerDetailPage() {
       </button>
 
       <div className="mt-3 flex items-center gap-3">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <button onClick={() => seller.logo_url && setLightbox({ url: seller.logo_url, label: "Logo" })}
+          className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
           {seller.logo_url && <img src={seller.logo_url} alt="" className="h-full w-full object-contain p-1" />}
-        </div>
+        </button>
         <div>
           <h1 className="text-[20px] font-extrabold text-slate-900">{seller.display_name}</h1>
-          <p className="text-[12.5px] font-semibold text-slate-400">
-            Status: <span className="uppercase">{seller.status.replace("_", " ")}</span>
-            {seller.has_pending_changes && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-bold text-amber-700">Edit pending review</span>}
-          </p>
         </div>
       </div>
 
       {seller.banner_url && (
-        <div className="mt-4 aspect-[21/6] w-full overflow-hidden rounded-xl border border-slate-100">
+        <button onClick={() => setLightbox({ url: seller.banner_url, label: "Banner" })}
+          className="mt-4 block aspect-[21/6] w-full overflow-hidden rounded-xl border border-slate-100">
           <img src={seller.banner_url} alt="" className="h-full w-full object-cover" />
-        </div>
+        </button>
       )}
 
       <GstReferencePanel gstData={business ? mapBusinessToDisplay(business) : null} />
@@ -213,15 +212,24 @@ export default function AdminSellerDetailPage() {
           <h3 className="text-[13px] font-extrabold uppercase tracking-wide text-slate-500">
             Gallery {pendingPhotos.length > 0 && <span className="ml-1.5 text-amber-600">({pendingPhotos.length} pending)</span>}
           </h3>
-          <div className="mt-2.5 flex flex-wrap gap-2">
-            {photos.map((p) => (
-              <div key={p.id} className="relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200">
-                <img src={p.url} alt="" className="h-full w-full object-cover" />
-                {p.pending && <span className="absolute left-0.5 top-0.5 rounded bg-amber-500 px-1 text-[9px] font-bold text-white">Pending</span>}
-                <span className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 text-[9px] font-bold text-white">{p.category}</span>
+          {["office", "factory", "warehouse", "team", "product"].map((cat) => {
+            const imgs = photos.filter((p) => p.category === cat);
+            if (!imgs.length) return null;
+            return (
+              <div key={cat} className="mt-3">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{cat}</p>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {imgs.map((p) => (
+                    <button key={p.id} onClick={() => setLightbox({ url: p.url, label: `${cat} photo` })}
+                      className="relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200">
+                      <img src={p.url} alt="" className="h-full w-full object-cover" />
+                      {p.pending && <span className="absolute left-0.5 top-0.5 rounded bg-amber-500 px-1 text-[9px] font-bold text-white">Pending</span>}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       )}
 
@@ -231,14 +239,32 @@ export default function AdminSellerDetailPage() {
             Certifications {pendingCerts.length > 0 && <span className="ml-1.5 text-amber-600">({pendingCerts.length} pending)</span>}
           </h3>
           <div className="mt-2.5 flex flex-wrap gap-2.5">
-            {certifications.map((c) => (
-              <a key={c.id} href={c.file_url || "#"} target="_blank" rel="noreferrer"
-                className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-3 py-2">
-                <Award className="h-4 w-4 text-[#047084]" />
-                <span className="text-[12.5px] font-bold text-slate-700">{c.name}</span>
-                {c.pending && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-700">Pending</span>}
-              </a>
-            ))}
+            {certifications.map((c) => {
+              const FileIcon = isPdf(c.file_url) ? FileText : ImageIcon;
+              return (
+                <div key={c.id} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-3 py-2">
+                  <Award className="h-4 w-4 shrink-0 text-[#047084]" />
+                  <div className="flex flex-col">
+                    <span className="text-[12.5px] font-bold text-slate-700">{c.name}</span>
+                    {c.issued_by && <span className="text-[10.5px] font-medium text-slate-400">{c.issued_by}</span>}
+                  </div>
+                  {c.pending && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9.5px] font-bold text-amber-700">Pending</span>}
+                  {c.file_url ? (
+                    isPdf(c.file_url) ? (
+                      <a href={c.file_url} target="_blank" rel="noreferrer" className="ml-1 flex items-center gap-1 text-[11px] font-bold text-[#047084]">
+                        <FileIcon className="h-3.5 w-3.5" /> View PDF
+                      </a>
+                    ) : (
+                      <button onClick={() => setLightbox({ url: c.file_url, label: c.name })} className="ml-1 flex items-center gap-1 text-[11px] font-bold text-[#047084]">
+                        <FileIcon className="h-3.5 w-3.5" /> View
+                      </button>
+                    )
+                  ) : (
+                    <span className="ml-1 text-[10.5px] font-medium text-slate-300">No file attached</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -246,12 +272,14 @@ export default function AdminSellerDetailPage() {
       {products.length > 0 && (
         <div className="mt-6">
           <h3 className="text-[13px] font-extrabold uppercase tracking-wide text-slate-500">Products ({products.length})</h3>
+          
           <div className="mt-2.5 grid grid-cols-3 gap-2.5 sm:grid-cols-4">
             {products.map((p) => (
-              <div key={p.id} className="overflow-hidden rounded-lg border border-slate-100">
+              <button key={p.id} onClick={() => p.image_url && setLightbox({ url: p.image_url, label: p.name })}
+                className="overflow-hidden rounded-lg border border-slate-100 text-left">
                 <div className="aspect-square bg-slate-50">{p.image_url && <img src={p.image_url} className="h-full w-full object-cover" alt="" />}</div>
-                <p className="px-1.5 py-1 text-[11px] font-bold text-slate-700">{p.name}</p>
-              </div>
+                <p className="truncate px-1.5 py-1 text-[11px] font-bold text-slate-700">{p.name}</p>
+              </button>
             ))}
           </div>
         </div>
@@ -262,6 +290,21 @@ export default function AdminSellerDetailPage() {
         style={{ background: "linear-gradient(135deg, #047084, #0a95ab)" }}>
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Changes
       </button>
+
+      {lightbox && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={() => setLightbox(null)}>
+          <div className="relative max-h-[85vh] max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <img src={lightbox.url} alt={lightbox.label} className="max-h-[85vh] max-w-full rounded-lg object-contain" />
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-[12.5px] font-semibold text-white/80">{lightbox.label}</span>
+              <a href={lightbox.url} target="_blank" rel="noreferrer" className="text-[12.5px] font-bold text-white underline">Open original</a>
+            </div>
+            <button onClick={() => setLightbox(null)} className="absolute -right-2 -top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg">
+              <XIcon className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -320,4 +363,8 @@ function mapBusinessToDisplay(business) {
     pan: business.pan,
     nature_of_business: business.nature_of_business,
   };
+}
+
+function isPdf(url) {
+  return typeof url === "string" && url.toLowerCase().split("?")[0].endsWith(".pdf");
 }
