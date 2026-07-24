@@ -84,7 +84,7 @@ export default function SellerDashboardPage({ slug }) {
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 pb-24 pt-4 sm:px-6 sm:pb-16">
+      <div className="mx-auto max-w-6xl pt-4 sm:px-6 sm:pb-16">
         {seller.has_pending_changes && (
           <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12px] font-semibold text-amber-700 sm:px-4 sm:py-3 sm:text-[12.5px]">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -99,16 +99,7 @@ export default function SellerDashboardPage({ slug }) {
 
         {view === "preview" ? (
           <div>
-            <div className="mb-3 flex justify-center gap-1.5 sm:justify-end">
-              <button onClick={() => setPreviewWidth("mobile")} className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-bold"
-                style={{ borderColor: previewWidth === "mobile" ? "#047084" : "#e2e8f0", color: previewWidth === "mobile" ? "#047084" : "#64748b" }}>
-                <Smartphone className="h-3.5 w-3.5" /> Mobile
-              </button>
-              <button onClick={() => setPreviewWidth("desktop")} className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-bold"
-                style={{ borderColor: previewWidth === "desktop" ? "#047084" : "#e2e8f0", color: previewWidth === "desktop" ? "#047084" : "#64748b" }}>
-                <Monitor className="h-3.5 w-3.5" /> Desktop
-              </button>
-            </div>
+            
             <div className="mx-auto overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all"
               style={{ maxWidth: previewWidth === "mobile" ? "390px" : "100%" }}>
               <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50 px-3 py-2">
@@ -141,14 +132,20 @@ export default function SellerDashboardPage({ slug }) {
             </aside>
 
             {/* Mobile tab pills */}
-            <div className="flex gap-1.5 overflow-x-auto pb-1 lg:hidden">
-              {TABS.map((t) => (
-                <button key={t.key} onClick={() => setTab(t.key)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-bold"
-                  style={{ background: tab === t.key ? "#047084" : "#f1f5f9", color: tab === t.key ? "white" : "#64748b" }}>
-                  <t.icon className="h-3.5 w-3.5" /> {t.label}
+            <div className="scrollbar-hide flex gap-1.5 overflow-x-auto mx-3 pb-1 lg:hidden">
+            {TABS.map((t) => (
+                <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className="flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-bold"
+                style={{
+                    background: tab === t.key ? "#047084" : "#f1f5f9",
+                    color: tab === t.key ? "white" : "#64748b",
+                }}
+                >
+                <t.icon className="h-3.5 w-3.5" /> {t.label}
                 </button>
-              ))}
+            ))}
             </div>
 
             <div className="min-w-0 flex-1 rounded-2xl border border-slate-100 bg-white p-4 sm:p-6">
