@@ -71,8 +71,8 @@ export default function AdminSellersPage() {
                 {s.logo_url ? <img src={s.logo_url} alt="" className="h-full w-full object-cover" /> : <Store className="h-5 w-5 text-slate-300" />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-bold text-slate-900">{s.display_name || "Untitled shop"}</p>
-                <p className="truncate text-[12px] font-medium text-slate-400">{s.business_type} &middot; {s.city}, {s.state}</p>
+                <p className="text-[14px] font-bold text-slate-900">{s.display_name || "Untitled shop"}</p>
+                <p className="text-[12px] font-medium text-slate-400">{s.business_type} &middot; {s.city}, {s.state}</p>
               </div>
               <span className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: tone.bg, color: tone.fg }}>{tone.label}</span>
               <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />

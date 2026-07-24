@@ -62,7 +62,7 @@ export default function StartSellingBanner() {
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-extrabold leading-tight text-slate-900 sm:text-[15px]">{c.title}</p>
-        <p className="mt-0.5 truncate text-[12px] font-medium leading-tight text-slate-500 sm:text-[12.5px]">{c.sub}</p>
+        <p className="mt-0.5 text-[12px] font-medium leading-tight text-slate-500 sm:text-[12.5px]">{c.sub}</p>
       </div>
       <span className="hidden shrink-0 items-center gap-1 rounded-full px-3.5 py-2 text-[12.5px] font-bold text-white sm:flex"
         style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>

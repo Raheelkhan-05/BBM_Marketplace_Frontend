@@ -70,7 +70,7 @@ export default function ShopPage({ slug: slugProp, previewData = null }) {
           <div className="flex flex-col gap-3 pt-14 sm:flex-row sm:items-end sm:justify-between sm:pt-3 sm:pl-[136px]">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-[19px] font-extrabold text-slate-900 sm:text-[24px]">{seller.display_name}</h1>
+                <h1 className="text-[19px] font-extrabold text-slate-900 sm:text-[24px]">{seller.display_name}</h1>
                 <span className="flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold text-white sm:px-2.5 sm:py-1 sm:text-[11px]" style={{ background: primary }}>
                   <ShieldCheck className="h-3 w-3" /> GST Verified
                 </span>
@@ -123,7 +123,7 @@ export default function ShopPage({ slug: slugProp, previewData = null }) {
                     {p.image_url ? <img src={p.image_url} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Package className="h-6 w-6 text-slate-300" /></div>}
                   </div>
                   <div className="p-2.5">
-                    <p className="truncate text-[12px] font-bold text-slate-800 sm:text-[12.5px]">{p.name}</p>
+                    <p className="text-[12px] font-bold text-slate-800 sm:text-[12.5px]">{p.name}</p>
                     {p.price && <p className="text-[11px] font-semibold sm:text-[11.5px]" style={{ color: primary }}>{p.price}{p.unit ? ` / ${p.unit}` : ""}</p>}
                   </div>
                 </div>

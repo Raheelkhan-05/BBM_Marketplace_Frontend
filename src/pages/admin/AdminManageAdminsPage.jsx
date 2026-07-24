@@ -76,8 +76,8 @@ export default function AdminManageAdminsPage() {
           {results.map((u) => (
             <div key={u.id} className="flex items-center gap-3 px-4 py-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-bold text-slate-900">{u.name || "Unnamed user"}</p>
-                <p className="truncate text-[12px] font-medium text-slate-400">{u.email || u.phone}</p>
+                <p className="text-[13.5px] font-bold text-slate-900">{u.name || "Unnamed user"}</p>
+                <p className="text-[12px] font-medium text-slate-400">{u.email || u.phone}</p>
               </div>
               {u.role === "admin" ? (
                 <span className="flex shrink-0 items-center gap-1 rounded-full bg-[#047084]/10 px-2.5 py-1 text-[11px] font-bold text-[#047084]">
@@ -106,8 +106,8 @@ export default function AdminManageAdminsPage() {
                 <ShieldCheck className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-bold text-slate-900">{a.name || "Unnamed"} {isSelf && <span className="font-medium text-slate-400">(you)</span>}</p>
-                <p className="truncate text-[12px] font-medium text-slate-400">{a.email || a.phone}</p>
+                <p className="text-[13.5px] font-bold text-slate-900">{a.name || "Unnamed"} {isSelf && <span className="font-medium text-slate-400">(you)</span>}</p>
+                <p className="text-[12px] font-medium text-slate-400">{a.email || a.phone}</p>
               </div>
               {!isSelf && (
                 <button onClick={() => handleDemote(a.id)} disabled={busyId === a.id || admins.length <= 1}

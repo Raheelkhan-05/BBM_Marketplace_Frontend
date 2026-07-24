@@ -67,7 +67,7 @@ export default function SellerDashboardPage({ slug }) {
             <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-white">
               {seller.logo_url ? <img src={seller.logo_url} className="h-full w-full object-contain p-0.5" alt="" /> : <Store className="h-4 w-4 text-slate-300" />}
             </div>
-            <h1 className="truncate text-[15px] font-extrabold text-slate-900 sm:text-[17px]">{seller.display_name}</h1>
+            <h1 className="text-[15px] font-extrabold text-slate-900 sm:text-[17px]">{seller.display_name}</h1>
           </div>
           <div className="flex shrink-0 rounded-full border border-slate-200 bg-slate-50 p-1">
             <button onClick={() => setView("manage")}
@@ -104,7 +104,7 @@ export default function SellerDashboardPage({ slug }) {
               style={{ maxWidth: previewWidth === "mobile" ? "390px" : "100%" }}>
               <div className="flex items-center gap-1.5 border-b border-slate-100 bg-slate-50 px-3 py-2">
                 <span className="h-2 w-2 rounded-full bg-red-300" /><span className="h-2 w-2 rounded-full bg-amber-300" /><span className="h-2 w-2 rounded-full bg-emerald-300" />
-                <span className="ml-2 truncate text-[10.5px] font-medium text-slate-400">bbmpvtltd.com/shop/{seller.shop_slug}</span>
+                <span className="ml-2 text-[10.5px] font-medium text-slate-400">bbmpvtltd.com/shop/{seller.shop_slug}</span>
               </div>
               <ShopPage previewData={{ seller: dash.effective, photos: dash.photos, certifications: dash.certifications, products: dash.products }} />
             </div>
@@ -321,7 +321,7 @@ function ProductsTab({ token, products, onChange }) {
           <div key={p.id} className="relative overflow-hidden rounded-xl border border-slate-100">
             <div className="aspect-square w-full bg-slate-50">{p.image_url && <img src={p.image_url} className="h-full w-full object-cover" alt="" />}</div>
             <div className="p-2">
-              <p className="truncate text-[12px] font-bold text-slate-800">{p.name}</p>
+              <p className="text-[12px] font-bold text-slate-800">{p.name}</p>
               <p className="text-[11px] font-semibold text-slate-400">{p.price}{p.unit ? ` / ${p.unit}` : ""}</p>
             </div>
             <button onClick={() => remove(p.id)} className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white text-[11px]">✕</button>
@@ -371,7 +371,7 @@ function BrandingTab({ seller, onSave }) {
               {(seller.display_name || "S")[0]}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-[12.5px] font-extrabold text-slate-900">{seller.display_name || "Your Shop"}</p>
+              <p className="text-[12.5px] font-extrabold text-slate-900">{seller.display_name || "Your Shop"}</p>
               <button className="mt-0.5 rounded-md px-2 py-0.5 text-[10px] font-bold text-white" style={{ background: secondary }}>Contact Supplier</button>
             </div>
           </div>
@@ -411,7 +411,7 @@ function GstReferencePanel({ gstData }) {
         {rows.map(([label, value]) => (
           <div key={label} className="flex justify-between gap-3 border-b border-[#047084]/10 py-1.5 text-[12px]">
             <span className="font-semibold text-slate-500">{label}</span>
-            <span className="max-w-[60%] truncate text-right font-bold text-slate-800">{value}</span>
+            <span className="max-w-[60%] text-right font-bold text-slate-800">{value}</span>
           </div>
         ))}
       </div>

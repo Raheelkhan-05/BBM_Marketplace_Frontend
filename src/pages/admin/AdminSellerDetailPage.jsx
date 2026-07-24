@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Loader2, CheckCircle2, XCircle, ArrowLeft, Save, Award, FileText } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, ArrowLeft, Save, Award, FileText, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { adminGetSeller, adminUpdateSeller, adminApproveSeller, adminRejectSeller } from "../../utils/api.js";
 
@@ -160,7 +160,7 @@ export default function AdminSellerDetailPage() {
             {Object.entries(seller.pending_changes).map(([k, v]) => (
               <div key={k} className="flex justify-between gap-3 text-[12.5px]">
                 <span className="font-semibold text-slate-500">{k.replace(/_/g, " ")}</span>
-                <span className="max-w-[60%] truncate text-right font-bold text-slate-800">
+                <span className="max-w-[60%] text-right font-bold text-slate-800">
                   {typeof v === "boolean" ? String(v) : Array.isArray(v) ? v.join(", ") : String(v || "—")}
                 </span>
               </div>
@@ -218,7 +218,7 @@ export default function AdminSellerDetailPage() {
               <div key={p.id} className="relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200">
                 <img src={p.url} alt="" className="h-full w-full object-cover" />
                 {p.pending && <span className="absolute left-0.5 top-0.5 rounded bg-amber-500 px-1 text-[9px] font-bold text-white">Pending</span>}
-                <span className="absolute bottom-0 left-0 right-0 truncate bg-black/50 px-1 text-[9px] font-bold text-white">{p.category}</span>
+                <span className="absolute bottom-0 left-0 right-0 bg-black/50 px-1 text-[9px] font-bold text-white">{p.category}</span>
               </div>
             ))}
           </div>
@@ -250,7 +250,7 @@ export default function AdminSellerDetailPage() {
             {products.map((p) => (
               <div key={p.id} className="overflow-hidden rounded-lg border border-slate-100">
                 <div className="aspect-square bg-slate-50">{p.image_url && <img src={p.image_url} className="h-full w-full object-cover" alt="" />}</div>
-                <p className="truncate px-1.5 py-1 text-[11px] font-bold text-slate-700">{p.name}</p>
+                <p className="px-1.5 py-1 text-[11px] font-bold text-slate-700">{p.name}</p>
               </div>
             ))}
           </div>
@@ -264,4 +264,60 @@ export default function AdminSellerDetailPage() {
       </button>
     </div>
   );
+}
+
+function GstReferencePanel({ gstData }) {
+  if (!gstData) return null;
+  const rows = [
+    ["Legal name", gstData.legal_name],
+    ["Trade name", gstData.trade_name],
+    ["GSTIN status", gstData.gstin_status],
+    ["Constitution", gstData.constitution],
+    ["Taxpayer type", gstData.taxpayer_type],
+    ["GST registration date", gstData.gst_registration_date],
+    ["GST last updated", gstData.gst_last_updated],
+    ["Registered address", gstData.registered_address],
+    ["District", gstData.district],
+    ["Pincode", gstData.pincode],
+    ["State", gstData.state],
+    ["State code", gstData.state_code],
+    ["PAN (GST record)", gstData.pan],
+    ["Nature of business", Array.isArray(gstData.nature_of_business) ? gstData.nature_of_business.join(", ") : gstData.nature_of_business],
+  ].filter(([, v]) => v);
+
+  return (
+    <div className="rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.04] p-4">
+      <div className="flex items-center gap-1.5">
+        <ShieldCheck className="h-4 w-4 text-[#047084]" />
+        <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#047084]">GST registered details (reference only)</p>
+      </div>
+      <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-3 border-b border-[#047084]/10 py-1.5 text-[12px]">
+            <span className="font-semibold text-slate-500">{label}</span>
+            <span className="max-w-[60%] text-right font-bold text-slate-800">{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function mapBusinessToDisplay(business) {
+  return {
+    legal_name: business.legal_name,
+    trade_name: business.trade_name,
+    gstin_status: business.gstin_status ?? business.status,
+    constitution: business.constitution,
+    taxpayer_type: business.taxpayer_type,
+    gst_registration_date: business.gst_registration_date ?? business.registration_date,
+    gst_last_updated: business.gst_last_updated ?? business.last_updated,
+    registered_address: business.registered_address ?? business.address,
+    district: business.district,
+    pincode: business.pincode,
+    state: business.state,
+    state_code: business.state_code,
+    pan: business.pan,
+    nature_of_business: business.nature_of_business,
+  };
 }

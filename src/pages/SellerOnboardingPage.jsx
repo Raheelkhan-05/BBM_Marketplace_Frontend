@@ -413,7 +413,7 @@ function ReviewStep({ form }) {
       ].map(([label, value]) => (
         <div key={label} className="flex justify-between border-b border-slate-100 py-2 text-[13px]">
           <span className="font-semibold text-slate-500">{label}</span>
-          <span className="max-w-[60%] truncate text-right font-bold text-slate-800">{value || "—"}</span>
+          <span className="max-w-[60%] text-right font-bold text-slate-800">{value || "—"}</span>
         </div>
       ))}
     </div>
@@ -594,7 +594,7 @@ function GstReferencePanel({ gstData }) {
         {rows.map(([label, value]) => (
           <div key={label} className="flex justify-between gap-3 border-b border-[#047084]/10 py-1.5 text-[12px]">
             <span className="font-semibold text-slate-500">{label}</span>
-            <span className="max-w-[60%] truncate text-right font-bold text-slate-800">{value}</span>
+            <span className="max-w-[60%] text-right font-bold text-slate-800">{value}</span>
           </div>
         ))}
       </div>
