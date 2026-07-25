@@ -103,6 +103,8 @@ export default function HomePage() {
         {/* Quick Action Bar JUST BELOW THE HERO BANNER (8 Items in 2x4 Grid) */}
         <QuickActionsJustBelowBanner onOpenRfq={() => setIsRfqOpen(true)} />
 
+        <TrustStripLogos />
+
         {/* Industrial Category Department Explorer */}
         <TopCategoriesAccordion />
 
@@ -899,6 +901,121 @@ function BusinessAndMarketRow() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ---------- Trust Strip: Dual-row infinite marquee of brand logos (bare, no cards) ---------- */
+
+const trustBrands = [
+  {
+    name: "SKF Group (Bearings)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/SKF-Logo.svg/2560px-SKF-Logo.svg.png"
+  },
+  {
+    name: "Shell (Lubricants)",
+    logo: "https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/shell.svg"
+  },
+  {
+    name: "3M (Industrial Pack & Safety)",
+    logo: "https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/threedotm.svg"
+  },
+  {
+    name: "Schneider Electric",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/9/95/Schneider_Electric_2007.svg"
+  },
+  {
+    name: "Bosch Rexroth (Hydraulics)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Logo_of_Bosch_Rexroth_AG.svg/1280px-Logo_of_Bosch_Rexroth_AG.svg.png"
+  },
+  {
+    name: "Würth Group (Fasteners)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/2/26/WURTH.png"
+  },
+  {
+    name: "Grundfos (Pumps & Valves)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/7/7b/Grundfos_logo.svg"
+  },
+  {
+    name: "Honeywell (Safety Gear)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Honeywell_logo.svg/1280px-Honeywell_logo.svg.png"
+  },
+  {
+    name: "ArcelorMittal (Steel Works)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/c/cd/Arcelormittal-logo.svg"
+  },
+  {
+    name: "Sandvik (MetalTech)",
+    logo: "https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/sandvik.svg"
+  }
+];
+
+function TrustLogo({ brand, onSelect }) {
+  return (
+    <button
+      onClick={() => onSelect(brand.name)}
+      className="shrink-0 mx-4 sm:mx-5 flex items-center justify-center group"
+      title={`Search ${brand.name}`}
+    >
+      <img
+        src={brand.logo}
+        alt={brand.name}
+        loading="lazy"
+        className="h-8 sm:h-10 w-auto object-contain grayscale opacity-60 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-200"
+      />
+    </button>
+  );
+}
+
+function MarqueeRow({ brands, direction = "left", onSelect }) {
+  const loop = [...brands, ...brands];
+  return (
+    <div className="relative overflow-hidden bg-white">
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-14 sm:w-24 bg-gradient-to-r from-black/10 via-black/0 to-transparent z-10" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-14 sm:w-24 bg-gradient-to-l from-black/10 via-black/0 to-transparent z-10" />
+
+      <div
+        className={`flex w-max items-center py-4 ${direction === "left" ? "animate-marquee-left" : "animate-marquee-right"
+          }`}
+      >
+        {loop.map((brand, i) => (
+          <TrustLogo key={`${brand.name}-${i}`} brand={brand} onSelect={onSelect} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TrustStripLogos() {
+  const handleSelect = (name) => {
+    window.location.href = `/search?query=${encodeURIComponent(name)}`;
+  };
+
+  return (
+    <div className="space-y-2 bg-white rounded-2xl border border-slate-200">
+      <MarqueeRow brands={trustBrands} direction="left" onSelect={handleSelect} />
+      <MarqueeRow brands={[...trustBrands].reverse()} direction="right" onSelect={handleSelect} />
+
+      <style>{`
+        @keyframes marquee-left {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        @keyframes marquee-right {
+          0% { transform: translateX(-50%); }
+          100% { transform: translateX(0); }
+        }
+        .animate-marquee-left {
+          animation: marquee-left 32s linear infinite;
+        }
+        .animate-marquee-right {
+          animation: marquee-right 32s linear infinite;
+        }
+        .animate-marquee-left:hover,
+        .animate-marquee-right:hover {
+          animation-play-state: paused;
+        }
+      `}</style>
     </div>
   );
 }
