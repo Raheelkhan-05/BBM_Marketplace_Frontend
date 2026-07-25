@@ -1,44 +1,62 @@
-//src/pages/HomePage.jsx
+// src/pages/HomePage.jsx
 
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { animate, motion, useMotionValue } from "framer-motion";
 import {
-  Search, Camera, Wallet, ChevronRight, ArrowDown, Users, ShoppingCart,
-  Tag, FileText, Zap, BadgePercent, TrendingUp, TrendingDown, Circle, Truck,
-  CreditCard, Plus, ScanLine, ClipboardList, Repeat, Star, Bell, ShieldCheck,
+  Search, Camera, ChevronRight, ArrowDown, Users, ShoppingCart,
+  Tag, FileText, Zap, BadgePercent, TrendingUp, Circle, Truck,
+  CreditCard, Plus, ScanLine, ClipboardList, Repeat, Star, ShieldCheck,
+  Lock, FileCheck, Layers, Cpu, Box, Clock, CheckCircle2, SlidersHorizontal,
+  Scale, ArrowUpRight, Award, Building2, PackageCheck, Grid, Percent, Sparkles,
+  ArrowRight, Activity, FileSpreadsheet, Shield
 } from "lucide-react";
+
 import HomePageSkeleton from "../components/skeletons/HomePageSkeleton.jsx";
 import StartSellingBanner from "../components/home/StartSellingBanner.jsx";
+import QuickRfqModal from "../components/home/QuickRfqModal.jsx";
+import BulkOrderWidget from "../components/home/BulkOrderWidget.jsx";
+import SupplierCompareModal from "../components/home/SupplierCompareModal.jsx";
+
 import {
-  promoSlides, welcomeHighlights, topOffers,
+  heroStats, promoSlides, trustPoints, welcomeHighlights, topOffers,
   businessHighlights, marketFeed, categories, myPriceList, mostCompared,
-  recommendedSuppliers, quickActions,
+  recommendedSuppliers, quickActions
 } from "../../data/homeData";
 import { useAuth } from "../context/AuthContext.jsx";
 
 /* =========================================================================
-   DESIGN TOKENS
-   A small, restrained palette used consistently everywhere. Color is spent
-   deliberately — icon chips, one accent rule, a gold "trust" ribbon — not
-   spread across full-card gradient washes. This is the single source of
-   truth for the visual system; every section below draws from it.
+   UI-UX-PRO-MAX DESIGN SYSTEM (Enterprise B2B Amazon Marketplace)
+   Brand Red:     #d2462b (Terracotta Red - CTAs & Deal Badges)
+   Brand Teal:    #006f83 (Deep Corporate Slate Teal - Secondary Accent & Trust)
+   Brand Paper:   #fdfeff (Card Surface with 3D Inset Bevel)
+   Canvas:        #f1f5f9 (Warm Sober Neutral Backdrop)
+   Amazon Navy:   #131921 & Amazon Gold #febd69
    ========================================================================= */
 const COLOR = {
-  ink: "#101828",        // headings
-  body: "#4B5468",       // primary body text
-  muted: "#8A93A6",       // secondary / caption text
-  hairline: "rgba(16,24,40,0.09)",
-  paper: "#FFFFFF",
-  canvas: "#F7F7F5",       // page-level warm-neutral wash, used sparingly
-  brandDeep: "#052E38",   // deep teal-ink (chrome / banner)
-  brand: "#0B7285",       // primary brand teal (deepened, less "web-safe" than before)
-  brandSoft: "rgba(11,114,133,0.07)",
-  gold: "#9C6F1E",         // muted gold — reserved for trust / value signals
-  goldSoft: "rgba(156,111,30,0.10)",
-  goldLine: "rgba(156,111,30,0.28)",
-  success: "#1E7A5F",
-  danger: "#B23B3B",
+  brandRed: "#d2462b",
+  brandRedDark: "#b53820",
+  brandRedSoft: "rgba(210,70,43,0.08)",
+
+  brandTeal: "#006f83",
+  brandTealDark: "#005666",
+  brandTealSoft: "rgba(0,111,131,0.08)",
+  brandTealLine: "rgba(0,111,131,0.22)",
+
+  brandPaper: "#fdfeff",
+  canvas: "#f1f5f9",
+
+  ink: "#0f172a",
+  body: "#334155",
+  muted: "#64748b",
+  hairline: "rgba(15,23,42,0.08)",
+  hairlineStrong: "rgba(15,23,42,0.16)",
+
+  gold: "#d97706",
+  amazonGold: "#febd69",
+
+  emerald: "#059669",
+  emeraldSoft: "rgba(5,150,105,0.08)",
 };
 
 const ICONS = {
@@ -46,18 +64,18 @@ const ICONS = {
   tag: Tag, file: FileText, bolt: Zap, badge: BadgePercent,
   circle: Circle, trend: TrendingUp, "trend-up": TrendingUp, truck: Truck, card: CreditCard,
   plus: Plus, scan: ScanLine, clipboard: ClipboardList, repeat: Repeat,
+  shield: ShieldCheck, lock: Lock, invoice: FileCheck, box: Box, clock: Clock,
+  "shield-check": ShieldCheck, "file-check": FileCheck, "part-scan": ScanLine,
+  "gst-credit": FileCheck, "credit-line": CreditCard, samples: ShieldCheck
 };
 
-// Kept the same keys (green / blue / orange) so existing data files still
-// resolve correctly — only the values are recalibrated to muted, cohesive tones.
-const TONE_MAP = {
-  green: { fg: COLOR.success, bg: "rgba(30,122,95,0.08)" },
-  blue: { fg: "#1E4E77", bg: "rgba(30,78,119,0.08)" },
-  orange: { fg: COLOR.gold, bg: COLOR.goldSoft },
-};
+const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const FONT_DISPLAY = "'Rubik', " + FONT_BODY;
 
 export default function HomePage() {
   const [ready, setReady] = useState(false);
+  const [isRfqOpen, setIsRfqOpen] = useState(false);
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setReady(true));
@@ -67,101 +85,239 @@ export default function HomePage() {
   if (!ready) return <HomePageSkeleton />;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 pb-12 pt-3 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#f1f5f9] text-slate-900 antialiased overflow-x-hidden" style={{ fontFamily: FONT_BODY }}>
       <GlobalStyles />
-      <SearchWalletRow />
-      <PromoCarousel />
-      <WelcomeBanner />
-      <StartSellingBanner />
-      <TopOffers />
-      <BusinessAndMarketRow />
-      <ShopByCategory />
-      <PriceListAndComparedRow />
-      <QuickActions />
+
+      {/* Amazon Dark Header Sub-Bar */}
+      <AmazonSubHeader onOpenRfq={() => setIsRfqOpen(true)} />
+
+      <main className="mx-auto max-w-[1400px] px-2.5 sm:px-4 lg:px-6 pb-20 pt-3 space-y-6">
+        {/* Search Header Bar */}
+        <AmazonSearchHeader onOpenRfq={() => setIsRfqOpen(true)} />
+
+        {/* 16:9 Aspect Ratio Hero Banner */}
+        <Hero16by9Banner onOpenRfq={() => setIsRfqOpen(true)} />
+
+        {/* Quick Action Bar JUST BELOW THE HERO BANNER (8 Items in 2x4 Grid) */}
+        <QuickActionsJustBelowBanner onOpenRfq={() => setIsRfqOpen(true)} />
+
+        {/* Amazon-Style 4-Box Feature Quad Grid */}
+        <AmazonQuadFeatureGrid onOpenRfq={() => setIsRfqOpen(true)} onOpenCompare={() => setIsCompareOpen(true)} />
+
+        {/* Signature 4-Point Trust & Guarantee Strip */}
+        <TrustStrip />
+
+        {/* Personalized Buyer Command Center */}
+        <WelcomeBanner />
+
+        {/* Multi-SKU Rapid Order Desk */}
+        <BulkOrderWidget />
+
+        {/* Today's B2B Wholesale Deals & Volume Pricing */}
+        <TopWholesaleOffers onOpenRfq={() => setIsRfqOpen(true)} />
+
+        {/* Industrial Category Department Explorer */}
+        <ShopByCategory />
+
+        {/* Business Metrics & Live Commodity Ticker */}
+        <BusinessAndMarketRow />
+
+        {/* Verified Factory Supplier Showcase */}
+        <SupplierShowcase onOpenCompare={() => setIsCompareOpen(true)} />
+
+        {/* Start Selling Banner */}
+        <StartSellingBanner />
+      </main>
+
+      {/* Modals */}
+      <QuickRfqModal isOpen={isRfqOpen} onClose={() => setIsRfqOpen(false)} />
+      <SupplierCompareModal isOpen={isCompareOpen} onClose={() => setIsCompareOpen(false)} />
     </div>
   );
 }
 
-/* ---------- Shared style system (single source, applied everywhere) ---------- */
+/* ---------- Global Design System Styles & Dimensional Layering ---------- */
 function GlobalStyles() {
   return (
     <style>{`
-      .pm-surface {
-        background: ${COLOR.paper};
-        border: 1px solid ${COLOR.hairline};
+      @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800&family=Rubik:wght@500;600;700;800&display=swap');
+
+      body {
+        letter-spacing: -0.012em;
+        background-color: #f1f5f9;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        letter-spacing: -0.025em;
+      }
+
+      /* 3D Elevation Layering Cards with Bevel Inset Highlight */
+      .amz-card {
+        background: ${COLOR.brandPaper};
+        border: 1px solid rgba(15,23,42,0.08);
         border-radius: 14px;
-        box-shadow: 0 1px 2px rgba(16,24,40,0.04);
-        transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease;
+        box-shadow: 0 4px 18px -2px rgba(15,23,42,0.06), 0 2px 6px -1px rgba(15,23,42,0.04), inset 0 1px 0 #ffffff;
+        transition: all 220ms cubic-bezier(0.16, 1, 0.3, 1);
       }
-      .pm-surface:hover {
-        box-shadow: 0 1px 2px rgba(16,24,40,0.05), 0 18px 32px -16px rgba(16,24,40,0.18);
-        border-color: rgba(16,24,40,0.14);
+      .amz-card:hover {
+        border-color: rgba(15,23,42,0.16);
+        box-shadow: 0 12px 28px -6px rgba(15,23,42,0.12), 0 4px 10px -2px rgba(15,23,42,0.05), inset 0 1px 0 #ffffff;
+        transform: translateY(-2px);
       }
-      .pm-btn-outline {
-        border: 1px solid ${COLOR.brand};
-        color: ${COLOR.brand};
-        transition: background-color .2s ease, color .2s ease;
+
+      /* Primary Button */
+      .amz-btn-primary {
+        background: linear-gradient(180deg, ${COLOR.brandRed} 0%, ${COLOR.brandRedDark} 100%);
+        color: #ffffff;
+        border: 1px solid ${COLOR.brandRedDark};
+        box-shadow: 0 2px 6px rgba(210,70,43,0.28), inset 0 1px 0 rgba(255,255,255,0.25);
+        cursor: pointer;
+        transition: all 180ms ease;
       }
-      .pm-btn-outline:hover { background: ${COLOR.brandSoft}; }
-      .pm-link {
-        color: ${COLOR.brand};
-        transition: opacity .2s ease;
+      .amz-btn-primary:hover {
+        filter: brightness(1.08);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(210,70,43,0.35), inset 0 1px 0 rgba(255,255,255,0.3);
       }
-      .pm-link:hover { opacity: 0.72; }
-      .pm-ribbon {
-        background: linear-gradient(135deg, #C79A3F 0%, ${COLOR.gold} 100%);
-        color: #201404;
+      .amz-btn-primary:active {
+        transform: translateY(0);
+        box-shadow: 0 1px 2px rgba(210,70,43,0.2);
       }
-      @media (prefers-reduced-motion: reduce) {
-        .pm-surface, .pm-btn-outline, .pm-link { transition: none; }
+
+      /* Teal Button */
+      .amz-btn-teal {
+        background: linear-gradient(180deg, ${COLOR.brandTeal} 0%, ${COLOR.brandTealDark} 100%);
+        color: #ffffff;
+        border: 1px solid ${COLOR.brandTealDark};
+        box-shadow: 0 2px 6px rgba(0,111,131,0.25), inset 0 1px 0 rgba(255,255,255,0.2);
+        cursor: pointer;
+        transition: all 180ms ease;
       }
-      .category-scroll::-webkit-scrollbar { display: none; }
+      .amz-btn-teal:hover {
+        filter: brightness(1.08);
+        transform: translateY(-1px);
+      }
+
+      .amz-btn-outline {
+        border: 1px solid ${COLOR.brandTeal};
+        color: ${COLOR.brandTeal};
+        background: transparent;
+        cursor: pointer;
+        transition: all 180ms ease;
+      }
+      .amz-btn-outline:hover {
+        background: ${COLOR.brandTealSoft};
+      }
+
+      .amz-link {
+        color: ${COLOR.brandTeal};
+        cursor: pointer;
+        transition: color 150ms ease;
+      }
+      .amz-link:hover {
+        color: ${COLOR.brandRed};
+      }
+
+      .hide-scrollbar::-webkit-scrollbar { display: none; }
+      .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     `}</style>
   );
 }
 
-function SearchWalletRow() {
-  const [query, setQuery] = useState("");
-  const navigate = useNavigate();
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (query.trim()) navigate(`/search?q=${encodeURIComponent(query.trim())}`);
-  };
+/* ---------- Amazon-Style Sub-Header Department Links ---------- */
+function AmazonSubHeader({ onOpenRfq }) {
+  const departments = [
+    "Industrial Supplies", "Bearings & Motion Controls", "Oils & Lubricants",
+    "Electrical & Switchgears", "Hydraulics & Valves", "Fasteners & Hardware",
+    "Safety PPE", "Bulk Purchase Desk", "Net 30 Credit"
+  ];
+
   return (
-    <form onSubmit={handleSubmit} className="flex items-stretch">
-      <div
-        className="flex flex-1 items-center overflow-hidden rounded-lg bg-white transition-shadow duration-200 focus-within:shadow-md"
-        style={{ border: `1px solid ${COLOR.hairline}`, boxShadow: "0 1px 2px rgba(16,24,40,0.04)" }}
-      >
-        <Search className="ml-3 h-4 w-4 shrink-0" style={{ color: COLOR.muted }} />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search products, brands or suppliers..."
-          className="w-full min-w-0 bg-transparent px-2.5 py-3 text-[9.5px] font-medium placeholder:text-slate-400 focus:outline-none sm:px-3 sm:text-[13px]"
-          style={{ color: COLOR.ink }}
-        />
-        <span className="mr-1 h-5 w-px shrink-0" style={{ background: COLOR.hairline }} />
-        <Camera className="mx-2.5 h-4 w-4 shrink-0 sm:mx-3" style={{ color: COLOR.muted }} />
+    <div className="bg-[#131921] text-white text-xs font-semibold px-3 py-2 overflow-x-auto hide-scrollbar flex items-center justify-between gap-4 border-b border-slate-800 shadow-md">
+      <div className="flex items-center gap-4 shrink-0">
+        <span className="flex items-center gap-1 font-extrabold text-[#febd69] cursor-pointer hover:underline">
+          <Grid className="h-3.5 w-3.5" /> All Departments
+        </span>
+        {departments.map((dept, i) => (
+          <span key={i} className="hover:text-sky-300 transition-colors cursor-pointer whitespace-nowrap">
+            {dept}
+          </span>
+        ))}
       </div>
-    </form>
+      <button
+        onClick={onOpenRfq}
+        className="hidden md:flex items-center gap-1 bg-[#d2462b] hover:bg-[#b53820] text-white px-3 py-1 rounded-md text-[11px] font-extrabold shrink-0 transition-all shadow-sm"
+      >
+        <FileText className="h-3 w-3" /> Post Fast RFQ
+      </button>
+    </div>
   );
 }
 
-/* ---------- Promo Carousel ---------- */
-function PromoCarousel() {
+/* ---------- Amazon Search Header Bar ---------- */
+function AmazonSearchHeader({ onOpenRfq }) {
+  const [query, setQuery] = useState("");
+  const [dept, setDept] = useState("All");
+  const navigate = useNavigate();
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (query.trim()) navigate(`/search?q=${encodeURIComponent(query.trim())}&dept=${dept}`);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <form onSubmit={handleSearch} className="flex items-stretch gap-0 rounded-xl overflow-hidden shadow-sm border border-slate-300 bg-white">
+        <select
+          value={dept}
+          onChange={(e) => setDept(e.target.value)}
+          className="hidden sm:block bg-slate-100 border-r border-slate-300 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-200 cursor-pointer focus:outline-none"
+        >
+          <option>All Departments</option>
+          <option>Bearings & Motion</option>
+          <option>Oils & Lubricants</option>
+          <option>Electrical</option>
+          <option>Hydraulics</option>
+          <option>Fasteners</option>
+          <option>Safety PPE</option>
+        </select>
+
+        <div className="flex flex-1 items-center px-3">
+          <Search className="h-4 w-4 text-slate-400 shrink-0 mr-2 sm:hidden" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search SKUs, bearings, lubricants, part # (e.g. SKF 6205, Shell 15W40)..."
+            className="w-full bg-transparent py-2.5 text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
+          />
+          <button type="button" aria-label="Visual Search" className="p-1 text-slate-400 hover:text-slate-600">
+            <Camera className="h-4 w-4" />
+          </button>
+        </div>
+
+        <button
+          type="submit"
+          className="amz-btn-primary px-5 flex items-center justify-center font-extrabold text-white text-xs sm:text-sm shrink-0"
+        >
+          <Search className="h-4 w-4 sm:mr-1.5" />
+          <span className="hidden sm:inline">Search</span>
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/* ---------- World-Class 16:9 Aspect Ratio Hero Banner (Zero Text Clipping) ---------- */
+function Hero16by9Banner({ onOpenRfq }) {
   const total = promoSlides.length;
   const slides = [promoSlides[total - 1], ...promoSlides, promoSlides[0]];
 
   const indexRef = useRef(1);
   const [dotIndex, setDotIndex] = useState(0);
-  const [slideWidth, setSlideWidth] = useState(0);
   const containerRef = useRef(null);
+  const [slideWidth, setSlideWidth] = useState(0);
   const x = useMotionValue(0);
-  const isAnimating = useRef(false);
-  const controlsRef = useRef(null); // active animation controls, so we can always .stop() before restarting
-  const autoplayRef = useRef(null);
-  const resumeTimeoutRef = useRef(null);
+  const controlsRef = useRef(null);
 
   useEffect(() => {
     const measure = () => {
@@ -176,12 +332,10 @@ function PromoCarousel() {
   }, []);
 
   const goToIndex = (newIndex) => {
-    controlsRef.current?.stop(); // cancel any in-flight animation first, no competing writers to x
-    isAnimating.current = true;
-
+    controlsRef.current?.stop();
     controlsRef.current = animate(x, -newIndex * slideWidth, {
-      duration: 0.55,
-      ease: [0.4, 0, 0.2, 1],
+      duration: 0.45,
+      ease: [0.16, 1, 0.3, 1],
       onComplete: () => {
         indexRef.current = newIndex;
         setDotIndex(((newIndex - 1) % total + total) % total);
@@ -193,527 +347,115 @@ function PromoCarousel() {
           indexRef.current = total;
           x.set(-total * slideWidth);
         }
-        isAnimating.current = false;
       },
     });
   };
 
   const stepNext = () => goToIndex(indexRef.current + 1);
-  const stepPrev = () => goToIndex(indexRef.current - 1);
-
-  const startAutoplay = () => {
-    stopAutoplay();
-    autoplayRef.current = setInterval(stepNext, 3200);
-  };
-  const stopAutoplay = () => {
-    clearInterval(autoplayRef.current);
-    clearTimeout(resumeTimeoutRef.current);
-  };
 
   useEffect(() => {
     if (!slideWidth) return;
-    startAutoplay();
-    return stopAutoplay;
+    const interval = setInterval(stepNext, 5000);
+    return () => clearInterval(interval);
   }, [slideWidth]);
 
-  const handleDragStart = () => {
-    stopAutoplay();
-    controlsRef.current?.stop();
-    isAnimating.current = false; // defensive reset — never let a stuck flag block a fresh gesture
-  };
-
-  const handleDragEnd = (_, info) => {
-    const threshold = slideWidth * 0.18;
-    if (info.offset.x < -threshold) stepNext();
-    else if (info.offset.x > threshold) stepPrev();
-    else goToIndex(indexRef.current);
-
-    resumeTimeoutRef.current = setTimeout(startAutoplay, 1800);
-  };
-
-  const goToDot = (i) => {
-    stopAutoplay();
-    controlsRef.current?.stop();
-    isAnimating.current = false;
-    goToIndex(i + 1);
-    resumeTimeoutRef.current = setTimeout(startAutoplay, 1800);
-  };
-
   return (
-    <div className="mt-4">
-      <div ref={containerRef} className="relative w-full overflow-hidden rounded-2xl">
+    <div className="relative w-full overflow-hidden rounded-2xl border border-slate-800 shadow-xl bg-[#090D16]">
+      {/* Container with STRICT 16:9 Aspect Ratio on Mobile and Desktop */}
+      <div ref={containerRef} className="relative w-full aspect-[16/9] overflow-hidden select-none">
         <motion.div
-          className="flex"
+          className="flex h-full"
           style={{ x, width: slideWidth ? slideWidth * slides.length : "100%" }}
-          drag="x"
-          dragMomentum={false}
-          dragElastic={0.03}
-          dragConstraints={{ left: -((slides.length - 1) * slideWidth), right: 0 }}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
         >
           {slides.map((slide, i) => (
-            <div key={`${slide.id}-${i}`} className="relative shrink-0" style={{ width: slideWidth || "100%" }}>
+            <div
+              key={`${slide.id}-${i}`}
+              className="relative h-full shrink-0 overflow-hidden"
+              style={{ width: slideWidth || "100%" }}
+            >
+              {/* Multi-Layer Ambient Background & Lighting Effects */}
               <div
-                className="relative w-full overflow-hidden rounded-2xl select-none"
-                style={{ background: `linear-gradient(135deg, ${COLOR.brandDeep} 0%, ${COLOR.brand} 55%, ${COLOR.brandDeep} 100%)` }}
+                className="relative h-full w-full overflow-hidden flex items-center justify-between"
+                style={{
+                  background: `radial-gradient(circle at 75% 35%, rgba(210,70,43,0.25) 0%, transparent 60%), linear-gradient(135deg, #070c14 0%, ${COLOR.brandTealDark} 55%, #08111a 100%)`,
+                }}
               >
-                <div className="mx-auto w-full max-w-[1000px]" style={{ containerType: "inline-size" }}>
-                  <div className="flex items-center" style={{ height: "clamp(160px, 28cqw, 300px)" }}>
-  <div
-    className="promo-text-block relative z-10 flex min-w-0 flex-[3] flex-col justify-center"
-    style={{ paddingLeft: "clamp(10px, 3cqw, 34px)", paddingRight: "clamp(6px, 1.5cqw, 16px)" }}
-  >
-    <span
-      className="pm-ribbon inline-flex w-fit items-center justify-center rounded-md font-extrabold uppercase tracking-wider"
-      style={{ fontSize: "clamp(8px, 0.95cqw, 11px)", lineHeight: 1, padding: "3px 7px", letterSpacing: "0.06em" }}
-    >
-      {slide.tag}
-    </span>
-    <h2
-      className="break-words font-extrabold tracking-[0.2px] text-white"
-      style={{
-        fontFamily: "'Bricolage Grotesque', sans-serif",
-        fontSize: "clamp(13px, 3.1cqw, 38px)",
-        lineHeight: 1.15,
-        marginTop: "clamp(6px, 1.1cqw, 14px)",
-      }}
-    >
-      {slide.title}
-    </h2>
-    <p
-      className="break-words font-medium tracking-wide leading-snug text-white/70"
-      style={{ fontSize: "clamp(10.5px, 1.35cqw, 18px)", marginTop: "clamp(3px, 0.8cqw, 10px)" }}
-    >
-      {slide.subtitle}
-    </p>
-    <button
-      className="flex w-fit shrink-0 items-center gap-1.5 rounded-md bg-white font-bold transition-transform hover:-translate-y-0.5"
-      style={{
-        color: COLOR.brandDeep,
-        fontSize: "clamp(10px, 1.3cqw, 16px)",
-        padding: "clamp(5px, 1.1cqw, 13px) clamp(8px, 2cqw, 26px)",
-        marginTop: "clamp(8px, 2cqw, 22px)",
-      }}
-    >
-      {slide.cta}
-      <ChevronRight className="h-3 w-3 shrink-0 sm:h-4 sm:w-4" />
-    </button>
-  </div>
+                {/* Visual Image Artwork */}
+                <div className="absolute right-0 top-0 bottom-0 w-[55%] sm:w-[50%] overflow-hidden pointer-events-none">
+                  <img
+                    src={slide.image}
+                    alt=""
+                    draggable={false}
+                    className="h-full w-full object-cover object-center transform scale-105 transition-transform duration-700"
+                    style={{
+                      maskImage: "linear-gradient(to right, transparent 0%, black 35%, black 100%)",
+                      WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 35%, black 100%)",
+                    }}
+                  />
+                </div>
 
-  <div className="relative h-full flex-[7] overflow-hidden">
-    <img
-      src={slide.image}
-      alt=""
-      draggable={false}
-      fetchPriority={i === 1 ? "high" : "low"}
-      loading={i === 1 ? "eager" : "lazy"}
-      className="h-full w-full object-cover object-center sm:object-right"
-      style={{
-        maskImage: "linear-gradient(to right, transparent 0%, black 10%, black 88%, transparent 100%)",
-        WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 10%, black 88%, transparent 100%)",
-      }}
-    />
-  </div>
-</div>
+                {/* Content Overlay — Non-clipping Layout with Fluid Typography */}
+                <div className="relative z-10 flex flex-col justify-center h-full max-w-[65%] sm:max-w-[55%] p-3 sm:p-6 lg:p-10 text-white">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="inline-flex items-center gap-1 bg-[#d2462b] text-white px-2 py-0.5 rounded-md text-[9px] sm:text-xs font-extrabold uppercase tracking-wider shadow-md">
+                      <Sparkles className="h-3 w-3" /> {slide.tag}
+                    </span>
+                    {slide.moq && (
+                      <span className="hidden xs:inline-block bg-white/15 backdrop-blur-md border border-white/20 text-slate-200 px-2 py-0.5 rounded-md text-[9px] sm:text-xs font-semibold">
+                        {slide.moq}
+                      </span>
+                    )}
+                  </div>
 
-<div
-  className="promo-badge absolute z-10 flex flex-col items-center justify-center rounded-lg text-center"
-  style={{
-    background: "rgba(5,46,56,0.55)",
-    backdropFilter: "blur(6px)",
-    border: `1px solid ${COLOR.goldLine}`,
-    top: "clamp(8px, 1.6cqw, 20px)",
-    right: "clamp(8px, 1.6cqw, 20px)",
-    padding: "clamp(6px, 1cqw, 10px) clamp(9px, 1.5cqw, 17px)",
-  }}
->
-  <p className="font-bold mt-0.5 leading-tight tracking-wider text-white/70" style={{ fontSize: "clamp(8.5px, 0.75cqw, 11px)" }}>
-    SAVE UP TO
-  </p>
-  <p className="mt-0.5 font-extrabold leading-none tracking-wide" style={{ fontSize: "clamp(18px, 2.1cqw, 28px)", color: "#E4B84A" }}>
-    {slide.badge.match(/\d+%/)?.[0]}
-  </p>
-  <p className="font-semibold leading-loose text-white/70" style={{ fontSize: "clamp(9px, 0.85cqw, 12px)" }}>
-    on Bulk Orders
-  </p>
-</div>
+                  <h2
+                    className="font-extrabold text-white leading-tight tracking-tight mt-1.5 sm:mt-2.5 line-clamp-2 drop-shadow-md"
+                    style={{
+                      fontFamily: FONT_DISPLAY,
+                      fontSize: "clamp(12px, 2.7vw, 32px)",
+                    }}
+                  >
+                    {slide.title}
+                  </h2>
+
+                  <p
+                    className="font-medium text-slate-200 leading-snug mt-1 line-clamp-2"
+                    style={{ fontSize: "clamp(9.5px, 1.35vw, 15px)" }}
+                  >
+                    {slide.subtitle}
+                  </p>
+
+                  <div className="mt-2 sm:mt-4">
+                    <button
+                      onClick={onOpenRfq}
+                      className="amz-btn-primary inline-flex items-center gap-1.5 rounded-xl px-3 py-1 sm:px-5 sm:py-2 text-[10px] sm:text-xs font-extrabold shadow-lg"
+                    >
+                      {slide.cta} <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Glassmorphic Savings Badge */}
+                <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-20 flex flex-col items-center justify-center rounded-xl bg-slate-900/80 backdrop-blur-md px-2.5 py-1.5 border border-amber-500/40 text-center shadow-2xl">
+                  <span className="text-[8px] sm:text-[10px] font-extrabold text-amber-400 uppercase tracking-wider">DIRECT SAVINGS</span>
+                  <span className="text-xs sm:text-xl font-extrabold text-white leading-none mt-0.5">{slide.badge.match(/\d+%/)?.[0]} OFF</span>
                 </div>
               </div>
             </div>
           ))}
         </motion.div>
-      </div>
 
-      <div className="flex items-center justify-center gap-1.5 pt-3">
-        {promoSlides.map((s, i) => (
-          <button
-            key={s.id}
-            onClick={() => goToDot(i)}
-            className="h-1.5 rounded-full transition-all duration-300"
-            style={{
-              width: dotIndex === i ? 18 : 5,
-              backgroundColor: dotIndex === i ? COLOR.brand : "#D8DCE3",
-            }}
-          />
-        ))}
-      </div>
-
-      <style>{`
-        @media (min-width: 1000px) {
-          .promo-text-block { padding-left: 18px !important; }
-        }
-        @media (min-width: 1190px) {
-          .promo-text-block { padding-left: 1px !important; }
-        }
-        @media (max-width: 500px) {
-          .promo-badge {
-            top: 6px !important;
-            right: 6px !important;
-            padding: 3px 6px !important;
-            border-radius: 6px !important;
-          }
-          .promo-badge p:first-child { font-size: 7px !important; letter-spacing: 0.02em !important; }
-          .promo-badge p:nth-child(2) { font-size: 14px !important; }
-          .promo-badge p:last-child { font-size: 7px !important; line-height: 1.9 !important; }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-/* ---------- Welcome Banner ---------- */
-
-// WelcomeBanner — pull the name from profile, first name only, sane fallback
-function WelcomeBanner() {
-  const { profile } = useAuth();
-  const firstName = profile?.name?.trim().split(" ")[0] || "there";
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.3 }}
-      transition={{ duration: 0.4 }}
-      className="mt-5 w-full rounded-xl"
-      style={{
-        background: COLOR.canvas,
-        border: `1px solid ${COLOR.hairline}`,
-        containerType: "inline-size",
-        padding: "clamp(12px, 2.2cqw, 20px)",
-      }}
-    >
-      <div className="grid grid-cols-1 sm:grid-cols-5" style={{ gap: "clamp(6px, 1.4cqw, 14px)" }}>
-        <div className="col-span-2 sm:col-span-4 min-w-0">
-          <h3 className="font-extrabold leading-tight tracking-tight" style={{ fontSize: "clamp(14px, 2cqw, 17px)", color: COLOR.ink }}>
-            Welcome back, {firstName}
-          </h3>
-          <p
-            className="font-medium leading-tight"
-            style={{ fontSize: "clamp(11.5px, 1.15cqw, 12.5px)", marginTop: "clamp(2px, 0.4cqw, 4px)", color: COLOR.muted }}
-          >
-            Here's what's new in your marketplace
-          </p>
-
-          <div
-            className="grid grid-cols-3 sm:grid-cols-3"
-            style={{ gap: "clamp(4px, 0.9cqw, 10px)", marginTop: "clamp(8px, 1.4cqw, 14px)" }}
-          >
-            {welcomeHighlights.map((h) => {
-              const Icon = ICONS[h.icon];
-              const tone = TONE_MAP[h.tone];
-              return (
-                <div
-                  key={h.id}
-                  className="pm-surface flex flex-col sm:flex-row sm:items-center"
-                  style={{ gap: "clamp(4px, 0.7cqw, 8px)", padding: "clamp(7px, 1cqw, 11px)" }}
-                >
-                  {/* Icon — beside title only on mobile, spans full card height on desktop */}
-                  <div className="flex mt-0.5 sm:mt-0 items-center min-w-0 sm:contents" style={{ gap: "clamp(4px, 0.7cqw, 8px)" }}>
-                    <span
-                      className="flex shrink-0 items-center justify-center rounded-lg"
-                      style={{
-                        background: tone.bg,
-                        color: tone.fg,
-                        width: "clamp(20px, 3cqw, 32px)",
-                        height: "clamp(20px, 3cqw, 32px)",
-                      }}
-                    >
-                      <Icon style={{ width: "clamp(14px, 1.6cqw, 18px)", height: "clamp(13px, 1.6cqw, 18px)" }} />
-                    </span>
-
-                    {/* Title — full row on mobile, hidden here on desktop (moves to text stack) */}
-                    <p
-                      className="font-bold leading-tight sm:hidden"
-                      style={{ fontSize: "clamp(11.3px, 1.5cqw, 13.5px)", color: COLOR.ink }}
-                    >
-                      {h.title}
-                    </p>
-                  </div>
-
-                  {/* Text stack: title (desktop only here) + description + value */}
-                  <div className="min-w-0">
-                    <p
-                      className="hidden sm:block font-bold leading-tight"
-                      style={{ fontSize: "clamp(11.3px, 1.5cqw, 13.5px)", color: COLOR.ink }}
-                    >
-                      {h.title}
-                    </p>
-
-                    <p
-                      className="font-medium leading-tight tracking-wide ps-1 sm:mt-1 sm:ps-0"
-                      style={{ fontSize: "clamp(10.5px, 1cqw, 12px)", color: COLOR.muted }}
-                    >
-                      {h.desc}
-                    </p>
-
-                    <p
-                      className="truncate font-bold leading-tight mt-1.5 mb-1 sm:mb-0 px-1 sm:px-0 tabular-nums sm:text-left sm:mt-1"
-                      style={{ color: tone.fg, fontSize: "clamp(11.5px, 1.5cqw, 12px)" }}
-                    >
-                      {h.value}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right: illustration + button — full row 2 on mobile, 20% col on desktop */}
-        <div className="col-span-1 flex flex-row sm:flex-col items-center justify-between gap-2 sm:h-full">
-          <img
-            src="./illustration-marketplace.svg"
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="object-contain hidden sm:block object-top"
-            style={{
-              maxHeight: "clamp(56px, 8cqw, 108px)",
-              width: "clamp(70px, 22cqw, 100%)",
-              transform: "scale(1.2)",
-              transformOrigin: "top center",
-            }}
-          />
-          <button
-            className="pm-btn-outline flex flex-1 sm:w-full items-center justify-center rounded-lg font-bold leading-tight"
-            style={{
-              gap: "clamp(2px, 0.4cqw, 6px)",
-              fontSize: "clamp(10.5px, 1cqw, 12px)",
-              padding: "clamp(7px, 0.9cqw, 11px) clamp(3px, 0.8cqw, 8px)",
-              marginTop: "clamp(3px, 0.6cqw, 8px)",
-            }}
-          >
-            <span>View My Price List</span>
-            <ChevronRight style={{ width: "clamp(10px, 1.2cqw, 14px)", height: "clamp(10px, 1.2cqw, 14px)" }} className="shrink-0" />
-          </button>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-/* ---------- Top Offers ---------- */
-function TopOffers() {
-  return (
-    <div className="mt-8">
-      <SectionHeader title="Top Offers from Verified Suppliers" />
-      <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        {topOffers.map((offer, i) => (
-          <motion.div
-            key={offer.id}
-            initial={{ opacity: 0, y: 8 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.3 }}
-            transition={{ duration: 0.3, delay: Math.min(i * 0.06, 0.3) }}
-            whileHover={{ y: -3 }}
-            className="pm-surface relative flex flex-col"
-            style={{ containerType: "inline-size", gap: "clamp(4px, 1.6cqw, 8px)", padding: "clamp(7px, 2.2cqw, 13px)" }}
-          >
-            <span
-              className="absolute flex items-center gap-0.5 rounded-full font-bold"
+        {/* Carousel Navigation Dots */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex items-center justify-center gap-1.5">
+          {promoSlides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => goToIndex(i + 1)}
+              className="pointer-events-auto h-1.5 rounded-full transition-all duration-300"
               style={{
-                top: "clamp(6px, 1.6cqw, 10px)", right: "clamp(6px, 1.6cqw, 10px)",
-                fontSize: "clamp(7.5px, 2cqw, 9px)", padding: "2px 6px",
-                background: COLOR.goldSoft, color: COLOR.gold, border: `1px solid ${COLOR.goldLine}`,
+                width: dotIndex === i ? 20 : 6,
+                backgroundColor: dotIndex === i ? "#FFFFFF" : "rgba(255,255,255,0.4)",
               }}
-            >
-              <ShieldCheck className="h-2.5 w-2.5" /> Verified
-            </span>
-
-            {/* Row 1: brand logo (1:1) + title/desc */}
-            <div className="flex items-stretch" style={{ gap: "clamp(4px, 1.6cqw, 8px)" }}>
-              <div
-                className="aspect-square shrink-0 overflow-hidden rounded-lg bg-white"
-                style={{ width: "clamp(36px, 11cqw, 46px)", border: `1px solid ${COLOR.hairline}` }}
-              >
-                <img src={offer.logo} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain" />
-              </div>
-              <div className="flex min-w-0 ms-1 sm:ms-2 flex-1 flex-col justify-center pr-10 sm:pr-14">
-                <p className="truncate font-bold tracking-[0.1px] leading-tight" style={{ fontSize: "clamp(13px, 4cqw, 13px)", color: COLOR.ink }}>
-                  {offer.title}
-                </p>
-                <p className="truncate font-medium tracking-wide leading-tight" style={{ fontSize: "clamp(11px, 5cqw, 12.5px)", color: COLOR.muted }}>
-                  {offer.desc}
-                </p>
-              </div>
-            </div>
-
-            {/* Row 2: product image (1:1) + detail/button */}
-            <div className="flex items-stretch" style={{ gap: "clamp(4px, 1.6cqw, 8px)" }}>
-              <div
-                className="aspect-square shrink-0 overflow-hidden rounded-lg bg-white"
-                style={{ width: "clamp(36px, 11cqw, 46px)", border: `1px solid ${COLOR.hairline}` }}
-              >
-                <img src={offer.image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-              </div>
-              <div className="flex min-w-0 flex-1 ms-1 sm:ms-2 flex-col justify-center">
-                {offer.detail ? (
-                  <p className="font-bold leading-tight" style={{ color: COLOR.danger, fontSize: "clamp(11px, 5cqw, 11.5px)" }}>
-                    {offer.detail}
-                  </p>
-                ) : (
-                  <span style={{ fontSize: "clamp(9.5px, 2.6cqw, 11.5px)" }}>&nbsp;</span>
-                )}
-                <button className="pm-link mt-0.5 flex items-center gap-0.5 truncate font-bold" style={{ fontSize: "clamp(13px, 4.6cqw, 11.5px)" }}>
-                  Shop Now <ChevronRight className="h-2.5 w-2.5 shrink-0" />
-                </button>
-              </div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Helper — converts a #hex color into a low-alpha rgba() wash, used only for
-// small accents (icon chips, hairline rules) — never large card surfaces.
-function hexToRgba(hex, alpha) {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.substring(0, 2), 16);
-  const g = parseInt(h.substring(2, 4), 16);
-  const b = parseInt(h.substring(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-/* ---------- Business Highlights + Market Feed ---------- */
-function BusinessAndMarketRow() {
-  return (
-    <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
-      <div>
-        <SectionHeader title="Today's Business Highlights" />
-        <div className="mt-3 grid grid-cols-4 gap-2.5">
-          {businessHighlights.map((h, i) => {
-            const Icon = ICONS[h.icon];
-            return (
-              <motion.div
-                key={h.id}
-                initial={{ opacity: 0, y: 8 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, amount: 0.3 }}
-                transition={{ duration: 0.3, delay: Math.min(i * 0.06, 0.3) }}
-                whileHover={{ y: -3 }}
-                className="pm-surface flex flex-col items-center p-2.5 sm:p-4"
-              >
-                <span
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:h-10 sm:w-10"
-                  style={{ background: hexToRgba(h.fg, 0.10), color: h.fg }}
-                >
-                  <Icon className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
-                </span>
-                <span className="mt-2 text-[18px] font-extrabold leading-none tabular-nums sm:mt-3 sm:text-[26px]" style={{ color: COLOR.ink }}>
-                  {h.value}
-                </span>
-                <p className="mt-1.5 text-[10px] text-center tracking-wide font-semibold leading-tight sm:text-[12.5px]" style={{ color: COLOR.muted }}>
-                  {h.label}
-                </p>
-                <button className="pm-link mt-1.5 flex items-center gap-0.5 text-[11.5px] font-bold sm:text-[12.5px]">
-                  View Now <ChevronRight className="h-2.5 w-2.5 hidden sm:block sm:h-3 sm:w-3" />
-                </button>
-              </motion.div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="pm-surface p-4">
-        <div className="flex items-center justify-between" style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}>
-          <h4 className="text-[15px] font-extrabold md:text-[16px]" style={{ color: COLOR.ink }}>Market Feed</h4>
-          <span className="flex items-center gap-1 text-[11px] font-bold" style={{ color: COLOR.success }}>
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: COLOR.success }} /> Live
-          </span>
-        </div>
-
-        <div className="mt-3 space-y-3">
-          {marketFeed.map((item) => {
-            const Icon = ICONS[item.icon];
-            const color = item.direction === "up" ? COLOR.success : item.direction === "down" ? COLOR.danger : COLOR.muted;
-            return (
-              <div key={item.id} className="flex items-center gap-2">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center" style={{ color }}>
-                  <Icon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13.5px] font-semibold tracking-[0.2px] leading-tight" style={{ color: COLOR.ink }}>{item.title}</p>
-                  {item.detail && <p className="truncate text-[12.5px] tracking-wide font-medium leading-tight" style={{ color: COLOR.muted }}>{item.detail}</p>}
-                </div>
-                {item.change && (
-                  <span className="shrink-0 text-[13.5px] font-extrabold tabular-nums" style={{ color }}>{item.change}</span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-4 flex items-center justify-center text-center" style={{ borderTop: `1px solid ${COLOR.hairline}`, paddingTop: "12px" }}>
-          <button className="pm-link flex items-center gap-1 text-[13.5px] font-bold">
-            View Full Feed <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------- Shop by Category ---------- */
-function ShopByCategory() {
-  return (
-    <div className="mt-8">
-      <SectionHeader title="Shop by Category" />
-      <div
-        className="mt-3 flex gap-3 overflow-x-auto overflow-y-hidden pb-1"
-        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-      >
-        <div className="category-scroll flex gap-3">
-          {categories.map((cat, i) => (
-            <motion.div
-              key={cat.id}
-              initial={{ opacity: 0, y: 8 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.3, delay: Math.min(i * 0.06, 0.3) }}
-              whileHover={{ y: -2 }}
-              className="pm-surface flex shrink-0 flex-col items-center overflow-hidden text-center"
-              style={{ width: "clamp(138px, 26vw, 156px)" }}
-            >
-              <div className="aspect-video w-full overflow-hidden" style={{ background: COLOR.canvas }}>
-                <img src={cat.image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-              </div>
-              <div className="flex w-full flex-col items-center px-3 pb-3.5 pt-2.5">
-                <p className="truncate text-[13.5px] tracking-[0.2px] font-bold leading-tight sm:text-[14.5px]" style={{ color: COLOR.ink }}>
-                  {cat.name}
-                </p>
-                <p className="mt-1 truncate text-[12px] tracking-wide font-medium leading-tight sm:text-[12px]" style={{ color: COLOR.muted }}>
-                  {cat.count}
-                </p>
-                <p className="truncate text-[12px] tracking-wide font-medium leading-tight sm:text-[12px]" style={{ color: COLOR.muted }}>
-                  {cat.suppliers}
-                </p>
-                <p className="mt-1.5 text-[13.5px] font-extrabold tabular-nums sm:text-[13.5px]" style={{ color: COLOR.brand }}>
-                  From {cat.from}
-                </p>
-              </div>
-            </motion.div>
+            />
           ))}
         </div>
       </div>
@@ -721,137 +463,41 @@ function ShopByCategory() {
   );
 }
 
-/* ---------- My Price List + Recommended + Most Compared ---------- */
-function PriceListAndComparedRow() {
+/* ---------- Quick Action Bar JUST BELOW THE BANNER - 8 Items (2 rows x 4 items) ---------- */
+function QuickActionsJustBelowBanner({ onOpenRfq }) {
   return (
-    <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-5">
-      {/* Left: My Price List */}
-      <div className="lg:col-span-2">
-        <SectionHeader title="My Price List (Recent)" />
-        <div className="pm-surface mt-3 divide-y" style={{ borderColor: COLOR.hairline }}>
-          {myPriceList.map((p) => (
-            <div key={p.id} className="flex items-center gap-3.5 px-4 py-4" style={{ borderColor: COLOR.hairline }}>
-              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg" style={{ background: COLOR.canvas, border: `1px solid ${COLOR.hairline}` }}>
-                <img src={p.image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] tracking-[0.2px] font-semibold leading-snug" style={{ color: COLOR.ink }}>{p.name}</p>
-                <p className="truncate mt-0.5 text-[12px] tracking-wide font-medium leading-snug" style={{ color: COLOR.muted }}>
-                  {p.suppliers} &middot; Lowest <span className="tabular-nums">{p.price}</span>
-                </p>
-                <p className="text-[13px] mt-0.5 font-medium leading-snug" style={{ color: COLOR.muted }}>{p.updated}</p>
-              </div>
-              <MiniTrendIcon trend={p.trend} />
-              <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "#C7CDD8" }} />
-            </div>
-          ))}
-        </div>
+    <div className="w-full space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 tracking-tight" style={{ fontFamily: FONT_DISPLAY }}>
+          Quick Procurement Access
+        </h3>
+        <span className="text-[11px] font-semibold text-slate-500">8 Instant Actions</span>
       </div>
 
-      {/* Right: Recommended for You (top) + Most Compared Today (below) */}
-      <div className="flex flex-col gap-5 lg:col-span-3">
-        <div>
-          <SectionHeader title="Most Compared Today" />
-          <div className="mt-3 grid grid-cols-3 gap-2.5">
-            {mostCompared.map((item) => (
-              <div key={item.id} className="pm-surface flex flex-col items-center p-2.5 text-center">
-                <div className="h-16 w-16 overflow-hidden rounded-full" style={{ background: COLOR.canvas, border: `1px solid ${COLOR.hairline}` }}>
-                  <img src={item.image} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                </div>
-                <p className="mt-2 line-clamp-2 text-[12.5px] font-bold leading-tight" style={{ color: COLOR.ink }}>{item.name}</p>
-                <p className="mt-0.5 text-[11.5px] font-medium leading-tight" style={{ color: COLOR.muted }}>{item.count}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <SectionHeader title="Recommended for You" />
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {recommendedSuppliers.map((s) => (
-              <div key={s.id} className="pm-surface flex flex-col p-3.5">
-                <div className="flex items-start gap-2.5">
-                  <span
-                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-[16px] font-extrabold text-white ring-2 ring-white"
-                    style={{ background: s.tone, boxShadow: "0 1px 3px rgba(16,24,40,0.18)" }}
-                  >
-                    {s.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
-                  </span>
-
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    {/* Name — fixed height row */}
-                    <div className="flex h-[19px] items-center">
-                      <p className="truncate text-[14px] tracking-[0.2px] font-bold" style={{ color: COLOR.ink }}>{s.name}</p>
-                    </div>
-
-                    {/* Rating — fixed height row */}
-                    <div className="flex mt-0.5 h-[16px] items-center">
-                      <span className="flex items-center gap-1 text-[12px] font-bold tabular-nums" style={{ color: COLOR.gold }}>
-                        {s.rating}
-                        <Star className="h-3 w-3" style={{ fill: COLOR.gold, color: COLOR.gold }} />
-                      </span>
-                    </div>
-
-                    {/* Description — fixed height row, clamps to 2 lines so it's always the same height */}
-                    <p className="line-clamp-2 mt-1 sm:h-[30px] text-[12px] tracking-wide font-medium leading-tight" style={{ color: COLOR.muted }}>
-                      {s.desc}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Button — full width across the whole card */}
-                <button className="pm-btn-outline mt-3 w-full shrink-0 rounded-lg px-2.5 py-1.5 text-[13px] font-bold">
-                  View Products
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MiniTrendIcon({ trend }) {
-  const color = trend === "up" ? COLOR.success : COLOR.danger;
-  const points = trend === "up" ? "0,10 5,6 10,7 15,2" : "0,3 5,7 10,6 15,10";
-  return (
-    <svg width="22" height="14" viewBox="0 0 15 12" className="shrink-0">
-      <polyline points={points} fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/* ---------- Quick Actions ---------- */
-function QuickActions() {
-  return (
-    <div className="mt-8">
-      <SectionHeader title="Quick Actions" showViewAll={false} />
-      <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      {/* 4 ITEMS IN ROW 1, 4 ITEMS IN ROW 2 (Total 8 Quick Action Items in 2x4 Grid) */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         {quickActions.map((a) => {
-          const Icon = ICONS[a.icon];
+          const Icon = ICONS[a.icon] || Box;
           return (
             <motion.button
               key={a.id}
-              whileHover={{ y: -3 }}
-              whileTap={{ y: -1 }}
-              className="pm-surface relative flex items-center gap-2.5 px-3 py-3 text-left"
+              onClick={a.id === "req" ? onOpenRfq : undefined}
+              whileHover={{ y: -2 }}
+              whileTap={{ y: 0 }}
+              className="amz-card relative flex items-center gap-2.5 p-3 text-left cursor-pointer border border-slate-200"
             >
               <span
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                style={{ background: hexToRgba(a.fg, 0.10), color: a.fg }}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: a.bg, color: a.fg }}
               >
                 <Icon className="h-4 w-4" />
               </span>
-              <div className="min-w-0">
-                <p className="truncate text-[13.5px] font-bold" style={{ color: COLOR.ink }}>{a.label}</p>
-                <p className="truncate text-[11.5px] font-medium" style={{ color: COLOR.muted }}>{a.desc}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-extrabold text-slate-900 leading-tight">{a.label}</p>
+                <p className="truncate text-[10.5px] font-medium text-slate-500 mt-0.5 leading-tight">{a.desc}</p>
               </div>
               {a.count && (
-                <span
-                  className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10.5px] font-bold text-white tabular-nums"
-                  style={{ background: COLOR.danger }}
-                >
+                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] font-extrabold text-white tabular-nums">
                   {a.count}
                 </span>
               )}
@@ -863,18 +509,506 @@ function QuickActions() {
   );
 }
 
-/* ---------- Shared ---------- */
-function SectionHeader({ title, showViewAll = true }) {
+/* ---------- Amazon-Style 4-Box Overlapping Feature Quad ---------- */
+function AmazonQuadFeatureGrid({ onOpenRfq, onOpenCompare }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Box 1: Bearings */}
+      <div className="amz-card p-4 flex flex-col justify-between">
+        <div>
+          <h3 className="text-sm sm:text-base font-extrabold text-slate-900" style={{ fontFamily: FONT_DISPLAY }}>
+            Bearings & Motion Controls
+          </h3>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">Up to 24% bulk volume discount</p>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100 shadow-inner">
+              <img src="./2.avif" alt="" className="h-16 w-full object-cover rounded mb-1" />
+              <span className="text-[11px] font-bold text-slate-800 block truncate">Deep Groove</span>
+              <span className="text-[10px] text-emerald-700 font-extrabold">From ₹18/pc</span>
+            </div>
+            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100 shadow-inner">
+              <img src="./c2.avif" alt="" className="h-16 w-full object-cover rounded mb-1" />
+              <span className="text-[11px] font-bold text-slate-800 block truncate">Taper Roller</span>
+              <span className="text-[10px] text-emerald-700 font-extrabold">From ₹315/pc</span>
+            </div>
+          </div>
+        </div>
+        <button onClick={onOpenRfq} className="amz-link text-xs font-bold mt-3 text-left">
+          Explore Bearing Catalogue &rarr;
+        </button>
+      </div>
+
+      {/* Box 2: Lubricants */}
+      <div className="amz-card p-4 flex flex-col justify-between">
+        <div>
+          <h3 className="text-sm sm:text-base font-extrabold text-slate-900" style={{ fontFamily: FONT_DISPLAY }}>
+            Industrial Oils & Lubricants
+          </h3>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">Tanker & Drum Factory Direct</p>
+          <div className="grid grid-cols-2 gap-2 mt-3">
+            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100 shadow-inner">
+              <img src="./1.avif" alt="" className="h-16 w-full object-cover rounded mb-1" />
+              <span className="text-[11px] font-bold text-slate-800 block truncate">15W40 Engine Oil</span>
+              <span className="text-[10px] text-emerald-700 font-extrabold">From ₹178/L</span>
+            </div>
+            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100 shadow-inner">
+              <img src="./c1.avif" alt="" className="h-16 w-full object-cover rounded mb-1" />
+              <span className="text-[11px] font-bold text-slate-800 block truncate">Hydraulic ISO 68</span>
+              <span className="text-[10px] text-emerald-700 font-extrabold">From ₹95/L</span>
+            </div>
+          </div>
+        </div>
+        <button onClick={onOpenRfq} className="amz-link text-xs font-bold mt-3 text-left">
+          View Oil & Drum Deals &rarr;
+        </button>
+      </div>
+
+      {/* Box 3: Verified Manufacturers */}
+      <div className="amz-card p-4 flex flex-col justify-between">
+        <div>
+          <h3 className="text-sm sm:text-base font-extrabold text-slate-900" style={{ fontFamily: FONT_DISPLAY }}>
+            100% Audited OEM Factories
+          </h3>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">ISO 9001:2015 & BIS Certified</p>
+          <div className="mt-3 space-y-2 text-xs">
+            <div className="flex items-center justify-between p-2 rounded-lg bg-sky-50 border border-sky-100">
+              <span className="font-bold text-slate-800">SKF Authorized</span>
+              <span className="text-[10px] bg-[#006f83] text-white font-extrabold px-1.5 py-0.5 rounded">99.4% Dispatch</span>
+            </div>
+            <div className="flex items-center justify-between p-2 rounded-lg bg-amber-50 border border-amber-100">
+              <span className="font-bold text-slate-800">Shell Distributor</span>
+              <span className="text-[10px] bg-amber-700 text-white font-extrabold px-1.5 py-0.5 rounded">COA Included</span>
+            </div>
+          </div>
+        </div>
+        <button onClick={onOpenCompare} className="amz-link text-xs font-bold mt-3 text-left">
+          Benchmark Factory Specs &rarr;
+        </button>
+      </div>
+
+      {/* Box 4: Request Instant RFQ */}
+      <div className="amz-card p-4 flex flex-col justify-between bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl">
+        <div>
+          <span className="text-[10px] font-extrabold uppercase bg-[#d2462b] px-2 py-0.5 rounded text-white inline-block">
+            FAST PROCUREMENT
+          </span>
+          <h3 className="text-sm sm:text-base font-extrabold text-white mt-2" style={{ fontFamily: FONT_DISPLAY }}>
+            Request Instant RFQ Bids
+          </h3>
+          <p className="text-xs text-slate-300 font-medium mt-1">
+            Submit your CAD/PDF specs or part numbers & get 4+ factory bids within 30 mins.
+          </p>
+        </div>
+        <button
+          onClick={onOpenRfq}
+          className="amz-btn-primary w-full py-2 rounded-lg text-xs font-extrabold mt-4"
+        >
+          Post Request for Quote
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Signature 4-Point Trust Strip ---------- */
+function TrustStrip() {
+  return (
+    <div className="w-full">
+      <div className="amz-card grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-slate-100">
+        {trustPoints.map((tp) => {
+          const Icon = ICONS[tp.icon];
+          return (
+            <div key={tp.id} className="flex items-center gap-3 p-3.5 sm:p-4">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#006f83]/10 text-[#006f83]">
+                <Icon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-xs sm:text-sm font-extrabold text-slate-900 leading-tight">
+                  {tp.title}
+                </p>
+                <p className="truncate text-[11px] font-medium text-slate-500 leading-tight mt-0.5">
+                  {tp.desc}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Personalized Buyer Command Center ---------- */
+function WelcomeBanner() {
+  const { profile } = useAuth();
+  const firstName = profile?.name?.trim().split(" ")[0] || "Procurement Director";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      className="amz-card w-full p-4 sm:p-5"
+    >
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <h3 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+              Welcome back, {firstName}
+            </h3>
+          </div>
+          <p className="text-xs font-semibold text-slate-500 mt-0.5">
+            Active quotes, contract price updates & re-order items
+          </p>
+        </div>
+
+        <button className="amz-btn-outline rounded-lg px-3 py-1.5 text-xs font-bold flex items-center gap-1">
+          Saved Price Lists <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {welcomeHighlights.map((h) => {
+          const Icon = ICONS[h.icon];
+          return (
+            <div key={h.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#006f83]/10 text-[#006f83]">
+                <Icon className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-bold text-slate-900">{h.title}</p>
+                <p className="truncate text-[11px] font-medium text-slate-500 mt-0.5">{h.desc}</p>
+              </div>
+              <span className="text-xs font-extrabold tabular-nums shrink-0 text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
+                {h.value}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
+/* ---------- Top Wholesale Offers & Tiered Pricing ---------- */
+function TopWholesaleOffers({ onOpenRfq }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeader
+        title="Today's B2B Wholesale Deals & Volume Pricing"
+        subtitle="Audited OEM & Factory Direct Stock with Instant Volume Discounts"
+      />
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {topOffers.map((offer, i) => (
+          <motion.div
+            key={offer.id}
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.3, delay: i * 0.04 }}
+            className="amz-card flex flex-col p-4"
+          >
+            {/* Header / Brand */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white p-1">
+                  <img src={offer.logo} alt="" className="h-full w-full object-contain" />
+                </div>
+                <span className="text-xs font-extrabold text-slate-900">{offer.brand}</span>
+              </div>
+              <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 border border-amber-200">
+                <ShieldCheck className="h-3 w-3 text-amber-600" /> Verified
+              </span>
+            </div>
+
+            {/* Product Image */}
+            <div className="mt-3 aspect-video w-full overflow-hidden rounded-xl border border-slate-100 bg-slate-50 relative shadow-inner">
+              <img src={offer.image} alt="" className="h-full w-full object-cover" />
+              <span className="absolute top-2 left-2 bg-[#d2462b] text-white text-[10px] font-extrabold px-2 py-0.5 rounded shadow">
+                {offer.discountPercent}% OFF
+              </span>
+            </div>
+
+            {/* Title & SKU */}
+            <div className="mt-3 min-w-0">
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
+                SKU: {offer.sku}
+              </span>
+              <p className="mt-0.5 truncate text-xs sm:text-sm font-extrabold text-slate-900 leading-snug">
+                {offer.title}
+              </p>
+              <p className="mt-0.5 line-clamp-2 text-xs font-medium text-slate-500 leading-normal">
+                {offer.desc}
+              </p>
+            </div>
+
+            {/* Rating & MOQ */}
+            <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2 text-xs">
+              <span className="flex items-center gap-1 font-bold text-amber-600">
+                {offer.rating} <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                <span className="text-slate-400 font-normal">({offer.reviews})</span>
+              </span>
+              <span className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                MOQ: {offer.moq}
+              </span>
+            </div>
+
+            {/* Tiered Volume Pricing */}
+            <div className="mt-3 rounded-lg bg-slate-50 p-2.5 border border-slate-200/70 space-y-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                Volume Pricing
+              </span>
+              {offer.tierPricing?.map((tier, idx) => (
+                <div key={idx} className="flex justify-between text-xs font-semibold">
+                  <span className="text-slate-600">{tier.qty}:</span>
+                  <span className="font-extrabold text-slate-900 tabular-nums">{tier.price}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Actions */}
+            <button
+              onClick={onOpenRfq}
+              className="amz-btn-primary mt-4 w-full py-2 rounded-lg text-xs font-extrabold flex items-center justify-center gap-1"
+            >
+              Get Bulk RFQ Quote <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Business Metrics & Live Commodity Ticker ---------- */
+function BusinessAndMarketRow() {
+  return (
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_340px]">
+      <div>
+        <SectionHeader
+          title="Today's Procurement Highlights"
+          subtitle="Real-time volume statistics across active industrial hubs"
+        />
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {businessHighlights.map((h, i) => {
+            const Icon = ICONS[h.icon];
+            return (
+              <motion.div
+                key={h.id}
+                initial={{ opacity: 0, y: 8 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.3, delay: i * 0.04 }}
+                className="amz-card flex flex-col items-center p-4 text-center"
+              >
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#006f83]/10 text-[#006f83]">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="mt-2 text-2xl font-extrabold text-slate-900 tabular-nums">
+                  {h.value}
+                </span>
+                <p className="mt-1 text-xs font-semibold text-slate-500 leading-tight">
+                  {h.label}
+                </p>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Live Market Commodity Ticker */}
+      <div className="amz-card p-4 sm:p-5">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <h4 className="text-sm font-extrabold text-slate-900" style={{ fontFamily: FONT_DISPLAY }}>
+              Live Spec & Commodity Ticker
+            </h4>
+            <p className="text-[11px] font-medium text-slate-500">Real-time B2B raw material movement</p>
+          </div>
+          <span className="flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" /> Live
+          </span>
+        </div>
+
+        <div className="mt-3 space-y-2.5">
+          {marketFeed.map((item) => {
+            const Icon = ICONS[item.icon];
+            const isUp = item.direction === "up";
+            const isDown = item.direction === "down";
+            return (
+              <div key={item.id} className="flex items-start gap-2 p-2 rounded-lg hover:bg-slate-50 transition-colors">
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                    isUp ? "bg-rose-100 text-rose-600" : isDown ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-bold text-slate-900 leading-tight">{item.title}</p>
+                  {item.detail && <p className="truncate text-[11px] font-medium text-slate-500 mt-0.5">{item.detail}</p>}
+                </div>
+                {item.change && (
+                  <span
+                    className={`shrink-0 text-xs font-extrabold tabular-nums ${
+                      isUp ? "text-rose-600" : isDown ? "text-emerald-600" : "text-slate-600"
+                    }`}
+                  >
+                    {item.change}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+          <button className="amz-link text-xs font-extrabold flex items-center justify-center gap-1 w-full">
+            Setup Market Price Alerts &rarr;
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Industrial Category Explorer ---------- */
+function ShopByCategory() {
+  return (
+    <div className="space-y-3">
+      <SectionHeader
+        title="Explore Industrial Departments"
+        subtitle="Browse over 450,000+ verified products across key manufacturing domains"
+      />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        {categories.map((cat, i) => (
+          <motion.div
+            key={cat.id}
+            initial={{ opacity: 0, y: 8 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.3) }}
+            className="amz-card flex flex-col overflow-hidden group cursor-pointer"
+          >
+            <div className="aspect-video w-full overflow-hidden bg-slate-100 relative shadow-inner">
+              <img
+                src={cat.image}
+                alt=""
+                className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+              />
+              <span className="absolute top-2 left-2 bg-slate-900/85 backdrop-blur-sm text-white text-[10px] font-extrabold px-2 py-0.5 rounded shadow">
+                From {cat.from}
+              </span>
+            </div>
+            <div className="p-3.5 flex flex-col flex-1">
+              <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-[#d2462b] transition-colors">
+                {cat.name}
+              </h4>
+              <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                {cat.count} &middot; {cat.suppliers}
+              </p>
+
+              <div className="mt-2 flex flex-wrap gap-1">
+                {cat.subcategories?.slice(0, 2).map((sub, idx) => (
+                  <span key={idx} className="text-[10px] font-medium bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200/60">
+                    {sub}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Verified Supplier Showcase ---------- */
+function SupplierShowcase({ onOpenCompare }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <SectionHeader
+          title="ISO & OEM Verified Factory Suppliers"
+          subtitle="Direct manufacturer audit status, lead times & escrow protection"
+        />
+        <button
+          onClick={onOpenCompare}
+          className="amz-btn-outline flex items-center justify-center gap-1 rounded-lg px-3 py-1.5 text-xs font-extrabold self-start sm:self-auto"
+        >
+          <Scale className="h-4 w-4" /> Compare Suppliers
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {recommendedSuppliers.map((s) => (
+          <div key={s.id} className="amz-card flex flex-col p-4">
+            <div className="flex items-start gap-3">
+              <span
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-base font-extrabold text-white shadow-md"
+                style={{ background: s.tone }}
+              >
+                {s.name.split(" ").map((w) => w[0]).join("").slice(0, 2)}
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <h4 className="truncate text-xs sm:text-sm font-extrabold text-slate-900">{s.name}</h4>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="flex items-center gap-0.5 text-xs font-extrabold text-amber-600">
+                    <Star className="h-3 w-3 fill-amber-500 text-amber-500" /> {s.rating}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-medium">({s.reviews})</span>
+                  <span className="text-[11px] font-bold text-[#006f83] bg-sky-50 px-1.5 py-0.5 rounded">
+                    {s.location}
+                  </span>
+                </div>
+                <p className="text-[11px] font-semibold text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                  {s.desc}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2 text-[11px] font-bold">
+              <span className="text-emerald-700 flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" /> Dispatch: {s.dispatchRate}
+              </span>
+              <span className="text-slate-500">{s.certification}</span>
+            </div>
+
+            <button
+              onClick={onOpenCompare}
+              className="amz-btn-outline mt-3 w-full rounded-lg py-2 text-xs font-extrabold flex items-center justify-center gap-1"
+            >
+              View Factory Profile & Products <ArrowUpRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Shared Section Header ---------- */
+function SectionHeader({ title, subtitle, showViewAll = true }) {
   return (
     <div className="flex items-center justify-between">
-      <h3
-        className="text-[16px] font-extrabold tracking-tight md:text-[18.5px]"
-        style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: COLOR.ink }}
-      >
-        {title}
-      </h3>
+      <div>
+        <h3
+          className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900"
+          style={{ fontFamily: FONT_DISPLAY }}
+        >
+          {title}
+        </h3>
+        {subtitle && (
+          <p className="text-xs font-semibold text-slate-500 mt-0.5">{subtitle}</p>
+        )}
+      </div>
       {showViewAll && (
-        <button className="pm-link text-[12.5px] font-bold">View All</button>
+        <button className="amz-link text-xs font-bold flex items-center gap-0.5">
+          See All <ChevronRight className="h-3.5 w-3.5" />
+        </button>
       )}
     </div>
   );

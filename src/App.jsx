@@ -6,6 +6,9 @@ import Layout from "./components/Layout.jsx";
 import LandingPage from "./pages/LandingPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
 import HomePage from "./pages/HomePage.jsx";
+
+import NewHomePage from "./pages/NewHomePage.jsx";
+
 import HomePageSkeleton from "./components/skeletons/HomePageSkeleton.jsx";
 import AuthLayout from "./components/AuthLayout.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
@@ -28,12 +31,12 @@ function App() {
 
           <Route element={<Layout />}>
             <Route path="/" element={<RequireGuest><LandingPage /></RequireGuest>} />
-            
+
             <Route path="/search" element={<SearchResultsPage />} />
             <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><HomePage /></RequireAuth>} />
-            <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage/></RequireAuth>} />
-            <Route path="/seller/status" element={<RequireAuth><SellerStatusPage/></RequireAuth>} />
-            
+            <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
+            <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
+
             <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
             <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
             <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
