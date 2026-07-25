@@ -486,7 +486,6 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         whileHover={{ y: -2 }}
         whileTap={{ y: 0 }}
         className="amz-card relative flex items-center gap-2.5 p-3 text-left cursor-pointer w-full"
-
       >
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
@@ -523,9 +522,9 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
   );
 
   return (
-    <div className="w-full space-y-1">
+    <div className="w-full space-y-1 bg-white rounded-xl">
       <h3
-        className="text-md sm:text-base font-extrabold text-slate-900 text-center"
+        className="text-md pt-1 sm:text-base font-extrabold text-slate-900 text-center"
         style={{ fontFamily: FONT_DISPLAY }}
       >
         Daily Business Tools
