@@ -332,7 +332,7 @@ export const quickActions = [
   {
     id: "add-product",
     icon: "plus",
-    label: "Add Product",
+    label: "Sell Product",
     desc: "List a new product",
     fg: "#059669",
     bg: "rgba(5,150,105,0.08)",

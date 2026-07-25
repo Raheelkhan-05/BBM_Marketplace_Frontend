@@ -468,47 +468,64 @@ function Hero16by9Banner({ onOpenRfq }) {
   );
 }
 
-/* ---------- Quick Action Bar JUST BELOW THE BANNER - 8 Items (2 rows x 4 items) ---------- */
+/* ---------- Quick Action Bar JUST BELOW THE BANNER - Purchase (left col) / Sales (right col) ---------- */
 function QuickActionsJustBelowBanner({ onOpenRfq }) {
-  return (
-    <div className="w-full space-y-2">
-      <div className="flex items-center justify-between">
-        <h3 className="text-[15px] sm:text-sm font-extrabold text-slate-900 tracking-tight" style={{ fontFamily: FONT_DISPLAY }}>
-          Daily Business Tools
-        </h3>
-      </div>
+  const purchaseActions = quickActions.filter((a) =>
+    ["explore", "purchase-order", "price-list", "post-rfq"].includes(a.id)
+  );
+  const salesActions = quickActions.filter((a) =>
+    ["add-product", "update-stock", "seller-orders", "marketing"].includes(a.id)
+  );
 
-      {/* 4 ITEMS IN ROW 1, 4 ITEMS IN ROW 2 (Total 8 Quick Action Items in 2x4 Grid) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        {quickActions.map((a) => {
-          const Icon = ICONS[a.icon] || Box;
-          return (
-            <motion.button
-              key={a.id}
-              onClick={a.id === "req" ? onOpenRfq : undefined}
-              whileHover={{ y: -2 }}
-              whileTap={{ y: 0 }}
-              className="amz-card relative flex items-center gap-2.5 p-3 text-left cursor-pointer border border-slate-200"
-            >
-              <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                style={{ background: a.bg, color: a.fg }}
-              >
-                <Icon className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-extrabold text-slate-900 leading-tight">{a.label}</p>
-                <p className="truncate text-[10.5px] font-medium text-slate-500 mt-0.5 leading-tight">{a.desc}</p>
-              </div>
-              {a.count && (
-                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] font-extrabold text-white tabular-nums">
-                  {a.count}
-                </span>
-              )}
-            </motion.button>
-          );
-        })}
+  const renderCard = (a, accent) => {
+    const Icon = ICONS[a.icon] || Box;
+    return (
+      <motion.button
+        key={a.id}
+        onClick={a.id === "req" ? onOpenRfq : undefined}
+        whileHover={{ y: -2 }}
+        whileTap={{ y: 0 }}
+        className="amz-card relative flex items-center gap-2.5 p-3 text-left cursor-pointer w-full"
+        style={{ border: `1.5px dashed ${accent}` }}
+      >
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+          style={{ background: a.bg, color: a.fg }}
+        >
+          <Icon className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-extrabold text-slate-900 leading-tight">{a.label}</p>
+          <p className="text-[10.5px] font-medium text-slate-500 mt-0.5 leading-tight">{a.desc}</p>
+        </div>
+        {a.count && (
+          <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] font-extrabold text-white tabular-nums">
+            {a.count}
+          </span>
+        )}
+      </motion.button>
+    );
+  };
+
+  const renderGroup = (title, items, accent) => (
+    <div className="flex-1 space-y-2.5">
+      <h3
+        className="text-[13px] font-extrabold tracking-tight px-0.5"
+        style={{ fontFamily: FONT_DISPLAY, color: accent }}
+      >
+        {title}
+      </h3>
+      {/* single column, 4 rows, on ALL screen sizes */}
+      <div className="grid grid-cols-1 gap-2.5">
+        {items.map((a) => renderCard(a, accent))}
       </div>
+    </div>
+  );
+
+  return (
+    <div className="w-full flex flex-row gap-3">
+      {renderGroup("Purchase", purchaseActions, "#d2462b")}
+      {renderGroup("Sales", salesActions, "#059669")}
     </div>
   );
 }
