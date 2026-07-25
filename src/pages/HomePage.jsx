@@ -446,7 +446,7 @@ function Hero16by9Banner({ onOpenRfq }) {
         </motion.div>
 
         {/* Carousel Navigation Dots */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex items-center justify-center gap-1.5">
+        {/* <div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex items-center justify-center gap-1.5">
           {promoSlides.map((_, i) => (
             <button
               key={i}
@@ -458,7 +458,7 @@ function Hero16by9Banner({ onOpenRfq }) {
               }}
             />
           ))}
-        </div>
+        </div> */}
       </div>
     </div>
   );
