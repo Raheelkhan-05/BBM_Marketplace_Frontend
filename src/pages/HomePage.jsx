@@ -400,7 +400,7 @@ function Hero16by9Banner({ onOpenRfq }) {
                 </div>
 
                 {/* Content Overlay — Non-clipping Layout with Fluid Typography */}
-                <div className="relative z-10 flex flex-col justify-center h-full max-w-[65%] sm:max-w-[55%] p-3 sm:p-6 lg:p-10 text-white">
+                <div className="relative z-10 flex flex-col justify-center h-full max-w-[50%] sm:max-w-[55%] p-3 sm:p-6 lg:p-10 text-white">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="inline-flex items-center gap-1 bg-[#d2462b] text-white px-2 py-0.5 rounded-md text-[9px] sm:text-xs font-extrabold uppercase tracking-wider shadow-md">
                       <Sparkles className="h-3 w-3" /> {slide.tag}
