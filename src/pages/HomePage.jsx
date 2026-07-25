@@ -169,8 +169,6 @@ function GlobalStyles() {
       .amz-btn-primary {
         background: linear-gradient(180deg, ${COLOR.brandRed} 0%, ${COLOR.brandRedDark} 100%);
         color: #ffffff;
-        border: 1px solid ${COLOR.brandRedDark};
-        box-shadow: 0 2px 6px rgba(210,70,43,0.28), inset 0 1px 0 rgba(255,255,255,0.25);
         cursor: pointer;
         transition: all 180ms ease;
       }
@@ -284,7 +282,7 @@ function AmazonSearchHeader({ onOpenRfq }) {
 
         <div className="flex flex-1 items-center px-3">
           {/* <Search className="h-4 w-4 text-slate-400 shrink-0 mr-2 sm:hidden" /> */}
-          <img src="./Logo.png" alt="Logo" className="h-4 w-4 mr-2" />
+          <img src="./Logo.png" alt="Logo" className="h-6 w-6 mr-2" />
           <input
             type="text"
             value={query}
