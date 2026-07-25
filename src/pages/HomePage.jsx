@@ -497,8 +497,8 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
                 <Icon className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-extrabold text-slate-900 leading-tight">{a.label}</p>
-                <p className="truncate text-[10.5px] font-medium text-slate-500 mt-0.5 leading-tight">{a.desc}</p>
+                <p className="text-xs font-extrabold text-slate-900 leading-tight">{a.label}</p>
+                <p className="text-[10.5px] font-medium text-slate-500 mt-0.5 leading-tight">{a.desc}</p>
               </div>
               {a.count && (
                 <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] font-extrabold text-white tabular-nums">
