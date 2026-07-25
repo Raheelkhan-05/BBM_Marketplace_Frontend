@@ -102,6 +102,10 @@ export default function HomePage() {
         {/* Quick Action Bar JUST BELOW THE HERO BANNER (8 Items in 2x4 Grid) */}
         <QuickActionsJustBelowBanner onOpenRfq={() => setIsRfqOpen(true)} />
 
+        {/* Industrial Category Department Explorer */}
+        <ShopByCategory />
+
+
         {/* Amazon-Style 4-Box Feature Quad Grid */}
         <AmazonQuadFeatureGrid onOpenRfq={() => setIsRfqOpen(true)} onOpenCompare={() => setIsCompareOpen(true)} />
 
@@ -116,9 +120,6 @@ export default function HomePage() {
 
         {/* Today's B2B Wholesale Deals & Volume Pricing */}
         <TopWholesaleOffers onOpenRfq={() => setIsRfqOpen(true)} />
-
-        {/* Industrial Category Department Explorer */}
-        <ShopByCategory />
 
         {/* Business Metrics & Live Commodity Ticker */}
         <BusinessAndMarketRow />
@@ -901,56 +902,91 @@ function BusinessAndMarketRow() {
   );
 }
 
-/* ---------- Industrial Category Explorer ---------- */
+/* ---------- Industrial Category Explorer (Play Store style: icon + name, 3 rows, horizontal scroll) ---------- */
 function ShopByCategory() {
   return (
     <div className="space-y-3">
       <SectionHeader
         title="Explore Industrial Departments"
-        subtitle="Browse over 450,000+ verified products across key manufacturing domains"
       />
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        {categories.map((cat, i) => (
-          <motion.div
-            key={cat.id}
-            initial={{ opacity: 0, y: 8 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.3) }}
-            className="amz-card flex flex-col overflow-hidden group cursor-pointer"
-          >
-            <div className="aspect-video w-full overflow-hidden bg-slate-100 relative shadow-inner">
-              <img
-                src={cat.image}
-                alt=""
-                className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-              />
-              <span className="absolute top-2 left-2 bg-slate-900/85 backdrop-blur-sm text-white text-[10px] font-extrabold px-2 py-0.5 rounded shadow">
-                From {cat.from}
+
+      <div className="overflow-x-auto overflow-y-hidden -mx-4 px-4 sm:-mx-6 sm:px-6 scrollbar-hide bg-white rounded-2xl py-3">
+        <div
+          className="grid grid-flow-col grid-rows-3 gap-x-5 gap-y-2.5 sm:gap-x-7 sm:gap-y-3 w-max"
+        >
+          {categories.map((cat) => (
+            <div
+              key={cat.id}
+              className="flex items-center gap-3 py-1 cursor-pointer group w-[220px] sm:w-[220px]"
+            >
+              <span className="h-11 w-11 sm:h-12 sm:w-12 shrink-0 rounded-lg overflow-hidden bg-slate-100 shadow-sm">
+                <img
+                  src={cat.image}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </span>
+              <span className="text-[13px] sm:text-[13px] font-bold text-slate-800 leading-tight truncate group-hover:text-[#d2462b] transition-colors">
+                {cat.name}
               </span>
             </div>
-            <div className="p-3.5 flex flex-col flex-1">
-              <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-[#d2462b] transition-colors">
-                {cat.name}
-              </h4>
-              <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
-                {cat.count} &middot; {cat.suppliers}
-              </p>
-
-              <div className="mt-2 flex flex-wrap gap-1">
-                {cat.subcategories?.slice(0, 2).map((sub, idx) => (
-                  <span key={idx} className="text-[10px] font-medium bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200/60">
-                    {sub}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </motion.div>
-        ))}
+          ))}
+        </div>
       </div>
     </div>
   );
 }
+
+/* ---------- Industrial Category Explorer ---------- */
+// function ShopByCategory() {
+//   return (
+//     <div className="space-y-3">
+//       <SectionHeader
+//         title="Explore Industrial Departments"
+//         subtitle="Browse over 450,000+ verified products across key manufacturing domains"
+//       />
+//       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+//         {categories.map((cat, i) => (
+//           <motion.div
+//             key={cat.id}
+//             initial={{ opacity: 0, y: 8 }}
+//             whileInView={{ opacity: 1, y: 0 }}
+//             viewport={{ once: true }}
+//             transition={{ duration: 0.3, delay: Math.min(i * 0.04, 0.3) }}
+//             className="amz-card flex flex-col overflow-hidden group cursor-pointer"
+//           >
+//             <div className="aspect-video w-full overflow-hidden bg-slate-100 relative shadow-inner">
+//               <img
+//                 src={cat.image}
+//                 alt=""
+//                 className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+//               />
+//               <span className="absolute top-2 left-2 bg-slate-900/85 backdrop-blur-sm text-white text-[10px] font-extrabold px-2 py-0.5 rounded shadow">
+//                 From {cat.from}
+//               </span>
+//             </div>
+//             <div className="p-3.5 flex flex-col flex-1">
+//               <h4 className="text-xs sm:text-sm font-extrabold text-slate-900 group-hover:text-[#d2462b] transition-colors">
+//                 {cat.name}
+//               </h4>
+//               <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+//                 {cat.count} &middot; {cat.suppliers}
+//               </p>
+
+//               <div className="mt-2 flex flex-wrap gap-1">
+//                 {cat.subcategories?.slice(0, 2).map((sub, idx) => (
+//                   <span key={idx} className="text-[10px] font-medium bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200/60">
+//                     {sub}
+//                   </span>
+//                 ))}
+//               </div>
+//             </div>
+//           </motion.div>
+//         ))}
+//       </div>
+//     </div>
+//   );
+// }
 
 /* ---------- Verified Supplier Showcase ---------- */
 function SupplierShowcase({ onOpenCompare }) {
