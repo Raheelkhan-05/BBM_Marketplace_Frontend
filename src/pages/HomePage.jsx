@@ -947,7 +947,7 @@ function TopCategoriesAccordion() {
                 onClick={() => toggleCategory(cat.id)}
                 className="w-full flex flex-col text-left group"
               >
-                <div className="relative w-full h-20 sm:h-24 overflow-hidden bg-slate-200">
+                <div className="relative w-full aspect-[3/1] overflow-hidden bg-slate-200">
                   <img
                     src={cat.image}
                     alt={cat.name}
