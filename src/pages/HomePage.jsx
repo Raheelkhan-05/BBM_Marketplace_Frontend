@@ -283,12 +283,13 @@ function AmazonSearchHeader({ onOpenRfq }) {
         </select>
 
         <div className="flex flex-1 items-center px-3">
-          <Search className="h-4 w-4 text-slate-400 shrink-0 mr-2 sm:hidden" />
+          {/* <Search className="h-4 w-4 text-slate-400 shrink-0 mr-2 sm:hidden" /> */}
+          <img src="./Logo.png" alt="Logo" className="h-4 w-4 mr-2" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search SKUs, bearings, lubricants, part # (e.g. SKF 6205, Shell 15W40)..."
+            placeholder="Search SKUs, bearings, lubricants..."
             className="w-full bg-transparent py-2.5 text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
           />
           <button type="button" aria-label="Visual Search" className="p-1 text-slate-400 hover:text-slate-600">
