@@ -1,11 +1,12 @@
 // src/pages/HomePage.jsx
 
 import { useState, useRef, useEffect } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
-import { animate, motion, useMotionValue } from "framer-motion";
+import { animate, motion, useMotionValue, AnimatePresence } from "framer-motion";
 import {
   Search, Camera, ChevronRight, ArrowDown, Users, ShoppingCart,
-  Tag, FileText, Zap, BadgePercent, TrendingUp, Circle, Truck,
+  Tag, FileText, Zap, BadgePercent, TrendingUp, Circle, Truck, ChevronDown,
   CreditCard, Plus, ScanLine, ClipboardList, Repeat, Star, ShieldCheck,
   Lock, FileCheck, Layers, Cpu, Box, Clock, CheckCircle2, SlidersHorizontal,
   Scale, ArrowUpRight, Award, Building2, PackageCheck, Grid, Percent, Sparkles,
@@ -103,7 +104,7 @@ export default function HomePage() {
         <QuickActionsJustBelowBanner onOpenRfq={() => setIsRfqOpen(true)} />
 
         {/* Industrial Category Department Explorer */}
-        <ShopByCategory />
+        <TopCategoriesAccordion />
 
 
         {/* Amazon-Style 4-Box Feature Quad Grid */}
@@ -902,36 +903,141 @@ function BusinessAndMarketRow() {
   );
 }
 
-/* ---------- Industrial Category Explorer (Play Store style: icon + name, 3 rows, horizontal scroll) ---------- */
-function ShopByCategory() {
+/* ---------- Top Performing Categories (Accordion: Category -> Subcategory -> Products) ---------- */
+
+// Dummy product data generator per subcategory (for testing only)
+const dummyProducts = (subName) => [
+  { id: `${subName}-1`, name: `${subName} - Standard Grade`, price: "₹120/pc", moq: "MOQ 50 pcs" },
+  { id: `${subName}-2`, name: `${subName} - Heavy Duty`, price: "₹340/pc", moq: "MOQ 20 pcs" },
+  { id: `${subName}-3`, name: `${subName} - Premium OEM`, price: "₹610/pc", moq: "MOQ 10 pcs" },
+];
+
+const topCategories = categories.slice(0, 5);
+
+function TopCategoriesAccordion() {
+  const [openCategory, setOpenCategory] = React.useState(null);
+  const [openSubcategory, setOpenSubcategory] = React.useState(null);
+
+  const toggleCategory = (id) => {
+    setOpenCategory((prev) => (prev === id ? null : id));
+    setOpenSubcategory(null); // closing/switching category resets subcategory
+  };
+
+  const toggleSubcategory = (id) => {
+    setOpenSubcategory((prev) => (prev === id ? null : id));
+  };
+
   return (
     <div className="space-y-3">
       <SectionHeader
-        title="Explore Industrial Departments"
+        title="Explore Categories"
+        subtitle="Explore our best-selling industrial departments"
       />
 
-      <div className="overflow-x-auto overflow-y-hidden -mx-4 px-4 sm:-mx-6 sm:px-6 scrollbar-hide bg-white rounded-2xl py-3">
-        <div
-          className="grid grid-flow-col grid-rows-3 gap-x-5 gap-y-2.5 sm:gap-x-7 sm:gap-y-3 w-max"
-        >
-          {categories.map((cat) => (
+      <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white">
+        {topCategories.map((cat, idx) => {
+          const isOpen = openCategory === cat.id;
+          return (
             <div
               key={cat.id}
-              className="flex items-center gap-3 py-1 cursor-pointer group w-[220px] sm:w-[220px]"
+              className={idx !== 0 ? "border-t-4 border-slate-200" : ""}
             >
-              <span className="h-11 w-11 sm:h-12 sm:w-12 shrink-0 rounded-lg overflow-hidden bg-slate-100 shadow-sm">
-                <img
-                  src={cat.image}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              </span>
-              <span className="text-[13px] sm:text-[13px] font-bold text-slate-800 leading-tight truncate group-hover:text-[#d2462b] transition-colors">
-                {cat.name}
-              </span>
+              {/* ---- Category Row ---- */}
+              <button
+                onClick={() => toggleCategory(cat.id)}
+                className="w-full flex flex-col text-left group"
+              >
+                <div className="relative w-full h-20 sm:h-24 overflow-hidden bg-slate-200">
+                  <img
+                    src={cat.image}
+                    alt={cat.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between w-full px-4 sm:px-5 py-3 border-b border-slate-200">
+                  <h4 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+                    {cat.name}
+                  </h4>
+                  <ChevronDown
+                    className={`h-5 w-5 shrink-0 text-slate-500 transition-transform duration-300 ${isOpen ? "rotate-180 text-[#d2462b]" : ""
+                      }`}
+                  />
+                </div>
+              </button>
+
+              {/* ---- Subcategories (expand/collapse) ---- */}
+              <AnimatePresence initial={false}>
+                {isOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.25, ease: "easeInOut" }}
+                    className="overflow-hidden bg-slate-50"
+                  >
+                    <div className="divide-y divide-slate-200/70">
+                      {cat.subcategories.map((sub) => {
+                        const subId = `${cat.id}-${sub}`;
+                        const isSubOpen = openSubcategory === subId;
+                        return (
+                          <div key={subId}>
+                            <button
+                              onClick={() => toggleSubcategory(subId)}
+                              className="w-full flex items-center justify-between pl-7 pr-4 sm:pl-9 sm:pr-5 py-3 text-left"
+                            >
+                              <span className="text-xs sm:text-sm font-bold text-slate-700">
+                                {sub}
+                              </span>
+                              <ChevronDown
+                                className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-300 ${isSubOpen ? "rotate-180 text-[#d2462b]" : ""
+                                  }`}
+                              />
+                            </button>
+
+                            {/* ---- Products (expand/collapse) ---- */}
+                            <AnimatePresence initial={false}>
+                              {isSubOpen && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.22, ease: "easeInOut" }}
+                                  className="overflow-hidden bg-white"
+                                >
+                                  <div className="pl-9 sm:pl-12 pr-4 sm:pr-5 py-2 space-y-2">
+                                    {dummyProducts(sub).map((p) => (
+                                      <div
+                                        key={p.id}
+                                        className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 hover:border-[#d2462b]/40 transition-colors cursor-pointer"
+                                      >
+                                        <div className="min-w-0">
+                                          <p className="text-[11.5px] sm:text-xs font-bold text-slate-800 truncate">
+                                            {p.name}
+                                          </p>
+                                          <p className="text-[10.5px] font-medium text-slate-500 mt-0.5">
+                                            {p.moq}
+                                          </p>
+                                        </div>
+                                        <span className="text-[11.5px] sm:text-xs font-extrabold text-[#d2462b] shrink-0 ml-2">
+                                          {p.price}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </div>
   );
