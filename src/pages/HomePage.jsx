@@ -907,9 +907,9 @@ function BusinessAndMarketRow() {
 
 // Dummy product data generator per subcategory (for testing only)
 const dummyProducts = (subName) => [
-  { id: `${subName}-1`, name: `${subName} - Standard Grade`, price: "₹120/pc", moq: "MOQ 50 pcs" },
-  { id: `${subName}-2`, name: `${subName} - Heavy Duty`, price: "₹340/pc", moq: "MOQ 20 pcs" },
-  { id: `${subName}-3`, name: `${subName} - Premium OEM`, price: "₹610/pc", moq: "MOQ 10 pcs" },
+  { id: `${subName}-1`, name: `${subName} - Standard Grade`, sellers: 24, moq: "MOQ 50 pcs" },
+  { id: `${subName}-2`, name: `${subName} - Heavy Duty`, sellers: 12, moq: "MOQ 20 pcs" },
+  { id: `${subName}-3`, name: `${subName} - Premium OEM`, sellers: 7, moq: "MOQ 10 pcs" },
 ];
 
 const topCategories = categories.slice(0, 5);
@@ -956,9 +956,14 @@ function TopCategoriesAccordion() {
                 </div>
 
                 <div className="flex items-center justify-between w-full px-4 sm:px-5 py-3 border-b border-slate-200">
-                  <h4 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
-                    {cat.name}
-                  </h4>
+                  <div>
+                    <h4 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+                      {cat.name}
+                    </h4>
+                    <p className="text-[11px] sm:text-xs font-semibold text-slate-500">
+                      {cat.subcategories.length} Subcategories
+                    </p>
+                  </div>
                   <ChevronDown
                     className={`h-5 w-5 shrink-0 text-slate-500 transition-transform duration-300 ${isOpen ? "rotate-180 text-[#d2462b]" : ""
                       }`}
@@ -986,9 +991,14 @@ function TopCategoriesAccordion() {
                               onClick={() => toggleSubcategory(subId)}
                               className="w-full flex items-center justify-between pl-7 pr-4 sm:pl-9 sm:pr-5 py-3 text-left"
                             >
-                              <span className="text-xs sm:text-sm font-bold text-slate-700">
-                                {sub}
-                              </span>
+                              <div>
+                                <span className="text-xs sm:text-sm font-bold text-slate-700">
+                                  {sub}
+                                </span>
+                                <p className="text-[10.5px] font-semibold text-slate-400">
+                                  {dummyProducts(sub).length} Products
+                                </p>
+                              </div>
                               <ChevronDown
                                 className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-300 ${isSubOpen ? "rotate-180 text-[#d2462b]" : ""
                                   }`}
@@ -1020,7 +1030,7 @@ function TopCategoriesAccordion() {
                                           </p>
                                         </div>
                                         <span className="text-[11.5px] sm:text-xs font-extrabold text-[#d2462b] shrink-0 ml-2">
-                                          {p.price}
+                                          {p.sellers} Sellers
                                         </span>
                                       </div>
                                     ))}
