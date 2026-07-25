@@ -524,7 +524,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
   return (
     <div className="w-full space-y-1 pb-5 bg-white rounded-xl">
       <h3
-        className="text-md pt-1 sm:text-base font-bold text-slate-900 text-center"
+        className="text-md pt-2 sm:text-base font-bold text-slate-900 text-center"
         style={{ fontFamily: FONT_DISPLAY }}
       >
         Daily Business Tools
