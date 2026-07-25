@@ -473,10 +473,9 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
   return (
     <div className="w-full space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 tracking-tight" style={{ fontFamily: FONT_DISPLAY }}>
+        <h3 className="text-[15px] sm:text-sm font-extrabold text-slate-900 tracking-wide" style={{ fontFamily: FONT_DISPLAY }}>
           Daily Business Tools
         </h3>
-        <span className="text-[11px] font-semibold text-slate-500">8 Instant Actions</span>
       </div>
 
       {/* 4 ITEMS IN ROW 1, 4 ITEMS IN ROW 2 (Total 8 Quick Action Items in 2x4 Grid) */}
