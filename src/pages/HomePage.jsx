@@ -288,10 +288,10 @@ function AmazonSearchHeader({ onOpenRfq }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search SKUs, bearings, lubricants..."
-            className="w-full bg-transparent py-4 text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
+            className="w-full bg-transparent py-4 text-[12.5px] sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
           />
           <button type="button" aria-label="Visual Search" className="p-1 text-slate-400 hover:text-slate-600">
-            <Camera className="h-4 w-4" />
+            <Camera className="h-5 w-5" />
           </button>
         </div>
 
@@ -299,7 +299,7 @@ function AmazonSearchHeader({ onOpenRfq }) {
           type="submit"
           className="amz-btn-primary px-5 flex items-center justify-center font-extrabold text-white text-xs sm:text-sm shrink-0"
         >
-          <Search className="h-4 w-4 sm:mr-1.5" />
+          <Search className="h-5 w-5 sm:mr-1.5" />
           <span className="hidden sm:inline">Search</span>
         </button>
       </form>
