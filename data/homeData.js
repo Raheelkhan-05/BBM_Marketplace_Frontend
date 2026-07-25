@@ -353,7 +353,7 @@ export const quickActions = [
   {
     id: "update-stock",
     icon: "repeat",
-    label: "Update Price & Stock",
+    label: "Update Sales Price & Stock",
     desc: "Modify inventory & pricing",
     fg: "#d97706",
     bg: "rgba(217,119,6,0.08)",
@@ -363,7 +363,7 @@ export const quickActions = [
   {
     id: "price-list",
     icon: "invoice",
-    label: "Price List",
+    label: "Purchase Price List",
     desc: "View and compare pricing",
     fg: "#d2462b",
     bg: "rgba(210,70,43,0.08)",
