@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import React from "react";
 import { animate, motion, useMotionValue } from "framer-motion";
 import {
   Search, Camera, ChevronRight, ArrowDown, Users, ShoppingCart,
@@ -470,26 +471,64 @@ function Hero16by9Banner({ onOpenRfq }) {
 
 /* ---------- Quick Action Bar JUST BELOW THE BANNER - 8 Items (2 rows x 4 items) ---------- */
 function QuickActionsJustBelowBanner({ onOpenRfq }) {
+  const [activeTab, setActiveTab] = React.useState("buyer");
+
+  const buyerTools = quickActions.slice(0, 4);
+  const sellerTools = quickActions.slice(4, 8);
+
+  const actions = activeTab === "buyer" ? buyerTools : sellerTools;
+
   return (
-    <div className="w-full space-y-2">
+    <div className="w-full space-y-3">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="text-xs sm:text-sm font-extrabold text-slate-900 tracking-tight" style={{ fontFamily: FONT_DISPLAY }}>
-          Quick Procurement Access
+        <h3
+          className="text-xs sm:text-sm font-extrabold tracking-tight text-slate-900"
+          style={{ fontFamily: FONT_DISPLAY }}
+        >
+          Daily Business Tools
         </h3>
-        <span className="text-[11px] font-semibold text-slate-500">8 Instant Actions</span>
+
+        <span className="text-[11px] font-semibold text-slate-500">
+          {actions.length} Instant Actions
+        </span>
       </div>
 
-      {/* 4 ITEMS IN ROW 1, 4 ITEMS IN ROW 2 (Total 8 Quick Action Items in 2x4 Grid) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-        {quickActions.map((a) => {
+      {/* Tabs */}
+      <div className="flex rounded-xl bg-slate-100 p-1">
+        <button
+          onClick={() => setActiveTab("buyer")}
+          className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${activeTab === "buyer"
+            ? "bg-white text-[#047084] shadow-sm"
+            : "text-slate-500"
+            }`}
+        >
+          Purchase
+        </button>
+
+        <button
+          onClick={() => setActiveTab("seller")}
+          className={`flex-1 rounded-lg py-2 text-xs font-bold transition-all ${activeTab === "seller"
+            ? "bg-white text-[#047084] shadow-sm"
+            : "text-slate-500"
+            }`}
+        >
+          Sell
+        </button>
+      </div>
+
+      {/* Actions */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        {actions.map((a) => {
           const Icon = ICONS[a.icon] || Box;
+
           return (
             <motion.button
               key={a.id}
               onClick={a.id === "req" ? onOpenRfq : undefined}
               whileHover={{ y: -2 }}
               whileTap={{ y: 0 }}
-              className="amz-card relative flex items-center gap-2.5 p-3 text-left cursor-pointer border border-slate-200"
+              className="amz-card relative flex cursor-pointer items-center gap-2.5 border border-slate-200 p-3 text-left"
             >
               <span
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
@@ -497,12 +536,19 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
               >
                 <Icon className="h-4 w-4" />
               </span>
+
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-extrabold text-slate-900 leading-tight">{a.label}</p>
-                <p className="truncate text-[10.5px] font-medium text-slate-500 mt-0.5 leading-tight">{a.desc}</p>
+                <p className="truncate text-xs font-extrabold leading-tight text-slate-900">
+                  {a.label}
+                </p>
+
+                <p className="mt-0.5 truncate text-[10.5px] font-medium leading-tight text-slate-500">
+                  {a.desc}
+                </p>
               </div>
+
               {a.count && (
-                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] font-extrabold text-white tabular-nums">
+                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] font-extrabold tabular-nums text-white">
                   {a.count}
                 </span>
               )}
