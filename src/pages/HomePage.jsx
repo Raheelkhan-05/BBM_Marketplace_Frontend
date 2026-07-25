@@ -486,7 +486,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         whileHover={{ y: -2 }}
         whileTap={{ y: 0 }}
         className="amz-card relative flex items-center gap-2.5 p-3 text-left cursor-pointer w-full"
-
+        style={{ border: `1.5px dashed ${accent}` }}
       >
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
@@ -510,7 +510,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
   const renderGroup = (title, items, accent) => (
     <div className="flex-1 space-y-2.5">
       <h3
-        className="text-[13px] font-extrabold tracking-tight px-0.5"
+        className="text-[13px] font-extrabold tracking-tight text-center"
         style={{ fontFamily: FONT_DISPLAY, color: accent }}
       >
         {title}
@@ -523,9 +523,18 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
   );
 
   return (
-    <div className="w-full flex flex-row gap-3">
-      {renderGroup("Purchase", purchaseActions, "#d2462b")}
-      {renderGroup("Sales", salesActions, "#059669")}
+    <div className="w-full space-y-2">
+      <h3
+        className="text-md sm:text-base font-extrabold text-slate-900 text-center"
+        style={{ fontFamily: FONT_DISPLAY }}
+      >
+        Daily Business Tools
+      </h3>
+
+      <div className="w-full flex flex-row gap-3">
+        {renderGroup("Purchase", purchaseActions, "#d2462b")}
+        {renderGroup("Sales", salesActions, "#059669")}
+      </div>
     </div>
   );
 }
