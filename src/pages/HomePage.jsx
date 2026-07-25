@@ -910,7 +910,7 @@ function BusinessAndMarketRow() {
 const trustBrands = [
   {
     name: "SKF Group (Bearings)",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2e/SKF-Logo.svg/2560px-SKF-Logo.svg.png"
+    logo: "https://upload.wikimedia.org/wikipedia/commons/b/b8/SKF_logo.svg"
   },
   {
     name: "Shell (Lubricants)",
@@ -918,7 +918,7 @@ const trustBrands = [
   },
   {
     name: "3M (Industrial Pack & Safety)",
-    logo: "https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/threedotm.svg"
+    logo: "https://upload.wikimedia.org/wikipedia/commons/1/15/3M_wordmark.svg"
   },
   {
     name: "Schneider Electric",
@@ -933,10 +933,6 @@ const trustBrands = [
     logo: "https://upload.wikimedia.org/wikipedia/commons/2/26/WURTH.png"
   },
   {
-    name: "Grundfos (Pumps & Valves)",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/7/7b/Grundfos_logo.svg"
-  },
-  {
     name: "Honeywell (Safety Gear)",
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Honeywell_logo.svg/1280px-Honeywell_logo.svg.png"
   },
@@ -946,7 +942,43 @@ const trustBrands = [
   },
   {
     name: "Sandvik (MetalTech)",
-    logo: "https://cdn.jsdelivr.net/npm/simple-icons@v11/icons/sandvik.svg"
+    logo: "https://upload.wikimedia.org/wikipedia/commons/b/b8/SANDVIK.svg"
+  },
+  {
+    name: "Siemens (Automation)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/5/5f/Siemens-logo.svg"
+  },
+  {
+    name: "ABB (Power & Robotics)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/0/00/ABB_logo.svg"
+  },
+  {
+    name: "Parker Hannifin (Motion & Control)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/9/9e/Parker_Hannifin.svg"
+  },
+  {
+    name: "Eaton (Electrical & Fluid Power)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/2/2b/Eaton_Corporation_logo.svg"
+  },
+  {
+    name: "Festool (Power Tools)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/4/4d/Festool.svg"
+  },
+  {
+    name: "Danfoss (Climate & Drives)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/f/f2/Danfoss-Logo.svg"
+  },
+  {
+    name: "Emerson (Automation & Flow)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Logo_Emerson.svg/1280px-Logo_Emerson.svg.png"
+  },
+  {
+    name: "Rockwell Automation",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/a/a5/Rockwell_Automation_logo_%282019%29.svg"
+  },
+  {
+    name: "Atlas Copco (Compressors & Industrial)",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/4/42/Atlas_logo.png"
   }
 ];
 
@@ -961,21 +993,18 @@ function TrustLogo({ brand, onSelect }) {
         src={brand.logo}
         alt={brand.name}
         loading="lazy"
-        className="h-8 sm:h-10 w-auto object-contain grayscale opacity-60 group-hover:grayscale-0 group-hover:opacity-100 transition-all duration-200"
+        className="h-5 sm:h-6 w-auto object-contain opacity-100 transition-transform duration-200 group-hover:scale-110"
       />
     </button>
   );
 }
 
-function MarqueeRow({ brands, direction = "left", onSelect }) {
+function MarqueeRow({ brands, direction = "left", onSelect, bg }) {
   const loop = [...brands, ...brands];
   return (
-    <div className="relative overflow-hidden bg-white">
-      <div className="pointer-events-none absolute inset-y-0 left-0 w-14 sm:w-24 bg-gradient-to-r from-black/10 via-black/0 to-transparent z-10" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 w-14 sm:w-24 bg-gradient-to-l from-black/10 via-black/0 to-transparent z-10" />
-
+    <div className={`relative overflow-hidden ${bg}`}>
       <div
-        className={`flex w-max items-center py-4 ${direction === "left" ? "animate-marquee-left" : "animate-marquee-right"
+        className={`flex w-max items-center py-2.5 ${direction === "left" ? "animate-marquee-left" : "animate-marquee-right"
           }`}
       >
         {loop.map((brand, i) => (
@@ -992,9 +1021,19 @@ function TrustStripLogos() {
   };
 
   return (
-    <div className="space-y-2 bg-white rounded-2xl border border-slate-200">
-      <MarqueeRow brands={trustBrands} direction="left" onSelect={handleSelect} />
-      <MarqueeRow brands={[...trustBrands].reverse()} direction="right" onSelect={handleSelect} />
+    <div className="border border-slate-200 overflow-hidden divide-y divide-slate-200">
+      <MarqueeRow
+        brands={trustBrands}
+        direction="left"
+        onSelect={handleSelect}
+        bg="bg-white"
+      />
+      <MarqueeRow
+        brands={[...trustBrands].reverse()}
+        direction="right"
+        onSelect={handleSelect}
+        bg="bg-slate-50"
+      />
 
       <style>{`
         @keyframes marquee-left {
