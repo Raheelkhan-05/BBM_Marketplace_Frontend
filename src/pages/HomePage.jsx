@@ -290,7 +290,7 @@ function AmazonSearchHeader({ onOpenRfq }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search SKUs, bearings, lubricants..."
-            className="w-full bg-transparent py-2.5 text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
+            className="w-full bg-transparent py-4 text-xs sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
           />
           <button type="button" aria-label="Visual Search" className="p-1 text-slate-400 hover:text-slate-600">
             <Camera className="h-4 w-4" />
