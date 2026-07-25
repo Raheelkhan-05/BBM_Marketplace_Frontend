@@ -318,12 +318,85 @@ export const supplierComparisonMatrix = [
 
 // TOTAL 8 QUICK ACTION ITEMS (4 items in Row 1, 4 items in Row 2)
 export const quickActions = [
-  { id: "req", icon: "plus", label: "Post Quick RFQ", desc: "Get bids in 30 mins", fg: "#d2462b", bg: "rgba(210,70,43,0.08)" },
-  { id: "bulk", icon: "scan", label: "Multi-SKU Order", desc: "Paste part numbers & order", fg: "#006f83", bg: "rgba(0,111,131,0.08)" },
-  { id: "purchase", icon: "clipboard", label: "Procurement Desk", desc: "18 Active Orders", fg: "#0F172A", bg: "rgba(15,23,42,0.08)", count: 18 },
-  { id: "reorder", icon: "repeat", label: "1-Click Re-Order", desc: "Repeat previous invoice", fg: "#059669", bg: "rgba(5,150,105,0.08)" },
-  { id: "part-scan", icon: "box", label: "Scan Part Number", desc: "Barcode / Spec lookup", fg: "#d97706", bg: "rgba(217,119,6,0.08)" },
-  { id: "gst-credit", icon: "invoice", label: "GST Tax Invoices", desc: "Download tax reports", fg: "#006f83", bg: "rgba(0,111,131,0.08)" },
-  { id: "credit-line", icon: "card", label: "Net 30 Credit", desc: "Check credit limit", fg: "#d2462b", bg: "rgba(210,70,43,0.08)" },
-  { id: "samples", icon: "shield", label: "Request Sample", desc: "Free product sample", fg: "#059669", bg: "rgba(5,150,105,0.08)" },
+  // Buyer
+  {
+    id: "explore",
+    icon: "search",
+    label: "Explore",
+    desc: "Browse products & suppliers",
+    fg: "#006f83",
+    bg: "rgba(0,111,131,0.08)",
+  },
+
+  // Seller
+  {
+    id: "add-product",
+    icon: "plus",
+    label: "Add Product",
+    desc: "List a new product",
+    fg: "#059669",
+    bg: "rgba(5,150,105,0.08)",
+  },
+
+  // Buyer
+  {
+    id: "purchase-order",
+    icon: "clipboard",
+    label: "Purchase Order",
+    desc: "Track and manage POs",
+    fg: "#0F172A",
+    bg: "rgba(15,23,42,0.08)",
+    count: 18,
+  },
+
+  // Seller
+  {
+    id: "update-stock",
+    icon: "repeat",
+    label: "Update Price & Stock",
+    desc: "Modify inventory & pricing",
+    fg: "#d97706",
+    bg: "rgba(217,119,6,0.08)",
+  },
+
+  // Buyer
+  {
+    id: "price-list",
+    icon: "invoice",
+    label: "Price List",
+    desc: "View and compare pricing",
+    fg: "#d2462b",
+    bg: "rgba(210,70,43,0.08)",
+  },
+
+  // Seller
+  {
+    id: "seller-orders",
+    icon: "box",
+    label: "Sales Orders",
+    desc: "Manage incoming orders",
+    fg: "#006f83",
+    bg: "rgba(0,111,131,0.08)",
+    count: 8,
+  },
+
+  // Buyer
+  {
+    id: "post-rfq",
+    icon: "scan",
+    label: "Post Quick RFQ",
+    desc: "Receive supplier quotations",
+    fg: "#d2462b",
+    bg: "rgba(210,70,43,0.08)",
+  },
+
+  // Seller
+  {
+    id: "marketing",
+    icon: "shield",
+    label: "Marketing & Promotion",
+    desc: "Boost visibility & sales",
+    fg: "#059669",
+    bg: "rgba(5,150,105,0.08)",
+  },
 ];
