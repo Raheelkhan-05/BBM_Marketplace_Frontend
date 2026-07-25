@@ -93,10 +93,11 @@ export default function HomePage() {
 
       <main className="mx-auto max-w-[1400px] px-2.5 sm:px-4 lg:px-6 pb-20 pt-3 space-y-6">
         {/* Search Header Bar */}
-        <AmazonSearchHeader onOpenRfq={() => setIsRfqOpen(true)} />
 
         {/* 16:9 Aspect Ratio Hero Banner */}
         <Hero16by9Banner onOpenRfq={() => setIsRfqOpen(true)} />
+
+        <AmazonSearchHeader onOpenRfq={() => setIsRfqOpen(true)} />
 
         {/* Quick Action Bar JUST BELOW THE HERO BANNER (8 Items in 2x4 Grid) */}
         <QuickActionsJustBelowBanner onOpenRfq={() => setIsRfqOpen(true)} />
@@ -840,9 +841,8 @@ function BusinessAndMarketRow() {
             return (
               <div key={item.id} className="flex items-start gap-2 p-2 rounded-lg hover:bg-slate-50 transition-colors">
                 <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
-                    isUp ? "bg-rose-100 text-rose-600" : isDown ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-500"
-                  }`}
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${isUp ? "bg-rose-100 text-rose-600" : isDown ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-500"
+                    }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
                 </span>
@@ -852,9 +852,8 @@ function BusinessAndMarketRow() {
                 </div>
                 {item.change && (
                   <span
-                    className={`shrink-0 text-xs font-extrabold tabular-nums ${
-                      isUp ? "text-rose-600" : isDown ? "text-emerald-600" : "text-slate-600"
-                    }`}
+                    className={`shrink-0 text-xs font-extrabold tabular-nums ${isUp ? "text-rose-600" : isDown ? "text-emerald-600" : "text-slate-600"
+                      }`}
                   >
                     {item.change}
                   </span>
