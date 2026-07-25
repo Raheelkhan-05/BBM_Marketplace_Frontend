@@ -486,7 +486,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         whileHover={{ y: -2 }}
         whileTap={{ y: 0 }}
         className="amz-card relative flex items-center gap-2.5 p-3 text-left cursor-pointer w-full"
-        style={{ border: `1.5px dashed ${accent}` }}
+
       >
         <span
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
@@ -523,7 +523,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
   );
 
   return (
-    <div className="w-full space-y-2">
+    <div className="w-full space-y-1">
       <h3
         className="text-md sm:text-base font-extrabold text-slate-900 text-center"
         style={{ fontFamily: FONT_DISPLAY }}
