@@ -473,7 +473,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
   return (
     <div className="w-full space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-[15px] sm:text-sm font-extrabold text-slate-900 tracking-wide" style={{ fontFamily: FONT_DISPLAY }}>
+        <h3 className="text-[15px] sm:text-sm font-extrabold text-slate-900 tracking-tight" style={{ fontFamily: FONT_DISPLAY }}>
           Daily Business Tools
         </h3>
       </div>
