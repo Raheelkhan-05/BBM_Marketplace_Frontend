@@ -280,17 +280,22 @@ function AmazonSearchHeader({ onOpenRfq }) {
           <option>Safety PPE</option>
         </select>
 
-        <div className="flex flex-1 items-center px-3">
-          {/* <Search className="h-4 w-4 text-slate-400 shrink-0 mr-2 sm:hidden" /> */}
-          <img src="./Logo.png" alt="Logo" className="h-6 w-6 mr-2" />
+        <div className="flex h-[50px] w-[380px] items-center px-3">
+          <img src="./Logo.png" alt="Logo" className="mr-2 h-6 w-6" />
+
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search SKUs, bearings, lubricants..."
-            className="w-full bg-transparent py-4 text-[12.5px] sm:text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none"
+            className="w-full bg-transparent text-[12.5px] font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none sm:text-sm"
           />
-          <button type="button" aria-label="Visual Search" className="p-1 text-slate-400 hover:text-slate-600">
+
+          <button
+            type="button"
+            aria-label="Visual Search"
+            className="p-1 text-slate-400 hover:text-slate-600"
+          >
             <Camera className="h-5 w-5" />
           </button>
         </div>
@@ -299,7 +304,7 @@ function AmazonSearchHeader({ onOpenRfq }) {
           type="submit"
           className="amz-btn-primary px-5 flex items-center justify-center font-extrabold text-white text-xs sm:text-sm shrink-0"
         >
-          <Search className="h-5 w-5 sm:mr-1.5" />
+          <Search className="h-4 w-4 sm:mr-1.5" />
           <span className="hidden sm:inline">Search</span>
         </button>
       </form>
