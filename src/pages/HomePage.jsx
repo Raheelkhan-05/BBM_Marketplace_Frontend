@@ -108,7 +108,6 @@ export default function HomePage() {
         {/* Industrial Category Department Explorer */}
         <TopCategoriesAccordion />
 
-
         {/* Amazon-Style 4-Box Feature Quad Grid */}
         <AmazonQuadFeatureGrid onOpenRfq={() => setIsRfqOpen(true)} onOpenCompare={() => setIsCompareOpen(true)} />
 
@@ -1065,10 +1064,10 @@ function TrustStripLogos() {
           100% { transform: translateX(0); }
         }
         .animate-marquee-left {
-          animation: marquee-left 32s linear infinite;
+          animation: marquee-left 64s linear infinite;
         }
         .animate-marquee-right {
-          animation: marquee-right 32s linear infinite;
+          animation: marquee-right 64s linear infinite;
         }
         .animate-marquee-left:hover,
         .animate-marquee-right:hover {
