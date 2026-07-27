@@ -296,7 +296,7 @@ function AmazonSearchHeader() {
         {/* Image */}
         <button
           type="button"
-          className="flex shrink-0 flex-col items-center justify-center gap-1 px-0 lg:px-1"
+          className="flex shrink-0 flex-col items-center justify-center gap-1 px-0 lg:px-2"
         >
           <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#E7F7F7]">
             <Camera size={15} className="text-[#00838F] lg:!w-[15px] lg:!h-[15px]" />
@@ -309,7 +309,7 @@ function AmazonSearchHeader() {
         {/* PDF */}
         <button
           type="button"
-          className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0 lg:px-3 lg:pr-0"
+          className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0 lg:px-2 lg:pr-1"
         >
           <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#F1EEFF]">
             <FileText size={15} className="text-[#6655D8] lg:!w-[15px] lg:!h-[15px]" />
@@ -322,9 +322,9 @@ function AmazonSearchHeader() {
         {/* Search Button */}
         <button
           type="submit"
-          className="ml-2 lg:ml-3 flex h-9 w-9 lg:h-11 lg:w-11 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
+          className="ml-2 lg:ml-3 flex h-9 w-9 lg:h-9 lg:w-9 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
         >
-          <Search size={14} className="lg:!w-[18px] lg:!h-[18px]" />
+          <Search size={14} className="lg:!w-[16px] lg:!h-[16px]" />
         </button>
 
       </div>
@@ -508,20 +508,20 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         onClick={a.id === "req" ? onOpenRfq : undefined}
         whileHover={{ y: -2 }}
         whileTap={{ y: 0 }}
-        className="amz-card relative flex items-center gap-2.5 p-3 text-left cursor-pointer w-full"
+        className="amz-card relative flex items-center gap-2.5 lg:gap-3 p-3 lg:p-4 text-left cursor-pointer w-full"
       >
         <span
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+          className="flex h-9 w-9 lg:h-11 lg:w-11 shrink-0 items-center justify-center rounded-xl"
           style={{ background: a.bg, color: a.fg }}
         >
-          <Icon className="h-4 w-4" />
+          <Icon className="h-4 w-4 lg:h-5 lg:w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-extrabold text-slate-900 leading-tight">{a.label}</p>
-          <p className="truncate text-[10.5px] font-medium text-slate-500 mt-0.5 leading-tight">{a.desc}</p>
+          <p className="truncate text-xs lg:text-sm font-extrabold text-slate-900 leading-tight">{a.label}</p>
+          <p className="truncate text-[10.5px] lg:text-xs font-medium text-slate-500 mt-0.5 leading-tight">{a.desc}</p>
         </div>
         {a.count && (
-          <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] font-extrabold text-white tabular-nums">
+          <span className="absolute right-1.5 top-1.5 lg:right-2 lg:top-2 flex h-4 min-w-4 lg:h-5 lg:min-w-5 items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9.5px] lg:text-[10.5px] font-extrabold text-white tabular-nums">
             {a.count}
           </span>
         )}
@@ -530,30 +530,30 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
   };
 
   const renderGroup = (title, items, accent) => (
-    <div className="flex-1 space-y-2.5">
+    <div className="flex-1 space-y-2.5 lg:space-y-3">
       <h3
-        className="text-[13px] font-extrabold tracking-tight text-center"
+        className="text-[13px] lg:text-base font-extrabold tracking-tight text-center"
         style={{ fontFamily: FONT_DISPLAY, color: accent }}
       >
         {title}
       </h3>
-      {/* single column, 4 rows, on ALL screen sizes */}
-      <div className="grid grid-cols-1 gap-2.5">
+      {/* single column on mobile, 2 columns on desktop for a tighter, wider layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5 lg:gap-3">
         {items.map((a) => renderCard(a, accent))}
       </div>
     </div>
   );
 
   return (
-    <div className="w-full space-y-1 pb-5 bg-white rounded-xl">
+    <div className="w-full space-y-1 pb-5 lg:pb-8 bg-white rounded-xl">
       <h3
-        className="text-md pt-2 sm:text-base font-bold text-slate-900 text-center"
+        className="text-md pt-2 lg:pt-4 sm:text-base lg:text-xl font-bold text-slate-900 text-center"
         style={{ fontFamily: FONT_DISPLAY }}
       >
         Daily Business Tools
       </h3>
 
-      <div className="w-full flex flex-row gap-3">
+      <div className="w-full flex flex-row gap-3 lg:gap-8 lg:px-4">
         {renderGroup("Purchase", purchaseActions, "#d2462b")}
         {renderGroup("Sales", salesActions, "#059669")}
       </div>
