@@ -302,7 +302,7 @@ function AmazonSearchHeader() {
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E7F7F7]">
             <Camera size={15} className="text-[#00838F]" />
           </div>
-          <span className="text-[10px] font-medium leading-none text-[#00838F]">
+          <span className="text-[9px] font-medium leading-none text-[#00838F]">
             Image
           </span>
         </button>
@@ -315,7 +315,7 @@ function AmazonSearchHeader() {
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F1EEFF]">
             <FileText size={15} className="text-[#6655D8]" />
           </div>
-          <span className="text-[10px] font-medium leading-none text-[#6655D8]">
+          <span className="text-[9px] font-medium leading-none text-[#6655D8]">
             PDF
           </span>
         </button>
@@ -325,7 +325,7 @@ function AmazonSearchHeader() {
           type="submit"
           className="ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
         >
-          <Search size={16} />
+          <Search size={14} />
         </button>
 
       </div>
