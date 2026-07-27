@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Heart, ShieldCheck, BadgeCheck, Truck, Info, Package, Lock, CheckCircle2, Users } from "lucide-react";
 import Sparkline from "./Sparkline";
+import { useAuth } from "../../context/AuthContext";
 
 const TAG_ICONS = {
   brand: ShieldCheck,
@@ -21,6 +22,7 @@ export default function ProductResultCard({ product }) {
   const [liked, setLiked] = useState(false);
   const [activePack, setActivePack] = useState();
   const { pricing } = product;
+  const { isLoggedIn } = useAuth();
 
   return (
     <motion.div
@@ -80,11 +82,10 @@ export default function ProductResultCard({ product }) {
               <button
                 key={size}
                 onClick={() => setActivePack(i)}
-                className={`rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold transition-colors ${
-                  i === activePack
-                    ? "border-[#047084] bg-[#047084]/10 text-[#047084]"
-                    : "border-slate-200 text-slate-600 hover:border-[#7fb3bd]"
-                }`}
+                className={`rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold transition-colors ${i === activePack
+                  ? "border-[#047084] bg-[#047084]/10 text-[#047084]"
+                  : "border-slate-200 text-slate-600 hover:border-[#7fb3bd]"
+                  }`}
               >
                 {size}
               </button>
@@ -133,41 +134,43 @@ export default function ProductResultCard({ product }) {
       </div>
 
 
-      <div
-        className="mb-4 rounded-xl p-4 sm:mx-5 sm:p-5"
-        style={{ background: "linear-gradient(135deg, rgba(4,112,132,0.06) 0%, rgba(210,70,43,0.06) 100%)", border: "1px solid rgba(4,112,132,0.14)" }}
-      >
-        <div className="flex items-center gap-4">
-          <span
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-[0_8px_18px_-6px_rgba(4,112,132,0.5)] sm:h-[72px] sm:w-[72px]"
-            style={{ background: "linear-gradient(135deg, #047084 0%, #7fb3bd 100%)" }}
-          >
-            <Lock className="h-6 w-6" />
-          </span>
-          <div>
-            <p className="text-[13.5px] leading-[18px] p-0.5 font-extrabold text-slate-900">
-              Compare live prices from {pricing.suppliersQuoting} verified suppliers
-            </p>
-            <ul className="mt-1.5 space-y-1">
-              {["Get best quotes for your required quantity", "See supplier-wise prices, MOQ & discounts", "Save time and grow your business"].map((t) => (
-                <li key={t} className="flex items-center gap-1.5 text-[11.5px] font-medium leading-[12px] p-0.5 text-slate-500">
-                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#047084]" />
-                  {t}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        <button
-          className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-bold text-white shadow-[0_10px_22px_-8px_rgba(199,31,17,0.5)] transition-transform hover:-translate-y-0.5"
-          style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
+      {!isLoggedIn && (
+        <div
+          className="mb-4 rounded-xl p-4 sm:mx-5 sm:p-5"
+          style={{ background: "linear-gradient(135deg, rgba(4,112,132,0.06) 0%, rgba(210,70,43,0.06) 100%)", border: "1px solid rgba(4,112,132,0.14)" }}
         >
-          <Lock className="h-4 w-4" />
-          View Live Quotes
-        </button>
-        <p className="mt-2 text-center text-[11px] font-medium text-slate-400">Login / Sign up to see prices and contact suppliers</p>
-      </div>
+          <div className="flex items-center gap-4">
+            <span
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-[0_8px_18px_-6px_rgba(4,112,132,0.5)] sm:h-[72px] sm:w-[72px]"
+              style={{ background: "linear-gradient(135deg, #047084 0%, #7fb3bd 100%)" }}
+            >
+              <Lock className="h-6 w-6" />
+            </span>
+            <div>
+              <p className="text-[13.5px] leading-[18px] p-0.5 font-extrabold text-slate-900">
+                Compare live prices from {pricing.suppliersQuoting} verified suppliers
+              </p>
+              <ul className="mt-1.5 space-y-1">
+                {["Get best quotes for your required quantity", "See supplier-wise prices, MOQ & discounts", "Save time and grow your business"].map((t) => (
+                  <li key={t} className="flex items-center gap-1.5 text-[11.5px] font-medium leading-[12px] p-0.5 text-slate-500">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#047084]" />
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <button
+            className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-bold text-white shadow-[0_10px_22px_-8px_rgba(199,31,17,0.5)] transition-transform hover:-translate-y-0.5"
+            style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
+          >
+            <Lock className="h-4 w-4" />
+            View Live Quotes
+          </button>
+          <p className="mt-2 text-center text-[11px] font-medium text-slate-400">Login / Sign up to see prices and contact suppliers</p>
+        </div>
+      )}
     </motion.div>
   );
 }

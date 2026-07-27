@@ -21,11 +21,11 @@ export function AuthProvider({ children }) {
       const res = await fetchMe(token);
       if (res?.success) {
         setProfile({
-        ...res.profile,
-        seller_status: res.seller_status,
-        businessProfile: res.businessProfile,
-        shop_slug: res.businessProfile?.shop_slug ?? res.shop_slug ?? null,
-      });
+          ...res.profile,
+          seller_status: res.seller_status,
+          businessProfile: res.businessProfile,
+          shop_slug: res.businessProfile?.shop_slug ?? res.shop_slug ?? null,
+        });
         return;
       }
       if (res?.status === 401) {
@@ -44,7 +44,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     setSession(null);
     setProfile(null);
-    await supabase.auth.signOut().catch(() => {});
+    await supabase.auth.signOut().catch(() => { });
   }, []);
 
   const signOut = useCallback(async () => {
@@ -74,22 +74,22 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
-async function init() {
-  const devToken = localStorage.getItem(DEV_TOKEN_KEY);
-  const authToken = localStorage.getItem(AUTH_TOKEN_KEY);
+    async function init() {
+      const devToken = localStorage.getItem(DEV_TOKEN_KEY);
+      const authToken = localStorage.getItem(AUTH_TOKEN_KEY);
 
-  if (authToken) {
-    setSession({ access_token: authToken });
-    await loadProfile(authToken);
-  } else if (devToken) {
-    setSession({ access_token: devToken, dev_bypass: true });
-    await loadProfile(devToken);
-  } else {
-    setSession(null);
-  }
+      if (authToken) {
+        setSession({ access_token: authToken });
+        await loadProfile(authToken);
+      } else if (devToken) {
+        setSession({ access_token: devToken, dev_bypass: true });
+        await loadProfile(devToken);
+      } else {
+        setSession(null);
+      }
 
-  if (mounted) setInitializing(false);
-}
+      if (mounted) setInitializing(false);
+    }
     init();
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
