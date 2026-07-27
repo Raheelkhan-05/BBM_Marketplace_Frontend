@@ -256,63 +256,80 @@ function AmazonSubHeader({ onOpenRfq }) {
   );
 }
 
-/* ---------- Amazon Search Header Bar ---------- */
-function AmazonSearchHeader({ onOpenRfq }) {
-  const [query, setQuery] = useState("");
-  const [dept, setDept] = useState("All");
-  const navigate = useNavigate();
 
-  const handleSearch = (e) => {
+function AmazonSearchHeader() {
+  const [query, setQuery] = useState("");
+
+  const handleSubmit = (e) => {
     e.preventDefault();
-    if (query.trim()) navigate(`/search?q=${encodeURIComponent(query.trim())}&dept=${dept}`);
+    // handle search
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      <form onSubmit={handleSearch} className="flex items-stretch gap-0 rounded-xl overflow-hidden shadow-sm border border-slate-300 bg-white">
-        <select
-          value={dept}
-          onChange={(e) => setDept(e.target.value)}
-          className="hidden sm:block bg-slate-100 border-r border-slate-300 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-200 cursor-pointer focus:outline-none"
-        >
-          <option>All Departments</option>
-          <option>Bearings & Motion</option>
-          <option>Oils & Lubricants</option>
-          <option>Electrical</option>
-          <option>Hydraulics</option>
-          <option>Fasteners</option>
-          <option>Safety PPE</option>
-        </select>
+    <form
+      onSubmit={handleSubmit}
+      className="w-full rounded-full p-[2px] bg-gradient-to-r from-[#0B8A93] via-[#3B82F6] to-[#FF6A00] shadow-lg"
+    >
+      <div className="flex h-[60px] items-center rounded-full bg-white px-3">
 
-        <div className="flex h-[50px] w-[380px] items-center px-3">
-          <img src="./Logo.png" alt="Logo" className="mr-2 h-6 w-6" />
-
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search SKUs, bearings, lubricants..."
-            className="w-full bg-transparent text-[12.5px] font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none sm:text-sm"
-          />
-
-          <button
-            type="button"
-            aria-label="Visual Search"
-            className="p-1 text-slate-400 hover:text-slate-600"
-          >
-            <Camera className="h-5 w-5" />
-          </button>
+        {/* Logo */}
+        <div className="flex shrink-0 items-center pr-3">
+          <img src="./Logo.png" alt="Logo" className="h-6 w-6 object-contain" />
         </div>
 
+        {/* Divider */}
+        <div className="mr-3 h-8 w-px shrink-0 bg-gray-200" />
+
+        {/* Search */}
+        <div className="flex min-w-0 flex-1 items-center">
+          <Search size={16} className="mr-2 shrink-0 text-slate-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search any product, brand, category..."
+            className="w-full min-w-0 bg-transparent text-[10px] text-slate-700 placeholder:text-slate-400 outline-none"
+          />
+        </div>
+
+        {/* Divider */}
+        <div className="mx-3 h-8 w-px shrink-0 bg-gray-200" />
+
+        {/* Image */}
+        <button
+          type="button"
+          className="flex shrink-0 flex-col items-center justify-center gap-1 px-0"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E7F7F7]">
+            <Camera size={15} className="text-[#00838F]" />
+          </div>
+          <span className="text-[10px] font-medium leading-none text-[#00838F]">
+            Image
+          </span>
+        </button>
+
+        {/* PDF */}
+        <button
+          type="button"
+          className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0"
+        >
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F1EEFF]">
+            <FileText size={15} className="text-[#6655D8]" />
+          </div>
+          <span className="text-[10px] font-medium leading-none text-[#6655D8]">
+            PDF
+          </span>
+        </button>
+
+        {/* Search Button */}
         <button
           type="submit"
-          className="amz-btn-primary px-5 flex items-center justify-center font-extrabold text-white text-xs sm:text-sm shrink-0"
+          className="ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
         >
-          <Search className="h-4 w-4 sm:mr-1.5" />
-          <span className="hidden sm:inline">Search</span>
+          <Search size={16} />
         </button>
-      </form>
-    </div>
+
+      </div>
+    </form>
   );
 }
 
