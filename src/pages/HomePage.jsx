@@ -1107,6 +1107,7 @@ function TopCategoriesAccordion() {
       <SectionHeader
         title="Explore Categories"
         subtitle="Explore our best-selling industrial departments"
+        viewAllTo="/browse"
       />
 
       <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white">
@@ -1344,8 +1345,14 @@ function SupplierShowcase({ onOpenCompare }) {
   );
 }
 
-/* ---------- Shared Section Header ---------- */
-function SectionHeader({ title, subtitle, showViewAll = true }) {
+function SectionHeader({
+  title,
+  subtitle,
+  showViewAll = true,
+  viewAllTo,
+}) {
+  const navigate = useNavigate();
+
   return (
     <div className="flex items-center justify-between">
       <div>
@@ -1355,13 +1362,21 @@ function SectionHeader({ title, subtitle, showViewAll = true }) {
         >
           {title}
         </h3>
+
         {subtitle && (
-          <p className="text-xs font-semibold text-slate-500 mt-0.5">{subtitle}</p>
+          <p className="text-xs font-semibold text-slate-500 mt-0.5">
+            {subtitle}
+          </p>
         )}
       </div>
+
       {showViewAll && (
-        <button className="amz-link text-xs font-bold flex items-center gap-0.5">
-          See All <ChevronRight className="h-3.5 w-3.5" />
+        <button
+          onClick={() => viewAllTo && navigate(viewAllTo)}
+          className="amz-link text-xs font-bold flex items-center gap-0.5"
+        >
+          See All
+          <ChevronRight className="h-3.5 w-3.5" />
         </button>
       )}
     </div>

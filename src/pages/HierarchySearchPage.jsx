@@ -9,7 +9,7 @@
 // partial match surfaces as tappable "Did you mean" suggestions instead of
 // a dead end.
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, Search, X, ChevronRight, PackageSearch, Store, ShieldCheck, MapPin, Layers, Tag, Package } from "lucide-react";
@@ -35,6 +35,14 @@ export default function HierarchySearchPage() {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const initialQuery = searchParams.get("q") || "";
+
+    useLayoutEffect(() => {
+        window.scrollTo({
+            top: 0,
+            left: 0,
+            behavior: "instant", // or simply omit the behavior option
+        });
+    }, []);
 
     const {
         stack,
