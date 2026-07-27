@@ -569,15 +569,15 @@ function TrustStrip() {
         {trustPoints.map((tp) => {
           const Icon = ICONS[tp.icon];
           return (
-            <div key={tp.id} className="flex items-center gap-3 p-3.5 sm:p-4">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#006f83]/10 text-[#006f83]">
+            <div key={tp.id} className="flex items-center gap-3 lg:gap-4 p-3.5 sm:p-4 lg:p-6">
+              <span className="flex h-10 w-10 lg:h-10 lg:w-10 shrink-0 items-center justify-center rounded-xl bg-[#006f83]/10 text-[#006f83]">
                 <Icon className="h-5 w-5" />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-xs sm:text-sm font-extrabold text-slate-900 leading-tight">
+                <p className="truncate text-xs sm:text-sm lg:text-md font-extrabold text-slate-900 leading-tight">
                   {tp.title}
                 </p>
-                <p className="truncate text-[11px] font-medium text-slate-500 leading-tight mt-0.5">
+                <p className="truncate text-[10px] lg:text-xs font-medium text-slate-500 leading-tight mt-0.5">
                   {tp.desc}
                 </p>
               </div>
@@ -904,14 +904,14 @@ function TrustLogo({ brand, onSelect }) {
   return (
     <button
       onClick={() => onSelect(brand.name)}
-      className="shrink-0 mx-4 sm:mx-5 flex items-center justify-center group"
+      className="shrink-0 mx-4 sm:mx-5 lg:mx-8 flex items-center justify-center group"
       title={`Search ${brand.name}`}
     >
       <img
         src={brand.logo}
         alt={brand.name}
         loading="lazy"
-        className="h-5 sm:h-6 w-auto object-contain opacity-100 transition-transform duration-200 group-hover:scale-110"
+        className="h-5 sm:h-6 lg:h-8 w-auto object-contain opacity-100 transition-transform duration-200 group-hover:scale-110"
       />
     </button>
   );
@@ -922,7 +922,7 @@ function MarqueeRow({ brands, direction = "left", onSelect, bg }) {
   return (
     <div className={`relative overflow-hidden ${bg}`}>
       <div
-        className={`flex w-max items-center py-2.5 ${direction === "left" ? "animate-marquee-left" : "animate-marquee-right"
+        className={`flex w-max items-center py-2.5 lg:py-4 ${direction === "left" ? "animate-marquee-left" : "animate-marquee-right"
           }`}
       >
         {loop.map((brand, i) => (
@@ -972,10 +972,17 @@ function TrustStripLogos() {
         .animate-marquee-right:hover {
           animation-play-state: paused;
         }
+        @media (min-width: 1024px) {
+          .animate-marquee-left,
+          .animate-marquee-right {
+            animation-duration: 90s;
+          }
+        }
       `}</style>
     </div>
   );
 }
+
 
 /* ---------- Top Performing Categories (Accordion: Category -> Subcategory -> Products) ---------- */
 
@@ -986,7 +993,7 @@ const dummyProducts = (subName) => [
   { id: `${subName}-3`, name: `${subName} - Premium OEM`, sellers: 7, moq: "MOQ 10 pcs" },
 ];
 
-const topCategories = categories.slice(0, 5);
+const topCategories = categories.slice(0, 6);
 
 function TopCategoriesAccordion() {
   const [openCategory, setOpenCategory] = React.useState(null);
@@ -1001,6 +1008,125 @@ function TopCategoriesAccordion() {
     setOpenSubcategory((prev) => (prev === id ? null : id));
   };
 
+  // Split into two independent columns for desktop so expanding one
+  // card never stretches or misaligns the card next to it.
+  const leftColumn = topCategories.filter((_, idx) => idx % 2 === 0);
+  const rightColumn = topCategories.filter((_, idx) => idx % 2 !== 0);
+
+  const renderCategory = (cat, idx, isFirstInColumn) => {
+    const isOpen = openCategory === cat.id;
+    return (
+      <div
+        key={cat.id}
+        className={!isFirstInColumn ? "border-t-4 border-slate-200" : ""}
+      >
+        {/* ---- Category Row ---- */}
+        <button
+          onClick={() => toggleCategory(cat.id)}
+          className="w-full flex flex-col text-left group"
+        >
+          <div className="relative w-full aspect-[3/1] lg:aspect-[16/7] overflow-hidden bg-slate-200">
+            <img
+              src={cat.image}
+              alt={cat.name}
+              className="w-full h-full object-cover"
+            />
+          </div>
+
+          <div className="flex items-center justify-between w-full px-4 ps-2 sm:px-5 lg:px-6 py-3 lg:py-4 pt-2 lg:pt-3 border-b border-slate-200">
+            <div>
+              <h4 className="text-sm sm:text-base lg:text-lg font-extrabold text-slate-900 tracking-tight">
+                {cat.name}
+              </h4>
+              <p className="text-[11px] sm:text-xs lg:text-sm font-semibold text-slate-500">
+                {cat.subcategories.length} Subcategories
+              </p>
+            </div>
+            <ChevronDown
+              className={`h-5 w-5 lg:h-6 lg:w-6 shrink-0 text-slate-500 transition-transform duration-300 ${isOpen ? "rotate-180 text-[#d2462b]" : ""
+                }`}
+            />
+          </div>
+        </button>
+
+        {/* ---- Subcategories (expand/collapse) ---- */}
+        <AnimatePresence initial={false}>
+          {isOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25, ease: "easeInOut" }}
+              className="overflow-hidden bg-slate-50"
+            >
+              <div className="divide-y divide-slate-200/70">
+                {cat.subcategories.map((sub) => {
+                  const subId = `${cat.id}-${sub}`;
+                  const isSubOpen = openSubcategory === subId;
+                  return (
+                    <div key={subId}>
+                      <button
+                        onClick={() => toggleSubcategory(subId)}
+                        className="w-full flex items-center justify-between pl-7 pr-4 sm:pl-9 sm:pr-5 lg:pl-11 lg:pr-6 py-3 lg:py-3.5 text-left"
+                      >
+                        <div>
+                          <span className="text-xs sm:text-sm lg:text-base font-bold text-slate-700">
+                            {sub}
+                          </span>
+                          <p className="text-[10.5px] lg:text-xs font-semibold text-slate-400">
+                            {dummyProducts(sub).length} Products
+                          </p>
+                        </div>
+                        <ChevronDown
+                          className={`h-4 w-4 lg:h-5 lg:w-5 shrink-0 text-slate-400 transition-transform duration-300 ${isSubOpen ? "rotate-180 text-[#d2462b]" : ""
+                            }`}
+                        />
+                      </button>
+
+                      {/* ---- Products (expand/collapse) ---- */}
+                      <AnimatePresence initial={false}>
+                        {isSubOpen && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.22, ease: "easeInOut" }}
+                            className="overflow-hidden bg-white"
+                          >
+                            <div className="pl-9 sm:pl-12 lg:pl-14 pr-4 sm:pr-5 lg:pr-6 py-2 lg:py-3 space-y-2 lg:space-y-2.5">
+                              {dummyProducts(sub).map((p) => (
+                                <div
+                                  key={p.id}
+                                  className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 lg:px-4 lg:py-2.5 hover:border-[#d2462b]/40 transition-colors cursor-pointer"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-[11.5px] sm:text-xs lg:text-sm font-bold text-slate-800 truncate">
+                                      {p.name}
+                                    </p>
+                                    <p className="text-[10.5px] lg:text-xs font-medium text-slate-500 mt-0.5">
+                                      {p.moq}
+                                    </p>
+                                  </div>
+                                  <span className="text-[11.5px] sm:text-xs lg:text-sm font-extrabold text-[#d2462b] shrink-0 ml-2">
+                                    {p.sellers} Sellers
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-3">
       <SectionHeader
@@ -1009,120 +1135,20 @@ function TopCategoriesAccordion() {
         viewAllTo="/browse"
       />
 
-      <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white">
-        {topCategories.map((cat, idx) => {
-          const isOpen = openCategory === cat.id;
-          return (
-            <div
-              key={cat.id}
-              className={idx !== 0 ? "border-t-4 border-slate-200" : ""}
-            >
-              {/* ---- Category Row ---- */}
-              <button
-                onClick={() => toggleCategory(cat.id)}
-                className="w-full flex flex-col text-left group"
-              >
-                <div className="relative w-full aspect-[3/1] overflow-hidden bg-slate-200">
-                  <img
-                    src={cat.image}
-                    alt={cat.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+      {/* Mobile/tablet: single stacked list. Desktop: two independent columns. */}
+      <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white lg:flex lg:items-start">
+        {/* Mobile/tablet view (hidden on desktop) */}
+        <div className="lg:hidden">
+          {topCategories.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
+        </div>
 
-                <div className="flex items-center justify-between w-full px-4 ps-2 sm:px-5 py-3 pt-2 border-b border-slate-200">
-                  <div>
-                    <h4 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
-                      {cat.name}
-                    </h4>
-                    <p className="text-[11px] sm:text-xs font-semibold text-slate-500">
-                      {cat.subcategories.length} Subcategories
-                    </p>
-                  </div>
-                  <ChevronDown
-                    className={`h-5 w-5 shrink-0 text-slate-500 transition-transform duration-300 ${isOpen ? "rotate-180 text-[#d2462b]" : ""
-                      }`}
-                  />
-                </div>
-              </button>
-
-              {/* ---- Subcategories (expand/collapse) ---- */}
-              <AnimatePresence initial={false}>
-                {isOpen && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: "easeInOut" }}
-                    className="overflow-hidden bg-slate-50"
-                  >
-                    <div className="divide-y divide-slate-200/70">
-                      {cat.subcategories.map((sub) => {
-                        const subId = `${cat.id}-${sub}`;
-                        const isSubOpen = openSubcategory === subId;
-                        return (
-                          <div key={subId}>
-                            <button
-                              onClick={() => toggleSubcategory(subId)}
-                              className="w-full flex items-center justify-between pl-7 pr-4 sm:pl-9 sm:pr-5 py-3 text-left"
-                            >
-                              <div>
-                                <span className="text-xs sm:text-sm font-bold text-slate-700">
-                                  {sub}
-                                </span>
-                                <p className="text-[10.5px] font-semibold text-slate-400">
-                                  {dummyProducts(sub).length} Products
-                                </p>
-                              </div>
-                              <ChevronDown
-                                className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-300 ${isSubOpen ? "rotate-180 text-[#d2462b]" : ""
-                                  }`}
-                              />
-                            </button>
-
-                            {/* ---- Products (expand/collapse) ---- */}
-                            <AnimatePresence initial={false}>
-                              {isSubOpen && (
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: "auto", opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.22, ease: "easeInOut" }}
-                                  className="overflow-hidden bg-white"
-                                >
-                                  <div className="pl-9 sm:pl-12 pr-4 sm:pr-5 py-2 space-y-2">
-                                    {dummyProducts(sub).map((p) => (
-                                      <div
-                                        key={p.id}
-                                        className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 hover:border-[#d2462b]/40 transition-colors cursor-pointer"
-                                      >
-                                        <div className="min-w-0">
-                                          <p className="text-[11.5px] sm:text-xs font-bold text-slate-800 truncate">
-                                            {p.name}
-                                          </p>
-                                          <p className="text-[10.5px] font-medium text-slate-500 mt-0.5">
-                                            {p.moq}
-                                          </p>
-                                        </div>
-                                        <span className="text-[11.5px] sm:text-xs font-extrabold text-[#d2462b] shrink-0 ml-2">
-                                          {p.sellers} Sellers
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          );
-        })}
+        {/* Desktop view: two independent scrolling columns */}
+        <div className="hidden lg:block lg:flex-1 lg:border-r-4 lg:border-slate-200">
+          {leftColumn.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
+        </div>
+        <div className="hidden lg:block lg:flex-1">
+          {rightColumn.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
+        </div>
       </div>
     </div>
   );
@@ -1256,7 +1282,7 @@ function SectionHeader({
     <div className="flex items-center justify-between">
       <div>
         <h3
-          className="text-base sm:text-lg font-extrabold tracking-tight text-slate-900"
+          className="text-base sm:text-lg md:text-xl font-extrabold tracking-tight text-slate-900"
           style={{ fontFamily: FONT_DISPLAY }}
         >
           {title}
