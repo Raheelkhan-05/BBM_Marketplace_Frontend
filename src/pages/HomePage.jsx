@@ -259,10 +259,15 @@ function AmazonSubHeader({ onOpenRfq }) {
 
 function AmazonSearchHeader() {
   const [query, setQuery] = useState("");
+  const navigate = useNavigate();
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    // handle search
+
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return;
+
+    navigate(`/search?q=${encodeURIComponent(trimmedQuery)}`);
   };
 
   return (
@@ -277,7 +282,6 @@ function AmazonSearchHeader() {
           <img src="./Logo.png" alt="Logo" className="h-6 w-6 object-contain" />
         </div>
 
-        {/* Divider */}
         <div className="mr-3 h-8 w-px shrink-0 bg-gray-200" />
 
         {/* Search */}
@@ -291,7 +295,6 @@ function AmazonSearchHeader() {
           />
         </div>
 
-        {/* Divider */}
         <div className="mx-3 h-8 w-px shrink-0 bg-gray-200" />
 
         {/* Image */}
