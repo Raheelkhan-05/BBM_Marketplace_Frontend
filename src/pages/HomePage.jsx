@@ -270,7 +270,7 @@ function AmazonSearchHeader() {
       onSubmit={handleSubmit}
       className="w-full rounded-full p-[2px] bg-gradient-to-r from-[#0B8A93] via-[#3B82F6] to-[#FF6A00] shadow-lg"
     >
-      <div className="flex h-[60px] items-center rounded-full bg-white px-3">
+      <div className="flex h-[60px] items-center rounded-full bg-white px-3 pl-5">
 
         {/* Logo */}
         <div className="flex shrink-0 items-center pr-3">
