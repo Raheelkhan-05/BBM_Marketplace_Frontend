@@ -271,37 +271,37 @@ function AmazonSearchHeader() {
       onSubmit={handleSubmit}
       className="w-full rounded-full p-[2px] bg-gradient-to-r from-[#0B8A93] via-[#3B82F6] to-[#FF6A00] shadow-lg"
     >
-      <div className="flex h-[60px] items-center rounded-full bg-white px-3 pl-5">
+      <div className="flex h-[60px] lg:h-[62px] xl:h-[64px] items-center rounded-full bg-white px-3 pl-5 lg:px-5 lg:pl-7">
 
         {/* Logo */}
-        <div className="flex shrink-0 items-center pr-3">
-          <img src="./Logo.png" alt="Logo" className="h-6 w-6 object-contain" />
+        <div className="flex shrink-0 items-center pr-3 lg:pr-4">
+          <img src="./Logo.png" alt="Logo" className="h-6 w-6 lg:h-8 lg:w-8 object-contain" />
         </div>
 
-        <div className="mr-3 h-8 w-px shrink-0 bg-gray-200" />
+        <div className="mr-3 lg:mr-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
 
         {/* Search */}
         <div className="flex min-w-0 flex-1 items-center">
-          <Search size={16} className="mr-2 shrink-0 text-slate-400" />
+          <Search size={16} className="mr-2 lg:mr-3 shrink-0 text-slate-400 lg:!w-4 lg:!h-4" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search any product, brand, category..."
-            className="w-full min-w-0 bg-transparent text-[10px] text-slate-700 placeholder:text-slate-400 outline-none"
+            className="w-full min-w-0 bg-transparent text-[10px] lg:text-base text-slate-700 placeholder:text-slate-400 outline-none"
           />
         </div>
 
-        <div className="mx-3 h-8 w-px shrink-0 bg-gray-200" />
+        <div className="mx-3 lg:mx-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
 
         {/* Image */}
         <button
           type="button"
-          className="flex shrink-0 flex-col items-center justify-center gap-1 px-0"
+          className="flex shrink-0 flex-col items-center justify-center gap-1 px-0 lg:px-1"
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E7F7F7]">
-            <Camera size={15} className="text-[#00838F]" />
+          <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#E7F7F7]">
+            <Camera size={15} className="text-[#00838F] lg:!w-[15px] lg:!h-[15px]" />
           </div>
-          <span className="text-[9px] font-medium leading-none text-[#00838F]">
+          <span className="text-[9px] lg:text-[11px] font-medium leading-none text-[#00838F]">
             Image
           </span>
         </button>
@@ -309,12 +309,12 @@ function AmazonSearchHeader() {
         {/* PDF */}
         <button
           type="button"
-          className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0"
+          className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0 lg:px-3 lg:pr-0"
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#F1EEFF]">
-            <FileText size={15} className="text-[#6655D8]" />
+          <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#F1EEFF]">
+            <FileText size={15} className="text-[#6655D8] lg:!w-[15px] lg:!h-[15px]" />
           </div>
-          <span className="text-[9px] font-medium leading-none text-[#6655D8]">
+          <span className="text-[9px] lg:text-[11px] font-medium leading-none text-[#6655D8]">
             PDF
           </span>
         </button>
@@ -322,9 +322,9 @@ function AmazonSearchHeader() {
         {/* Search Button */}
         <button
           type="submit"
-          className="ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
+          className="ml-2 lg:ml-3 flex h-9 w-9 lg:h-11 lg:w-11 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
         >
-          <Search size={14} />
+          <Search size={14} className="lg:!w-[18px] lg:!h-[18px]" />
         </button>
 
       </div>
