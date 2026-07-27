@@ -109,7 +109,7 @@ export default function HomePage() {
         <TopCategoriesAccordion />
 
         {/* Amazon-Style 4-Box Feature Quad Grid */}
-        <AmazonQuadFeatureGrid onOpenRfq={() => setIsRfqOpen(true)} onOpenCompare={() => setIsCompareOpen(true)} />
+        {/* <AmazonQuadFeatureGrid onOpenRfq={() => setIsRfqOpen(true)} onOpenCompare={() => setIsCompareOpen(true)} /> */}
 
         {/* Signature 4-Point Trust & Guarantee Strip */}
         <TrustStrip />
