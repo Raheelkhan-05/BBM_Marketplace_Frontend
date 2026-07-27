@@ -63,9 +63,8 @@ export default function SearchResultsPage() {
           const active = activeTab === tab.id;
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`relative flex shrink-0 items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors ${
-                active ? "border-[#7fb3bd] bg-[#047084]/10 text-[#047084]" : "border-slate-200 text-slate-600 hover:border-slate-300"
-              }`}>
+              className={`relative flex shrink-0 items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors ${active ? "border-[#7fb3bd] bg-[#047084]/10 text-[#047084]" : "border-slate-200 text-slate-600 hover:border-slate-300"
+                }`}>
               <Icon className="h-4 w-4" />
               {tab.label}
               {tab.id === "brands" && shops.length > 0 && (

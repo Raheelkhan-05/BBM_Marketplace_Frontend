@@ -266,7 +266,7 @@ function AmazonSearchHeader() {
     const trimmedQuery = query.trim();
     if (!trimmedQuery) return;
 
-    navigate(`/search?q=${encodeURIComponent(trimmedQuery)}`);
+    navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
   };
 
   return (

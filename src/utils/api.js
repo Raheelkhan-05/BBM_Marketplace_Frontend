@@ -24,7 +24,7 @@ export async function fetchMe(token) {
     const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
     let data = {};
     try { data = await res.json(); } catch { /* non-JSON body */ }
-    console.log("fetch me data : ",data);
+    console.log("fetch me data : ", data);
     return { ...data, status: res.status, success: res.ok && data?.success !== false };
   } catch (e) {
     return { success: false, status: 0, message: "Network error." };
@@ -233,10 +233,52 @@ export async function updateSellerProduct(token, id, payload) {
 export async function deleteSellerProduct(token, id) {
   const res = await fetch(`${API_BASE}/seller/products/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
   return res.json();
-} 
+}
 
 export async function searchShops(query, limit = 8) {
   const params = new URLSearchParams({ q: query, limit });
   const res = await fetch(`${API_BASE}/shop/search?${params}`);
   return res.json();
+}
+
+async function get(path, params = {}) {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  const res = await fetch(`${API_BASE}${path}?${query}`);
+  return res.json();
+}
+
+export async function searchCategories(q = "", limit = 20) {
+  return get("/search/categories", { q, limit });
+}
+
+export async function searchSubcategories(categoryId, q = "", limit = 20) {
+  return get("/search/subcategories", { categoryId, q, limit });
+}
+
+export async function searchProductsInSubcategory(subcategoryId, q = "", limit = 20) {
+  return get("/search/products", { subcategoryId, q, limit });
+}
+
+export async function searchSellersForProduct(productId, q = "", limit = 20) {
+  return get("/search/sellers", { productId, q, limit });
+}
+
+// Single convenience call used by useHierarchySearch — avoids branching
+// on which of the four functions above to call.
+export async function searchHierarchyLevel(level, parentId, q = "", limit = 20) {
+  const params = { level, q, limit };
+  if (level === "subcategory") params.categoryId = parentId;
+  if (level === "product") params.subcategoryId = parentId;
+  if (level === "seller") params.productId = parentId;
+  return get("/search/hierarchy", params);
+}
+
+// Cross-level search — searches categories + subcategories + products at
+// once. Used as a fallback when a scoped search at the current level is
+// empty, so e.g. typing a product name while browsing a different category
+// still finds it and can jump straight there.
+export async function searchSmart(q, limit = 5) {
+  return get("/search/smart", { q, limit });
 }
