@@ -108,9 +108,6 @@ export default function HomePage() {
         {/* Industrial Category Department Explorer */}
         <TopCategoriesAccordion />
 
-        {/* Amazon-Style 4-Box Feature Quad Grid */}
-        {/* <AmazonQuadFeatureGrid onOpenRfq={() => setIsRfqOpen(true)} onOpenCompare={() => setIsCompareOpen(true)} /> */}
-
         {/* Signature 4-Point Trust & Guarantee Strip */}
         <TrustStrip />
 
@@ -389,8 +386,11 @@ function Hero16by9Banner({ onOpenRfq }) {
 
   return (
     <div className="relative w-full overflow-hidden rounded-2xl border border-slate-800 shadow-xl bg-[#090D16]">
-      {/* Container with STRICT 16:9 Aspect Ratio on Mobile and Desktop */}
-      <div ref={containerRef} className="relative w-full aspect-[16/9] overflow-hidden select-none">
+      {/* Container with STRICT 16:9 Aspect Ratio on Mobile, capped height on Desktop */}
+      <div
+        ref={containerRef}
+        className="relative w-full aspect-[16/9] lg:aspect-[21/9] xl:aspect-[3/1] max-h-[520px] overflow-hidden select-none"
+      >
         <motion.div
           className="flex h-full"
           style={{ x, width: slideWidth ? slideWidth * slides.length : "100%" }}
@@ -409,7 +409,7 @@ function Hero16by9Banner({ onOpenRfq }) {
                 }}
               >
                 {/* Visual Image Artwork */}
-                <div className="absolute right-0 top-0 bottom-0 w-[55%] sm:w-[50%] overflow-hidden pointer-events-none">
+                <div className="absolute right-0 top-0 bottom-0 w-[55%] sm:w-[50%] lg:w-[45%] xl:w-[42%] overflow-hidden pointer-events-none">
                   <img
                     src={slide.image}
                     alt=""
@@ -423,49 +423,49 @@ function Hero16by9Banner({ onOpenRfq }) {
                 </div>
 
                 {/* Content Overlay — Non-clipping Layout with Fluid Typography */}
-                <div className="relative z-10 flex flex-col justify-center h-full max-w-[50%] sm:max-w-[55%] p-3 sm:p-6 lg:p-10 text-white">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="inline-flex items-center gap-1 bg-[#d2462b] text-white px-2 py-0.5 rounded-md text-[9px] sm:text-xs font-extrabold uppercase tracking-wider shadow-md">
-                      <Sparkles className="h-3 w-3" /> {slide.tag}
+                <div className="relative z-10 flex flex-col justify-center h-full max-w-[50%] sm:max-w-[55%] lg:max-w-[58%] xl:max-w-[52%] p-3 sm:p-6 lg:p-10 xl:p-14 text-white">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1 bg-[#d2462b] text-white px-2 py-0.5 sm:px-3 sm:py-1 rounded-md text-[9px] sm:text-xs lg:text-sm font-extrabold uppercase tracking-wider shadow-md">
+                      <Sparkles className="h-3 w-3 lg:h-4 lg:w-4" /> {slide.tag}
                     </span>
                     {slide.moq && (
-                      <span className="hidden xs:inline-block bg-white/15 backdrop-blur-md border border-white/20 text-slate-200 px-2 py-0.5 rounded-md text-[9px] sm:text-xs font-semibold">
+                      <span className="hidden xs:inline-block bg-white/15 backdrop-blur-md border border-white/20 text-slate-200 px-2 py-0.5 sm:px-3 sm:py-1 rounded-md text-[9px] sm:text-xs lg:text-sm font-semibold">
                         {slide.moq}
                       </span>
                     )}
                   </div>
 
                   <h2
-                    className="font-extrabold text-white leading-tight tracking-tight mt-1.5 sm:mt-2.5 line-clamp-2 drop-shadow-md"
+                    className="font-extrabold text-white leading-tight tracking-tight mt-1.5 sm:mt-2.5 lg:mt-4 line-clamp-2 drop-shadow-md"
                     style={{
                       fontFamily: FONT_DISPLAY,
-                      fontSize: "clamp(12px, 2.7vw, 32px)",
+                      fontSize: "clamp(12px, 2.7vw, 56px)",
                     }}
                   >
                     {slide.title}
                   </h2>
 
                   <p
-                    className="font-medium text-slate-200 leading-snug mt-1 line-clamp-2"
-                    style={{ fontSize: "clamp(9.5px, 1.35vw, 15px)" }}
+                    className="font-medium text-slate-200 leading-snug mt-1 sm:mt-2 lg:mt-3 line-clamp-2"
+                    style={{ fontSize: "clamp(9.5px, 1.35vw, 20px)" }}
                   >
                     {slide.subtitle}
                   </p>
 
-                  <div className="mt-2 sm:mt-4">
+                  <div className="mt-2 sm:mt-4 lg:mt-6">
                     <button
                       onClick={onOpenRfq}
-                      className="amz-btn-primary inline-flex items-center gap-1.5 rounded-xl px-3 py-1 sm:px-5 sm:py-2 text-[10px] sm:text-xs font-extrabold shadow-lg"
+                      className="amz-btn-primary inline-flex items-center gap-1.5 rounded-xl px-3 py-1 sm:px-5 sm:py-2 lg:px-7 lg:py-3 text-[10px] sm:text-xs lg:text-base font-extrabold shadow-lg"
                     >
-                      {slide.cta} <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
+                      {slide.cta} <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 lg:h-5 lg:w-5" />
                     </button>
                   </div>
                 </div>
 
                 {/* Glassmorphic Savings Badge */}
-                <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-20 flex flex-col items-center justify-center rounded-xl bg-slate-900/80 backdrop-blur-md px-2.5 py-1.5 border border-amber-500/40 text-center shadow-2xl">
-                  <span className="text-[8px] sm:text-[10px] font-extrabold text-amber-400 uppercase tracking-wider">DIRECT SAVINGS</span>
-                  <span className="text-xs sm:text-xl font-extrabold text-white leading-none mt-0.5">{slide.badge.match(/\d+%/)?.[0]} OFF</span>
+                <div className="absolute top-2 right-2 sm:top-4 sm:right-4 lg:top-6 lg:right-6 z-20 flex flex-col items-center justify-center rounded-xl bg-slate-900/80 backdrop-blur-md px-2.5 py-1.5 lg:px-4 lg:py-2.5 border border-amber-500/40 text-center shadow-2xl">
+                  <span className="text-[8px] sm:text-[10px] lg:text-xs font-extrabold text-amber-400 uppercase tracking-wider">DIRECT SAVINGS</span>
+                  <span className="text-xs sm:text-xl lg:text-3xl font-extrabold text-white leading-none mt-0.5 lg:mt-1">{slide.badge.match(/\d+%/)?.[0]} OFF</span>
                 </div>
               </div>
             </div>
@@ -556,107 +556,6 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
       <div className="w-full flex flex-row gap-3">
         {renderGroup("Purchase", purchaseActions, "#d2462b")}
         {renderGroup("Sales", salesActions, "#059669")}
-      </div>
-    </div>
-  );
-}
-
-/* ---------- Amazon-Style 4-Box Overlapping Feature Quad ---------- */
-function AmazonQuadFeatureGrid({ onOpenRfq, onOpenCompare }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {/* Box 1: Bearings */}
-      <div className="amz-card p-4 flex flex-col justify-between">
-        <div>
-          <h3 className="text-sm sm:text-base font-extrabold text-slate-900" style={{ fontFamily: FONT_DISPLAY }}>
-            Bearings & Motion Controls
-          </h3>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">Up to 24% bulk volume discount</p>
-          <div className="grid grid-cols-2 gap-2 mt-3">
-            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100 shadow-inner">
-              <img src="./2.avif" alt="" className="h-16 w-full object-cover rounded mb-1" />
-              <span className="text-[11px] font-bold text-slate-800 block truncate">Deep Groove</span>
-              <span className="text-[10px] text-emerald-700 font-extrabold">From ₹18/pc</span>
-            </div>
-            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100 shadow-inner">
-              <img src="./c2.avif" alt="" className="h-16 w-full object-cover rounded mb-1" />
-              <span className="text-[11px] font-bold text-slate-800 block truncate">Taper Roller</span>
-              <span className="text-[10px] text-emerald-700 font-extrabold">From ₹315/pc</span>
-            </div>
-          </div>
-        </div>
-        <button onClick={onOpenRfq} className="amz-link text-xs font-bold mt-3 text-left">
-          Explore Bearing Catalogue &rarr;
-        </button>
-      </div>
-
-      {/* Box 2: Lubricants */}
-      <div className="amz-card p-4 flex flex-col justify-between">
-        <div>
-          <h3 className="text-sm sm:text-base font-extrabold text-slate-900" style={{ fontFamily: FONT_DISPLAY }}>
-            Industrial Oils & Lubricants
-          </h3>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">Tanker & Drum Factory Direct</p>
-          <div className="grid grid-cols-2 gap-2 mt-3">
-            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100 shadow-inner">
-              <img src="./1.avif" alt="" className="h-16 w-full object-cover rounded mb-1" />
-              <span className="text-[11px] font-bold text-slate-800 block truncate">15W40 Engine Oil</span>
-              <span className="text-[10px] text-emerald-700 font-extrabold">From ₹178/L</span>
-            </div>
-            <div className="bg-slate-50 p-2 rounded-xl text-center border border-slate-100 shadow-inner">
-              <img src="./c1.avif" alt="" className="h-16 w-full object-cover rounded mb-1" />
-              <span className="text-[11px] font-bold text-slate-800 block truncate">Hydraulic ISO 68</span>
-              <span className="text-[10px] text-emerald-700 font-extrabold">From ₹95/L</span>
-            </div>
-          </div>
-        </div>
-        <button onClick={onOpenRfq} className="amz-link text-xs font-bold mt-3 text-left">
-          View Oil & Drum Deals &rarr;
-        </button>
-      </div>
-
-      {/* Box 3: Verified Manufacturers */}
-      <div className="amz-card p-4 flex flex-col justify-between">
-        <div>
-          <h3 className="text-sm sm:text-base font-extrabold text-slate-900" style={{ fontFamily: FONT_DISPLAY }}>
-            100% Audited OEM Factories
-          </h3>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">ISO 9001:2015 & BIS Certified</p>
-          <div className="mt-3 space-y-2 text-xs">
-            <div className="flex items-center justify-between p-2 rounded-lg bg-sky-50 border border-sky-100">
-              <span className="font-bold text-slate-800">SKF Authorized</span>
-              <span className="text-[10px] bg-[#006f83] text-white font-extrabold px-1.5 py-0.5 rounded">99.4% Dispatch</span>
-            </div>
-            <div className="flex items-center justify-between p-2 rounded-lg bg-amber-50 border border-amber-100">
-              <span className="font-bold text-slate-800">Shell Distributor</span>
-              <span className="text-[10px] bg-amber-700 text-white font-extrabold px-1.5 py-0.5 rounded">COA Included</span>
-            </div>
-          </div>
-        </div>
-        <button onClick={onOpenCompare} className="amz-link text-xs font-bold mt-3 text-left">
-          Benchmark Factory Specs &rarr;
-        </button>
-      </div>
-
-      {/* Box 4: Request Instant RFQ */}
-      <div className="amz-card p-4 flex flex-col justify-between bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl">
-        <div>
-          <span className="text-[10px] font-extrabold uppercase bg-[#d2462b] px-2 py-0.5 rounded text-white inline-block">
-            FAST PROCUREMENT
-          </span>
-          <h3 className="text-sm sm:text-base font-extrabold text-white mt-2" style={{ fontFamily: FONT_DISPLAY }}>
-            Request Instant RFQ Bids
-          </h3>
-          <p className="text-xs text-slate-300 font-medium mt-1">
-            Submit your CAD/PDF specs or part numbers & get 4+ factory bids within 30 mins.
-          </p>
-        </div>
-        <button
-          onClick={onOpenRfq}
-          className="amz-btn-primary w-full py-2 rounded-lg text-xs font-extrabold mt-4"
-        >
-          Post Request for Quote
-        </button>
       </div>
     </div>
   );
