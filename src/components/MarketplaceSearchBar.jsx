@@ -92,7 +92,6 @@ export default function MarketplaceSearchBar({
                         ref={fileInputRef}
                         type="file"
                         accept="image/*"
-                        capture="environment"
                         className="hidden"
                         onChange={handleImageFileChange}
                     />

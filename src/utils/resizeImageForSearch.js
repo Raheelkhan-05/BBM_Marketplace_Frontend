@@ -5,7 +5,7 @@
 // cost down without hurting recognizability.
 
 const MAX_DIMENSION = 768;
-const JPEG_QUALITY = 0.82;
+const JPEG_QUALITY = 0.75;
 
 // Returns { base64, mimeType } — base64 has no "data:" prefix.
 export function resizeImageForSearch(file) {
