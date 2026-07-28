@@ -28,6 +28,8 @@ export default function useHierarchySearch(initialQuery = "") {
     const currentLevel = LEVELS[stack.length];
     const parent = stack[stack.length - 1];
 
+    const parentProduct = stack.find((c) => c.level === "product");
+
     const buildJumpStack = (level, item) => {
         if (level === "category") {
             return [{ level: "category", id: item.id, name: item.name }];
@@ -154,11 +156,11 @@ export default function useHierarchySearch(initialQuery = "") {
         }
     }, [trackPendingImages]); // <-- added to deps array
 
-    const runSearch = useCallback(async (level, parentId, q) => {
+    const runSearch = useCallback(async (level, parentId, q, productId) => {
         if (!level) { setLoading(false); return; }
         const myRequestId = ++requestIdRef.current;
 
-        const scopedRes = await searchHierarchyLevel(level, parentId, q);
+        const scopedRes = await searchHierarchyLevel(level, parentId, q, 20, productId);
         if (myRequestId !== requestIdRef.current) return;
         const scopedItems = scopedRes?.success ? scopedRes.items : [];
 
@@ -207,8 +209,8 @@ export default function useHierarchySearch(initialQuery = "") {
         setLoading(true);
         setAiRejection(null);
         setJustAiCreated(false);
-        runSearch(currentLevel, parent?.id, query);
-    }, [currentLevel, parent?.id, query, runSearch]);
+        runSearch(currentLevel, parent?.id, query, parentProduct?.id);
+    }, [currentLevel, parent?.id, query, parentProduct?.id, runSearch]);
 
     const selectItem = useCallback((item) => {
         if (currentLevel === "seller") return;

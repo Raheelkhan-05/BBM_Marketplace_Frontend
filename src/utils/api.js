@@ -271,14 +271,15 @@ export async function searchSellersForProduct(productId, q = "", limit = 20, bra
 
 // Single convenience call used by useHierarchySearch — avoids branching
 // on which of the four functions above to call.
-export async function searchHierarchyLevel(level, parentId, q = "", limit = 20) {
+export async function searchHierarchyLevel(level, parentId, q = "", limit = 20, productId) {
   const params = { level, q, limit };
   if (level === "subcategory") params.categoryId = parentId;
   if (level === "product") params.subcategoryId = parentId;
   if (level === "brand") params.productId = parentId;
   if (level === "seller") {
-    // parentId here is the brand id (deepest level in the new hierarchy);
-    // we need the product id too, which the hook has via `stack`.
+    // parentId here is the brand id; productId comes separately from the
+    // hook, since sellers are filtered by product (required) + brand (optional).
+    params.productId = productId;
     params.brandId = parentId;
   }
   return get("/search/hierarchy", params);
