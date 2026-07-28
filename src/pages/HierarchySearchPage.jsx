@@ -2,18 +2,18 @@
 // Accessed from the Home Page search box. Unlike SearchResultsPage (flat
 // keyword search over products+shops), this page drills down:
 //   Category -> Subcategory -> Product -> Sellers
-// The search box searches "within" the current level. If that comes up
-// empty, a cross-level smart search kicks in automatically: an exact name
-// match jumps straight to the right depth (e.g. typing a product name
-// jumps directly to its sellers, skipping the intermediate lists), and a
-// partial match surfaces as tappable "Did you mean" suggestions instead of
-// a dead end.
+// Search only happens on an explicit action: pressing Enter, tapping the
+// search button, or a resolved image search — never on every keystroke.
+// If a scoped + smart search comes up empty, BBM's AI automatically
+// classifies + creates the item (embedding-matched onto existing
+// categories/subcategories first; only creates new ones when nothing fits).
 
-import { useEffect, useLayoutEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, Search, X, ChevronRight, PackageSearch, Store, ShieldCheck, MapPin, Layers, Tag, Package } from "lucide-react";
+import { ArrowLeft, ChevronRight, PackageSearch, Store, ShieldCheck, MapPin, Layers, Tag, Package, Sparkles, AlertTriangle, BadgeCheck } from "lucide-react";
 import useHierarchySearch from "../hooks/useHierarchySearch";
+import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 
 const LEVEL_LABEL = {
     category: "Categories",
@@ -34,14 +34,11 @@ const SUGGESTION_ICON = { category: Layers, subcategory: Tag, product: Package }
 export default function HierarchySearchPage() {
     const [searchParams] = useSearchParams();
     const navigate = useNavigate();
+    const location = useLocation();
     const initialQuery = searchParams.get("q") || "";
 
     useLayoutEffect(() => {
-        window.scrollTo({
-            top: 0,
-            left: 0,
-            behavior: "instant", // or simply omit the behavior option
-        });
+        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
     }, []);
 
     const {
@@ -55,19 +52,58 @@ export default function HierarchySearchPage() {
         loading,
         selectItem,
         selectSuggestion,
+        jumpToStack,
         goBack,
         goToBreadcrumb,
         canGoBack,
+        aiResolving,
+        aiRejection,
+        justAiCreated,
     } = useHierarchySearch(initialQuery);
 
     const [inputValue, setInputValue] = useState(initialQuery);
+    const [imageError, setImageError] = useState(null);
 
-    // Keep the visible input in sync when the level changes (query resets)
+    // Keep the visible input in sync when the hook's query resets (e.g.
+    // after drilling in, or after an AI/image resolution lands somewhere).
     useEffect(() => setInputValue(query), [query]);
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        setQuery(inputValue.trim());
+    // Consume an image search result handed off from the Home page via
+    // navigation state (only once, on arrival).
+    const consumedNavState = useRef(false);
+    useEffect(() => {
+        if (consumedNavState.current) return;
+        const imageResult = location.state?.imageResult;
+        if (imageResult) {
+            consumedNavState.current = true;
+            if (imageResult.resolved && imageResult.stack) {
+                jumpToStack(imageResult.stack, {
+                    markAiCreated: !!imageResult.aiGenerated,
+                    pendingImages: imageResult.pendingImages || [], // <-- add this line
+                });
+            } else {
+                setImageError(imageResult.reason || "We couldn't identify a product in that photo.");
+            }
+            navigate(location.pathname + location.search, { replace: true, state: {} });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const handleSearchSubmit = (term) => {
+        setImageError(null);
+        setQuery(term);
+    };
+
+    const handleImageResolved = (result) => {
+        setImageError(null);
+        if (result.resolved && result.stack) {
+            jumpToStack(result.stack, {
+                markAiCreated: !!result.aiGenerated,
+                pendingImages: result.pendingImages || [], // <-- add this line
+            });
+        } else {
+            setImageError(result.reason || "We couldn't identify a product in that photo.");
+        }
     };
 
     const handleBack = () => {
@@ -84,6 +120,7 @@ export default function HierarchySearchPage() {
     };
 
     const showingSuggestions = !loading && items.length === 0 && suggestions.length > 0;
+    const showingNoSellersYet = currentLevel === "seller" && !loading && items.length === 0 && justAiCreated;
 
     return (
         <div className="mx-auto max-w-4xl min-h-screen px-4 pt-4 sm:px-6 lg:px-8 pb-10">
@@ -96,24 +133,21 @@ export default function HierarchySearchPage() {
                 >
                     <ArrowLeft className="h-5 w-5" />
                 </button>
-                <form
-                    onSubmit={handleSubmit}
-                    className="flex flex-1 items-center overflow-hidden rounded-xl border-2 border-slate-100 bg-white shadow-[0_8px_20px_-12px_rgba(4,112,132,0.28)] focus-within:border-[#7fb3bd]"
-                >
-                    <Search className="ml-3.5 h-4 w-4 shrink-0 text-slate-400" />
-                    <input
+                <div className="flex-1">
+                    <MarketplaceSearchBar
                         value={inputValue}
-                        onChange={(e) => { setInputValue(e.target.value); setQuery(e.target.value); }}
+                        onChange={setInputValue}
+                        onSubmit={handleSearchSubmit}
+                        onImageResolved={handleImageResolved}
                         placeholder={LEVEL_PLACEHOLDER[currentLevel]}
-                        className="w-full bg-transparent px-3 py-3 text-[13.5px] font-medium text-slate-700 focus:outline-none"
                     />
-                    {inputValue && (
-                        <button type="button" onClick={() => { setInputValue(""); setQuery(""); }} className="mr-3 text-slate-400 hover:text-slate-600">
-                            <X className="h-4 w-4" />
-                        </button>
-                    )}
-                </form>
+                </div>
             </div>
+            {imageError && (
+                <p className="mt-2 flex items-center gap-1.5 pl-[52px] text-[11.5px] font-medium text-amber-600">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{imageError}
+                </p>
+            )}
 
             {/* Breadcrumb hierarchy trail */}
             {stack.length > 0 && (
@@ -138,22 +172,33 @@ export default function HierarchySearchPage() {
             {/* Results header */}
             <div className="mt-5">
                 <h2 className="text-[19px] font-extrabold tracking-tight text-slate-900" style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}>
-                    {showingSuggestions ? "Did you mean" : LEVEL_LABEL[currentLevel]}
-                    {!showingSuggestions && parent ? ` in "${parent.name}"` : ""}
+                    {aiResolving ? "Searching with BBM AI" : showingSuggestions ? "Did you mean" : LEVEL_LABEL[currentLevel]}
+                    {!aiResolving && !showingSuggestions && parent ? ` in "${parent.name}"` : ""}
                 </h2>
                 {showingSuggestions && (
                     <p className="mt-1 text-[12px] font-medium text-slate-500">
                         No {LEVEL_LABEL[currentLevel]?.toLowerCase()} matched "{query}" here, but we found this elsewhere:
                     </p>
                 )}
+                {aiResolving && (
+                    <p className="mt-1 text-[12px] font-medium text-slate-500">
+                        Checking whether "{query}" is a legitimate item we can list...
+                    </p>
+                )}
+                {showingNoSellersYet && (
+                    <p className="mt-2 flex items-center gap-1.5 text-[12px] font-semibold text-[#047084]">
+                        <BadgeCheck className="h-3.5 w-3.5" />
+                        Just added to BBM Marketplace — no sellers are listing this yet.
+                    </p>
+                )}
             </div>
 
             {/* Result list */}
             <div className="mt-4 space-y-2">
-                {loading ? (
-                    Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
+                {loading || aiResolving ? (
+                    Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} pulse={aiResolving} />)
                 ) : items.length === 0 && suggestions.length === 0 ? (
-                    <EmptyState level={currentLevel} query={query} />
+                    <EmptyState level={currentLevel} query={query} aiRejection={aiRejection} />
                 ) : showingSuggestions ? (
                     suggestions.map((s, i) => (
                         <SuggestionRow key={`${s.level}-${s.id ?? i}`} suggestion={s} onClick={() => selectSuggestion(s)} />
@@ -191,7 +236,10 @@ function HierarchyRow({ item, onClick }) {
                 </div>
             )}
             <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-extrabold text-slate-900">{item.name}</p>
+                <div className="flex items-center gap-1.5">
+                    <p className="truncate text-[13.5px] font-extrabold text-slate-900">{item.name}</p>
+                    {item.is_ai_generated && <AiBadge />}
+                </div>
                 {item.description && (
                     <p className="mt-0.5 truncate text-[11.5px] font-medium text-slate-500">{item.description}</p>
                 )}
@@ -201,9 +249,14 @@ function HierarchyRow({ item, onClick }) {
     );
 }
 
-// A cross-level "did you mean" result — carries its own type badge +
-// breadcrumb subtitle since it can come from any level. Shows the item's
-// real image when available, falling back to a type icon otherwise.
+function AiBadge() {
+    return (
+        <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-[#047084]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#047084]">
+            <Sparkles className="h-2.5 w-2.5" /> New
+        </span>
+    );
+}
+
 function SuggestionRow({ suggestion, onClick }) {
     const Icon = SUGGESTION_ICON[suggestion.level] || PackageSearch;
     return (
@@ -275,17 +328,17 @@ function SellerRow({ seller, onClick }) {
     );
 }
 
-function SkeletonRow() {
+function SkeletonRow({ pulse }) {
     return (
         <motion.div
             animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 1.4, repeat: Infinity }}
+            transition={{ duration: pulse ? 0.9 : 1.4, repeat: Infinity }}
             className="h-[68px] rounded-xl bg-slate-100"
         />
     );
 }
 
-function EmptyState({ level, query }) {
+function EmptyState({ level, query, aiRejection }) {
     return (
         <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -302,6 +355,17 @@ function EmptyState({ level, query }) {
             <p className="mt-1.5 max-w-xs text-[12.5px] font-medium text-slate-500">
                 Try a different keyword, or use the back button to go up a level.
             </p>
+
+            {aiRejection && (
+                <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-5 flex max-w-sm items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-left"
+                >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                    <p className="text-[12px] font-medium text-amber-800">{aiRejection}</p>
+                </motion.div>
+            )}
         </motion.div>
     );
 }

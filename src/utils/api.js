@@ -282,3 +282,34 @@ export async function searchHierarchyLevel(level, parentId, q = "", limit = 20) 
 export async function searchSmart(q, limit = 5) {
   return get("/search/smart", { q, limit });
 }
+
+// Last-resort AI classification — called automatically by
+// useHierarchySearch once scoped + smart search both come up empty.
+export async function resolveWithAI({ query, level, parentId }) {
+  const res = await fetch(`${API_BASE}/search/ai-resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, level, parentId }),
+  });
+  return res.json();
+}
+
+// Image search — identifies the product in a photo AND resolves it
+// server-side (embedding cascade against existing products/subcategories/
+// categories, falling back to AI creation). Returns a ready-to-display
+// breadcrumb stack, not just a raw search term.
+// imageBase64 has no "data:" prefix (use resizeImageForSearch first).
+export async function searchByImage(imageBase64, mimeType) {
+  const res = await fetch(`${API_BASE}/search/image`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64, mimeType }),
+  });
+  return res.json();
+}
+
+// api.js
+export async function fetchImageStatuses(pendingImages) {
+  const ids = pendingImages.map((p) => `${p.level}:${p.id}`).join(",");
+  return get("/search/image-status", { ids });
+}

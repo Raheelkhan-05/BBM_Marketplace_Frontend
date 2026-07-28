@@ -7,11 +7,14 @@ import { animate, motion, useMotionValue, AnimatePresence } from "framer-motion"
 import {
   Search, Camera, ChevronRight, ArrowDown, Users, ShoppingCart,
   Tag, FileText, Zap, BadgePercent, TrendingUp, Circle, Truck, ChevronDown,
-  CreditCard, Plus, ScanLine, ClipboardList, Repeat, Star, ShieldCheck,
+  CreditCard, Plus, ScanLine, ClipboardList, Repeat, Star, ShieldCheck, Loader2,
   Lock, FileCheck, Layers, Cpu, Box, Clock, CheckCircle2, SlidersHorizontal,
   Scale, ArrowUpRight, Award, Building2, PackageCheck, Grid, Percent, Sparkles,
   ArrowRight, Activity, FileSpreadsheet, Shield
 } from "lucide-react";
+import { searchByImage } from "../utils/api.js";
+import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
+import { resizeImageForSearch } from "../utils/resizeImageForSearch.js";
 
 import HomePageSkeleton from "../components/skeletons/HomePageSkeleton.jsx";
 import StartSellingBanner from "../components/home/StartSellingBanner.jsx";
@@ -252,85 +255,32 @@ function AmazonSubHeader({ onOpenRfq }) {
   );
 }
 
-
+// Home page search bar. Submitting a typed search navigates to /browse?q=.
+// A resolved image search already carries a ready-to-display breadcrumb
+// stack (computed server-side), so it's passed along via navigation state
+// instead of being re-encoded into a query string.
 function AmazonSearchHeader() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    const trimmedQuery = query.trim();
-    if (!trimmedQuery) return;
-
+  const handleSubmit = (trimmedQuery) => {
     navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
   };
 
+  const handleImageResolved = (result) => {
+    navigate("/browse", { state: { imageResult: result } });
+  };
+
   return (
-    <form
+    <MarketplaceSearchBar
+      value={query}
+      onChange={setQuery}
       onSubmit={handleSubmit}
-      className="w-full rounded-full p-[2px] bg-gradient-to-r from-[#0B8A93] via-[#3B82F6] to-[#FF6A00] shadow-lg"
-    >
-      <div className="flex h-[60px] lg:h-[62px] xl:h-[64px] items-center rounded-full bg-white px-3 pl-5 lg:px-5 lg:pl-7">
-
-        {/* Logo */}
-        <div className="flex shrink-0 items-center pr-3 lg:pr-4">
-          <img src="./Logo.png" alt="Logo" className="h-6 w-6 lg:h-8 lg:w-8 object-contain" />
-        </div>
-
-        <div className="mr-3 lg:mr-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
-
-        {/* Search */}
-        <div className="flex min-w-0 flex-1 items-center">
-          <Search size={16} className="mr-2 lg:mr-3 shrink-0 text-slate-400 lg:!w-4 lg:!h-4" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search any product, brand, category..."
-            className="w-full min-w-0 bg-transparent text-[10px] lg:text-base text-slate-700 placeholder:text-slate-400 outline-none"
-          />
-        </div>
-
-        <div className="mx-3 lg:mx-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
-
-        {/* Image */}
-        <button
-          type="button"
-          className="flex shrink-0 flex-col items-center justify-center gap-1 px-0 lg:px-2"
-        >
-          <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#E7F7F7]">
-            <Camera size={15} className="text-[#00838F] lg:!w-[15px] lg:!h-[15px]" />
-          </div>
-          <span className="text-[9px] lg:text-[11px] font-medium leading-none text-[#00838F]">
-            Image
-          </span>
-        </button>
-
-        {/* PDF */}
-        <button
-          type="button"
-          className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0 lg:px-2 lg:pr-1"
-        >
-          <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#F1EEFF]">
-            <FileText size={15} className="text-[#6655D8] lg:!w-[15px] lg:!h-[15px]" />
-          </div>
-          <span className="text-[9px] lg:text-[11px] font-medium leading-none text-[#6655D8]">
-            PDF
-          </span>
-        </button>
-
-        {/* Search Button */}
-        <button
-          type="submit"
-          className="ml-2 lg:ml-3 flex h-9 w-9 lg:h-9 lg:w-9 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
-        >
-          <Search size={14} className="lg:!w-[16px] lg:!h-[16px]" />
-        </button>
-
-      </div>
-    </form>
+      onImageResolved={handleImageResolved}
+    />
   );
 }
+
 
 /* ---------- World-Class 16:9 Aspect Ratio Hero Banner (Zero Text Clipping) ---------- */
 function Hero16by9Banner({ onOpenRfq }) {
