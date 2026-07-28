@@ -332,37 +332,40 @@ function AiBadge() {
     );
 }
 
+function suggestionLocation(item) {
+    const parts = [];
+    if (item.level !== "category" && item.categoryName) parts.push(item.categoryName);
+    if ((item.level === "product" || item.level === "brand") && item.subcategoryName) parts.push(item.subcategoryName);
+    if (item.level === "brand" && item.productName) parts.push(item.productName);
+    return parts.join(" › ");
+}
+
 function SuggestionRow({ suggestion, onClick }) {
-    const Icon = SUGGESTION_ICON[suggestion.level] || PackageSearch;
+    const location = suggestionLocation(suggestion);
     return (
         <motion.button
             onClick={onClick}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="flex w-full items-center gap-3 rounded-xl border border-dashed border-[#7fb3bd] bg-[#047084]/5 px-3.5 py-3 text-left transition hover:bg-[#047084]/10"
+            className="flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-white px-3.5 py-3 text-left shadow-[0_8px_20px_-16px_rgba(4,112,132,0.3)] transition hover:border-[#7fb3bd]"
         >
-            {suggestion.image ? (
-                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-[#7fb3bd] bg-white">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-white">
+                {suggestion.image ? (
                     <img src={suggestion.image} alt="" className="h-full w-full object-cover" />
-                </div>
-            ) : (
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[#7fb3bd] bg-white text-[#047084]">
-                    <Icon className="h-5 w-5" />
-                </div>
-            )}
-            <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                    <p className="truncate text-[13.5px] font-extrabold text-slate-900">{suggestion.name}</p>
-                    <span className="shrink-0 rounded-full bg-[#047084]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#047084]">
-                        {suggestion.level}
-                    </span>
-                </div>
-                {suggestion.subtitle && (
-                    <p className="mt-0.5 truncate text-[11.5px] font-medium text-slate-500">{suggestion.subtitle}</p>
+                ) : (
+                    <PackageSearch className="h-5 w-5 text-slate-300" />
                 )}
             </div>
-            <ChevronRight className="h-4 w-4 shrink-0 text-[#047084]" />
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-[13.5px] font-extrabold text-slate-900">{suggestion.name}</p>
+                {location && (
+                    <p className="mt-0.5 truncate text-[11px] font-semibold text-[#047084]">
+                        Found in {location}
+                    </p>
+                )}
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
         </motion.button>
     );
 }

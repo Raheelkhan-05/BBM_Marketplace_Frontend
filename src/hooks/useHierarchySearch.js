@@ -188,6 +188,18 @@ export default function useHierarchySearch(initialQuery = "") {
                 ...products.map((p) => ({ ...p, level: "product", jumpStack: buildJumpStack("product", p) })),
                 ...brands.map((b) => ({ ...b, level: "brand", jumpStack: buildJumpStack("brand", b) })),
             ];
+
+            // NEW: if exactly one result matches the typed term (case-insensitive,
+            // trimmed), treat it the same as a backend "exact" match and jump
+            // straight there — no "Did you mean" detour for something like "Castrol".
+            const normalizedQuery = q.trim().toLowerCase();
+            const exactMatches = combined.filter((c) => c.name?.trim().toLowerCase() === normalizedQuery);
+            if (exactMatches.length === 1) {
+                setStack(exactMatches[0].jumpStack);
+                setQuery("");
+                return;
+            }
+
             if (combined.length > 0) {
                 setItems([]);
                 setSuggestions(combined);
