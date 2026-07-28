@@ -265,7 +265,7 @@ function HierarchyCard({ item, level, onClick }) {
                 )}
             </div>
             <div className="px-2 py-2">
-                <p className="line-clamp-2 text-[11px] font-extrabold leading-tight text-slate-900">{item.name}</p>
+                <p className="line-clamp-2 text-[12px] font-extrabold leading-tight text-slate-900">{item.name}</p>
                 {level === "brand" && item.brand_name && (
                     <span className="mt-1 inline-block truncate rounded-full bg-[#F15A24]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#F15A24]">
                         {item.brand_name}
