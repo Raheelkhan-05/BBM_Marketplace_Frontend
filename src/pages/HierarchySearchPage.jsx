@@ -19,6 +19,7 @@ const LEVEL_LABEL = {
     category: "Categories",
     subcategory: "Subcategories",
     product: "Products",
+    brand: "Brand Items",
     seller: "Sellers",
 };
 
@@ -26,10 +27,13 @@ const LEVEL_PLACEHOLDER = {
     category: "Search categories (e.g. Bearings, Lubricants)",
     subcategory: "Search subcategories",
     product: "Search products",
+    brand: "Search brand items",
     seller: "Search sellers",
 };
 
-const SUGGESTION_ICON = { category: Layers, subcategory: Tag, product: Package };
+const CARD_GRID_LEVELS = new Set(["product", "brand"]);
+
+const SUGGESTION_ICON = { category: Layers, subcategory: Tag, product: Package, brand: BadgeCheck };
 
 export default function HierarchySearchPage() {
     const [searchParams] = useSearchParams();
@@ -194,57 +198,128 @@ export default function HierarchySearchPage() {
             </div>
 
             {/* Result list */}
-            <div className="mt-4 space-y-2">
-                {loading || aiResolving ? (
-                    Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} pulse={aiResolving} />)
-                ) : items.length === 0 && suggestions.length === 0 ? (
-                    <EmptyState level={currentLevel} query={query} aiRejection={aiRejection} />
-                ) : showingSuggestions ? (
-                    suggestions.map((s, i) => (
-                        <SuggestionRow key={`${s.level}-${s.id ?? i}`} suggestion={s} onClick={() => selectSuggestion(s)} />
-                    ))
-                ) : currentLevel === "seller" ? (
-                    items.map((seller, i) => (
-                        <SellerRow key={seller.offerId ?? seller.id ?? i} seller={seller} onClick={() => handleSelect(seller)} />
-                    ))
+            {loading || aiResolving ? (
+                CARD_GRID_LEVELS.has(currentLevel) ? (
+                    <div className="mt-4 grid grid-cols-3 gap-3 xs:grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7">
+                        {Array.from({ length: 12 }).map((_, i) => <SkeletonCard key={i} pulse={aiResolving} />)}
+                    </div>
                 ) : (
-                    items.map((item, i) => (
-                        <HierarchyRow key={item.id ?? i} item={item} onClick={() => handleSelect(item)} />
-                    ))
-                )}
-            </div>
+                    <div className="mt-4 space-y-2">
+                        {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} pulse={aiResolving} />)}
+                    </div>
+                )
+            ) : items.length === 0 && suggestions.length === 0 ? (
+                <div className="mt-4">
+                    <EmptyState level={currentLevel} query={query} aiRejection={aiRejection} />
+                </div>
+            ) : showingSuggestions ? (
+                <div className="mt-4 space-y-2">
+                    {suggestions.map((s, i) => (
+                        <SuggestionRow key={`${s.level}-${s.id ?? i}`} suggestion={s} onClick={() => selectSuggestion(s)} />
+                    ))}
+                </div>
+            ) : currentLevel === "seller" ? (
+                <div className="mt-4 space-y-2">
+                    {items.map((seller, i) => (
+                        <SellerRow key={seller.offerId ?? seller.id ?? i} seller={seller} onClick={() => handleSelect(seller)} />
+                    ))}
+                </div>
+            ) : CARD_GRID_LEVELS.has(currentLevel) ? (
+                <div className="mt-4 grid grid-cols-2 gap-3 xs:grid-cols-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5">
+                    {items.map((item, i) => (
+                        <HierarchyCard key={item.id ?? i} item={item} level={currentLevel} onClick={() => handleSelect(item)} />
+                    ))}
+                </div>
+            ) : (
+                <div className="mt-4 space-y-2">
+                    {items.map((item, i) => (
+                        <HierarchyRow key={item.id ?? i} item={item} level={currentLevel} onClick={() => handleSelect(item)} />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
 
-function HierarchyRow({ item, onClick }) {
+function HierarchyCard({ item, level, onClick }) {
     return (
         <motion.button
             onClick={onClick}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="flex w-full items-center gap-3 rounded-xl border border-slate-100 bg-white px-3.5 py-3 text-left shadow-[0_8px_20px_-16px_rgba(4,112,132,0.3)] transition hover:border-[#7fb3bd]"
+            className="flex flex-col overflow-hidden rounded-xl border border-slate-100 bg-white text-left shadow-[0_8px_20px_-16px_rgba(4,112,132,0.3)] transition hover:border-[#7fb3bd]"
         >
-            {item.image ? (
-                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
+            <div className="relative w-full aspect-[3/4] overflow-hidden bg-slate-200">
+                {item.image ? (
                     <img src={item.image} alt="" className="h-full w-full object-cover" />
-                </div>
-            ) : (
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-slate-100 bg-slate-50 text-slate-300">
-                    <PackageSearch className="h-5 w-5" />
-                </div>
-            )}
-            <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                    <p className="truncate text-[13.5px] font-extrabold text-slate-900">{item.name}</p>
-                    {item.is_ai_generated && <AiBadge />}
-                </div>
-                {item.description && (
-                    <p className="mt-0.5 truncate text-[11.5px] font-medium text-slate-500">{item.description}</p>
+                ) : (
+                    <div className="flex h-full w-full items-center justify-center text-slate-300">
+                        <PackageSearch className="h-6 w-6" />
+                    </div>
+                )}
+                {item.is_ai_generated && (
+                    <span className="absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-white/90 px-1.5 py-0.5 text-[8px] font-bold uppercase text-[#047084]">
+                        <Sparkles className="h-2 w-2" /> New
+                    </span>
                 )}
             </div>
-            <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+            <div className="px-2 py-2">
+                <p className="line-clamp-2 text-[11px] font-extrabold leading-tight text-slate-900">{item.name}</p>
+                {level === "brand" && item.brand_name && (
+                    <span className="mt-1 inline-block truncate rounded-full bg-[#F15A24]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#F15A24]">
+                        {item.brand_name}
+                    </span>
+                )}
+            </div>
+        </motion.button>
+    );
+}
+
+function SkeletonCard({ pulse }) {
+    return (
+        <motion.div
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: pulse ? 0.9 : 1.4, repeat: Infinity }}
+            className="aspect-[3/4] rounded-xl bg-slate-100"
+        />
+    );
+}
+
+function HierarchyRow({ item, level, onClick }) {
+    return (
+        <motion.button
+            onClick={onClick}
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
+            className="w-full overflow-hidden rounded-xl border border-slate-100 bg-white text-left shadow-[0_8px_20px_-16px_rgba(4,112,132,0.3)] transition hover:border-[#7fb3bd]"
+        >
+            <div className="relative w-full aspect-[2.67/1] overflow-hidden bg-slate-200">
+                {item.image ? (
+                    <img src={item.image} alt="" className="h-full w-full object-cover" />
+                ) : (
+                    <div className="flex h-full w-full items-center justify-center text-slate-300">
+                        <PackageSearch className="h-8 w-8" />
+                    </div>
+                )}
+                {item.is_ai_generated && (
+                    <span className="absolute right-2 top-2 flex items-center gap-0.5 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#047084]">
+                        <Sparkles className="h-2.5 w-2.5" /> New
+                    </span>
+                )}
+            </div>
+            <div className="px-3.5 py-3">
+                <div className="flex items-center gap-1.5">
+                    <p className="truncate text-[13.5px] font-extrabold text-slate-900">{item.name}</p>
+                </div>
+                {level === "brand" && item.brand_name && (
+                    <span className="mt-1 inline-block rounded-full bg-[#F15A24]/10 px-2 py-0.5 text-[10px] font-bold text-[#F15A24]">
+                        {item.brand_name}
+                    </span>
+                )}
+                {item.description && (
+                    <p className="mt-1 truncate text-[11.5px] font-medium text-slate-500">{item.description}</p>
+                )}
+            </div>
         </motion.button>
     );
 }

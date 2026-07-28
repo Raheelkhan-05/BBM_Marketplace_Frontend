@@ -261,8 +261,12 @@ export async function searchProductsInSubcategory(subcategoryId, q = "", limit =
   return get("/search/products", { subcategoryId, q, limit });
 }
 
-export async function searchSellersForProduct(productId, q = "", limit = 20) {
-  return get("/search/sellers", { productId, q, limit });
+export async function searchBrandsForProduct(productId, q = "", limit = 20) {
+  return get("/search/brands", { productId, q, limit });
+}
+
+export async function searchSellersForProduct(productId, q = "", limit = 20, brandId) {
+  return get("/search/sellers", { productId, brandId, q, limit });
 }
 
 // Single convenience call used by useHierarchySearch — avoids branching
@@ -271,7 +275,12 @@ export async function searchHierarchyLevel(level, parentId, q = "", limit = 20) 
   const params = { level, q, limit };
   if (level === "subcategory") params.categoryId = parentId;
   if (level === "product") params.subcategoryId = parentId;
-  if (level === "seller") params.productId = parentId;
+  if (level === "brand") params.productId = parentId;
+  if (level === "seller") {
+    // parentId here is the brand id (deepest level in the new hierarchy);
+    // we need the product id too, which the hook has via `stack`.
+    params.brandId = parentId;
+  }
   return get("/search/hierarchy", params);
 }
 
@@ -308,7 +317,6 @@ export async function searchByImage(imageBase64, mimeType) {
   return res.json();
 }
 
-// api.js
 export async function fetchImageStatuses(pendingImages) {
   const ids = pendingImages.map((p) => `${p.level}:${p.id}`).join(",");
   return get("/search/image-status", { ids });

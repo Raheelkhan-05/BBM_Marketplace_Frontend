@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { searchHierarchyLevel, searchSmart, resolveWithAI, fetchImageStatuses } from "../utils/api";
 
-const LEVELS = ["category", "subcategory", "product", "seller"];
+const LEVELS = ["category", "subcategory", "product", "brand", "seller"];
 const SMART_MIN_CHARS = 2;
 const AI_MIN_CHARS = 3;
 
@@ -38,10 +38,19 @@ export default function useHierarchySearch(initialQuery = "") {
                 { level: "subcategory", id: item.id, name: item.name },
             ].filter(Boolean);
         }
+        if (level === "product") {
+            return [
+                item.categoryId && { level: "category", id: item.categoryId, name: item.categoryName },
+                item.subcategoryId && { level: "subcategory", id: item.subcategoryId, name: item.subcategoryName },
+                { level: "product", id: item.id, name: item.name },
+            ].filter(Boolean);
+        }
+        // brand
         return [
             item.categoryId && { level: "category", id: item.categoryId, name: item.categoryName },
             item.subcategoryId && { level: "subcategory", id: item.subcategoryId, name: item.subcategoryName },
-            { level: "product", id: item.id, name: item.name },
+            item.productId && { level: "product", id: item.productId, name: item.productName },
+            { level: "brand", id: item.id, name: item.name },
         ].filter(Boolean);
     };
 
@@ -55,14 +64,24 @@ export default function useHierarchySearch(initialQuery = "") {
     // NEW: polls the backend for images still generating, and patches
     // `stack` in place as each one finishes — this is what makes the
     // image "pop in" without a full reload.
+    // Backoff schedule for polling — more attempts, spaced further apart
+    // as time goes on, instead of a flat 2s x 6 (=12s) window that was too
+    // short for occasional slow gpt-image-2 calls.
+    const POLL_DELAYS_MS = [2000, 2000, 3000, 3000, 4000, 4000, 5000, 5000, 6000, 6000];
+
+    // Polls the backend for images still generating, and patches BOTH
+    // `stack` (breadcrumb) and `items` (the actual result cards on screen)
+    // as each one finishes — patching only `stack` meant a finished image
+    // never visually appeared unless the user reloaded, because the level
+    // they're looking at right after creation usually isn't the breadcrumb.
     useEffect(() => {
         if (!pendingImages.length) return;
 
         let cancelled = false;
-        let tries = 0;
+        let timeoutId;
+        let attempt = 0;
 
-        const iv = setInterval(async () => {
-            tries += 1;
+        const poll = async () => {
             try {
                 const { images = [] } = await fetchImageStatuses(pendingImages);
                 if (cancelled) return;
@@ -77,21 +96,35 @@ export default function useHierarchySearch(initialQuery = "") {
                             return match ? { ...crumb, image: match.image } : crumb;
                         })
                     );
+                    setItems((prev) =>
+                        prev.map((it) => {
+                            const match = resolved.find((i) => String(i.id) === String(it.id));
+                            return match ? { ...it, image: match.image } : it;
+                        })
+                    );
                     setPendingImages((prev) =>
                         prev.filter((p) => !resolved.some((r) => r.level === p.level && String(r.id) === String(p.id)))
                     );
                 }
 
                 const stillMissing = images.filter((i) => !i.image);
-                if (stillMissing.length === 0 || tries >= 6) clearInterval(iv);
+                if (stillMissing.length === 0 || attempt >= POLL_DELAYS_MS.length) return;
+
+                timeoutId = setTimeout(poll, POLL_DELAYS_MS[attempt]);
+                attempt += 1;
             } catch {
-                if (tries >= 6) clearInterval(iv);
+                if (attempt >= POLL_DELAYS_MS.length) return;
+                timeoutId = setTimeout(poll, POLL_DELAYS_MS[attempt]);
+                attempt += 1;
             }
-        }, 2000);
+        };
+
+        timeoutId = setTimeout(poll, POLL_DELAYS_MS[attempt]);
+        attempt += 1;
 
         return () => {
             cancelled = true;
-            clearInterval(iv);
+            clearTimeout(timeoutId);
         };
     }, [pendingImages]);
 
@@ -146,11 +179,12 @@ export default function useHierarchySearch(initialQuery = "") {
         }
 
         if (smartRes?.success) {
-            const { categories = [], subcategories = [], products = [] } = smartRes.suggestions || {};
+            const { categories = [], subcategories = [], products = [], brands = [] } = smartRes.suggestions || {};
             const combined = [
                 ...categories.map((c) => ({ ...c, level: "category", jumpStack: buildJumpStack("category", c) })),
                 ...subcategories.map((s) => ({ ...s, level: "subcategory", jumpStack: buildJumpStack("subcategory", s) })),
                 ...products.map((p) => ({ ...p, level: "product", jumpStack: buildJumpStack("product", p) })),
+                ...brands.map((b) => ({ ...b, level: "brand", jumpStack: buildJumpStack("brand", b) })),
             ];
             if (combined.length > 0) {
                 setItems([]);
