@@ -41,10 +41,6 @@ export default function HierarchySearchPage() {
     const location = useLocation();
     const initialQuery = searchParams.get("q") || "";
 
-    useLayoutEffect(() => {
-        window.scrollTo({ top: 0, left: 0, behavior: "instant" });
-    }, []);
-
     const {
         stack,
         currentLevel,
@@ -72,6 +68,21 @@ export default function HierarchySearchPage() {
     // after drilling in, or after an AI/image resolution lands somewhere).
     useEffect(() => setInputValue(query), [query]);
 
+    // Add this instead (after the hook destructuring, since it needs `query`):
+    useEffect(() => {
+        document.activeElement?.blur();
+        const scrollTop = () => window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+        scrollTop();
+        const t = setTimeout(scrollTop, 300);
+        return () => clearTimeout(t);
+    }, [query]);
+
+    // Add this near your other useEffects, after `setQuery` is available from the hook:
+    useEffect(() => {
+        setQuery(searchParams.get("q") || "");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams.get("q")]);
+
     // Consume an image search result handed off from the Home page via
     // navigation state (only once, on arrival).
     const consumedNavState = useRef(false);
@@ -97,6 +108,16 @@ export default function HierarchySearchPage() {
         setImageError(null);
         setQuery(term);
     };
+
+    const isFirstRun = useRef(true);
+    useEffect(() => {
+        if (isFirstRun.current) {
+            isFirstRun.current = false;
+            return;
+        }
+        setQuery(searchParams.get("q") || "");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchParams.get("q")]);
 
     const handleImageResolved = (result) => {
         setImageError(null);

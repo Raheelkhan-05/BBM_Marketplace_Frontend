@@ -28,6 +28,21 @@ export default function SearchResultsPage() {
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [query]);
   useEffect(() => setActiveTab("all"), [query]);
 
+  useEffect(() => {
+    // Blur first so the keyboard starts closing immediately (submitting a
+    // search implies the user is done typing)
+    document.activeElement?.blur();
+
+    const scrollTop = () => window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    scrollTop();
+
+    // Re-scroll once the keyboard-close animation has actually finished —
+    // otherwise the first scrollTo happens against a still-shrunk viewport
+    // and visually lands short of the true top.
+    const t = setTimeout(scrollTop, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (inputValue.trim()) navigate(`/search?q=${encodeURIComponent(inputValue.trim())}`);
