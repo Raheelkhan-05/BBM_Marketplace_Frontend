@@ -157,7 +157,7 @@ export default function ProductDetailPage() {
                     </p>
 
                     {product.description && (
-                        <div className="mt-2 rounded-lg pt-3 pb-3 sm:mt-4 sm:rounded-xl sm:p-3.5">
+                        <div className="mt-2 rounded-lg pt-3 pb-3 sm:mt-4 sm:rounded-xl sm:py-3.5">
                             <p className="flex items-bottom gap-1 text-[8.5px] font-extrabold uppercase tracking-wide text-[#047084] sm:gap-1.5 sm:text-[11.5px]">
                                 <FileText className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5" /> Description
                             </p>
