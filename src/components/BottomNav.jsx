@@ -16,7 +16,7 @@ function getAccountNavItem(profile) {
 
 const BASE_ITEMS = [
   { label: "Home", icon: Home, href: "/home" },
-  { label: "Categories", icon: LayoutGrid, href: "/#" },
+  { label: "Categories", icon: LayoutGrid, href: "/browse" },
   { label: "RFQ", icon: FileText, href: "/#" },
   { label: "Orders", icon: Package, href: "/#" },
 ];
