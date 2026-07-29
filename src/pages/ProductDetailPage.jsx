@@ -58,13 +58,44 @@ export default function ProductDetailPage() {
                     {category && (
                         <>
                             <ChevronRight className="h-3 w-3 text-slate-300 sm:h-3.5 sm:w-3.5" />
-                            <span className="text-[#047084]">{category.name}</span>
+                            <button
+                                onClick={() =>
+                                    navigate("/browse", {
+                                        state: {
+                                            imageResult: {
+                                                resolved: true,
+                                                stack: [{ id: category.id, name: category.name }],
+                                            },
+                                        },
+                                    })
+                                }
+                                className="text-[#047084] hover:underline"
+                            >
+                                {category.name}
+                            </button>
                         </>
                     )}
                     {subcategory && (
                         <>
                             <ChevronRight className="h-3 w-3 text-slate-300 sm:h-3.5 sm:w-3.5" />
-                            <span className="text-[#047084]">{subcategory.name}</span>
+                            <button
+                                onClick={() =>
+                                    navigate("/browse", {
+                                        state: {
+                                            imageResult: {
+                                                resolved: true,
+                                                stack: [
+                                                    { id: category.id, name: category.name },
+                                                    { id: subcategory.id, name: subcategory.name },
+                                                ],
+                                            },
+                                        },
+                                    })
+                                }
+                                className="text-[#047084] hover:underline"
+                            >
+                                {subcategory.name}
+                            </button>
                         </>
                     )}
                     <ChevronRight className="h-3 w-3 text-slate-300 sm:h-3.5 sm:w-3.5" />
@@ -131,8 +162,8 @@ export default function ProductDetailPage() {
                     </p>
 
                     {product.description && (
-                        <div className="mt-2 rounded-lg pt-3 sm:mt-4 sm:rounded-xl sm:p-3.5">
-                            <p className="flex items-center gap-1 text-[8.5px] font-bold uppercase tracking-wide text-[#047084] sm:gap-1.5 sm:text-[11.5px]">
+                        <div className="mt-2 rounded-lg pt-3 pb-3 sm:mt-4 sm:rounded-xl sm:p-3.5">
+                            <p className="flex items-center gap-1 text-[8.5px] font-extrabold uppercase tracking-wide text-[#047084] sm:gap-1.5 sm:text-[11.5px]">
                                 <Zap className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5" /> AI Summary
                             </p>
                             <p className="mt-1 text-[10.5px] leading-relaxed text-slate-600 line-clamp-4 sm:mt-1.5 sm:text-[13.5px] sm:line-clamp-none">
