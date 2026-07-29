@@ -2,14 +2,24 @@
 //
 // The one search bar UI, shared between the Home page and the results
 // (HierarchySearchPage) so both offer identical text + image search.
-// Fully controlled (value/onChange from the parent) and submit-only: a
-// keystroke never triggers a search, only Enter/the search button/a
-// resolved image search does, via onSubmit / onImageResolved.
+// Fully controlled (value/onChange from the parent) and submit-only for
+// the actual search: a keystroke never triggers a search, only
+// Enter/the search button/a resolved image search does, via onSubmit /
+// onImageResolved.
+//
+// Autocomplete is separate: as the user types, we fetch cheap DB-only
+// prefix-match suggestions (no AI) and show them in a dropdown, purely
+// as a typing aid — picking one just fills the input and submits.
 
-import { useRef, useState } from "react";
-import { Search, Camera, FileText, Loader2 } from "lucide-react";
-import { searchByImage } from "../utils/api";
+import { useRef, useState, useEffect } from "react";
+import { Search, Camera, FileText, Loader2, Layers, Tag, Package, BadgeCheck } from "lucide-react";
+import { searchByImage, fetchAutocomplete } from "../utils/api";
 import { resizeImageForSearch } from "../utils/resizeImageForSearch";
+
+const AUTOCOMPLETE_MIN_CHARS = 2;
+const DEBOUNCE_MS = 150;
+
+const LEVEL_ICON = { category: Layers, subcategory: Tag, product: Package, brand: BadgeCheck };
 
 export default function MarketplaceSearchBar({
     value,
@@ -22,12 +32,96 @@ export default function MarketplaceSearchBar({
     const [imageError, setImageError] = useState(null);
     const fileInputRef = useRef(null);
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        const trimmed = value.trim();
+    // Autocomplete state
+    const [suggestions, setSuggestions] = useState([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [highlightIndex, setHighlightIndex] = useState(-1);
+    const debounceRef = useRef(null);
+    const requestIdRef = useRef(0);
+    const containerRef = useRef(null);
+
+    // Debounced, race-safe fetch of suggestions on every keystroke.
+    // Purely DB-backed (fetchAutocomplete -> /search/autocomplete) —
+    // no AI call, so this stays fast even as the user types quickly.
+    useEffect(() => {
+        clearTimeout(debounceRef.current);
+        const term = value.trim();
+
+        if (term.length < AUTOCOMPLETE_MIN_CHARS) {
+            setSuggestions([]);
+            setShowSuggestions(false);
+            return;
+        }
+
+        const myRequestId = ++requestIdRef.current;
+        debounceRef.current = setTimeout(async () => {
+            try {
+                const res = await fetchAutocomplete(term);
+                if (myRequestId !== requestIdRef.current) return; // stale response
+                const list = res?.success ? res.suggestions : [];
+                setSuggestions(list);
+                setShowSuggestions(list.length > 0);
+                setHighlightIndex(-1);
+            } catch {
+                if (myRequestId === requestIdRef.current) {
+                    setSuggestions([]);
+                    setShowSuggestions(false);
+                }
+            }
+        }, DEBOUNCE_MS);
+
+        return () => clearTimeout(debounceRef.current);
+    }, [value]);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        const handleClickOutside = (e) => {
+            if (containerRef.current && !containerRef.current.contains(e.target)) {
+                setShowSuggestions(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const commitSearch = (term) => {
+        const trimmed = term.trim();
         if (!trimmed) return;
         setImageError(null);
+        setShowSuggestions(false);
         onSubmit(trimmed);
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        // If a suggestion is highlighted via keyboard, use it; otherwise use typed text.
+        if (highlightIndex >= 0 && suggestions[highlightIndex]) {
+            onChange(suggestions[highlightIndex].name);
+            commitSearch(suggestions[highlightIndex].name);
+        } else {
+            commitSearch(value);
+        }
+    };
+
+    const handleSuggestionClick = (s) => {
+        onChange(s.name);
+        commitSearch(s.name);
+    };
+
+    const handleKeyDown = (e) => {
+        if (!showSuggestions || suggestions.length === 0) return;
+
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setHighlightIndex((i) => (i + 1) % suggestions.length);
+        } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setHighlightIndex((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+        } else if (e.key === "Escape") {
+            setShowSuggestions(false);
+            setHighlightIndex(-1);
+        }
+        // Enter is handled by form onSubmit above
     };
 
     const handleImageButtonClick = () => {
@@ -60,7 +154,7 @@ export default function MarketplaceSearchBar({
     };
 
     return (
-        <div className="w-full">
+        <div className="w-full relative" ref={containerRef}>
             <form
                 onSubmit={handleSubmit}
                 className="w-full rounded-full p-[2px] bg-gradient-to-r from-[#0B8A93] via-[#3B82F6] to-[#FF6A00] shadow-lg"
@@ -80,7 +174,10 @@ export default function MarketplaceSearchBar({
                         <input
                             value={value}
                             onChange={(e) => onChange(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                             placeholder={placeholder}
+                            autoComplete="off"
                             className="w-full min-w-0 bg-transparent text-[10px] lg:text-base text-slate-700 placeholder:text-slate-400 outline-none"
                         />
                     </div>
@@ -136,6 +233,34 @@ export default function MarketplaceSearchBar({
 
                 </div>
             </form>
+
+            {/* Autocomplete dropdown — pure DB suggestions, no AI */}
+            {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_16px_40px_-12px_rgba(4,112,132,0.25)]">
+                    {suggestions.map((s, i) => {
+                        const Icon = LEVEL_ICON[s.level] || Search;
+                        return (
+                            <button
+                                key={`${s.level}-${s.id}`}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()} // keep input focus, avoid blur race
+                                onClick={() => handleSuggestionClick(s)}
+                                onMouseEnter={() => setHighlightIndex(i)}
+                                className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-left transition ${i === highlightIndex ? "bg-slate-50" : "bg-white"
+                                    }`}
+                            >
+                                <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                                <span className="truncate text-[13px] font-medium text-slate-700">{s.name}</span>
+                                {s.brand_name && (
+                                    <span className="ml-auto shrink-0 text-[10.5px] font-semibold text-[#F15A24]">
+                                        {s.brand_name}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
 
             {imageError && (
                 <p className="mt-2 px-4 text-[11.5px] font-medium text-amber-600">{imageError}</p>

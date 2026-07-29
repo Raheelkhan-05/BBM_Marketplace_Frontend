@@ -322,3 +322,10 @@ export async function fetchImageStatuses(pendingImages) {
   const ids = pendingImages.map((p) => `${p.level}:${p.id}`).join(",");
   return get("/search/image-status", { ids });
 }
+
+
+// Fast pure-DB typeahead suggestions — no AI. Called on every keystroke
+// (debounced in the component), so keep payload/response tiny.
+export async function fetchAutocomplete(q, limit = 8) {
+  return get("/search/autocomplete", { q, limit });
+}
