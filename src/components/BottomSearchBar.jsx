@@ -1,3 +1,4 @@
+// src/components/BottomSearchBar.jsx
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import MarketplaceSearchBar from "./MarketplaceSearchBar.jsx";
@@ -9,7 +10,7 @@ export default function BottomSearchBar() {
 
     // Tracks the on-screen keyboard via the VisualViewport API and
     // translates the bar up by exactly that much, so it floats right
-    // above the keyboard instead of the whole page jumping/resizing.
+    // above the keyboard instead of staying pinned behind it.
     useEffect(() => {
         const vv = window.visualViewport;
         if (!vv) return;
@@ -19,6 +20,7 @@ export default function BottomSearchBar() {
             setKeyboardOffset(Math.max(0, offset));
         };
 
+        handleResize(); // run once on mount too, in case keyboard is already open
         vv.addEventListener("resize", handleResize);
         vv.addEventListener("scroll", handleResize);
         return () => {
@@ -42,6 +44,8 @@ export default function BottomSearchBar() {
                 background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 35%, #ffffff 100%)",
                 paddingTop: "14px",
                 paddingBottom: "max(10px, env(safe-area-inset-bottom))",
+                transform: `translateY(-${keyboardOffset}px)`,
+                transition: "transform 0.15s ease-out",
             }}
         >
             <div className="px-3">
