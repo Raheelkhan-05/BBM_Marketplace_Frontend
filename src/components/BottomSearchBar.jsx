@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import MarketplaceSearchBar from "./MarketplaceSearchBar.jsx";
+import { searchHierarchyLevel, searchSmart } from "../utils/api.js";
 
 export default function BottomSearchBar() {
     const [query, setQuery] = useState("");
@@ -38,8 +39,41 @@ export default function BottomSearchBar() {
         };
     }, []);
 
-    const handleSubmit = (trimmedQuery) => {
+    // Resolve BEFORE navigating anywhere, so we only ever land on the
+    // right screen once — never flash the browse page for a frame while
+    // HierarchySearchPage figures out it should've redirected to a
+    // product. Mirrors the same first-step lookups the hook does
+    // (top-level scoped search, then smart search) but keeps the result
+    // here so we can pick the destination route up front. If a scoped
+    // top-level match exists (e.g. it's actually a category name) or
+    // nothing resolves cleanly, we fall through to /browse as before —
+    // that page's own "Searching with BBM AI" state is the right UI for
+    // genuinely ambiguous searches, since that step is inherently slower.
+    const resolveAndNavigate = async (trimmedQuery) => {
+        try {
+            const scoped = await searchHierarchyLevel("category", undefined, trimmedQuery, 5);
+            if (scoped?.success && scoped.items?.length > 0) {
+                navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
+                return;
+            }
+
+            if (trimmedQuery.length >= 2) {
+                const smart = await searchSmart(trimmedQuery, 5);
+                const exactStack = smart?.success ? smart.exact?.stack : null;
+                const last = exactStack?.[exactStack.length - 1];
+                if (last?.level === "product") {
+                    navigate(`/product/${last.id}`);
+                    return;
+                }
+            }
+        } catch {
+            // fall through to /browse below on any lookup failure
+        }
         navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
+    };
+
+    const handleSubmit = (trimmedQuery) => {
+        resolveAndNavigate(trimmedQuery);
     };
 
     const handleImageResolved = (result) => {

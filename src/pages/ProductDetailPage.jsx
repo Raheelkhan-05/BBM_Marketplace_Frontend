@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-    ChevronRight, ArrowLeft, Heart, Sparkles, ShoppingCart, Tag,
-    PackageSearch, Store, ArrowRight, Scale, Share2, Zap, CheckCircle2,
+    ChevronRight, ArrowLeft, Heart, Sparkles, ShoppingCart, Tag, FileText,
+    PackageSearch, Store, ArrowRight, Scale, Share2, Zap, CheckCircle2, FileSpreadsheet,
 } from "lucide-react";
 import { fetchProductDetail } from "../utils/api";
 
@@ -114,11 +114,6 @@ export default function ProductDetailPage() {
                 {/* Image */}
                 <div>
                     <div className="relative h-full w-full min-h-[160px] overflow-hidden rounded-xl border border-slate-100 bg-slate-50 sm:min-h-[220px] sm:rounded-2xl">
-                        {product.is_ai_generated && (
-                            <span className="absolute left-1.5 top-1.5 z-10 flex items-center gap-1 rounded-full bg-[#047084] px-1.5 py-0.5 text-[7.5px] font-bold uppercase tracking-wide text-white sm:left-3 sm:top-3 sm:px-2.5 sm:py-1 sm:text-[10px]">
-                                <Sparkles className="h-2 w-2 sm:h-3 sm:w-3" /> <span className="hidden xs:inline">AI Recognized</span>
-                            </span>
-                        )}
                         <button className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-slate-600 shadow-sm transition hover:text-rose-500 sm:right-3 sm:top-3 sm:h-9 sm:w-9">
                             <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
                         </button>
@@ -163,8 +158,8 @@ export default function ProductDetailPage() {
 
                     {product.description && (
                         <div className="mt-2 rounded-lg pt-3 pb-3 sm:mt-4 sm:rounded-xl sm:p-3.5">
-                            <p className="flex items-center gap-1 text-[8.5px] font-extrabold uppercase tracking-wide text-[#047084] sm:gap-1.5 sm:text-[11.5px]">
-                                <Zap className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5" /> AI Summary
+                            <p className="flex items-bottom gap-1 text-[8.5px] font-extrabold uppercase tracking-wide text-[#047084] sm:gap-1.5 sm:text-[11.5px]">
+                                <FileText className="h-2.5 w-2.5 sm:h-3.5 sm:w-3.5" /> Description
                             </p>
                             <p className="mt-1 text-[10.5px] leading-relaxed text-slate-600 line-clamp-4 sm:mt-1.5 sm:text-[13.5px] sm:line-clamp-none">
                                 {product.description}
@@ -198,7 +193,7 @@ export default function ProductDetailPage() {
             {tabs.length > 0 && (
                 <div className="mt-4 rounded-xl border border-slate-100 bg-white p-3 shadow-[0_8px_20px_-16px_rgba(4,112,132,0.3)] sm:mt-6 sm:rounded-2xl sm:p-5">
                     <p className="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-900 sm:text-[13px]">
-                        <Zap className="h-3.5 w-3.5 text-[#047084] sm:h-4 sm:w-4" /> Product Intelligence
+                        <FileSpreadsheet className="h-3.5 w-3.5 text-[#047084] sm:h-4 sm:w-4" /> Data Sheet
                     </p>
                     <div className="mt-2.5 flex gap-1 overflow-x-auto border-b border-slate-100 pb-2 [scrollbar-width:none] sm:mt-3">
                         {tabs.map((tab) => (

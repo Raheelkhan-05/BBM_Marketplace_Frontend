@@ -64,6 +64,21 @@ export default function HierarchySearchPage() {
     const [inputValue, setInputValue] = useState(initialQuery);
     const [imageError, setImageError] = useState(null);
 
+    // Any time the hook lands the stack on a specific product — whether
+    // via a manual drill (handled separately by handleSelect), a smart
+    // search exact match, a "Did you mean" suggestion click, an AI
+    // resolve, or an image search — send the user straight to that
+    // product's detail page instead of continuing on to the brand/seller
+    // listing. A generic product search shouldn't dead-end on "here are
+    // the sellers"; it should land on the product itself.
+    useEffect(() => {
+        const last = stack[stack.length - 1];
+        if (last && last.level === "product") {
+            navigate(`/product/${last.id}`, { replace: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [stack]);
+
     // Keep the visible input in sync when the hook's query resets (e.g.
     // after drilling in, or after an AI/image resolution lands somewhere).
     useEffect(() => setInputValue(query), [query]);
