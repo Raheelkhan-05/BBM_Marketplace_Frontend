@@ -5,22 +5,24 @@ import MarketplaceSearchBar from "./MarketplaceSearchBar.jsx";
 
 export default function BottomSearchBar() {
     const [query, setQuery] = useState("");
-    const [keyboardOffset, setKeyboardOffset] = useState(0);
+    const [bottomEdge, setBottomEdge] = useState(null); // px from top of layout viewport to bottom of visible area
     const navigate = useNavigate();
 
-    // Tracks the on-screen keyboard via the VisualViewport API and
-    // translates the bar up by exactly that much, so it floats right
-    // above the keyboard instead of staying pinned behind it.
+    // Places the bar's bottom edge exactly at the bottom of the *visible*
+    // area (vv.offsetTop + vv.height), computed directly from the visual
+    // viewport rather than inferred from window.innerHeight — this works
+    // correctly whether the browser resizes the layout viewport for the
+    // keyboard (iOS Safari) or overlays it (Chrome/Android), instead of
+    // assuming one model and getting the math wrong on the other.
     useEffect(() => {
         const vv = window.visualViewport;
         if (!vv) return;
 
         const handleResize = () => {
-            const offset = window.innerHeight - vv.height - vv.offsetTop;
-            setKeyboardOffset(Math.max(0, offset));
+            setBottomEdge(vv.height + vv.offsetTop);
         };
 
-        handleResize(); // run once on mount too, in case keyboard is already open
+        handleResize();
         vv.addEventListener("resize", handleResize);
         vv.addEventListener("scroll", handleResize);
         return () => {
@@ -39,13 +41,17 @@ export default function BottomSearchBar() {
 
     return (
         <div
-            className="fixed inset-x-0 bottom-0 z-50 md:hidden"
+            className="fixed inset-x-0 left-0 right-0 z-50 md:hidden"
             style={{
                 background: "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.96) 35%, #ffffff 100%)",
                 paddingTop: "14px",
                 paddingBottom: "max(10px, env(safe-area-inset-bottom))",
-                transform: `translateY(-${keyboardOffset}px)`,
-                transition: "transform 0.15s ease-out",
+                // Fall back to plain bottom-0 until the first viewport
+                // measurement lands, then pin to the real visible bottom.
+                ...(bottomEdge != null
+                    ? { top: `${bottomEdge}px`, transform: "translateY(-100%)" }
+                    : { bottom: 0 }),
+                transition: "top 0.15s ease-out",
             }}
         >
             <div className="px-3">
