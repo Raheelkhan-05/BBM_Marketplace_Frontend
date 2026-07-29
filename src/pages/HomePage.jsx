@@ -101,8 +101,6 @@ export default function HomePage() {
         {/* 16:9 Aspect Ratio Hero Banner */}
         <Hero16by9Banner onOpenRfq={() => setIsRfqOpen(true)} />
 
-        <AmazonSearchHeader onOpenRfq={() => setIsRfqOpen(true)} />
-
         {/* Quick Action Bar JUST BELOW THE HERO BANNER (8 Items in 2x4 Grid) */}
         <QuickActionsJustBelowBanner onOpenRfq={() => setIsRfqOpen(true)} />
 
@@ -252,32 +250,6 @@ function AmazonSubHeader({ onOpenRfq }) {
         <FileText className="h-3 w-3" /> Post Fast RFQ
       </button>
     </div>
-  );
-}
-
-// Home page search bar. Submitting a typed search navigates to /browse?q=.
-// A resolved image search already carries a ready-to-display breadcrumb
-// stack (computed server-side), so it's passed along via navigation state
-// instead of being re-encoded into a query string.
-function AmazonSearchHeader() {
-  const [query, setQuery] = useState("");
-  const navigate = useNavigate();
-
-  const handleSubmit = (trimmedQuery) => {
-    navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
-  };
-
-  const handleImageResolved = (result) => {
-    navigate("/browse", { state: { imageResult: result } });
-  };
-
-  return (
-    <MarketplaceSearchBar
-      value={query}
-      onChange={setQuery}
-      onSubmit={handleSubmit}
-      onImageResolved={handleImageResolved}
-    />
   );
 }
 

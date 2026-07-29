@@ -40,6 +40,7 @@ export default function MarketplaceSearchBar({
     onSubmit,
     onImageResolved,
     placeholder = "Search any product, brand, category...",
+    suggestionsDirection = "down", // "down" (default, e.g. Home/results page) | "up" (e.g. pinned bottom bar)
 }) {
     const [imageSearching, setImageSearching] = useState(false);
     const [imageError, setImageError] = useState(null);
@@ -239,11 +240,14 @@ export default function MarketplaceSearchBar({
             <AnimatePresence>
                 {showSuggestions && suggestions.length > 0 && (
                     <motion.div
-                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                        initial={{ opacity: 0, y: suggestionsDirection === "up" ? 6 : -6, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                        exit={{ opacity: 0, y: suggestionsDirection === "up" ? 6 : -6, scale: 0.98 }}
                         transition={{ duration: 0.15 }}
-                        className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_20px_50px_-14px_rgba(4,112,132,0.35)]"
+                        className={`absolute left-0 right-0 z-30 overflow-hidden rounded-2xl border-2 border-[#0B8A93]/15 bg-white shadow-[0_-4px_20px_-6px_rgba(4,112,132,0.35)] ring-1 ring-black/5 ${suggestionsDirection === "up"
+                                ? "bottom-[calc(100%+8px)]"
+                                : "top-[calc(100%+8px)]"
+                            }`}
                     >
                         <div className="max-h-[340px] overflow-y-auto py-1.5">
                             {suggestions.map((s, i) => {
@@ -259,7 +263,7 @@ export default function MarketplaceSearchBar({
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         transition={{ duration: 0.12, delay: i * 0.02 }}
-                                        className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition ${i === highlightIndex ? "bg-[#F4FBFB]" : "bg-white"
+                                        className={`flex w-full items-center gap-3 border-b border-slate-50 px-4 py-2.5 text-left transition last:border-b-0 ${i === highlightIndex ? "bg-[#F4FBFB]" : "bg-white"
                                             }`}
                                     >
                                         <span

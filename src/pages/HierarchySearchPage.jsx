@@ -128,25 +128,7 @@ export default function HierarchySearchPage() {
 
     return (
         <div className="mx-auto max-w-4xl min-h-screen px-4 pt-4 sm:px-6 lg:px-8 pb-10">
-            {/* Search row */}
-            <div className="flex items-center gap-3">
-                <button
-                    onClick={handleBack}
-                    aria-label="Go back"
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100"
-                >
-                    <ArrowLeft className="h-5 w-5" />
-                </button>
-                <div className="flex-1">
-                    <MarketplaceSearchBar
-                        value={inputValue}
-                        onChange={setInputValue}
-                        onSubmit={handleSearchSubmit}
-                        onImageResolved={handleImageResolved}
-                        placeholder={LEVEL_PLACEHOLDER[currentLevel]}
-                    />
-                </div>
-            </div>
+
             {imageError && (
                 <p className="mt-2 flex items-center gap-1.5 pl-[52px] text-[11.5px] font-medium text-amber-600">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{imageError}
@@ -155,7 +137,7 @@ export default function HierarchySearchPage() {
 
             {/* Breadcrumb hierarchy trail */}
             {stack.length > 0 && (
-                <div className="mt-3 flex flex-wrap items-center gap-1 text-[11.5px] font-semibold text-slate-500">
+                <div className="mt-1 flex flex-wrap items-center gap-1 text-[11.5px] font-semibold text-slate-500">
                     <button onClick={() => goToBreadcrumb(-1)} className="text-[#047084] hover:underline">
                         All Categories
                     </button>
@@ -174,7 +156,7 @@ export default function HierarchySearchPage() {
             )}
 
             {/* Results header */}
-            <div className="mt-5">
+            <div className="mt-1">
                 <h2 className="text-[19px] font-extrabold tracking-tight text-slate-900" style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}>
                     {aiResolving ? "Searching with BBM AI" : showingSuggestions ? "Did you mean" : LEVEL_LABEL[currentLevel]}
                     {!aiResolving && !showingSuggestions && parent ? ` in "${parent.name}"` : ""}

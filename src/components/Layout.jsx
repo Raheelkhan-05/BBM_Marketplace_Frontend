@@ -1,12 +1,16 @@
-//src/components/Layout.jsx
+// src/components/Layout.jsx
 
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Header from "./Header.jsx";
 import Footer from "./Footer.jsx";
-import BottomNav from "./BottomNav.jsx";
+import BottomSearchBar from "./BottomSearchBar.jsx";
 import BackgroundAmbience from "./landing/BackgroundAmbience.jsx";
 
 export default function Layout() {
+
+  const { pathname } = useLocation();
+  const isLandingPage = pathname === "/";
+
   return (
     <div className="relative min-h-screen bg-white overflow-x-clip">
       <BackgroundAmbience />
@@ -14,8 +18,8 @@ export default function Layout() {
       <div className="relative z-1">
         <Header />
 
-        {/* pb clearance so BottomNav never covers content on mobile */}
-        <main className="pb-20 md:pb-0">
+        {/* pb clearance so BottomSearchBar never covers content on mobile */}
+        <main className="pb-24 md:pb-0">
           <Outlet />
         </main>
 
@@ -23,7 +27,7 @@ export default function Layout() {
           <Footer />
         </div>
 
-        <BottomNav />
+        {!isLandingPage && <BottomSearchBar />}
       </div>
     </div>
   );
