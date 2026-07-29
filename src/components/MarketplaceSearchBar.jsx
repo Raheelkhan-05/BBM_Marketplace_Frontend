@@ -177,7 +177,7 @@ export default function MarketplaceSearchBar({
             >
                 <div className="flex h-[60px] lg:h-[62px] xl:h-[64px] items-center rounded-full bg-white px-3 pl-5 lg:px-5 lg:pl-7">
                     <div className="flex shrink-0 items-center pr-3 lg:pr-4">
-                        <img src="./Logo.png" alt="Logo" className="h-6 w-6 lg:h-8 lg:w-8 object-contain" />
+                        <img src="/Logo.png" alt="Logo" className="h-6 w-6 lg:h-8 lg:w-8 object-contain" />
                     </div>
 
                     <div className="mr-3 lg:mr-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
@@ -245,8 +245,8 @@ export default function MarketplaceSearchBar({
                         exit={{ opacity: 0, y: suggestionsDirection === "up" ? 6 : -6, scale: 0.98 }}
                         transition={{ duration: 0.15 }}
                         className={`absolute left-0 right-0 z-30 overflow-hidden rounded-2xl border-2 border-[#0B8A93]/15 bg-white shadow-[0_-4px_20px_-6px_rgba(4,112,132,0.35)] ring-1 ring-black/5 ${suggestionsDirection === "up"
-                                ? "bottom-[calc(100%+8px)]"
-                                : "top-[calc(100%+8px)]"
+                            ? "bottom-[calc(100%+8px)]"
+                            : "top-[calc(100%+8px)]"
                             }`}
                     >
                         <div className="max-h-[340px] overflow-y-auto py-1.5">

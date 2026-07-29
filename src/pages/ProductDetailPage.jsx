@@ -328,8 +328,8 @@ function CTACard({ icon: Icon, title, subtitle, gradient, points, onClick }) {
                         <Icon className="h-3 w-3 sm:h-5 sm:w-5" />
                     </span>
                     <div className="min-w-0">
-                        <p className="text-[9.5px] font-extrabold leading-tight tracking-wide sm:text-[14.5px]">{title}</p>
-                        <p className="hidden text-[11.5px] font-medium opacity-90 xs:block sm:block">{subtitle}</p>
+                        <p className="text-[11.5px] font-extrabold leading-tight tracking-wide sm:text-[14.5px]">{title}</p>
+                        <p className="hidden text-[9.5px] sm:text-[12.5px] font-medium leading-tight opacity-90 xs:block sm:block">{subtitle}</p>
                     </div>
                 </div>
                 <ArrowRight className="h-3.5 w-3.5 shrink-0 opacity-90 sm:h-5 sm:w-5" />
