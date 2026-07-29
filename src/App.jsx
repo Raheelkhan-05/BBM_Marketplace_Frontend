@@ -20,6 +20,7 @@ import AdminManageAdminsPage from "./pages/admin/AdminManageAdminsPage.jsx";
 import ShopPage from "./pages/ShopPage.jsx";
 import ShopRoute from "./pages/ShopRoute.jsx";
 import HierarchySearchPage from "./pages/HierarchySearchPage.jsx";
+import ProductDetailPage from "./pages/ProductDetailPage.jsx";
 
 
 function App() {
@@ -44,6 +45,7 @@ function App() {
             <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
             <Route path="/shop/:slug" element={<ShopRoute />} />
             <Route path="/browse" element={<HierarchySearchPage />} />
+            <Route path="/product/:id" element={<ProductDetailPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

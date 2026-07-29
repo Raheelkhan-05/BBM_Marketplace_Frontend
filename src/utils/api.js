@@ -323,12 +323,16 @@ export async function fetchImageStatuses(pendingImages) {
   return get("/search/image-status", { ids });
 }
 
-
 // Fast pure-DB typeahead suggestions — no AI. Accepts an AbortSignal so
 // the caller can truly cancel an in-flight request (not just ignore its
 // response), which keeps rapid typing feeling instant.
 export async function fetchAutocomplete(q, limit = 8, signal) {
   const params = new URLSearchParams({ q, limit });
   const res = await fetch(`${API_BASE}/search/autocomplete?${params}`, { signal });
+  return res.json();
+}
+
+export async function fetchProductDetail(id) {
+  const res = await fetch(`${API_BASE}/search/products/${id}`);
   return res.json();
 }

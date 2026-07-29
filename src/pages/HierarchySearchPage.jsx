@@ -136,9 +136,22 @@ export default function HierarchySearchPage() {
         else navigate(-1);
     };
 
+    // const handleSelect = (item) => {
+    //     if (currentLevel === "seller") {
+    //         navigate(`/shop/${item.shop_slug}`);
+    //         return;
+    //     }
+    //     selectItem(item);
+    // };
+
+    // HierarchySearchPage.jsx — handleSelect, when currentLevel is "product"
     const handleSelect = (item) => {
         if (currentLevel === "seller") {
             navigate(`/shop/${item.shop_slug}`);
+            return;
+        }
+        if (currentLevel === "product") {
+            navigate(`/product/${item.id}`);
             return;
         }
         selectItem(item);
