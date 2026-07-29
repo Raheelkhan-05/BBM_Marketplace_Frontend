@@ -149,7 +149,25 @@ export default function HierarchySearchPage() {
 
     return (
         <div className="mx-auto max-w-4xl min-h-screen px-4 pt-4 sm:px-6 lg:px-8 pb-10">
-
+            {/* Search row */}
+            <div className="flex items-center gap-3 mb-3 hidden md:block">
+                <button
+                    onClick={handleBack}
+                    aria-label="Go back"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100"
+                >
+                    <ArrowLeft className="h-5 w-5" />
+                </button>
+                <div className="flex-1">
+                    <MarketplaceSearchBar
+                        value={inputValue}
+                        onChange={setInputValue}
+                        onSubmit={handleSearchSubmit}
+                        onImageResolved={handleImageResolved}
+                        placeholder={LEVEL_PLACEHOLDER[currentLevel]}
+                    />
+                </div>
+            </div>
             {imageError && (
                 <p className="mt-2 flex items-center gap-1.5 pl-[52px] text-[11.5px] font-medium text-amber-600">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{imageError}
