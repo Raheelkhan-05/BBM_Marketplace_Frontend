@@ -1,12 +1,31 @@
-// src/components/BottomSearchBar.jsx
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import MarketplaceSearchBar from "./MarketplaceSearchBar.jsx";
 
 export default function BottomSearchBar() {
     const [query, setQuery] = useState("");
+    const [keyboardOffset, setKeyboardOffset] = useState(0);
     const navigate = useNavigate();
+
+    // Tracks the on-screen keyboard via the VisualViewport API and
+    // translates the bar up by exactly that much, so it floats right
+    // above the keyboard instead of the whole page jumping/resizing.
+    useEffect(() => {
+        const vv = window.visualViewport;
+        if (!vv) return;
+
+        const handleResize = () => {
+            const offset = window.innerHeight - vv.height - vv.offsetTop;
+            setKeyboardOffset(Math.max(0, offset));
+        };
+
+        vv.addEventListener("resize", handleResize);
+        vv.addEventListener("scroll", handleResize);
+        return () => {
+            vv.removeEventListener("resize", handleResize);
+            vv.removeEventListener("scroll", handleResize);
+        };
+    }, []);
 
     const handleSubmit = (trimmedQuery) => {
         navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
