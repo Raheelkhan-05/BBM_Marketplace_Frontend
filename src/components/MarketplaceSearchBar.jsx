@@ -107,13 +107,14 @@ export default function MarketplaceSearchBar({
         if (!trimmed) return;
         setImageError(null);
         setShowSuggestions(false);
-        onSubmit(trimmed);
+        onChange("");        // clear the input immediately for a snappy feel
+        onSubmit(trimmed);   // pass the actual term along separately
     };
+
 
     const handleSubmit = (e) => {
         e.preventDefault();
         if (highlightIndex >= 0 && suggestions[highlightIndex]) {
-            onChange(suggestions[highlightIndex].name);
             commitSearch(suggestions[highlightIndex].name);
         } else {
             commitSearch(value);
