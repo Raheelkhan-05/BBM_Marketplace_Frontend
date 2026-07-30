@@ -14,6 +14,8 @@ export default function ProductDetailPage() {
     const navigate = useNavigate();
     const [product, setProduct] = useState(null);
     const [brands, setBrands] = useState([]);
+    const [specSummary, setSpecSummary] = useState([]);
+    const [specSampleSize, setSpecSampleSize] = useState(0);
     const [sellerCount, setSellerCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
@@ -27,6 +29,8 @@ export default function ProductDetailPage() {
             if (res?.success) {
                 setProduct(res.product);
                 setBrands(res.brands || []);
+                setSpecSummary(Array.isArray(res.specSummary) ? res.specSummary : []);
+                setSpecSampleSize(res.specSampleSize || 0);
                 setSellerCount(res.sellerCount || 0);
             } else {
                 setNotFound(true);
@@ -40,12 +44,15 @@ export default function ProductDetailPage() {
 
     const category = product.subcategory?.category;
     const subcategory = product.subcategory;
-    const specs = product.attributes && typeof product.attributes === "object" ? Object.entries(product.attributes) : [];
+    // Fallback only — used when there aren't enough brand listings yet for
+    // the server to aggregate a real spec summary (see specSummary below).
+    const staticSpecs = product.attributes && typeof product.attributes === "object" ? Object.entries(product.attributes) : [];
+    const hasAggregatedSpecs = specSummary.length > 0;
     const variants = Array.isArray(product.variants) ? product.variants : [];
 
     const tabs = [
-        specs.length > 0 && { id: "specifications", label: "Specifications" },
-        variants.length > 0 && { id: "sizes", label: "Common Sizes" },
+        (hasAggregatedSpecs || staticSpecs.length > 0) && { id: "specifications", label: "Specifications" },
+        variants.length > 0 && { id: "options", label: "Available Options" },
         brands.length > 0 && { id: "brands", label: "Popular Brands" },
     ].filter(Boolean);
 
@@ -209,37 +216,63 @@ export default function ProductDetailPage() {
                     </div>
 
                     <div className="mt-3 sm:mt-4">
-                        {activeTab === "specifications" && specs.length > 0 && (
-                            <div className="grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2 sm:gap-y-2">
-                                {specs.map(([key, val]) => (
-                                    <div key={key} className="flex items-center justify-between border-b border-slate-50 py-1.5 text-[10.5px] sm:py-2 sm:text-[12.5px]">
-                                        <span className="font-semibold text-slate-500">{key}</span>
-                                        <span className="font-bold text-slate-800">{String(val)}</span>
-                                    </div>
-                                ))}
+                        {activeTab === "specifications" && (
+                            <div>
+                                {hasAggregatedSpecs ? (
+                                    <>
+                                        <p className="text-[9.5px] font-semibold text-slate-400 sm:text-[11px]">
+                                            Spec range across {specSampleSize} listed brand{specSampleSize === 1 ? "" : "s"} — exact values vary by seller
+                                        </p>
+                                        <div className="mt-2 grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2 sm:gap-y-2">
+                                            {specSummary.map((s) => (
+                                                <div key={s.name} className="flex items-start justify-between gap-3 border-b border-slate-50 py-1.5 text-[10.5px] sm:py-2 sm:text-[12.5px]">
+                                                    <span className="shrink-0 font-semibold text-slate-500">{s.name}</span>
+                                                    <span className="text-right font-bold text-slate-800">{s.rangeText}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : staticSpecs.length > 0 ? (
+                                    <>
+                                        <p className="text-[9.5px] font-semibold text-slate-400 sm:text-[11px]">
+                                            Typical specifications for this product line — not yet confirmed against listed sellers
+                                        </p>
+                                        <div className="mt-2 grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2 sm:gap-y-2">
+                                            {staticSpecs.map(([key, val]) => (
+                                                <div key={key} className="flex items-center justify-between border-b border-slate-50 py-1.5 text-[10.5px] sm:py-2 sm:text-[12.5px]">
+                                                    <span className="font-semibold text-slate-500">{key}</span>
+                                                    <span className="font-bold text-slate-800">{String(val)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </>
+                                ) : null}
                             </div>
                         )}
 
-                        {activeTab === "sizes" && variants.length > 0 && (
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-[10.5px] sm:text-[12.5px]">
-                                    <thead>
-                                        <tr className="border-b border-slate-100 text-slate-400">
-                                            {Object.keys(variants[0]).map((k) => (
-                                                <th key={k} className="whitespace-nowrap py-1.5 pr-3 font-bold uppercase tracking-wide sm:py-2 sm:pr-4">{k}</th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {variants.map((v, i) => (
-                                            <tr key={i} className="border-b border-slate-50">
-                                                {Object.values(v).map((val, j) => (
-                                                    <td key={j} className="whitespace-nowrap py-1.5 pr-3 font-semibold text-slate-700 sm:py-2 sm:pr-4">{String(val)}</td>
+                        {activeTab === "options" && variants.length > 0 && (
+                            <div className="space-y-3 sm:space-y-4">
+                                {variants.map((v, i) => {
+                                    const values = Array.isArray(v.values) ? v.values : [v.values].filter(Boolean);
+                                    if (!v.attribute || values.length === 0) return null;
+                                    return (
+                                        <div key={i}>
+                                            <p className="text-[8.5px] font-extrabold uppercase tracking-wide text-slate-400 sm:text-[11px]">
+                                                {v.attribute}
+                                            </p>
+                                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                                {values.map((val) => (
+                                                    <span
+                                                        key={val}
+                                                        className="rounded-full border border-slate-200 px-2.5 py-1 text-[10.5px] font-semibold text-slate-700 sm:px-3 sm:py-1.5 sm:text-[12px]"
+                                                    >
+                                                        {val}
+                                                    </span>
                                                 ))}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
 

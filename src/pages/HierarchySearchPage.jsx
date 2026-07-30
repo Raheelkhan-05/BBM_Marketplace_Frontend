@@ -7,11 +7,19 @@
 // If a scoped + smart search comes up empty, BBM's AI automatically
 // classifies + creates the item (embedding-matched onto existing
 // categories/subcategories first; only creates new ones when nothing fits).
+//
+// CHANGE (category landing wiring): at the top level (currentLevel ===
+// "category") each row now renders as CategoryRow, which shows two
+// explicit actions instead of a single click target — "Explore Category"
+// (goes to the new marketing/orientation CategoryLandingPage at
+// /category/:slug) and "Browse" (unchanged drill-down behavior, same as
+// every other level). Every other level (subcategory/product/brand/seller)
+// is untouched.
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, ChevronRight, PackageSearch, Store, ShieldCheck, MapPin, Layers, Tag, Package, Sparkles, AlertTriangle, BadgeCheck } from "lucide-react";
+import { ArrowLeft, ChevronRight, PackageSearch, Store, ShieldCheck, MapPin, Layers, Tag, Package, Sparkles, AlertTriangle, BadgeCheck, Compass } from "lucide-react";
 import useHierarchySearch from "../hooks/useHierarchySearch";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 
@@ -172,6 +180,12 @@ export default function HierarchySearchPage() {
         selectItem(item);
     };
 
+    // NEW: takes a category item straight to the marketing/orientation
+    // landing page (/category/:slug) instead of drilling into subcategories.
+    const handleExploreCategory = (item) => {
+        navigate(`/category/${item.slug || item.id}`);
+    };
+
     const showingSuggestions = !loading && items.length === 0 && suggestions.length > 0;
     const showingNoSellersYet = currentLevel === "seller" && !loading && items.length === 0 && justAiCreated;
 
@@ -273,6 +287,19 @@ export default function HierarchySearchPage() {
                         <SellerRow key={seller.offerId ?? seller.id ?? i} seller={seller} onClick={() => handleSelect(seller)} />
                     ))}
                 </div>
+            ) : currentLevel === "category" ? (
+                // NEW: category level gets the dual-action row instead of the
+                // plain single-click HierarchyRow used by every other level.
+                <div className="mt-4 space-y-2">
+                    {items.map((item, i) => (
+                        <CategoryRow
+                            key={item.id ?? i}
+                            item={item}
+                            onExplore={() => handleExploreCategory(item)}
+                            onBrowse={() => handleSelect(item)}
+                        />
+                    ))}
+                </div>
             ) : CARD_GRID_LEVELS.has(currentLevel) ? (
                 <div className="mt-4 grid grid-cols-2 gap-3 xs:grid-cols-3 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5">
                     {items.map((item, i) => (
@@ -370,6 +397,55 @@ function HierarchyRow({ item, level, onClick }) {
                 )}
             </div>
         </motion.button>
+    );
+}
+
+// NEW: category-level row. Same visual shell as HierarchyRow (so the list
+// doesn't feel inconsistent), but the row itself isn't a single click
+// target — it ends in two explicit actions, since "browse" and "explore"
+// are genuinely different intents at this level (see chat: first-time
+// visitors want the landing page, returning visitors want to drill in).
+function CategoryRow({ item, onExplore, onBrowse }) {
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
+            className="w-full overflow-hidden rounded-xl border border-slate-100 bg-white shadow-[0_8px_20px_-16px_rgba(4,112,132,0.3)] transition hover:border-[#7fb3bd]"
+        >
+            <button onClick={onExplore} className="relative block w-full aspect-[2.67/1] overflow-hidden bg-slate-200 text-left">
+                {item.image ? (
+                    <img src={item.image} alt="" className="h-full w-full object-cover" />
+                ) : (
+                    <div className="flex h-full w-full items-center justify-center text-slate-300">
+                        <PackageSearch className="h-8 w-8" />
+                    </div>
+                )}
+                {item.is_ai_generated && (
+                    <span className="absolute right-2 top-2 flex items-center gap-0.5 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#047084]">
+                        <Sparkles className="h-2.5 w-2.5" /> New
+                    </span>
+                )}
+            </button>
+            <div className="px-3.5 py-3">
+                <p className="truncate text-[13.5px] font-extrabold text-slate-900">{item.name}</p>
+                {item.description && (
+                    <p className="mt-1 truncate text-[11.5px] font-medium text-slate-500">{item.description}</p>
+                )}
+                <div className="mt-2.5 flex gap-2">
+                    <button
+                        onClick={onExplore}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#047084]/30 px-3 py-2 text-[11.5px] font-bold text-[#047084] transition hover:bg-[#047084]/5"
+                    >
+                        <Compass className="h-3.5 w-3.5" /> Explore Category
+                    </button>
+                    <button
+                        onClick={onBrowse}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#047084] px-3 py-2 text-[11.5px] font-bold text-white transition hover:bg-[#035c6d]"
+                    >
+                        Browse <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            </div>
+        </motion.div>
     );
 }
 

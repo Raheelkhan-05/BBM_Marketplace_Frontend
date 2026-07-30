@@ -7,8 +7,9 @@
 ---
 
 **Project:** B2B Industrial Marketplace
-**Generated:** 2026-07-25 10:04:31
-**Category:** E-commerce
+**Generated:** 2026-07-30 12:35:50
+**Category:** Link-in-Bio Page Builder
+**Design Dials:** Variance 6/10 (Balanced / Modern) | Motion 5/10 (Standard) | Density 6/10 (Standard)
 
 ---
 
@@ -18,18 +19,18 @@
 
 | Role | Hex | CSS Variable |
 |------|-----|--------------|
-| Primary | `#0F172A` | `--color-primary` |
+| Primary | `#1E3A5F` | `--color-primary` |
 | On Primary | `#FFFFFF` | `--color-on-primary` |
-| Secondary | `#334155` | `--color-secondary` |
-| Accent/CTA | `#0369A1` | `--color-accent` |
+| Secondary | `#2563EB` | `--color-secondary` |
+| Accent/CTA | `#A16207` | `--color-accent` |
 | Background | `#F8FAFC` | `--color-background` |
-| Foreground | `#020617` | `--color-foreground` |
-| Muted | `#E8ECF1` | `--color-muted` |
-| Border | `#E2E8F0` | `--color-border` |
+| Foreground | `#0F172A` | `--color-foreground` |
+| Muted | `#E9EEF5` | `--color-muted` |
+| Border | `#CBD5E1` | `--color-border` |
 | Destructive | `#DC2626` | `--color-destructive` |
-| Ring | `#0F172A` | `--color-ring` |
+| Ring | `#1E3A5F` | `--color-ring` |
 
-**Color Notes:** Professional navy + blue CTA
+**Color Notes:** Academic navy + gold keynote + track chips
 
 ### Typography
 
@@ -44,6 +45,8 @@
 ```
 
 ### Spacing Variables
+
+*Density: 6/10 — Standard*
 
 | Token | Value | Usage |
 |-------|-------|-------|
@@ -73,7 +76,7 @@
 ```css
 /* Primary Button */
 .btn-primary {
-  background: #0369A1;
+  background: #A16207;
   color: white;
   padding: 12px 24px;
   border-radius: 8px;
@@ -90,8 +93,8 @@
 /* Secondary Button */
 .btn-secondary {
   background: transparent;
-  color: #0F172A;
-  border: 2px solid #0F172A;
+  color: #1E3A5F;
+  border: 2px solid #1E3A5F;
   padding: 12px 24px;
   border-radius: 8px;
   font-weight: 600;
@@ -130,9 +133,9 @@
 }
 
 .input:focus {
-  border-color: #0F172A;
+  border-color: #1E3A5F;
   outline: none;
-  box-shadow: 0 0 0 3px #0F172A20;
+  box-shadow: 0 0 0 3px #1E3A5F20;
 }
 ```
 
@@ -158,13 +161,13 @@
 
 ## Style Guidelines
 
-**Style:** Vibrant & Block-based
+**Style:** Hero-Centric Design
 
-**Keywords:** Bold, energetic, playful, block layout, geometric shapes, high color contrast, duotone, modern, energetic
+**Keywords:** Large hero section, compelling headline, high-contrast CTA, product showcase, value proposition, hero image/video, dramatic visual
 
-**Best For:** Startups, creative agencies, gaming, social media, youth-focused, entertainment, consumer
+**Best For:** SaaS landing pages, product launches, service landing pages, B2B platforms, tech companies
 
-**Key Effects:** Large sections (48px+ gaps), animated patterns, bold hover (color shift), scroll-snap, large type (32px+), 200-300ms
+**Key Effects:** Smooth scroll reveal, fade-in animations on hero, subtle background parallax, CTA glow/pulse effect
 
 ### Page Pattern
 
@@ -176,10 +179,26 @@
 
 ---
 
+## Motion
+
+**Page Transition** (Standard) — Trigger: route change | Duration: 400-600ms | Easing: `power2.inOut`
+
+```js
+const tl = gsap.timeline(); tl.to('.transition-overlay', { yPercent: 0, duration: 0.4, ease: 'power2.inOut' }).call(navigate).to('.transition-overlay', { yPercent: -100, duration: 0.4, ease: 'power2.inOut', delay: 0.1 });
+```
+
+**Framework notes:** Keep the overlay element mounted at the layout root (outside the page component) so it survives the route swap
+
+- ✅ Show a lightweight loading indicator if the destination route's data fetch outlasts the overlay
+- ❌ Don't tie the overlay's reveal directly to data-fetch completion without a max-wait timeout; a slow API stalls the whole transition
+- ⚡ Prefer CSS transform (yPercent) over top/left to keep the overlay animation on the compositor thread
+
+---
+
 ## Anti-Patterns (Do NOT Use)
 
-- ❌ Flat design without depth
-- ❌ Text-heavy pages
+- ❌ Muted colors
+- ❌ Low energy
 
 ### Additional Forbidden Patterns
 

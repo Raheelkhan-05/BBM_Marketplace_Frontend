@@ -336,3 +336,13 @@ export async function fetchProductDetail(id) {
   const res = await fetch(`${API_BASE}/search/products/${id}`);
   return res.json();
 }
+
+export async function fetchCategoryLanding(idOrSlug) {
+  const res = await fetch(`${API_BASE}/catalog/category/${idOrSlug}`);
+  return res.json();
+}
+
+export async function fetchSubcategoryLanding(idOrSlug) {
+  const res = await fetch(`${API_BASE}/catalog/subcategory/${idOrSlug}`);
+  return res.json();
+}

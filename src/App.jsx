@@ -21,6 +21,8 @@ import ShopPage from "./pages/ShopPage.jsx";
 import ShopRoute from "./pages/ShopRoute.jsx";
 import HierarchySearchPage from "./pages/HierarchySearchPage.jsx";
 import ProductDetailPage from "./pages/ProductDetailPage.jsx";
+import CategoryLandingPage from "./pages/CategoryLandingPage.jsx";
+import SubcategoryLandingPage from "./pages/SubcategoryLandingPage.jsx";
 
 
 function App() {
@@ -46,6 +48,9 @@ function App() {
             <Route path="/shop/:slug" element={<ShopRoute />} />
             <Route path="/browse" element={<HierarchySearchPage />} />
             <Route path="/product/:id" element={<ProductDetailPage />} />
+
+            <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
+            <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
