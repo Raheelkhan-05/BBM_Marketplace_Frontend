@@ -287,11 +287,14 @@ export default function MarketplaceSearchBar({
                         <AnimatePresence>
                             {showImageMenu && (
                                 <motion.div
-                                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                                    initial={{ opacity: 0, y: suggestionsDirection === "up" ? 6 : -6, scale: 0.97 }}
                                     animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                                    exit={{ opacity: 0, y: suggestionsDirection === "up" ? 6 : -6, scale: 0.97 }}
                                     transition={{ duration: 0.14 }}
-                                    className="absolute right-0 top-[calc(100%+10px)] z-40 w-44 overflow-hidden rounded-xl border border-slate-100 bg-white shadow-[0_10px_28px_-8px_rgba(4,112,132,0.35)] ring-1 ring-black/5"
+                                    className={`absolute right-0 z-40 w-44 overflow-hidden rounded-xl border border-slate-100 bg-white shadow-[0_10px_28px_-8px_rgba(4,112,132,0.35)] ring-1 ring-black/5 ${suggestionsDirection === "up"
+                                        ? "bottom-[calc(100%+10px)]"
+                                        : "top-[calc(100%+10px)]"
+                                        }`}
                                 >
                                     <button
                                         type="button"
