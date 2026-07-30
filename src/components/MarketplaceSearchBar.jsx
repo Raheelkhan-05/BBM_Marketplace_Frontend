@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, Camera, FileText, Loader2, Layers, Tag, Package, BadgeCheck } from "lucide-react";
 import { searchByImage, fetchAutocomplete } from "../utils/api";
 import { resizeImageForSearch } from "../utils/resizeImageForSearch";
+import { Link } from "react-router-dom";
 
 const AUTOCOMPLETE_MIN_CHARS = 2;
 const DEBOUNCE_MS = 100;
@@ -177,7 +178,9 @@ export default function MarketplaceSearchBar({
             >
                 <div className="flex h-[60px] lg:h-[62px] xl:h-[64px] items-center rounded-full bg-white px-3 pl-5 lg:px-5 lg:pl-7">
                     <div className="flex shrink-0 items-center pr-3 lg:pr-4">
-                        <img src="/Logo.png" alt="Logo" className="h-6 w-6 lg:h-8 lg:w-8 object-contain" />
+                        <Link to="/">
+                            <img src="/Logo.png" alt="BBM" className="h-6 w-6 lg:h-8 lg:w-8 object-contain" />
+                        </Link>
                     </div>
 
                     <div className="mr-3 lg:mr-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
