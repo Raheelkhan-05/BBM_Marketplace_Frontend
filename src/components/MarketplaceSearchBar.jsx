@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Camera, FileText, Loader2, Layers, Tag, Package, BadgeCheck } from "lucide-react";
+import { Search, Camera, FileText, Loader2, Layers, Tag, Package, BadgeCheck, Image as ImageIcon, Aperture } from "lucide-react";
 import { searchByImage, fetchAutocomplete } from "../utils/api";
 import { resizeImageForSearch } from "../utils/resizeImageForSearch";
 import { Link } from "react-router-dom";
@@ -35,6 +35,20 @@ function HighlightedName({ name, term }) {
     );
 }
 
+// Detects whether this device can plausibly offer a *distinct* camera-capture
+// option worth showing as its own menu item. Desktops/laptops (fine pointer,
+// no touch) never get the menu — clicking the Image button behaves exactly
+// like before (opens the OS file picker straight away). Phones/tablets
+// (coarse pointer / touch capable) get a tiny popover to choose between
+// "Take Photo" and "Choose from Gallery", since relying on Android's default
+// intent chooser to surface the camera option is unreliable across devices.
+function isLikelyMobileDevice() {
+    if (typeof window === "undefined") return false;
+    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
+    const touch = "ontouchstart" in window || (navigator.maxTouchPoints || 0) > 0;
+    return Boolean(coarse || touch);
+}
+
 export default function MarketplaceSearchBar({
     value,
     onChange,
@@ -45,7 +59,11 @@ export default function MarketplaceSearchBar({
 }) {
     const [imageSearching, setImageSearching] = useState(false);
     const [imageError, setImageError] = useState(null);
-    const fileInputRef = useRef(null);
+    const [showImageMenu, setShowImageMenu] = useState(false);
+    const fileInputRef = useRef(null);     // gallery / regular file picker
+    const cameraInputRef = useRef(null);   // forces rear camera capture on mobile
+    const imageMenuRef = useRef(null);
+    const isMobile = useRef(isLikelyMobileDevice());
 
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -99,6 +117,9 @@ export default function MarketplaceSearchBar({
             if (containerRef.current && !containerRef.current.contains(e.target)) {
                 setShowSuggestions(false);
             }
+            if (imageMenuRef.current && !imageMenuRef.current.contains(e.target)) {
+                setShowImageMenu(false);
+            }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -142,10 +163,29 @@ export default function MarketplaceSearchBar({
         }
     };
 
+    // Desktop: behave exactly as before — one click straight into the file
+    // picker, no camera option, no menu.
+    // Mobile/touch: open a tiny popover so the user can explicitly choose
+    // "Take Photo" (forces rear camera) vs "Choose from Gallery", instead of
+    // depending on the OS's own (inconsistent) intent chooser.
     const handleImageButtonClick = () => {
         if (imageSearching) return;
         setImageError(null);
+        if (isMobile.current) {
+            setShowImageMenu((prev) => !prev);
+        } else {
+            fileInputRef.current?.click();
+        }
+    };
+
+    const openGalleryPicker = () => {
+        setShowImageMenu(false);
         fileInputRef.current?.click();
+    };
+
+    const openCameraCapture = () => {
+        setShowImageMenu(false);
+        cameraInputRef.current?.click();
     };
 
     const handleImageFileChange = async (e) => {
@@ -204,24 +244,79 @@ export default function MarketplaceSearchBar({
 
                     <div className="mx-3 lg:mx-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
 
+                    {/* Gallery / regular file picker input — no capture attr, so on
+                        desktop this opens the normal OS file dialog, and on mobile
+                        it opens the gallery/photos picker. */}
                     <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
-                    <button
-                        type="button"
-                        onClick={handleImageButtonClick}
-                        disabled={imageSearching}
-                        className="flex shrink-0 flex-col items-center justify-center gap-1 px-0 lg:px-2 disabled:opacity-60"
-                    >
-                        <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#E7F7F7]">
-                            {imageSearching ? (
-                                <Loader2 size={15} className="animate-spin text-[#00838F] lg:!w-[15px] lg:!h-[15px]" />
-                            ) : (
-                                <Camera size={15} className="text-[#00838F] lg:!w-[15px] lg:!h-[15px]" />
+                    {/* Dedicated camera-capture input. The `capture` attribute is what
+                        forces mobile browsers to open the camera directly instead of
+                        leaving the choice up to the device's default app settings —
+                        this is what fixes the inconsistent Android behavior. Desktop
+                        browsers ignore `capture` entirely, which is fine since this
+                        input is never triggered on desktop. */}
+                    <input
+                        ref={cameraInputRef}
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        onChange={handleImageFileChange}
+                    />
+                    <div className="relative" ref={imageMenuRef}>
+                        <button
+                            type="button"
+                            onClick={handleImageButtonClick}
+                            disabled={imageSearching}
+                            className="flex shrink-0 flex-col items-center justify-center gap-1 px-0 lg:px-2 disabled:opacity-60"
+                        >
+                            <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#E7F7F7]">
+                                {imageSearching ? (
+                                    <Loader2 size={15} className="animate-spin text-[#00838F] lg:!w-[15px] lg:!h-[15px]" />
+                                ) : (
+                                    <Camera size={15} className="text-[#00838F] lg:!w-[15px] lg:!h-[15px]" />
+                                )}
+                            </div>
+                            <span className="text-[9px] lg:text-[11px] font-medium leading-none text-[#00838F]">
+                                {imageSearching ? "Scanning" : "Image"}
+                            </span>
+                        </button>
+
+                        {/* Mobile-only popover: choose camera vs gallery. Desktop never
+                            renders this since handleImageButtonClick skips straight to
+                            the file picker there. */}
+                        <AnimatePresence>
+                            {showImageMenu && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                                    transition={{ duration: 0.14 }}
+                                    className="absolute right-0 top-[calc(100%+10px)] z-40 w-44 overflow-hidden rounded-xl border border-slate-100 bg-white shadow-[0_10px_28px_-8px_rgba(4,112,132,0.35)] ring-1 ring-black/5"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={openCameraCapture}
+                                        className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition hover:bg-[#F4FBFB]"
+                                    >
+                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E7F7F7] text-[#00838F]">
+                                            <Aperture className="h-3.5 w-3.5" />
+                                        </span>
+                                        <span className="text-[12.5px] font-semibold text-slate-700">Take Photo</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={openGalleryPicker}
+                                        className="flex w-full items-center gap-2.5 border-t border-slate-50 px-3.5 py-3 text-left transition hover:bg-[#F4FBFB]"
+                                    >
+                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E7F7F7] text-[#00838F]">
+                                            <ImageIcon className="h-3.5 w-3.5" />
+                                        </span>
+                                        <span className="text-[12.5px] font-semibold text-slate-700">Choose from Gallery</span>
+                                    </button>
+                                </motion.div>
                             )}
-                        </div>
-                        <span className="text-[9px] lg:text-[11px] font-medium leading-none text-[#00838F]">
-                            {imageSearching ? "Scanning" : "Image"}
-                        </span>
-                    </button>
+                        </AnimatePresence>
+                    </div>
 
                     <button type="button" className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0 lg:px-2 lg:pr-1">
                         <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#F1EEFF]">
