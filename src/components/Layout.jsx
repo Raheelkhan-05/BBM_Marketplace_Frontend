@@ -19,7 +19,13 @@ export function useLightboxVisibility() {
 export default function Layout() {
   const { pathname } = useLocation();
   const isLandingPage = pathname === "/";
+  // Admin pages have their own bottom-fixed bars (save/reject/approve bar,
+  // mobile add-new FAB) — stacking the marketplace search bar on top of
+  // those covered their buttons and blocked taps, so it's hidden here.
+  const isAdminPage = pathname.startsWith("/admin");
   const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  const showBottomSearchBar = !isLandingPage && !isAdminPage && !lightboxOpen;
 
   return (
     <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>
@@ -29,7 +35,7 @@ export default function Layout() {
         <div className="relative z-1">
           <Header />
 
-          <main className="pb-24 md:pb-0">
+          <main className={showBottomSearchBar ? "pb-24 md:pb-0" : ""}>
             <Outlet />
           </main>
 
@@ -37,7 +43,7 @@ export default function Layout() {
             <Footer />
           </div>
 
-          {!isLandingPage && !lightboxOpen && <BottomSearchBar />}
+          {showBottomSearchBar && <BottomSearchBar />}
         </div>
       </div>
     </LightboxVisibilityContext.Provider>

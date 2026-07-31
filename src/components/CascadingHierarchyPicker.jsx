@@ -10,6 +10,9 @@ export default function CascadingHierarchyPicker({ token, entityLevel, ancestors
     const [category, setCategory] = useState(ancestors?.category || null);
     const [subcategory, setSubcategory] = useState(ancestors?.subcategory || null);
     const [product, setProduct] = useState(ancestors?.product || null);
+    // Only one rung's panel can be open across the whole picker at a time —
+    // opening one closes whichever other one was open.
+    const [openLevel, setOpenLevel] = useState(null);
 
     useEffect(() => {
         onChange({ category, subcategory, product });
@@ -24,12 +27,16 @@ export default function CascadingHierarchyPicker({ token, entityLevel, ancestors
             <SingleLevelDropdown
                 token={token} pickerLevel="category" parentId={null}
                 value={category} label="Category"
+                open={openLevel === "category"}
+                onOpenChange={(v) => setOpenLevel(v ? "category" : null)}
                 onChange={(id, name) => { setCategory({ id, name }); setSubcategory(null); setProduct(null); }}
             />
             {showSubcategory && (
                 <SingleLevelDropdown
                     token={token} pickerLevel="subcategory" parentId={category?.id}
                     value={subcategory} label="Subcategory" disabled={!category}
+                    open={openLevel === "subcategory"}
+                    onOpenChange={(v) => setOpenLevel(v ? "subcategory" : null)}
                     onChange={(id, name) => { setSubcategory({ id, name }); setProduct(null); }}
                 />
             )}
@@ -37,6 +44,8 @@ export default function CascadingHierarchyPicker({ token, entityLevel, ancestors
                 <SingleLevelDropdown
                     token={token} pickerLevel="product" parentId={subcategory?.id}
                     value={product} label="Generic Product" disabled={!subcategory}
+                    open={openLevel === "product"}
+                    onOpenChange={(v) => setOpenLevel(v ? "product" : null)}
                     onChange={(id, name) => setProduct({ id, name })}
                 />
             )}

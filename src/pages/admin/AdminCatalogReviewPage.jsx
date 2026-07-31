@@ -157,7 +157,7 @@ export default function AdminCatalogReviewPage() {
             </div>
 
             <motion.button onClick={() => setShowCreate(true)} whileTap={{ scale: 0.92 }}
-                className="fixed bottom-[5.3rem] right-5 flex items-center justify-center rounded-full bg-[#047084] text-white shadow-lg shadow-[#047084]/30 sm:hidden"
+                className="fixed bottom-5 right-5 flex items-center justify-center rounded-full bg-[#047084] text-white shadow-lg shadow-[#047084]/30 sm:hidden"
                 style={{ height: 52, width: 52 }}>
                 <Plus className="h-6 w-6" />
             </motion.button>
