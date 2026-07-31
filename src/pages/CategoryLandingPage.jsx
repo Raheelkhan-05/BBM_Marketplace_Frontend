@@ -9,12 +9,12 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { motion, useScroll, useTransform, useInView } from "framer-motion";
+import { motion, useScroll, useTransform, useInView, AnimatePresence } from "framer-motion";
 import {
     ChevronRight, ArrowRight, Layers, Compass,
     FileText, PackageSearch, Store, ArrowUpRight,
     ShieldCheck, Scale, Zap, TrendingUp,
-    Sparkles, Box, Grid3X3, ChevronDown,
+    Sparkles, Box, Grid3X3, ChevronDown, X
 } from "lucide-react";
 import { fetchCategoryLanding } from "../utils/api";
 
@@ -160,12 +160,15 @@ export default function CategoryLandingPage() {
    ═══════════════════════════════════════════════════════════════════ */
 function HeroBanner({ category, stats, navigate, goBrowseAll }) {
     const heroRef = useRef(null);
+    const [lightboxOpen, setLightboxOpen] = useState(false);
     const { scrollYProgress } = useScroll({
         target: heroRef,
         offset: ["start start", "end start"],
     });
     const imageY = useTransform(scrollYProgress, [0, 1], [0, 40]);
     const textY = useTransform(scrollYProgress, [0, 1], [0, 20]);
+    const heroImageSrc = category.hero_image || category.image;
+
 
     return (
         <div ref={heroRef} className="relative overflow-hidden" style={{
@@ -219,12 +222,17 @@ function HeroBanner({ category, stats, navigate, goBrowseAll }) {
                         animate={{ opacity: 1, scale: 1, x: 0 }}
                         transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
                     >
-                        <div className="relative mx-auto aspect-[16/10] w-full max-w-md overflow-hidden rounded-2xl border border-white/[0.12] shadow-[0_20px_60px_-12px_rgba(0,0,0,0.35)] sm:aspect-[4/3] sm:max-w-none sm:rounded-3xl">
-                            {(category.hero_image || category.image) ? (
+                        <button
+                            type="button"
+                            onClick={() => heroImageSrc && setLightboxOpen(true)}
+                            disabled={!heroImageSrc}
+                            className="group relative mx-auto block aspect-[16/10] w-full max-w-md overflow-hidden rounded-2xl border border-white/[0.12] shadow-[0_20px_60px_-12px_rgba(0,0,0,0.35)] sm:aspect-[4/3] sm:max-w-none sm:rounded-3xl"
+                        >
+                            {heroImageSrc ? (
                                 <img
-                                    src={category.hero_image || category.image}
+                                    src={heroImageSrc}
                                     alt={category.name}
-                                    className="h-full w-full object-cover"
+                                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
                                     loading="eager"
                                 />
                             ) : (
@@ -232,13 +240,12 @@ function HeroBanner({ category, stats, navigate, goBrowseAll }) {
                                     <Layers className="h-14 w-14 text-white/20 sm:h-20 sm:w-20" strokeWidth={1} />
                                 </div>
                             )}
-                            {/* Bottom scrim for depth */}
                             <div className="absolute inset-x-0 bottom-0 h-2/5 bg-gradient-to-t from-black/25 to-transparent" />
-                            {/* Category badge on image */}
                             <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-white/[0.15] px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md sm:bottom-4 sm:left-4 sm:px-3.5 sm:py-1.5 sm:text-[10.5px]">
                                 <Grid3X3 className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> Category
                             </div>
-                        </div>
+
+                        </button>
                     </motion.div>
 
                     {/* Text content */}
@@ -294,6 +301,12 @@ function HeroBanner({ category, stats, navigate, goBrowseAll }) {
                     </motion.div>
                 </motion.div>
             </div>
+
+            <AnimatePresence>
+                {lightboxOpen && heroImageSrc && (
+                    <ImageLightbox src={heroImageSrc} alt={category.name} onClose={() => setLightboxOpen(false)} />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -631,6 +644,40 @@ function BottomCTA({ goBrowseAll }) {
                     Browse full catalog <ArrowRight className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
                 </button>
             </div>
+        </motion.div>
+    );
+}
+
+function ImageLightbox({ src, alt, onClose }) {
+    useEffect(() => {
+        const onKey = (e) => e.key === "Escape" && onClose();
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+        >
+            <button
+                onClick={onClose}
+                className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6 sm:top-6"
+                aria-label="Close"
+            >
+                <X className="h-5 w-5" />
+            </button>
+            <motion.img
+                initial={{ scale: 0.94 }}
+                animate={{ scale: 1 }}
+                onClick={(e) => e.stopPropagation()}
+                src={src}
+                alt={alt}
+                className="max-h-[88vh] max-w-[92vw] rounded-xl object-contain shadow-2xl"
+            />
         </motion.div>
     );
 }

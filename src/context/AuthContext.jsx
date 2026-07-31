@@ -95,6 +95,7 @@ export function AuthProvider({ children }) {
     const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (event === "INITIAL_SESSION") return;
       if (newSession?.access_token) {
+        localStorage.setItem(AUTH_TOKEN_KEY, newSession.access_token);
         setSession(newSession);
         loadProfile(newSession.access_token);
       } else if (

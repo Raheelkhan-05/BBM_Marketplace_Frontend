@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, useScroll, useTransform, useInView, AnimatePresence } from "framer-motion";
 import {
-    ChevronRight, ArrowLeft, Heart, Sparkles, ShoppingCart, Tag, FileText,
+    ChevronRight, ArrowLeft, Heart, Sparkles, ShoppingCart, Tag, FileText, X,
     PackageSearch, Store, ArrowRight, Scale, Share2, Zap, CheckCircle2, FileSpreadsheet,
 } from "lucide-react";
 import { fetchProductDetail } from "../utils/api";
@@ -20,6 +20,7 @@ export default function ProductDetailPage() {
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
     const [activeTab, setActiveTab] = useState("specifications");
+    const [lightboxOpen, setLightboxOpen] = useState(false);
 
     useEffect(() => {
         window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -125,7 +126,13 @@ export default function ProductDetailPage() {
                             <Heart className="h-3 w-3 sm:h-4 sm:w-4" />
                         </button>
                         {product.image ? (
-                            <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+                            <button
+                                type="button"
+                                onClick={() => setLightboxOpen(true)}
+                                className="group block h-full w-full"
+                            >
+                                <img src={product.image} alt={product.name} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                            </button>
                         ) : (
                             <div className="flex h-full w-full items-center justify-center text-slate-300">
                                 <PackageSearch className="h-8 w-8 sm:h-16 sm:w-16" strokeWidth={1.4} />
@@ -174,6 +181,11 @@ export default function ProductDetailPage() {
                         </div>
                     )}
                 </div>
+                <AnimatePresence>
+                    {lightboxOpen && product.image && (
+                        <ImageLightbox src={product.image} alt={product.name} onClose={() => setLightboxOpen(false)} />
+                    )}
+                </AnimatePresence>
             </div>
 
             {/* Buy / Sell CTAs — side-by-side at every size */}
@@ -387,6 +399,40 @@ function IconAction({ icon: Icon, label }) {
         <button className="flex items-center gap-1 text-[10px] font-bold text-slate-500 transition hover:text-slate-800 sm:gap-1.5 sm:text-[12px]">
             <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> {label}
         </button>
+    );
+}
+
+function ImageLightbox({ src, alt, onClose }) {
+    useEffect(() => {
+        const onKey = (e) => e.key === "Escape" && onClose();
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+        >
+            <button
+                onClick={onClose}
+                className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6 sm:top-6"
+                aria-label="Close"
+            >
+                <X className="h-5 w-5" />
+            </button>
+            <motion.img
+                initial={{ scale: 0.94 }}
+                animate={{ scale: 1 }}
+                onClick={(e) => e.stopPropagation()}
+                src={src}
+                alt={alt}
+                className="max-h-[88vh] max-w-[92vw] rounded-xl object-contain shadow-2xl"
+            />
+        </motion.div>
     );
 }
 

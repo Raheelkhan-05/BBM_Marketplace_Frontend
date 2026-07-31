@@ -12,9 +12,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { motion, useInView } from "framer-motion";
+import { motion, useInView, AnimatePresence } from "framer-motion";
 import {
-    ChevronRight, ArrowRight, ArrowUpRight, Compass, ChevronDown,
+    ChevronRight, ArrowRight, ArrowUpRight, Compass, ChevronDown, X,
     Tag, FileText, PackageSearch, Store, Package, Sparkles, Lightbulb,
 } from "lucide-react";
 import { fetchSubcategoryLanding } from "../utils/api";
@@ -124,6 +124,9 @@ export default function SubcategoryLandingPage() {
    for a level-2 page: shorter, smaller title, no scroll hint.
    ═══════════════════════════════════════════════════════════════════ */
 function HeroBanner({ subcategory, category, stats, navigate, goBrowseAll }) {
+    const [lightboxOpen, setLightboxOpen] = useState(false);
+    const heroImageSrc = subcategory.hero_image || subcategory.image;
+
     return (
         <div className="relative overflow-hidden" style={{
             background: `linear-gradient(145deg, ${TEAL} 0%, ${TEAL_DARK} 45%, ${TEAL_DEEP} 100%)`,
@@ -183,12 +186,17 @@ function HeroBanner({ subcategory, category, stats, navigate, goBrowseAll }) {
                         animate={{ opacity: 1, scale: 1, x: 0 }}
                         transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
                     >
-                        <div className="relative mx-auto aspect-[16/10] w-full max-w-sm overflow-hidden rounded-2xl border border-white/[0.12] shadow-[0_20px_50px_-14px_rgba(0,0,0,0.35)] sm:aspect-[4/3] sm:max-w-none">
-                            {(subcategory.hero_image || subcategory.image) ? (
+                        <button
+                            type="button"
+                            onClick={() => heroImageSrc && setLightboxOpen(true)}
+                            disabled={!heroImageSrc}
+                            className="group relative mx-auto block aspect-[16/10] w-full max-w-sm overflow-hidden rounded-2xl border border-white/[0.12] shadow-[0_20px_50px_-14px_rgba(0,0,0,0.35)] sm:aspect-[4/3] sm:max-w-none"
+                        >
+                            {heroImageSrc ? (
                                 <img
-                                    src={subcategory.hero_image || subcategory.image}
+                                    src={heroImageSrc}
                                     alt={subcategory.name}
-                                    className="h-full w-full object-cover"
+                                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
                                     loading="eager"
                                 />
                             ) : (
@@ -200,7 +208,8 @@ function HeroBanner({ subcategory, category, stats, navigate, goBrowseAll }) {
                             <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-white/[0.15] px-3 py-1 text-[9px] font-bold uppercase tracking-wider text-white backdrop-blur-md sm:bottom-3.5 sm:left-3.5 sm:px-3.5 sm:py-1.5 sm:text-[10px]">
                                 <Tag className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> Subcategory
                             </div>
-                        </div>
+
+                        </button>
                     </motion.div>
 
                     <motion.div
@@ -237,6 +246,11 @@ function HeroBanner({ subcategory, category, stats, navigate, goBrowseAll }) {
                     </motion.div>
                 </div>
             </div>
+            <AnimatePresence>
+                {lightboxOpen && heroImageSrc && (
+                    <ImageLightbox src={heroImageSrc} alt={category.name} onClose={() => setLightboxOpen(false)} />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -528,6 +542,40 @@ function BottomCTA({ goBrowseAll }) {
                     Browse full catalog <ArrowRight className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
                 </button>
             </div>
+        </motion.div>
+    );
+}
+
+function ImageLightbox({ src, alt, onClose }) {
+    useEffect(() => {
+        const onKey = (e) => e.key === "Escape" && onClose();
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
+
+    return (
+        <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
+        >
+            <button
+                onClick={onClose}
+                className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6 sm:top-6"
+                aria-label="Close"
+            >
+                <X className="h-5 w-5" />
+            </button>
+            <motion.img
+                initial={{ scale: 0.94 }}
+                animate={{ scale: 1 }}
+                onClick={(e) => e.stopPropagation()}
+                src={src}
+                alt={alt}
+                className="max-h-[88vh] max-w-[92vw] rounded-xl object-contain shadow-2xl"
+            />
         </motion.div>
     );
 }
