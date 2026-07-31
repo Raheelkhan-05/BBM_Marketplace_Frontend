@@ -1,8 +1,8 @@
 //Header.jsx
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck, Clock3, ListChecks } from "lucide-react";
+import { Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck, Clock3, ListChecks, Home } from "lucide-react";
 import { TAGLINE } from "../../data/content";
 import { useAuth } from "../context/AuthContext.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
@@ -18,12 +18,14 @@ const NAV_LINKS = [
 // Shared style tokens so desktop/mobile nav never drift apart again.
 const NAV_LINK_DESKTOP =
   "group relative py-1 text-[13.5px] font-semibold tracking-wide text-slate-600 transition-colors hover:text-[#047084]";
-const NAV_LINK_MOBILE =
-  "rounded-lg px-3 py-3 text-[14px] font-semibold text-slate-700 transition hover:bg-[#e6ecee] hover:text-[#047084]";
 const DROPDOWN_ITEM =
   "flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-50";
-const MOBILE_ACTION_ITEM =
-  "mt-2 flex items-center justify-center gap-1.5 rounded-lg px-4 py-3 text-center text-sm font-bold border";
+
+// Single consistent row style for every mobile menu item — nav links, account
+// actions, and admin links all render the same way now. Icons are optional;
+// omit the `icon` prop for plain nav links.
+const MOBILE_ROW =
+  "flex min-h-[46px] items-center gap-3 rounded-lg px-3 text-[14.5px] font-semibold text-slate-700 transition-colors active:bg-slate-100";
 
 // Resolves the single seller-related menu entry based on onboarding/review status.
 // Returns null once there's nothing meaningful left to prompt — an approved
@@ -49,17 +51,57 @@ function getSellerMenuItem(profile) {
 export default function Header() {
   const [open, setOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(49);
   const { isLoggedIn, profile, signOut } = useAuth();
 
-  // console.log("[Header] Profile : ",profile);
+  const headerRef = useRef(null);
+  const accountRef = useRef(null);
 
-
+  // Measure the real header height instead of hardcoding it, so the mobile
+  // panel never misaligns if the header's height ever changes.
   useEffect(() => {
-    const onScroll = () => { };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    if (!headerRef.current) return;
+    const update = () => setHeaderHeight(headerRef.current.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(headerRef.current);
+    return () => ro.disconnect();
   }, []);
+
+  // Close the desktop account dropdown on outside click or Escape — it had
+  // no way to dismiss itself other than picking a menu item.
+  useEffect(() => {
+    if (!accountOpen) return;
+    function onClick(e) {
+      if (accountRef.current && !accountRef.current.contains(e.target)) setAccountOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setAccountOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [accountOpen]);
+
+  // Lock background scroll while the mobile menu is open.
+  useEffect(() => {
+    if (open) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [open]);
+
+  // Close mobile menu on Escape too.
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e) { if (e.key === "Escape") setOpen(false); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const displayName = profile?.name?.trim().split(" ")[0] || "Account";
   const sellerItem = getSellerMenuItem(profile);
@@ -68,7 +110,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="relative z-50 bg-white/60 backdrop-blur-md shadow-[0_4px_20px_-2px_rgba(15,23,42,0.08)] transition-all duration-300">
+      <header ref={headerRef} className="relative z-50 bg-white/60 backdrop-blur-md shadow-[0_4px_20px_-2px_rgba(15,23,42,0.08)] transition-all duration-300">
         <div className="relative mx-auto flex h-12 max-w-7xl items-center justify-between px-5 lg:px-8">
           <SmartLink to="/" className="flex items-center gap-2 shrink-0">
             <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
@@ -93,7 +135,7 @@ export default function Header() {
             {isLoggedIn ? (
               <>
                 <NotificationBell />
-                <div className="relative hidden md:block">
+                <div className="relative hidden md:block" ref={accountRef}>
                   <button
                     onClick={() => setAccountOpen((v) => !v)}
                     className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[13px] font-bold text-slate-700 transition hover:border-[#7fb3bd]"
@@ -105,7 +147,7 @@ export default function Header() {
                       <User className="h-3.5 w-3.5" />
                     </span>
                     {displayName}
-                    <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                    <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${accountOpen ? "rotate-180" : ""}`} />
                   </button>
 
                   <AnimatePresence>
@@ -131,26 +173,24 @@ export default function Header() {
                         </SmartLink>
 
                         {isAdmin && (
-                          <SmartLink to="/admin/sellers" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                            <ShieldCheck className="h-3.5 w-3.5 text-[#047084]" />
-                            Admin Panel
-                          </SmartLink>
+                          <>
+                            <div className="my-1 border-t border-slate-100" />
+                            <SmartLink to="/admin/sellers" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
+                              <ShieldCheck className="h-3.5 w-3.5 text-[#047084]" />
+                              Admin Panel
+                            </SmartLink>
+                            <SmartLink to="/admin/catalog" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
+                              <ListChecks className="h-3.5 w-3.5 text-[#047084]" />
+                              Catalog Review
+                            </SmartLink>
+                            <SmartLink to="/admin/admins" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
+                              <ShieldCheck className="h-3.5 w-3.5 text-[#047084]" />
+                              Manage Admins
+                            </SmartLink>
+                          </>
                         )}
 
-                        {isAdmin && (
-                          <SmartLink to="/admin/catalog" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                            <ListChecks className="h-3.5 w-3.5 text-[#047084]" />
-                            Catalog Review
-                          </SmartLink>
-                        )}
-
-                        {isAdmin && (
-                          <SmartLink to="/admin/admins" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                            <ShieldCheck className="h-3.5 w-3.5 text-[#047084]" />
-                            Manage Admins
-                          </SmartLink>
-                        )}
-
+                        <div className="my-1 border-t border-slate-100" />
                         <button
                           onClick={() => { setAccountOpen(false); signOut(); }}
                           className="flex w-full items-center gap-2 px-4 py-2 text-left text-[13px] font-semibold text-[#c71f11] hover:bg-slate-50"
@@ -177,6 +217,7 @@ export default function Header() {
             <button
               onClick={() => setOpen(!open)}
               aria-label="Toggle menu"
+              aria-expanded={open}
               className="rounded-lg border border-slate-200 bg-white/70 p-1.5 text-slate-700 transition hover:border-[#7fb3bd] hover:text-[#047084] md:hidden"
             >
               {open ? <X size={18} /> : <Menu size={18} />}
@@ -200,78 +241,86 @@ export default function Header() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.22, ease: "easeOut" }}
-              className="fixed left-0 right-0 top-[49px] z-50 border-b border-slate-200 bg-white/95 shadow-xl backdrop-blur-xl md:hidden"
+              style={{ top: headerHeight }}
+              className="fixed left-0 right-0 z-50 max-h-[calc(100dvh-var(--h))] overflow-y-auto border-b border-slate-200 bg-white/95 shadow-xl backdrop-blur-xl md:hidden"
             >
               <div className="mx-auto max-w-7xl px-5 py-4">
-                <nav className="flex flex-col">
-                  {NAV_LINKS.map((item, i) => (
-                    <a
-                      key={item.label}
-                      href={item.href}
-                      onClick={() => setOpen(false)}
-                      className={NAV_LINK_MOBILE}
-                      style={{ transitionDelay: `${i * 20}ms` }}
+                {/* Identity strip — mirrors the desktop avatar button so mobile
+                    users get the same "signed in as" context before diving into links. */}
+                {isLoggedIn && (
+                  <div className="mb-3 flex items-center gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5">
+                    <span
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
+                      style={{ background: "linear-gradient(135deg, #047084 0%, #7fb3bd 100%)" }}
                     >
+                      <User className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-[13.5px] font-bold text-slate-800">{displayName}</p>
+                      {isAdmin && <p className="text-[11px] font-semibold text-[#047084]">Admin</p>}
+                    </div>
+                  </div>
+                )}
+
+                <nav className="flex flex-col gap-0.5">
+                  {NAV_LINKS.map((item) => (
+                    <a key={item.label} href={item.href} onClick={() => setOpen(false)} className={MOBILE_ROW}>
                       {item.label}
                     </a>
                   ))}
 
-                  {isLoggedIn ? (
+                  {isLoggedIn && (
                     <>
-                      <SmartLink
-                        to="/home"
-                        onClick={() => setOpen(false)}
-                        className={`${MOBILE_ACTION_ITEM} text-slate-700 border-slate-200`}
-                      >
+                      <div className="my-2 border-t border-slate-100" />
+
+                      <SmartLink to="/home" onClick={() => setOpen(false)} className={MOBILE_ROW}>
+                        <Home className="h-4 w-4 text-slate-400" />
                         Marketplace
                       </SmartLink>
 
-                      <SmartLink
-                        to={sellerItem.href}
-                        onClick={() => setOpen(false)}
-                        className={`${MOBILE_ACTION_ITEM} text-[#047084] border-[#047084]/25`}
-                      >
-                        <SellerIcon className="h-4 w-4" />
+                      <SmartLink to={sellerItem.href} onClick={() => setOpen(false)} className={`${MOBILE_ROW} text-[#047084]`}>
+                        <SellerIcon className="h-4 w-4 text-[#047084]" />
                         {sellerItem.label}
                       </SmartLink>
 
                       {isAdmin && (
-                        <SmartLink
-                          to="/admin/sellers"
-                          onClick={() => setOpen(false)}
-                          className={`${MOBILE_ACTION_ITEM} text-slate-700 border-slate-200`}
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                          Admin Panel
-                        </SmartLink>
+                        <>
+                          <p className="mb-1 mt-3 px-3 text-[11px] font-bold uppercase tracking-wide text-slate-400">Admin</p>
+                          <SmartLink to="/admin/sellers" onClick={() => setOpen(false)} className={MOBILE_ROW}>
+                            <ShieldCheck className="h-4 w-4 text-slate-400" />
+                            Admin Panel
+                          </SmartLink>
+                          <SmartLink to="/admin/catalog" onClick={() => setOpen(false)} className={MOBILE_ROW}>
+                            <ListChecks className="h-4 w-4 text-slate-400" />
+                            Catalog Review
+                          </SmartLink>
+                          <SmartLink to="/admin/admins" onClick={() => setOpen(false)} className={MOBILE_ROW}>
+                            <ShieldCheck className="h-4 w-4 text-slate-400" />
+                            Manage Admins
+                          </SmartLink>
+                        </>
                       )}
 
-                      {isAdmin && (
-                        <SmartLink
-                          to="/admin/admins"
-                          onClick={() => setOpen(false)}
-                          className={`${MOBILE_ACTION_ITEM} text-slate-700 border-slate-200`}
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                          Manage Admins
-                        </SmartLink>
-                      )}
-
+                      <div className="my-2 border-t border-slate-100" />
                       <button
                         onClick={() => { setOpen(false); signOut(); }}
-                        className="mt-2 rounded-lg px-4 py-3 text-center text-sm font-bold text-[#c71f11] border border-[#c71f11]/20"
+                        className={`${MOBILE_ROW} justify-start text-[#c71f11]`}
                       >
+                        <LogOut className="h-4 w-4" />
                         Sign out
                       </button>
                     </>
-                  ) : (
+                  )}
+
+                  {!isLoggedIn && (
                     <SmartLink
                       to="/login"
                       onClick={() => setOpen(false)}
-                      className="mt-3 rounded-lg px-4 py-3 text-center text-sm font-bold text-white shadow-[0_6px_16px_-4px_rgba(199,31,17,0.4)]"
+                      className="mt-3 flex min-h-[46px] items-center justify-center gap-1.5 rounded-lg px-4 text-center text-sm font-bold text-white shadow-[0_6px_16px_-4px_rgba(199,31,17,0.4)]"
                       style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
                     >
                       Sign In
+                      <ArrowUpRight className="h-3.5 w-3.5" />
                     </SmartLink>
                   )}
 
