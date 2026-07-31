@@ -17,6 +17,7 @@ import {
     Sparkles, Box, Grid3X3, ChevronDown, X
 } from "lucide-react";
 import { fetchCategoryLanding } from "../utils/api";
+import ImageLightbox from "../components/ImageLightbox";
 
 /* ═══════════════════════════════════════════════════════════════════
    BRAND PALETTE
@@ -644,40 +645,6 @@ function BottomCTA({ goBrowseAll }) {
                     Browse full catalog <ArrowRight className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
                 </button>
             </div>
-        </motion.div>
-    );
-}
-
-function ImageLightbox({ src, alt, onClose }) {
-    useEffect(() => {
-        const onKey = (e) => e.key === "Escape" && onClose();
-        window.addEventListener("keydown", onKey);
-        return () => window.removeEventListener("keydown", onKey);
-    }, [onClose]);
-
-    return (
-        <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
-        >
-            <button
-                onClick={onClose}
-                className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6 sm:top-6"
-                aria-label="Close"
-            >
-                <X className="h-5 w-5" />
-            </button>
-            <motion.img
-                initial={{ scale: 0.94 }}
-                animate={{ scale: 1 }}
-                onClick={(e) => e.stopPropagation()}
-                src={src}
-                alt={alt}
-                className="max-h-[88vh] max-w-[92vw] rounded-xl object-contain shadow-2xl"
-            />
         </motion.div>
     );
 }

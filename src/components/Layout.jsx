@@ -1,34 +1,45 @@
 // src/components/Layout.jsx
-
+import { createContext, useContext, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Header from "./Header.jsx";
 import Footer from "./Footer.jsx";
 import BottomSearchBar from "./BottomSearchBar.jsx";
 import BackgroundAmbience from "./landing/BackgroundAmbience.jsx";
 
-export default function Layout() {
+const LightboxVisibilityContext = createContext(null);
 
+// Lets any page deep in the tree tell Layout "hide the bottom search bar
+// right now" without threading a prop through every intermediate component.
+export function useLightboxVisibility() {
+  const ctx = useContext(LightboxVisibilityContext);
+  if (!ctx) throw new Error("useLightboxVisibility must be used inside <Layout>");
+  return ctx;
+}
+
+export default function Layout() {
   const { pathname } = useLocation();
   const isLandingPage = pathname === "/";
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   return (
-    <div className="relative min-h-screen bg-white overflow-x-clip">
-      <BackgroundAmbience />
+    <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>
+      <div className="relative min-h-screen bg-white overflow-x-clip">
+        <BackgroundAmbience />
 
-      <div className="relative z-1">
-        <Header />
+        <div className="relative z-1">
+          <Header />
 
-        {/* pb clearance so BottomSearchBar never covers content on mobile */}
-        <main className="pb-24 md:pb-0">
-          <Outlet />
-        </main>
+          <main className="pb-24 md:pb-0">
+            <Outlet />
+          </main>
 
-        <div className="hidden md:block">
-          <Footer />
+          <div className="hidden md:block">
+            <Footer />
+          </div>
+
+          {!isLandingPage && !lightboxOpen && <BottomSearchBar />}
         </div>
-
-        {!isLandingPage && <BottomSearchBar />}
       </div>
-    </div>
+    </LightboxVisibilityContext.Provider>
   );
 }
