@@ -346,3 +346,67 @@ export async function fetchSubcategoryLanding(idOrSlug) {
   const res = await fetch(`${API_BASE}/catalog/subcategory/${idOrSlug}`);
   return res.json();
 }
+
+export async function adminListCatalog(token, { level = "all", status = "pending_review", q = "" } = {}) {
+  const params = new URLSearchParams({ level, status, ...(q ? { q } : {}) });
+  const res = await fetch(`${API_BASE}/admin/catalog?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function adminGetCatalogEntry(token, level, id) {
+  const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function adminUpdateCatalogEntry(token, level, id, payload) {
+  const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+export async function adminApproveCatalogEntry(token, level, id, corrections) {
+  const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}/approve`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(corrections || {}),
+  });
+  return res.json();
+}
+export async function adminRejectCatalogEntry(token, level, id, reason) {
+  const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}/reject`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ reason }),
+  });
+  return res.json();
+}
+export async function adminGetCatalogOptions(token, level, parentId, q = "", scope = "scoped") {
+  const params = new URLSearchParams({ level, ...(parentId ? { parentId } : {}), ...(q ? { q } : {}), scope });
+  const res = await fetch(`${API_BASE}/admin/catalog/options?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function adminCreateCatalogOption(token, level, name, parentId) {
+  const res = await fetch(`${API_BASE}/admin/catalog/options`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ level, name, parentId }),
+  });
+  return res.json();
+}
+
+export async function adminGetPickerOptions(token, pickerLevel, parentId, q = "") {
+  const params = new URLSearchParams({ pickerLevel, ...(parentId ? { parentId } : {}), ...(q ? { q } : {}) });
+  const res = await fetch(`${API_BASE}/admin/catalog/options?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function adminCreatePickerOption(token, pickerLevel, name, parentId) {
+  const res = await fetch(`${API_BASE}/admin/catalog/options`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ pickerLevel, name, parentId }),
+  });
+  return res.json();
+}
+
+export async function adminCreateCatalogEntry(token, level, payload) {
+  const res = await fetch(`${API_BASE}/admin/catalog/${level}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}

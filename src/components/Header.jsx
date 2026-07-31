@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck, Clock3 } from "lucide-react";
+import { Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck, Clock3, ListChecks } from "lucide-react";
 import { TAGLINE } from "../../data/content";
 import { useAuth } from "../context/AuthContext.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
@@ -52,10 +52,10 @@ export default function Header() {
   const { isLoggedIn, profile, signOut } = useAuth();
 
   // console.log("[Header] Profile : ",profile);
-  
+
 
   useEffect(() => {
-    const onScroll = () => {};
+    const onScroll = () => { };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -134,6 +134,13 @@ export default function Header() {
                           <SmartLink to="/admin/sellers" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
                             <ShieldCheck className="h-3.5 w-3.5 text-[#047084]" />
                             Admin Panel
+                          </SmartLink>
+                        )}
+
+                        {isAdmin && (
+                          <SmartLink to="/admin/catalog" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
+                            <ListChecks className="h-3.5 w-3.5 text-[#047084]" />
+                            Catalog Review
                           </SmartLink>
                         )}
 
