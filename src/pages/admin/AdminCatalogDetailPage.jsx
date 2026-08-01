@@ -2,11 +2,13 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Loader2, ArrowLeft, Check, X, Save, ImageIcon, ChevronDown } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { AnimatePresence } from "framer-motion";
 import {
     adminGetCatalogEntry, adminUpdateCatalogEntry, adminApproveCatalogEntry,
     adminRejectCatalogEntry, adminGetCatalogOptions, adminCreateCatalogOption,
 } from "../../utils/api.js";
 import CascadingHierarchyPicker from "../../components/CascadingHierarchyPicker.jsx";
+import ImageLightbox from "../../components/ImageLightbox";
 
 const PARENT_FIELD = { subcategory: "category_id", product: "subcategory_id", brand: "product_id" };
 const PARENT_LEVEL = { subcategory: "category", product: "subcategory", brand: "product" };
@@ -137,6 +139,7 @@ export default function AdminCatalogDetailPage() {
     const { token } = useAuth();
     const navigate = useNavigate();
     const [entry, setEntry] = useState(null);
+    const [lightboxOpen, setLightboxOpen] = useState(false);
     const [editableFields, setEditableFields] = useState([]);
     const [form, setForm] = useState({});
     const [chain, setChain] = useState({ category: null, subcategory: null, product: null });
@@ -144,6 +147,7 @@ export default function AdminCatalogDetailPage() {
     const [saving, setSaving] = useState(false);
     const [rejectReason, setRejectReason] = useState("");
     const [showReject, setShowReject] = useState(false);
+    const [parentRejected, setParentRejected] = useState(false);
     const [error, setError] = useState("");
 
     const load = useCallback(() => {
@@ -152,6 +156,7 @@ export default function AdminCatalogDetailPage() {
             if (res?.success) {
                 setEntry(res.entry);
                 setEditableFields(res.editableFields);
+                setParentRejected(!!res.parentRejected);
                 const initial = {};
                 for (const key of res.editableFields) {
                     initial[key] = JSON_FIELDS.has(key) ? JSON.stringify(res.entry[key] ?? (key === "variants" ? [] : {}), null, 2) : res.entry[key];
@@ -245,9 +250,18 @@ export default function AdminCatalogDetailPage() {
 
             {/* Header card */}
             <div className="flex items-start gap-4 rounded-xl border border-slate-100 bg-white p-5">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50 ring-1 ring-slate-100">
-                    {entry.image ? <img src={entry.image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-slate-300" />}
-                </div>
+                <button
+                    type="button"
+                    onClick={() => entry.image && setLightboxOpen(true)}
+                    disabled={!entry.image}
+                    className="group relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50 ring-1 ring-slate-100 transition-shadow disabled:cursor-default enabled:hover:ring-2 enabled:hover:ring-[#047084]/30"
+                >
+                    {entry.image ? (
+                        <img src={entry.image} alt="" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    ) : (
+                        <ImageIcon className="h-6 w-6 text-slate-300" />
+                    )}
+                </button>
                 <div className="min-w-0 flex-1">
                     <p className="text-[11.5px] font-bold uppercase tracking-wide text-slate-400">{LEVEL_LABEL[level]}</p>
                     <h1 className="mt-0.5 truncate text-[19px] font-extrabold text-slate-900">{entry.name}</h1>
@@ -264,6 +278,12 @@ export default function AdminCatalogDetailPage() {
             {entry.rejection_reason && (
                 <p className="mt-3 rounded-lg border border-[#c71f11]/15 bg-[#c71f11]/5 px-3.5 py-2.5 text-[12.5px] font-medium text-[#c71f11]">
                     <span className="font-bold">Rejected:</span> {entry.rejection_reason}
+                </p>
+            )}
+
+            {parentRejected && (
+                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12.5px] font-medium text-amber-700">
+                    <span className="font-bold">Heads up:</span> a parent in this entry's hierarchy has been rejected. It's hidden from the review queue and can't go live until its parent chain is valid again.
                 </p>
             )}
 
@@ -344,6 +364,11 @@ export default function AdminCatalogDetailPage() {
                     </div>
                 </div>
             )}
+            <AnimatePresence>
+                {lightboxOpen && entry.image && (
+                    <ImageLightbox src={entry.image} alt={entry.name} onClose={() => setLightboxOpen(false)} />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
