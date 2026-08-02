@@ -50,12 +50,9 @@ function isLikelyMobileDevice() {
 }
 
 export default function MarketplaceSearchBar({
-    value,
-    onChange,
-    onSubmit,
-    onImageResolved,
+    value, onChange, onSubmit, onImageResolved, onFileImport,
     placeholder = "Search any product, brand, category...",
-    suggestionsDirection = "down", // "down" (default, e.g. Home/results page) | "up" (e.g. pinned bottom bar)
+    suggestionsDirection = "down",
 }) {
     const [imageSearching, setImageSearching] = useState(false);
     const [imageError, setImageError] = useState(null);
@@ -64,6 +61,8 @@ export default function MarketplaceSearchBar({
     const cameraInputRef = useRef(null);   // forces rear camera capture on mobile
     const imageMenuRef = useRef(null);
     const isMobile = useRef(isLikelyMobileDevice());
+    const pdfInputRef = useRef(null);
+
 
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -124,6 +123,22 @@ export default function MarketplaceSearchBar({
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+
+    const handlePdfFileChange = (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        if (file.type !== "application/pdf") {
+            setImageError("Please upload a PDF file.");
+            return;
+        }
+        if (file.size > 25 * 1024 * 1024) {
+            setImageError("File is too large (max 25MB).");
+            return;
+        }
+        onFileImport(file);
+    };
 
     const commitSearch = (term) => {
         const trimmed = term.trim();
@@ -321,7 +336,12 @@ export default function MarketplaceSearchBar({
                         </AnimatePresence>
                     </div>
 
-                    <button type="button" className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0 lg:px-2 lg:pr-1">
+                    <input ref={pdfInputRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfFileChange} />
+                    <button
+                        type="button"
+                        onClick={() => pdfInputRef.current?.click()}
+                        className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0 lg:px-2 lg:pr-1"
+                    >
                         <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#F1EEFF]">
                             <FileText size={15} className="text-[#6655D8] lg:!w-[15px] lg:!h-[15px]" />
                         </div>

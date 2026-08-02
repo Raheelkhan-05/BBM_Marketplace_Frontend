@@ -25,6 +25,7 @@ import CategoryLandingPage from "./pages/CategoryLandingPage.jsx";
 import SubcategoryLandingPage from "./pages/SubcategoryLandingPage.jsx";
 import AdminCatalogReviewPage from "./pages/admin/AdminCatalogReviewPage.jsx";
 import AdminCatalogDetailPage from "./pages/admin/AdminCatalogDetailPage.jsx";
+import BrandDetailPage from "./pages/BrandDetailPage.jsx";
 
 
 function App() {
@@ -56,6 +57,7 @@ function App() {
 
             <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
             <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
+            <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

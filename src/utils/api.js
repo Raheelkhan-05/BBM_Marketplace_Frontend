@@ -410,3 +410,23 @@ export async function adminCreateCatalogEntry(token, level, payload) {
   });
   return res.json();
 }
+
+// utils/api.js — additions
+export async function uploadCatalogFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  console.log("Uploading File...");
+  const res = await fetch(`${API_BASE}/catalogs/import`, { method: "POST", body: formData });
+  console.log("Done File... ", res);
+  return res.json(); // { success, jobId }
+}
+
+export async function fetchImportStatus(jobId, signal) {
+  const res = await fetch(`${API_BASE}/catalogs/import/${jobId}/status`, { signal });
+  return res.json(); // { status: 'processing'|'done'|'failed', progress, landing, summary }
+}
+
+export async function fetchBrandDetail(idOrSlug) {
+  const res = await fetch(`${API_BASE}/catalog/brand/${idOrSlug}`);
+  return res.json();
+}

@@ -21,6 +21,9 @@ import { useNavigate, useSearchParams, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, ChevronRight, PackageSearch, Store, ShieldCheck, MapPin, Layers, Tag, Package, Sparkles, AlertTriangle, BadgeCheck, Compass } from "lucide-react";
 import useHierarchySearch from "../hooks/useHierarchySearch";
+import useCatalogFileImport from "../hooks/useCatalogFileImport";
+import ImportProgressOverlay from "../components/ImportProgressOverlay";
+import ImportSummaryBanner from "../components/ImportSummaryBanner";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 
 const LEVEL_LABEL = {
@@ -71,6 +74,34 @@ export default function HierarchySearchPage() {
 
     const [inputValue, setInputValue] = useState(initialQuery);
     const [imageError, setImageError] = useState(null);
+
+    const { state: importState, progress: importProgress, result: importResult, startImport, reset: resetImport } = useCatalogFileImport();
+    const [importSummary, setImportSummary] = useState(null);
+
+    useEffect(() => {
+        if (importState.phase !== "done" || !importResult) return;
+        const { landing, summary } = importResult;
+        setImportSummary(summary);
+
+        switch (landing.type) {
+            case "brand":
+            case "product":
+            case "subcategory":
+            case "category":
+                jumpToStack(landing.target.stack, { markAiCreated: false, pendingImages: [] });
+                break;
+            case "explore":
+                navigate("/browse", { state: { categories: landing.categories, summary } });
+                break;
+            case "none":
+            default:
+                setImageError("We couldn't match any items from this file. See the report below.");
+                break;
+        }
+        resetImport();
+    }, [importState.phase, importResult]);
+
+    const handleFileImport = (file) => startImport(file);
 
     // Any time the hook lands the stack on a specific product — whether
     // via a manual drill (handled separately by handleSelect), a smart
@@ -206,10 +237,16 @@ export default function HierarchySearchPage() {
                         onChange={setInputValue}
                         onSubmit={handleSearchSubmit}
                         onImageResolved={handleImageResolved}
+                        onFileImport={handleFileImport}
                         placeholder={LEVEL_PLACEHOLDER[currentLevel]}
                     />
+                    <ImportProgressOverlay phase={importState.phase} progress={importProgress} />
+                    {importSummary && <ImportSummaryBanner summary={importSummary} onDismiss={() => setImportSummary(null)} />}
                 </div>
             </div>
+            {importState.phase === "done" && importSummary && (
+                <ImportSummaryBanner summary={importSummary} onDismiss={() => setImportSummary(null)} />
+            )}
             {imageError && (
                 <p className="mt-2 flex items-center gap-1.5 pl-[52px] text-[11.5px] font-medium text-amber-600">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{imageError}

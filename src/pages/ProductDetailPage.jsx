@@ -289,20 +289,23 @@ export default function ProductDetailPage() {
                             </div>
                         )}
 
+
                         {activeTab === "brands" && brands.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                                {brands.map((b) => (
+                                {groupBrandsByName(brands).map((g) => (
                                     <button
-                                        key={b.id}
-                                        onClick={() => navigate(`/brand/${b.id}`)}
+                                        key={g.brandName}
+                                        onClick={() => navigate(`/brand/${g.items[0].id}`)}
                                         className="flex items-center gap-1.5 rounded-lg border border-slate-100 px-2 py-1.5 text-left transition hover:border-[#7fb3bd] sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2"
                                     >
-                                        {b.image ? (
-                                            <img src={b.image} alt="" className="h-4 w-4 rounded object-cover sm:h-6 sm:w-6" />
+                                        {g.items[0].image ? (
+                                            <img src={g.items[0].image} alt="" className="h-4 w-4 rounded object-cover sm:h-6 sm:w-6" />
                                         ) : (
                                             <Tag className="h-3 w-3 text-slate-300 sm:h-4 sm:w-4" />
                                         )}
-                                        <span className="text-[10.5px] font-bold text-slate-800 sm:text-[12.5px]">{b.brand_name || b.name}</span>
+                                        <span className="text-[10.5px] font-bold text-slate-800 sm:text-[12.5px]">
+                                            {g.brandName}{g.items.length > 1 && <span className="ml-1 font-medium text-slate-400">({g.items.length} SKUs)</span>}
+                                        </span>
                                     </button>
                                 ))}
                             </div>
@@ -311,18 +314,18 @@ export default function ProductDetailPage() {
                 </div>
             )}
 
-            {/* Popular brands strip */}
+            {/* "Brands That Sell This Product" strip */}
             {brands.length > 0 && (
                 <div className="mt-4 rounded-xl border border-slate-100 bg-white p-3 shadow-[0_8px_20px_-16px_rgba(4,112,132,0.3)] sm:mt-6 sm:rounded-2xl sm:p-5">
                     <p className="text-[11px] font-extrabold text-slate-900 sm:text-[13px]">Brands That Sell This Product</p>
                     <div className="mt-2 flex flex-wrap gap-1.5 sm:mt-3 sm:gap-2">
-                        {brands.map((b) => (
+                        {groupBrandsByName(brands).map((g) => (
                             <button
-                                key={b.id}
-                                onClick={() => navigate(`/brand/${b.id}`)}
+                                key={g.brandName}
+                                onClick={() => navigate(`/brand/${g.items[0].id}`)}
                                 className="rounded-full border border-slate-100 px-2.5 py-1 text-[10.5px] font-bold text-slate-700 transition hover:border-[#7fb3bd] hover:text-[#047084] sm:px-3.5 sm:py-1.5 sm:text-[12px]"
                             >
-                                {b.brand_name || b.name}
+                                {g.brandName}{g.items.length > 1 && ` (${g.items.length})`}
                             </button>
                         ))}
                     </div>
@@ -401,6 +404,16 @@ function IconAction({ icon: Icon, label }) {
             <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> {label}
         </button>
     );
+}
+
+function groupBrandsByName(brands) {
+    const map = new Map();
+    for (const b of brands) {
+        const key = b.brand_name || b.name;
+        if (!map.has(key)) map.set(key, { brandName: key, items: [] });
+        map.get(key).items.push(b);
+    }
+    return [...map.values()];
 }
 
 function PageSkeleton() {
