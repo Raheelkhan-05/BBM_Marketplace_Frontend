@@ -25,6 +25,9 @@ import useCatalogFileImport from "../hooks/useCatalogFileImport";
 import ImportProgressOverlay from "../components/ImportProgressOverlay";
 import ImportSummaryBanner from "../components/ImportSummaryBanner";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
+import { resolveSearchRoute } from "../utils/searchResolve.js";
+
+
 
 const LEVEL_LABEL = {
     category: "Categories",
@@ -158,9 +161,15 @@ export default function HierarchySearchPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const handleSearchSubmit = (term) => {
+    const handleSearchSubmit = async (term) => {
         setImageError(null);
-        setQuery(term);
+        const trimmed = term.trim();
+        const route = await resolveSearchRoute(trimmed);
+        if (route) {
+            navigate(route);
+            return;
+        }
+        setQuery(trimmed); // no exact match — fall back to in-page drill-down/AI-resolve flow
     };
 
     const isFirstRun = useRef(true);

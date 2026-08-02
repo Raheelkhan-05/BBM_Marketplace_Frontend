@@ -3,6 +3,9 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import MarketplaceSearchBar from "./MarketplaceSearchBar.jsx";
 import { searchHierarchyLevel, searchSmart } from "../utils/api.js";
+import { resolveSearchRoute } from "../utils/searchResolve.js";
+
+
 
 export default function BottomSearchBar() {
     const [query, setQuery] = useState("");
@@ -50,24 +53,10 @@ export default function BottomSearchBar() {
     // that page's own "Searching with BBM AI" state is the right UI for
     // genuinely ambiguous searches, since that step is inherently slower.
     const resolveAndNavigate = async (trimmedQuery) => {
-        try {
-            const scoped = await searchHierarchyLevel("category", undefined, trimmedQuery, 5);
-            if (scoped?.success && scoped.items?.length > 0) {
-                navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
-                return;
-            }
-
-            if (trimmedQuery.length >= 2) {
-                const smart = await searchSmart(trimmedQuery, 5);
-                const exactStack = smart?.success ? smart.exact?.stack : null;
-                const last = exactStack?.[exactStack.length - 1];
-                if (last?.level === "product") {
-                    navigate(`/product/${last.id}`);
-                    return;
-                }
-            }
-        } catch {
-            // fall through to /browse below on any lookup failure
+        const route = await resolveSearchRoute(trimmedQuery);
+        if (route) {
+            navigate(route);
+            return;
         }
         navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
     };
