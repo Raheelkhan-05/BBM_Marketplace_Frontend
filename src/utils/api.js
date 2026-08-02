@@ -430,3 +430,18 @@ export async function fetchBrandDetail(idOrSlug) {
   const res = await fetch(`${API_BASE}/catalog/brand/${idOrSlug}`);
   return res.json();
 }
+
+// frontend fetch helper (place alongside your other search fetch functions)
+export async function fetchBrandFamily(brandName, { limit } = {}) {
+  const params = new URLSearchParams({ brandName });
+  if (limit) params.set("limit", limit);
+
+  const res = await fetch(`${API_BASE}/search/brand-family?${params.toString()}`);
+  const data = await res.json();
+
+  if (!data.success) {
+    throw new Error(data.message || "Failed to fetch brand family.");
+  }
+
+  return data; // { brandName, totalMatches, totalProducts, categories }
+}

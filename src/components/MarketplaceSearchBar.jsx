@@ -1,6 +1,7 @@
 // components/MarketplaceSearchBar.jsx
 
 import { useRef, useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Camera, FileText, Loader2, Layers, Tag, Package, BadgeCheck, Image as ImageIcon, Aperture } from "lucide-react";
 import { searchByImage, fetchAutocomplete } from "../utils/api";
@@ -10,11 +11,13 @@ import { Link } from "react-router-dom";
 const AUTOCOMPLETE_MIN_CHARS = 2;
 const DEBOUNCE_MS = 100;
 
+
 const LEVEL_META = {
     category: { icon: Layers, label: "Category", color: "#047084", bg: "rgba(4,112,132,0.08)" },
     subcategory: { icon: Tag, label: "Subcategory", color: "#047084", bg: "rgba(4,112,132,0.08)" },
     product: { icon: Package, label: "Product", color: "#3B82F6", bg: "rgba(59,130,246,0.08)" },
     brand: { icon: BadgeCheck, label: "Brand", color: "#F15A24", bg: "rgba(241,90,36,0.08)" },
+    brandFamily: { icon: BadgeCheck, label: "Brand", color: "#F15A24", bg: "rgba(241,90,36,0.08)" },
 };
 
 // Bolds the portion of `name` that matches `term`, so the dropdown visually
@@ -62,6 +65,8 @@ export default function MarketplaceSearchBar({
     const imageMenuRef = useRef(null);
     const isMobile = useRef(isLikelyMobileDevice());
     const pdfInputRef = useRef(null);
+
+    const navigate = useNavigate();
 
 
     const [suggestions, setSuggestions] = useState([]);
@@ -153,13 +158,22 @@ export default function MarketplaceSearchBar({
     const handleSubmit = (e) => {
         e.preventDefault();
         if (highlightIndex >= 0 && suggestions[highlightIndex]) {
-            commitSearch(suggestions[highlightIndex].name);
+            handleSuggestionClick(suggestions[highlightIndex]); // reuse the same logic instead of duplicating it
         } else {
             commitSearch(value);
         }
     };
 
     const handleSuggestionClick = (s) => {
+        // Brand-family suggestions aren't a search term — they're a direct
+        // link to that brand's family page, so skip commitSearch/onSubmit
+        // entirely and navigate straight there.
+        if (s.level === "brandFamily") {
+            setShowSuggestions(false);
+            onChange("");
+            navigate(`/brand-family/${encodeURIComponent(s.name)}`);
+            return;
+        }
         onChange(s.name);
         commitSearch(s.name);
     };
