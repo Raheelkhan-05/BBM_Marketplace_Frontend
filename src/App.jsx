@@ -27,6 +27,7 @@ import AdminCatalogReviewPage from "./pages/admin/AdminCatalogReviewPage.jsx";
 import AdminCatalogDetailPage from "./pages/admin/AdminCatalogDetailPage.jsx";
 import BrandDetailPage from "./pages/BrandDetailPage.jsx";
 import BrandFamilyPage from "./pages/BrandFamilyPage.jsx";
+import PrivacyPolicy from "./pages/legal/PrivacyPolicy.jsx";
 
 function App() {
   return (
@@ -59,6 +60,8 @@ function App() {
             <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
             <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
             <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} />
+
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           </Route>
         </Routes>
       </BrowserRouter>
