@@ -21,7 +21,7 @@ import StartSellingBanner from "../components/home/StartSellingBanner.jsx";
 import QuickRfqModal from "../components/home/QuickRfqModal.jsx";
 import BulkOrderWidget from "../components/home/BulkOrderWidget.jsx";
 import SupplierCompareModal from "../components/home/SupplierCompareModal.jsx";
-
+import { searchCategories, searchSubcategories, searchProductsInSubcategory } from "../utils/api";
 import {
   heroStats, promoSlides, trustPoints, welcomeHighlights, topOffers,
   businessHighlights, marketFeed, categories, myPriceList, mostCompared,
@@ -937,52 +937,96 @@ function TrustStripLogos() {
 
 
 /* ---------- Top Performing Categories (Accordion: Category -> Subcategory -> Products) ---------- */
-
-// Dummy product data generator per subcategory (for testing only)
-const dummyProducts = (subName) => [
-  { id: `${subName}-1`, name: `${subName} - Standard Grade`, sellers: 24, moq: "MOQ 50 pcs" },
-  { id: `${subName}-2`, name: `${subName} - Heavy Duty`, sellers: 12, moq: "MOQ 20 pcs" },
-  { id: `${subName}-3`, name: `${subName} - Premium OEM`, sellers: 7, moq: "MOQ 10 pcs" },
-];
-
-const topCategories = categories.slice(0, 6);
-
 function TopCategoriesAccordion() {
-  const [openCategory, setOpenCategory] = React.useState(null);
-  const [openSubcategory, setOpenSubcategory] = React.useState(null);
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
 
-  const toggleCategory = (id) => {
-    setOpenCategory((prev) => (prev === id ? null : id));
-    setOpenSubcategory(null); // closing/switching category resets subcategory
+  const [openCategory, setOpenCategory] = useState(null);
+  const [openSubcategory, setOpenSubcategory] = useState(null);
+
+  // Lazy caches: fetched once per id, reused on re-open
+  const [subcategoriesByCategory, setSubcategoriesByCategory] = useState({});
+  const [productsBySubcategory, setProductsBySubcategory] = useState({});
+  const [loadingSubFor, setLoadingSubFor] = useState(null);
+  const [loadingProductsFor, setLoadingProductsFor] = useState(null);
+
+  // Initial top categories
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setCategoriesLoading(true);
+      try {
+        const res = await searchCategories("", 6);
+        if (!cancelled && res?.success) setCategories(res.items || []);
+      } catch {
+        if (!cancelled) setCategories([]);
+      } finally {
+        if (!cancelled) setCategoriesLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const toggleCategory = async (cat) => {
+    const isOpen = openCategory === cat.id;
+    setOpenCategory(isOpen ? null : cat.id);
+    setOpenSubcategory(null);
+
+    if (!isOpen && !subcategoriesByCategory[cat.id]) {
+      setLoadingSubFor(cat.id);
+      try {
+        const res = await searchSubcategories(cat.id, "", 20);
+        setSubcategoriesByCategory((prev) => ({
+          ...prev,
+          [cat.id]: res?.success ? res.items || [] : [],
+        }));
+      } catch {
+        setSubcategoriesByCategory((prev) => ({ ...prev, [cat.id]: [] }));
+      } finally {
+        setLoadingSubFor(null);
+      }
+    }
   };
 
-  const toggleSubcategory = (id) => {
-    setOpenSubcategory((prev) => (prev === id ? null : id));
+  const toggleSubcategory = async (sub) => {
+    const subId = sub.id;
+    const isOpen = openSubcategory === subId;
+    setOpenSubcategory(isOpen ? null : subId);
+
+    if (!isOpen && !productsBySubcategory[subId]) {
+      setLoadingProductsFor(subId);
+      try {
+        const res = await searchProductsInSubcategory(subId, "", 6);
+        setProductsBySubcategory((prev) => ({
+          ...prev,
+          [subId]: res?.success ? res.items || [] : [],
+        }));
+      } catch {
+        setProductsBySubcategory((prev) => ({ ...prev, [subId]: [] }));
+      } finally {
+        setLoadingProductsFor(null);
+      }
+    }
   };
 
-  // Split into two independent columns for desktop so expanding one
-  // card never stretches or misaligns the card next to it.
-  const leftColumn = topCategories.filter((_, idx) => idx % 2 === 0);
-  const rightColumn = topCategories.filter((_, idx) => idx % 2 !== 0);
+  const leftColumn = categories.filter((_, idx) => idx % 2 === 0);
+  const rightColumn = categories.filter((_, idx) => idx % 2 !== 0);
 
   const renderCategory = (cat, idx, isFirstInColumn) => {
     const isOpen = openCategory === cat.id;
+    const subcategories = subcategoriesByCategory[cat.id] || [];
+    const subLoading = loadingSubFor === cat.id;
+
     return (
-      <div
-        key={cat.id}
-        className={!isFirstInColumn ? "border-t-4 border-slate-200" : ""}
-      >
+      <div key={cat.id} className={!isFirstInColumn ? "border-t-4 border-slate-200" : ""}>
         {/* ---- Category Row ---- */}
-        <button
-          onClick={() => toggleCategory(cat.id)}
-          className="w-full flex flex-col text-left group"
-        >
+        <button onClick={() => toggleCategory(cat)} className="w-full flex flex-col text-left group">
           <div className="relative w-full aspect-[3/1] lg:aspect-[16/7] overflow-hidden bg-slate-200">
-            <img
-              src={cat.image}
-              alt={cat.name}
-              className="w-full h-full object-cover"
-            />
+            {cat.image ? (
+              <img src={cat.image} alt={cat.name} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full bg-slate-200" />
+            )}
           </div>
 
           <div className="flex items-center justify-between w-full px-4 ps-2 sm:px-5 lg:px-6 py-3 lg:py-4 pt-2 lg:pt-3 border-b border-slate-200">
@@ -991,17 +1035,16 @@ function TopCategoriesAccordion() {
                 {cat.name}
               </h4>
               <p className="text-[11px] sm:text-xs lg:text-sm font-semibold text-slate-500">
-                {cat.subcategories.length} Subcategories
+                {cat.subcategoryCount != null ? `${cat.subcategoryCount} Subcategories` : "Subcategories"}
               </p>
             </div>
             <ChevronDown
-              className={`h-5 w-5 lg:h-6 lg:w-6 shrink-0 text-slate-500 transition-transform duration-300 ${isOpen ? "rotate-180 text-[#d2462b]" : ""
-                }`}
+              className={`h-5 w-5 lg:h-6 lg:w-6 shrink-0 text-slate-500 transition-transform duration-300 ${isOpen ? "rotate-180 text-[#d2462b]" : ""}`}
             />
           </div>
         </button>
 
-        {/* ---- Subcategories (expand/collapse) ---- */}
+        {/* ---- Subcategories (expand/collapse, lazy-fetched) ---- */}
         <AnimatePresence initial={false}>
           {isOpen && (
             <motion.div
@@ -1011,67 +1054,90 @@ function TopCategoriesAccordion() {
               transition={{ duration: 0.25, ease: "easeInOut" }}
               className="overflow-hidden bg-slate-50"
             >
-              <div className="divide-y divide-slate-200/70">
-                {cat.subcategories.map((sub) => {
-                  const subId = `${cat.id}-${sub}`;
-                  const isSubOpen = openSubcategory === subId;
-                  return (
-                    <div key={subId}>
-                      <button
-                        onClick={() => toggleSubcategory(subId)}
-                        className="w-full flex items-center justify-between pl-7 pr-4 sm:pl-9 sm:pr-5 lg:pl-11 lg:pr-6 py-3 lg:py-3.5 text-left"
-                      >
-                        <div>
-                          <span className="text-xs sm:text-sm lg:text-base font-bold text-slate-700">
-                            {sub}
-                          </span>
-                          <p className="text-[10.5px] lg:text-xs font-semibold text-slate-400">
-                            {dummyProducts(sub).length} Products
-                          </p>
-                        </div>
-                        <ChevronDown
-                          className={`h-4 w-4 lg:h-5 lg:w-5 shrink-0 text-slate-400 transition-transform duration-300 ${isSubOpen ? "rotate-180 text-[#d2462b]" : ""
-                            }`}
-                        />
-                      </button>
+              {subLoading ? (
+                <div className="px-7 py-3 space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-8 rounded-lg bg-slate-200 animate-pulse" />
+                  ))}
+                </div>
+              ) : subcategories.length === 0 ? (
+                <p className="px-7 py-4 text-xs font-medium text-slate-400">No subcategories yet.</p>
+              ) : (
+                <div className="divide-y divide-slate-200/70">
+                  {subcategories.map((sub) => {
+                    const isSubOpen = openSubcategory === sub.id;
+                    const products = productsBySubcategory[sub.id] || [];
+                    const productsLoading = loadingProductsFor === sub.id;
 
-                      {/* ---- Products (expand/collapse) ---- */}
-                      <AnimatePresence initial={false}>
-                        {isSubOpen && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.22, ease: "easeInOut" }}
-                            className="overflow-hidden bg-white"
-                          >
-                            <div className="pl-9 sm:pl-12 lg:pl-14 pr-4 sm:pr-5 lg:pr-6 py-2 lg:py-3 space-y-2 lg:space-y-2.5">
-                              {dummyProducts(sub).map((p) => (
-                                <div
-                                  key={p.id}
-                                  className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 lg:px-4 lg:py-2.5 hover:border-[#d2462b]/40 transition-colors cursor-pointer"
-                                >
-                                  <div className="min-w-0">
-                                    <p className="text-[11.5px] sm:text-xs lg:text-sm font-bold text-slate-800 truncate">
-                                      {p.name}
-                                    </p>
-                                    <p className="text-[10.5px] lg:text-xs font-medium text-slate-500 mt-0.5">
-                                      {p.moq}
-                                    </p>
-                                  </div>
-                                  <span className="text-[11.5px] sm:text-xs lg:text-sm font-extrabold text-[#d2462b] shrink-0 ml-2">
-                                    {p.sellers} Sellers
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  );
-                })}
-              </div>
+                    return (
+                      <div key={sub.id}>
+                        <button
+                          onClick={() => toggleSubcategory(sub)}
+                          className="w-full flex items-center justify-between pl-7 pr-4 sm:pl-9 sm:pr-5 lg:pl-11 lg:pr-6 py-3 lg:py-3.5 text-left"
+                        >
+                          <div>
+                            <span className="text-xs sm:text-sm lg:text-base font-bold text-slate-700">
+                              {sub.name}
+                            </span>
+                            <p className="text-[10.5px] lg:text-xs font-semibold text-slate-400">
+                              {sub.productCount != null ? `${sub.productCount} Products` : "Products"}
+                            </p>
+                          </div>
+                          <ChevronDown
+                            className={`h-4 w-4 lg:h-5 lg:w-5 shrink-0 text-slate-400 transition-transform duration-300 ${isSubOpen ? "rotate-180 text-[#d2462b]" : ""}`}
+                          />
+                        </button>
+
+                        {/* ---- Products (expand/collapse, lazy-fetched) ---- */}
+                        <AnimatePresence initial={false}>
+                          {isSubOpen && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.22, ease: "easeInOut" }}
+                              className="overflow-hidden bg-white"
+                            >
+                              <div className="pl-9 sm:pl-12 lg:pl-14 pr-4 sm:pr-5 lg:pr-6 py-2 lg:py-3 space-y-2 lg:space-y-2.5">
+                                {productsLoading ? (
+                                  Array.from({ length: 3 }).map((_, i) => (
+                                    <div key={i} className="h-10 rounded-xl bg-slate-100 animate-pulse" />
+                                  ))
+                                ) : products.length === 0 ? (
+                                  <p className="text-[11px] font-medium text-slate-400 py-1">No products listed yet.</p>
+                                ) : (
+                                  products.map((p) => (
+                                    <div
+                                      key={p.id}
+                                      className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 lg:px-4 lg:py-2.5 hover:border-[#d2462b]/40 transition-colors cursor-pointer"
+                                    >
+                                      <div className="min-w-0">
+                                        <p className="text-[11.5px] sm:text-xs lg:text-sm font-bold text-slate-800 truncate">
+                                          {p.name}
+                                        </p>
+                                        {p.description && (
+                                          <p className="text-[10.5px] lg:text-xs font-medium text-slate-500 mt-0.5 truncate">
+                                            {p.description}
+                                          </p>
+                                        )}
+                                      </div>
+                                      {p.sellerCount != null && (
+                                        <span className="text-[11.5px] sm:text-xs lg:text-sm font-extrabold text-[#d2462b] shrink-0 ml-2">
+                                          {p.sellerCount} Sellers
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -1087,20 +1153,28 @@ function TopCategoriesAccordion() {
         viewAllTo="/browse"
       />
 
-      {/* Mobile/tablet: single stacked list. Desktop: two independent columns. */}
       <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white lg:flex lg:items-start">
-        {/* Mobile/tablet view (hidden on desktop) */}
-        <div className="lg:hidden">
-          {topCategories.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
-        </div>
-
-        {/* Desktop view: two independent scrolling columns */}
-        <div className="hidden lg:block lg:flex-1 lg:border-r-4 lg:border-slate-200">
-          {leftColumn.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
-        </div>
-        <div className="hidden lg:block lg:flex-1">
-          {rightColumn.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
-        </div>
+        {categoriesLoading ? (
+          <div className="w-full p-4 space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-20 rounded-xl bg-slate-100 animate-pulse" />
+            ))}
+          </div>
+        ) : categories.length === 0 ? (
+          <p className="w-full p-6 text-sm font-medium text-slate-400">No categories available yet.</p>
+        ) : (
+          <>
+            <div className="lg:hidden">
+              {categories.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
+            </div>
+            <div className="hidden lg:block lg:flex-1 lg:border-r-4 lg:border-slate-200">
+              {leftColumn.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
+            </div>
+            <div className="hidden lg:block lg:flex-1">
+              {rightColumn.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
