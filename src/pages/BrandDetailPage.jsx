@@ -165,7 +165,7 @@ export default function BrandDetailPage() {
                             <span className="flex h-8 w-8 items-center justify-center rounded-xl sm:h-9 sm:w-9" style={{ background: TEAL_SOFT }}>
                                 <FileText className="h-4 w-4 sm:h-[18px] sm:w-[18px]" style={{ color: TEAL }} />
                             </span>
-                            <p className="text-[12px] font-extrabold uppercase tracking-wider sm:text-[13px]" style={{ color: TEAL }}>Exact Specifications</p>
+                            <p className="text-[12px] font-extrabold uppercase tracking-wider sm:text-[13px]" style={{ color: TEAL }}>Specifications</p>
                         </div>
                         <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-1.5 sm:grid-cols-2 sm:gap-y-2">
                             {attributes.map(([key, val]) => (
