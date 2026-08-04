@@ -23,7 +23,7 @@ import TrustStrip from "../components/home/TrustStrip.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
 
 
-const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
 export default function HomePage() {
   const [ready, setReady] = useState(false);
