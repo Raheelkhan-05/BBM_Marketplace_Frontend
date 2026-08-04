@@ -457,40 +457,38 @@ function CategoryRow({ item, onExplore, onBrowse }) {
             initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
             className="w-full overflow-hidden rounded-xl border border-slate-100 bg-white shadow-[0_8px_20px_-16px_rgba(4,112,132,0.3)] transition hover:border-[#7fb3bd]"
         >
-            <button onClick={onExplore} className="relative block w-full aspect-[2.67/1] overflow-hidden bg-slate-200 text-left">
-                {item.image ? (
-                    <img src={item.image} alt="" className="h-full w-full object-cover" />
-                ) : (
-                    <div className="flex h-full w-full items-center justify-center text-slate-300">
-                        <PackageSearch className="h-8 w-8" />
-                    </div>
-                )}
-                {item.is_ai_generated && (
-                    <span className="absolute right-2 top-2 flex items-center gap-0.5 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#047084]">
-                        <Sparkles className="h-2.5 w-2.5" /> New
-                    </span>
-                )}
-            </button>
-            <div className="px-3.5 py-3">
-                <p className="truncate text-[13.5px] font-extrabold text-slate-900">{item.name}</p>
-                {item.description && (
-                    <p className="mt-1 truncate text-[11.5px] font-medium text-slate-500">{item.description}</p>
-                )}
-                <div className="mt-2.5 flex gap-2">
-                    <button
-                        onClick={onExplore}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-[#047084]/30 px-3 py-2 text-[11.5px] font-bold text-[#047084] transition hover:bg-[#047084]/5"
-                    >
-                        <Compass className="h-3.5 w-3.5" /> Explore Category
-                    </button>
-                    <button
-                        onClick={onBrowse}
-                        className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#047084] px-3 py-2 text-[11.5px] font-bold text-white transition hover:bg-[#035c6d]"
-                    >
-                        Browse <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
+            <button onClick={onExplore} className="block w-full text-left">
+                <div className="relative w-full aspect-[2.67/1] overflow-hidden bg-slate-200">
+                    {item.image ? (
+                        <img src={item.image} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                        <div className="flex h-full w-full items-center justify-center text-slate-300">
+                            <PackageSearch className="h-8 w-8" />
+                        </div>
+                    )}
+                    {item.is_ai_generated && (
+                        <span className="absolute right-2 top-2 flex items-center gap-0.5 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold uppercase text-[#047084]">
+                            <Sparkles className="h-2.5 w-2.5" /> New
+                        </span>
+                    )}
                 </div>
-            </div>
+            </button>
+
+            <button
+                onClick={onBrowse}
+                className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left"
+            >
+                <div className="min-w-0">
+                    <p className="truncate text-[13.5px] font-extrabold text-slate-900">{item.name}</p>
+                    {item.description && (
+                        <p className="mt-0.5 truncate text-[11.5px] font-medium text-slate-500">{item.description}</p>
+                    )}
+                </div>
+                <span className="flex shrink-0 items-center gap-1 text-[11.5px] font-bold text-[#047084]">
+                    <span className="hidden sm:inline">Browse</span>
+                    <ChevronRight className="h-4 w-4" />
+                </span>
+            </button>
         </motion.div>
     );
 }
