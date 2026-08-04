@@ -3,35 +3,19 @@ import { motion } from "framer-motion";
 /* ------------------------------------------------------------------
    DESIGN NOTES — trust strip, matched to the hero/quick-actions system
    ------------------------------------------------------------------
-   What made the original read generic:
-     - Hard-cut marquee edges (logos just appear/disappear at the
-       container boundary) instead of fading in/out.
-     - Full-color logos at rest, competing with each other and with
-       the page — a trust strip should feel quiet until you look at
-       it, not shout in twenty different brand colors at once.
-     - Two identically-treated rows with a flat slate-50 second row —
-       no relationship to the rest of the page's tokens.
-     - No section framing — sat as a bare bordered box, disconnected
-       from the rounded-[24px]/hairline language used everywhere else.
-
-   Fixes:
-     - Wrapped in the same rounded-[24px] hairline-bordered card as
-       Quick Actions, with the same mono-uppercase eyebrow pattern
-       ("Trusted by teams sourcing from") — ties it into the system
-       instead of floating as an unrelated strip.
-     - Logos sit in grayscale at ~55% opacity by default and lift to
-       full color + opacity on hover — the restrained-until-touched
-       pattern real trust strips use (Linear, Vercel, Stripe all do
-       this), so eighteen different brand colors don't fight the page.
-     - Edge fade via mask-image gradient, so logos dissolve in/out at
-       the container boundary instead of hard-cutting.
-     - Second row differentiated with a hairline top border instead
-       of a flat gray fill — quieter, consistent with the rest of the
-       page's near-white palette.
+   Updates in this pass:
+     - Logos now render in full color at rest (no grayscale/opacity
+       dimming) — only a subtle scale lift remains on hover.
+     - Removed the hairline divider between the two marquee rows;
+       the two rows now sit directly stacked with just spacing.
+     - Edge fade extended to the whole card, not just each row: the
+       outer wrapper itself carries the mask-image gradient so the
+       white background dissolves at the left/right edges along with
+       the logos, instead of the card having a hard rectangular edge.
 
    Palette/tokens: ink #0B1116, muted #667077, hairline
    rgba(11,17,22,0.09) — same as hero/quick actions. No new colors
-   introduced; this section stays deliberately quiet.
+   introduced.
    Data contract (`trustBrands`, `onSelect` behavior) unchanged.
    ------------------------------------------------------------------ */
 
@@ -73,7 +57,7 @@ function TrustLogo({ brand, onSelect }) {
                 src={brand.logo}
                 alt={brand.name}
                 loading="lazy"
-                className="h-5 w-auto object-contain opacity-45 grayscale transition-all duration-300 ease-out group-hover:scale-110 group-hover:opacity-100 group-hover:grayscale-0 sm:h-6 lg:h-8"
+                className="h-5 w-auto object-contain transition-transform duration-300 ease-out group-hover:scale-110 sm:h-6 lg:h-8"
             />
         </button>
     );
@@ -82,13 +66,7 @@ function TrustLogo({ brand, onSelect }) {
 function MarqueeRow({ brands, direction = "left", onSelect }) {
     const loop = [...brands, ...brands];
     return (
-        <div
-            className="relative overflow-hidden"
-            style={{
-                maskImage: "linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)",
-                WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%)",
-            }}
-        >
+        <div className="relative overflow-hidden">
             <div
                 className={`flex w-max items-center py-3 lg:py-4 ${direction === "left" ? "animate-marquee-left" : "animate-marquee-right"
                     }`}
@@ -107,7 +85,14 @@ function TrustStripLogos() {
     };
 
     return (
-        <div className="w-full overflow-hidden rounded-[24px] border bg-white pb-2 pt-4 lg:pb-0 lg:pt-5" style={{ borderColor: C.hair }}>
+        <div
+            className="w-full overflow-hidden rounded-[8px] sm:rounded-[20px] border bg-white pb-2 pt-4 lg:pb-0 lg:pt-5"
+            style={{
+                borderColor: C.hair,
+                maskImage: "linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)",
+                WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 6%, black 94%, transparent 100%)",
+            }}
+        >
             <motion.div
                 initial={{ opacity: 0, y: 6 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -125,7 +110,6 @@ function TrustStripLogos() {
 
             <div className="mt-5 space-y-1 lg:mt-6">
                 <MarqueeRow brands={trustBrands} direction="left" onSelect={handleSelect} />
-                <div className="mx-8 h-px" style={{ background: C.hair }} />
                 <MarqueeRow brands={[...trustBrands].reverse()} direction="right" onSelect={handleSelect} />
             </div>
 
