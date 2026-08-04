@@ -43,6 +43,7 @@ function App() {
 
             <Route path="/search" element={<SearchResultsPage />} />
             <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><HomePage /></RequireAuth>} />
+            {/* <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><NewHomePage /></RequireAuth>} /> */}
             <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
             <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
 
