@@ -88,7 +88,7 @@ function Hero16by9Banner({ onOpenRfq }) {
 
             <div className="relative grid grid-cols-1 lg:grid-cols-[1fr_1.05fr] lg:items-center">
                 {/* ---------------- TEXT ---------------- */}
-                <div className="order-2 px-6 pb-8 pt-7 sm:px-10 sm:pb-10 sm:pt-9 lg:order-1 lg:px-14 lg:py-0">
+                <div className="order-2 px-4 pb-8 pt-7 sm:px-10 sm:pb-10 sm:pt-9 lg:order-1 lg:px-14 lg:py-0">
                     <motion.div
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
