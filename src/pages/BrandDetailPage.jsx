@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { fetchBrandDetail } from "../utils/api";
 import ImageLightbox from "../components/ImageLightbox";
+import { FONT_BODY } from "./ui";
 
 const TEAL = "#006F83";
 const TEAL_DARK = "#005466";
@@ -34,7 +35,7 @@ const TEAL_DEEP = "#003d4d";
 const TEAL_SOFT = "rgba(0,111,131,0.07)";
 const RUST = "#D2462B";
 const RUST_SOFT = "rgba(210,70,43,0.06)";
-const FONT_DISPLAY = "'Bricolage Grotesque', 'Rubik', sans-serif";
+const FONT_DISPLAY = FONT_BODY;
 
 const fadeUp = {
     hidden: { opacity: 0, y: 20 },

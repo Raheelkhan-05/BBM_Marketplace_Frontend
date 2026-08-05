@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { fetchSubcategoryLanding } from "../utils/api";
 import ImageLightbox from "../components/ImageLightbox";
+import { FONT_BODY } from "./ui";
 
 /* ═══════════════════════════════════════════════════════════════════
    BRAND PALETTE — identical tokens to CategoryLandingPage
@@ -30,7 +31,7 @@ const TEAL_SOFT = "rgba(0,111,131,0.07)";
 const RUST = "#D2462B";
 const RUST_SOFT = "rgba(210,70,43,0.06)";
 
-const FONT_DISPLAY = "'Bricolage Grotesque', 'Rubik', sans-serif";
+const FONT_DISPLAY = FONT_BODY;
 
 /* ═══════════════════════════════════════════════════════════════════
    ANIMATION VARIANTS — identical to CategoryLandingPage

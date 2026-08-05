@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { Heart, ShieldCheck, BadgeCheck, Truck, Info, Package, Lock, CheckCircle2, Users } from "lucide-react";
 import Sparkline from "./Sparkline";
 import { useAuth } from "../../context/AuthContext";
+import { FONT_BODY } from "../../pages/ui";
 
 const TAG_ICONS = {
   brand: ShieldCheck,
@@ -58,7 +59,7 @@ export default function ProductResultCard({ product }) {
 
           <h3
             className="mt-1.5 truncate text-[15px] font-extrabold tracking-tight text-slate-900 sm:text-[17px]"
-            style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
+            style={{ fontFamily: FONT_BODY }}
           >
             {product.name}
           </h3>

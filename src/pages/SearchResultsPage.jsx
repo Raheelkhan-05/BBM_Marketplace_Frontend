@@ -6,6 +6,7 @@ import useLiveSearch from "../hooks/useLiveSearch";
 import useShopSearch from "../hooks/useShopSearch";
 import ProductResultCard from "../components/search/ProductResultCard";
 import ShopResultCard from "../components/search/ShopResultCard";
+import { FONT_BODY } from "./ui";
 
 const TABS = [
   { id: "all", label: "All Results", icon: LayoutGrid },
@@ -93,7 +94,7 @@ export default function SearchResultsPage() {
 
       {/* Results header */}
       <div className="mt-5">
-        <h2 className="text-[19px] font-extrabold tracking-tight text-slate-900" style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}>
+        <h2 className="text-[19px] font-extrabold tracking-tight text-slate-900" style={{ fontFamily: FONT_BODY }}>
           Results for "{query.toUpperCase()}"
         </h2>
         {data && data.products.length > 0 && (

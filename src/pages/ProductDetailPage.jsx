@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { fetchProductDetail } from "../utils/api";
 import ImageLightbox from "../components/ImageLightbox";
+import { FONT_BODY } from "./ui";
 
 export default function ProductDetailPage() {
     const { id } = useParams();
@@ -146,7 +147,7 @@ export default function ProductDetailPage() {
                 <div className="flex flex-col">
                     <h1
                         className="text-[15px] font-extrabold leading-tight tracking-tight text-slate-900 xs:text-[17px] sm:text-[24px] lg:text-[28px]"
-                        style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}
+                        style={{ fontFamily: FONT_BODY }}
                     >
                         {product.name}
                     </h1>

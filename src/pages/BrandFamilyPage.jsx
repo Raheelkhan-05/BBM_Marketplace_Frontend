@@ -5,9 +5,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ChevronRight, Layers, Tag, PackageSearch } from "lucide-react";
 import { fetchBrandFamily } from "../utils/api";
+import { FONT_BODY } from "./ui";
 
 const TEAL = "#006F83", TEAL_DARK = "#005466", TEAL_DEEP = "#003d4d", TEAL_SOFT = "rgba(0,111,131,0.07)";
-const FONT_DISPLAY = "'Bricolage Grotesque', 'Rubik', sans-serif";
+const FONT_DISPLAY = FONT_BODY;
 
 export default function BrandFamilyPage() {
     const { brandName } = useParams();

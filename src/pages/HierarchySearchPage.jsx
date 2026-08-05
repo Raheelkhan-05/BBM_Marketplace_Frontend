@@ -26,6 +26,7 @@ import ImportProgressOverlay from "../components/ImportProgressOverlay";
 import ImportSummaryBanner from "../components/ImportSummaryBanner";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import { resolveSearchRoute } from "../utils/searchResolve.js";
+import { FONT_BODY } from "./ui.jsx";
 
 
 
@@ -263,28 +264,38 @@ export default function HierarchySearchPage() {
             )}
 
             {/* Breadcrumb hierarchy trail */}
-            {stack.length > 0 && (
-                <div className="mt-1 flex flex-wrap items-center gap-1 text-[11.5px] font-semibold text-slate-500">
-                    <button onClick={() => goToBreadcrumb(-1)} className="text-[#047084] hover:underline">
-                        All Categories
-                    </button>
-                    {stack.map((crumb, i) => (
-                        <span key={crumb.id} className="flex items-center gap-1">
-                            <ChevronRight className="h-3 w-3 text-slate-300" />
-                            <button
-                                onClick={() => goToBreadcrumb(i)}
-                                className={i === stack.length - 1 ? "text-slate-900" : "text-[#047084] hover:underline"}
-                            >
-                                {crumb.name}
-                            </button>
-                        </span>
-                    ))}
-                </div>
-            )}
+            <div className="mt-1 flex min-h-[18px] flex-wrap items-center gap-1 text-[11.5px] font-semibold text-slate-500">
+                {stack.length > 0 && (
+                    <>
+                        <button
+                            onClick={() => goToBreadcrumb(-1)}
+                            className="text-[#047084] hover:underline"
+                        >
+                            All Categories
+                        </button>
+
+                        {stack.map((crumb, i) => (
+                            <span key={crumb.id} className="flex items-center gap-1">
+                                <ChevronRight className="h-3 w-3 text-slate-300" />
+                                <button
+                                    onClick={() => goToBreadcrumb(i)}
+                                    className={
+                                        i === stack.length - 1
+                                            ? "text-slate-900"
+                                            : "text-[#047084] hover:underline"
+                                    }
+                                >
+                                    {crumb.name}
+                                </button>
+                            </span>
+                        ))}
+                    </>
+                )}
+            </div>
 
             {/* Results header */}
             <div className="mt-1">
-                <h2 className="text-[19px] font-extrabold tracking-tight text-slate-900" style={{ fontFamily: "'Bricolage Grotesque', sans-serif" }}>
+                <h2 className="text-[19px] font-extrabold tracking-tight text-slate-900" style={{ fontFamily: FONT_BODY }}>
                     {aiResolving ? "Searching with BBM AI" : showingSuggestions ? "Did you mean" : LEVEL_LABEL[currentLevel]}
                     {!aiResolving && !showingSuggestions && parent ? ` in "${parent.name}"` : ""}
                 </h2>
@@ -403,8 +414,14 @@ function SkeletonCard({ pulse }) {
         <motion.div
             animate={{ opacity: [0.5, 1, 0.5] }}
             transition={{ duration: pulse ? 0.9 : 1.4, repeat: Infinity }}
-            className="aspect-[3/4] rounded-xl bg-slate-100"
-        />
+            className="overflow-hidden rounded-xl border border-slate-100 bg-white"
+        >
+            <div className="aspect-[3/4] bg-slate-100" />
+            <div className="px-2 py-2 space-y-1.5">
+                <div className="h-3 w-4/5 rounded bg-slate-100" />
+                <div className="h-3 w-1/2 rounded bg-slate-100" />
+            </div>
+        </motion.div>
     );
 }
 
@@ -493,14 +510,6 @@ function CategoryRow({ item, onExplore, onBrowse }) {
     );
 }
 
-function AiBadge() {
-    return (
-        <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-[#047084]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#047084]">
-            <Sparkles className="h-2.5 w-2.5" /> New
-        </span>
-    );
-}
-
 function suggestionLocation(item) {
     const parts = [];
     if (item.level !== "category" && item.categoryName) parts.push(item.categoryName);
@@ -580,8 +589,14 @@ function SkeletonRow({ pulse }) {
         <motion.div
             animate={{ opacity: [0.5, 1, 0.5] }}
             transition={{ duration: pulse ? 0.9 : 1.4, repeat: Infinity }}
-            className="h-[68px] rounded-xl bg-slate-100"
-        />
+            className="overflow-hidden rounded-xl border border-slate-100 bg-white"
+        >
+            <div className="w-full aspect-[2.67/1] bg-slate-100" />
+            <div className="px-3.5 py-3 space-y-2">
+                <div className="h-3.5 w-2/3 rounded bg-slate-100" />
+                <div className="h-3 w-1/3 rounded bg-slate-100" />
+            </div>
+        </motion.div>
     );
 }
 
