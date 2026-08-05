@@ -26,7 +26,13 @@ export default function StartSellingBanner() {
 
   return (
     <motion.button
-      onClick={() => navigate("/seller/onboarding")}
+      onClick={() => {
+        window.scrollTo({
+          top: 0,
+          behavior: "instant",
+        });
+        navigate("/seller/onboarding");
+      }}
       initial={{ opacity: 0, y: 8 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.3 }}

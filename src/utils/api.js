@@ -92,6 +92,24 @@ export async function saveSellerProgress(token, payload) {
   return res.json();
 }
 
+export async function requestSellerWhatsappOtp(token, whatsapp_number) {
+  const res = await fetch(`${API_BASE}/seller/onboarding/whatsapp/request-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ whatsapp_number }),
+  });
+  return res.json();
+}
+
+export async function verifySellerWhatsappOtp(token, whatsapp_number, otp) {
+  const res = await fetch(`${API_BASE}/seller/onboarding/whatsapp/verify-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ whatsapp_number, otp }),
+  });
+  return res.json();
+}
+
 export async function submitSellerOnboarding(token, payload) {
   const res = await fetch(`${API_BASE}/seller/onboarding/submit`, {
     method: "POST",

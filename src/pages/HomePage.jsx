@@ -1,15 +1,6 @@
 // src/pages/HomePage.jsx
-
 import { useState, useRef, useEffect } from "react";
-import React from "react";
 import { useNavigate } from "react-router-dom";
-import { animate, motion, useMotionValue, AnimatePresence } from "framer-motion";
-import {
-  ArrowDown, Users, ShoppingCart,
-  Tag, FileText, Zap, BadgePercent, TrendingUp, Circle, Truck,
-  CreditCard, Plus, ScanLine, ClipboardList, Repeat, ShieldCheck,
-  Lock, FileCheck, Box, Clock,
-} from "lucide-react";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 
 import HomePageSkeleton from "../components/skeletons/HomePageSkeleton.jsx";

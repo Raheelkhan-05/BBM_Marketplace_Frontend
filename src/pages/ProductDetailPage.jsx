@@ -62,7 +62,7 @@ export default function ProductDetailPage() {
     return (
         <div className="mx-auto max-w-6xl px-3 pb-14 pt-3 sm:px-6 sm:pb-16 sm:pt-4 lg:px-8">
             {/* Breadcrumb */}
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center tracking-wide justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-1 text-[10.5px] font-semibold text-slate-500 sm:text-[12.5px]">
                     <button onClick={() => navigate("/browse")} className="text-[#047084] hover:underline">All Categories</button>
                     {category && (

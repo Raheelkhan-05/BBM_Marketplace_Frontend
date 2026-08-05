@@ -195,10 +195,10 @@ function HeroBanner({ category, stats, navigate, goBrowseAll }) {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.4 }}
-                    className="flex items-center justify-between"
+                    className="flex items-center tracking-wide justify-between"
                     aria-label="Breadcrumb"
                 >
-                    <ol className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-white/60 sm:text-[13px]">
+                    <ol className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-white/70 sm:text-[13px]">
                         <li>
                             <button onClick={() => navigate("/browse")} className="transition-colors hover:text-white">
                                 All Categories

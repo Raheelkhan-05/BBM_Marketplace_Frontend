@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight, ArrowLeft, Loader2, CheckCircle2, Upload, X, Plus,
-  Building2, Phone, MapPin, Image as ImageIcon, ShieldCheck, Camera,
-  Award, Settings2, Share2, Palette, ClipboardCheck,
+  Building2, Phone, MapPin, ShieldCheck, Settings2, Palette, ClipboardCheck, Image as ImageIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
   fetchSellerOnboarding, saveSellerProgress, submitSellerOnboarding, uploadSellerFile,
+  requestSellerWhatsappOtp, verifySellerWhatsappOtp,
 } from "../utils/api.js";
 import { lookupPincode } from "../utils/pincode.js";
-import { STEPS, BUSINESS_TYPES, INDUSTRIES, EMPLOYEE_RANGES, DESIGNATIONS } from "../components/seller/fieldConfigs.js";
+import { extractColorsFromImage } from "../utils/colorExtract.js";
+import { STEPS, BUSINESS_TYPES, EMPLOYEE_RANGES, WEEKDAYS, COUNTRIES, guessBusinessType } from "../components/seller/fieldConfigs.js";
+import { FONT_BODY } from "./ui.jsx";
 
-const STEP_ICONS = [Building2, Phone, MapPin, ImageIcon, Camera, ShieldCheck, Award, Settings2, Share2, Palette, ClipboardCheck];
+const STEP_ICONS = [Building2, Phone, MapPin, ShieldCheck, Settings2, Palette, ClipboardCheck];
 
 export default function SellerOnboardingPage() {
   const { token, profile } = useAuth();
@@ -23,11 +25,9 @@ export default function SellerOnboardingPage() {
   const [stepIndex, setStepIndex] = useState(0);
   const [form, setForm] = useState({
     country: "India", primary_color: "#047084", secondary_color: "#d2462b",
-    categories: [], products_brands: [], export_countries: [], industries_served: [],
+    dispatch_same_as_registered: true, export_countries: [], working_days: [], holidays: [],
   });
   const [gstData, setGstData] = useState(null);
-  const [photos, setPhotos] = useState([]);
-  const [certifications, setCertifications] = useState([]);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -39,20 +39,23 @@ export default function SellerOnboardingPage() {
       const res = await fetchSellerOnboarding(token);
       if (res?.success) {
         setGstData(res.business);
-        setPhotos(res.photos || []);
-        setCertifications(res.certifications || []);
+        const seller = res.seller || {};
         setForm((f) => ({
           ...f,
           contact_person: res.profile?.name || "",
+          whatsapp_number: res.profile?.phone || "",
+          whatsapp_verified: !!res.profile?.phone_verified,
+          original_verified_number: res.profile?.phone_verified ? res.profile.phone : null,
           address: res.business?.registered_address || "",
           pincode: res.business?.pincode || "",
           city: res.business?.district || "",
           state: res.business?.state || "",
           pan: res.business?.pan || "",
           display_name: res.business?.trade_name || res.business?.legal_name || "",
-          ...(res.seller || {}),
+          business_type: guessBusinessType(res.business?.nature_of_business),
+          ...seller,
         }));
-        if (res.seller?.status === "pending_review" || res.seller?.status === "approved") {
+        if (seller.status === "pending_review" || seller.status === "approved") {
           navigate("/seller/status", { replace: true });
         }
       }
@@ -97,13 +100,13 @@ export default function SellerOnboardingPage() {
   if (!loaded) {
     return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#047084]" /></div>;
   }
-  if (submitted) return <SubmittedScreen shopSlug={form.shop_slug} />;
+  if (submitted) return <SubmittedScreen />;
 
   const progress = ((stepIndex + 1) / STEPS.length) * 100;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 pb-16 pt-6 sm:px-6">
-      <h1 className="text-[clamp(1.5rem,3.5vw,1.9rem)] font-semibold text-slate-900" style={{ fontFamily: "'Fraunces', serif" }}>
+    <div className="mx-auto max-w-3xl min-h-screen px-4 pb-16 pt-6 sm:px-6">
+      <h1 className="text-[clamp(1.5rem,3.5vw,1.9rem)] font-bold text-slate-900" style={{ fontFamily: FONT_BODY }}>
         Set up your seller shop
       </h1>
       <p className="mt-1.5 text-[13.5px] font-medium text-slate-500">
@@ -118,11 +121,7 @@ export default function SellerOnboardingPage() {
       <div className="mt-6 rounded-2xl border border-[#047084]/12 bg-white p-5 shadow-[0_20px_60px_-30px_rgba(4,55,64,0.25)] sm:p-7">
         <AnimatePresence mode="wait">
           <motion.div key={STEPS[stepIndex].key} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} transition={{ duration: 0.25 }}>
-            <StepBody
-              stepKey={STEPS[stepIndex].key} form={form} update={update} gstData={gstData}
-              photos={photos} setPhotos={setPhotos} certifications={certifications} setCertifications={setCertifications}
-              token={token}
-            />
+            <StepBody stepKey={STEPS[stepIndex].key} form={form} update={update} gstData={gstData} token={token} />
           </motion.div>
         </AnimatePresence>
 
@@ -155,15 +154,17 @@ export default function SellerOnboardingPage() {
 
 function requiredMissing(stepKey, f) {
   const REQ = {
-    basics: ["display_name", "business_type", "industry", "categories", "products_brands", "year_established"],
-    contact: ["contact_person", "designation", "whatsapp_number"],
+    basics: ["display_name", "business_type", "year_established"],
+    contact: ["contact_person", "whatsapp_number"],
     address: ["address", "pincode", "city", "state"],
-    profile: ["logo_url", "banner_url", "description", "brochure_url"],
+    identity: ["logo_url"],
   }[stepKey] || [];
-  return REQ.filter((k) => {
+  const missing = REQ.filter((k) => {
     const v = f[k];
     return v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
   }).map((k) => k.replace(/_/g, " "));
+  if (stepKey === "contact" && !f.whatsapp_verified) missing.push("WhatsApp number verification");
+  return missing;
 }
 
 /* ---------- Step bodies ---------- */
@@ -172,13 +173,9 @@ function StepBody(props) {
   if (stepKey === "basics") return <BasicsStep {...props} />;
   if (stepKey === "contact") return <ContactStep {...props} />;
   if (stepKey === "address") return <AddressStep {...props} />;
-  if (stepKey === "profile") return <ProfileStep {...props} />;
-  if (stepKey === "photos") return <PhotosStep {...props} />;
   if (stepKey === "credentials") return <CredentialsStep {...props} />;
-  if (stepKey === "certifications") return <CertificationsStep {...props} />;
   if (stepKey === "operations") return <OperationsStep {...props} />;
-  if (stepKey === "digital") return <DigitalStep {...props} />;
-  if (stepKey === "branding") return <BrandingStep {...props} />;
+  if (stepKey === "identity") return <IdentityStep {...props} />;
   if (stepKey === "review") return <ReviewStep {...props} />;
   return null;
 }
@@ -186,44 +183,196 @@ function StepBody(props) {
 function BasicsStep({ form, update, gstData }) {
   return (
     <div className="flex flex-col gap-4">
-      {gstData?.legal_name && (
-        <ReadOnlyPill label="Company (from GST)" value={gstData.trade_name || gstData.legal_name} />
-      )}
+      {gstData?.legal_name && <ReadOnlyPill label="Company (from GST)" value={gstData.trade_name || gstData.legal_name} verified />}
       <TextField label="Display name" hint="shown to buyers" value={form.display_name} onChange={(v) => update("display_name", v)} />
       <SelectField label="Business type" value={form.business_type} onChange={(v) => update("business_type", v)} options={BUSINESS_TYPES} />
-      <SelectField label="Industry" value={form.industry} onChange={(v) => update("industry", v)} options={INDUSTRIES} />
-      <TagField label="Categories" value={form.categories} onChange={(v) => update("categories", v)} placeholder="e.g. Steel Pipes, Fasteners" />
-      <TagField label="Products / Brands dealt in" value={form.products_brands} onChange={(v) => update("products_brands", v)} placeholder="e.g. Tata Steel, JSW" />
+      <p className="-mt-2 text-[11.5px] font-medium text-slate-400">Guessed from your GST registration — change it if it's not quite right.</p>
       <div className="grid grid-cols-2 gap-3">
         <NumberField label="Year established" value={form.year_established} onChange={(v) => update("year_established", v)} />
         <SelectField label="Employees" value={form.employee_range} onChange={(v) => update("employee_range", v)} options={EMPLOYEE_RANGES} optional />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <TextField label="Annual turnover" optional value={form.annual_turnover} onChange={(v) => update("annual_turnover", v)} />
-        <label className="mt-1 flex items-center gap-2 text-[12.5px] font-medium text-slate-600">
-          <input type="checkbox" checked={!!form.show_turnover_publicly} onChange={(e) => update("show_turnover_publicly", e.target.checked)} className="h-4 w-4 rounded accent-[#047084]" />
-          Show turnover publicly on my shop page
-        </label>
-      </div>
+      <TextField label="Annual turnover" optional value={form.annual_turnover} onChange={(v) => update("annual_turnover", v)} />
     </div>
   );
 }
 
-function ContactStep({ form, update }) {
+function ContactStep({ form, update, token }) {
+  const [changingNumber, setChangingNumber] = useState(false);
+  const [draftNumber, setDraftNumber] = useState(form.whatsapp_number || "");
+  const [otpStage, setOtpStage] = useState(false);
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [sending, setSending] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [otpError, setOtpError] = useState(null);
+  const [resendIn, setResendIn] = useState(0);
+  const otpRefs = useRef([]);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setInterval(() => setResendIn((s) => Math.max(0, s - 1)), 1000);
+    return () => clearInterval(t);
+  }, [resendIn]);
+
+  const isLocked = form.whatsapp_verified && !changingNumber;
+
+  const startChange = () => {
+    setDraftNumber(form.whatsapp_number || "");
+    setChangingNumber(true);
+    setOtpStage(false);
+    setOtpError(null);
+  };
+  const cancelChange = () => {
+    setChangingNumber(false);
+    setOtpStage(false);
+    setOtp(["", "", "", "", "", ""]);
+    setOtpError(null);
+  };
+
+  const sendOtp = async () => {
+    if (draftNumber.length !== 10) return;
+    // Same number as the one already verified — skip OTP entirely.
+    if (draftNumber === form.original_verified_number) {
+      update("whatsapp_number", draftNumber);
+      update("whatsapp_verified", true);
+      setChangingNumber(false);
+      return;
+    }
+    setSending(true); setOtpError(null);
+    const res = await requestSellerWhatsappOtp(token, draftNumber);
+    setSending(false);
+    if (res?.success) { setOtpStage(true); setResendIn(30); setTimeout(() => otpRefs.current[0]?.focus(), 50); }
+    else setOtpError(res?.message || "Couldn't send OTP.");
+  };
+
+  const handleOtpChange = (i, v) => {
+    const d = v.replace(/\D/g, "").slice(-1);
+    const next = [...otp]; next[i] = d; setOtp(next);
+    if (d && i < 5) otpRefs.current[i + 1]?.focus();
+  };
+  const handleOtpKeyDown = (i, e) => {
+    if (e.key === "Backspace" && !otp[i] && i > 0) otpRefs.current[i - 1]?.focus();
+  };
+
+  const verify = async () => {
+    const code = otp.join("");
+    if (code.length !== 6) return;
+    setVerifying(true); setOtpError(null);
+    const res = await verifySellerWhatsappOtp(token, draftNumber, code);
+    setVerifying(false);
+    if (res?.success) {
+      update("whatsapp_number", draftNumber);
+      update("whatsapp_verified", true);
+      update("original_verified_number", draftNumber);
+      setOtpStage(false); setChangingNumber(false); setOtp(["", "", "", "", "", ""]);
+    } else {
+      setOtpError(res?.message || "Incorrect or expired OTP.");
+      setOtp(["", "", "", "", "", ""]);
+      otpRefs.current[0]?.focus();
+    }
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <TextField label="Contact person" value={form.contact_person} onChange={(v) => update("contact_person", v)} />
-      <SelectField label="Designation" value={form.designation} onChange={(v) => update("designation", v)} options={DESIGNATIONS} />
-      <TextField label="WhatsApp number" value={form.whatsapp_number} onChange={(v) => update("whatsapp_number", v.replace(/\D/g, "").slice(0, 10))} inputMode="numeric" />
+
+      <div className="flex flex-col gap-2">
+        <Label>WhatsApp number</Label>
+
+        {isLocked ? (
+          <div className="flex items-center justify-between rounded-xl border-2 border-[#047084]/25 bg-gradient-to-br from-[#047084]/[0.06] to-[#7fb3bd]/[0.08] px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#047084] text-white shadow-[0_4px_12px_-2px_rgba(4,112,132,0.5)]">
+                <CheckCircle2 className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="text-[14px] font-extrabold tracking-wide text-slate-800">+91 {form.whatsapp_number}</p>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-[#047084]">Verified</p>
+              </div>
+            </div>
+            <button type="button" onClick={startChange} className="text-[12px] font-bold text-slate-500 underline decoration-slate-300 underline-offset-2 hover:text-[#047084]">
+              Change number?
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-xl border-2 border-slate-200 p-3.5">
+            <div className="flex items-center gap-2">
+              <span className="flex h-10 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold text-slate-500">+91</span>
+              <input
+                value={draftNumber}
+                onChange={(e) => { setDraftNumber(e.target.value.replace(/\D/g, "").slice(0, 10)); setOtpStage(false); setOtpError(null); }}
+                inputMode="numeric" placeholder="10-digit number"
+                className="flex-1 rounded-lg border-2 border-slate-200 px-3.5 py-2.5 text-[14px] font-bold tracking-wide text-slate-800 focus:border-[#047084] focus:outline-none focus:ring-4 focus:ring-[#047084]/10"
+              />
+              {changingNumber && (
+                <button type="button" onClick={cancelChange} className="rounded-lg px-2 py-2 text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
+              )}
+            </div>
+
+            <AnimatePresence mode="wait">
+              {!otpStage ? (
+                <motion.div key="send" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <button type="button" onClick={sendOtp} disabled={sending || draftNumber.length !== 10}
+                    className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-bold text-white shadow-[0_10px_24px_-10px_rgba(4,112,132,0.6)] disabled:opacity-35"
+                    style={{ background: "linear-gradient(135deg, #0a95ab, #047084)" }}>
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send verification code"}
+                  </button>
+                </motion.div>
+              ) : (
+                <motion.div key="verify" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-3.5">
+                  <p className="text-[12px] font-semibold text-slate-500">Enter the 6-digit code sent to +91 {draftNumber}</p>
+                  <div className="mt-2 flex justify-between gap-1.5 sm:gap-2">
+                    {otp.map((d, i) => (
+                      <input key={i} ref={(el) => (otpRefs.current[i] = el)} value={d}
+                        onChange={(e) => handleOtpChange(i, e.target.value)} onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                        inputMode="numeric" maxLength={1}
+                        className="h-11 w-full max-w-[42px] rounded-lg border-2 border-slate-200 text-center text-[17px] font-extrabold text-slate-800 focus:border-[#047084] focus:outline-none focus:ring-4 focus:ring-[#047084]/10" />
+                    ))}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <button type="button" onClick={sendOtp} disabled={resendIn > 0}
+                      className="text-[12px] font-bold text-[#047084] disabled:text-slate-300">
+                      {resendIn > 0 ? `Resend in ${resendIn}s` : "Resend code"}
+                    </button>
+                    <button type="button" onClick={verify} disabled={verifying || otp.join("").length !== 6}
+                      className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-bold text-white shadow-[0_10px_24px_-10px_rgba(199,31,17,0.55)] disabled:opacity-35"
+                      style={{ background: "linear-gradient(135deg, #d2462b, #c71f11)" }}>
+                      {verifying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Confirm"}
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {otpError && <p className="mt-2 text-[12px] font-semibold text-[#c71f11]">{otpError}</p>}
+          </div>
+        )}
+      </div>
+
       <TextField label="Website" optional value={form.website} onChange={(v) => update("website", v)} placeholder="https://" />
-      <p className="text-[12px] font-medium text-slate-400">Your mobile and email are already verified from sign-up.</p>
     </div>
   );
 }
 
-
-function AddressStep({ form, update }) {
+function AddressStep({ form, update, gstData }) {
   const [looking, setLooking] = useState(false);
+  const different = !form.dispatch_same_as_registered;
+
+  const toggleDifferent = (val) => {
+    update("dispatch_same_as_registered", !val);
+    if (val) {
+      // opening the custom-address form — start blank, don't inherit GST values
+      update("address", "");
+      update("pincode", "");
+      update("city", "");
+      update("state", "");
+    } else if (gstData) {
+      // switching back to "same as GST" — restore GST address
+      update("address", gstData.registered_address || "");
+      update("pincode", gstData.pincode || "");
+      update("city", gstData.district || "");
+      update("state", gstData.state || "");
+    }
+  };
+
   const handlePincode = async (v) => {
     const digits = v.replace(/\D/g, "").slice(0, 6);
     update("pincode", digits);
@@ -234,64 +383,33 @@ function AddressStep({ form, update }) {
       setLooking(false);
     }
   };
+
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-[12px] font-medium text-slate-500">
-        This is your shop's operating / dispatch address — shown to buyers and used for shipments. It can differ from your GST registered address, which you can review in the Credentials step.
-      </p>
-      <TextAreaField label="Detailed address" value={form.address} onChange={(v) => update("address", v)} />
-      <TextField label="PIN code" value={form.pincode} onChange={handlePincode} inputMode="numeric" trailing={looking ? <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" /> : null} />
-      <div className="grid grid-cols-2 gap-3">
-        <TextField label="City" value={form.city} onChange={(v) => update("city", v)} />
-        <TextField label="State" value={form.state} onChange={(v) => update("state", v)} />
+      <div>
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">Registered address (from GST)</p>
+        <div className="rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.04] p-3.5 text-[13px] font-semibold text-slate-700">
+          {gstData?.registered_address || "—"}
+          {gstData?.pincode && <span className="block text-slate-500">{gstData.district}, {gstData.state} — {gstData.pincode}</span>}
+        </div>
       </div>
-      <TextField label="Country" value={form.country || "India"} onChange={(v) => update("country", v)} />
-    </div>
-  );
-}
 
+      <label className="flex items-center gap-2 text-[12.5px] font-semibold text-slate-600">
+        <input type="checkbox" checked={different} onChange={(e) => toggleDifferent(e.target.checked)} className="h-4 w-4 rounded accent-[#047084]" />
+        My dispatch/shipping address is different from my GST address
+      </label>
 
-function ProfileStep({ form, update, token }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <FileField label="Company logo" value={form.logo_url} onUploaded={(url) => update("logo_url", url)} token={token} folder="logo" accept="image/*" />
-      <FileField label="Company banner" value={form.banner_url} onUploaded={(url) => update("banner_url", url)} token={token} folder="banner" accept="image/*" />
-      <TextAreaField label="Company description" value={form.description} onChange={(v) => update("description", v)} rows={4} />
-      <FileField label="Company brochure (PDF)" value={form.brochure_url} onUploaded={(url) => update("brochure_url", url)} token={token} folder="brochure" accept="application/pdf" bucket="seller-documents" />
-      <TextField label="Company video" optional value={form.video_url} onChange={(v) => update("video_url", v)} placeholder="YouTube link" />
-    </div>
-  );
-}
-
-function PhotosStep({ photos, setPhotos, token }) {
-  const CATS = [
-    { key: "office", label: "Office" }, { key: "factory", label: "Factory" },
-    { key: "warehouse", label: "Warehouse / Inventory" }, { key: "team", label: "Team" },
-    { key: "product", label: "Product Showcase" },
-  ];
-  const handleUpload = async (cat, file) => {
-    const res = await uploadSellerFile(token, file, `photos/${cat}`);
-    if (res?.success) setPhotos((p) => [...p, { category: cat, url: res.url, id: crypto.randomUUID() }]);
-  };
-  return (
-    <div className="flex flex-col gap-5">
-      {CATS.map((c) => (
-        <div key={c.key}>
-          <p className="text-[12px] font-bold uppercase tracking-wide text-slate-500">{c.label}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {photos.filter((p) => p.category === c.key).map((p) => (
-              <div key={p.id} className="relative h-16 w-16 overflow-hidden rounded-lg border border-slate-200">
-                <img src={p.url} alt="" className="h-full w-full object-cover" />
-                <button type="button" onClick={() => setPhotos((ph) => ph.filter((x) => x.id !== p.id))}
-                  className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white">
-                  <X className="h-2.5 w-2.5" />
-                </button>
-              </div>
-            ))}
-            <UploadTile onFile={(f) => handleUpload(c.key, f)} />
+      {different && (
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 p-3.5">
+          <TextAreaField label="Dispatch address" value={form.address} onChange={(v) => update("address", v)} />
+          <TextField label="PIN code" value={form.pincode} onChange={handlePincode} inputMode="numeric"
+            trailing={looking ? <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" /> : null} />
+          <div className="grid grid-cols-2 gap-3">
+            <TextField label="City" value={form.city} onChange={(v) => update("city", v)} />
+            <TextField label="State" value={form.state} onChange={(v) => update("state", v)} />
           </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
@@ -313,85 +431,74 @@ function CredentialsStep({ form, update, gstData }) {
   );
 }
 
-function CertificationsStep({ certifications, setCertifications, token }) {
-  const addRow = () => setCertifications((c) => [...c, { id: crypto.randomUUID(), type: "iso", name: "", issued_by: "", file_url: "" }]);
-  const update = (id, key, val) => setCertifications((c) => c.map((r) => (r.id === id ? { ...r, [key]: val } : r)));
-  const removeRow = (id) => setCertifications((c) => c.filter((r) => r.id !== id));
-
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-[12.5px] font-medium text-slate-500">Optional — ISO certificates, industry certifications (CE, BIS, FDA, IATF), or awards build buyer trust.</p>
-      {certifications.map((row) => (
-        <div key={row.id} className="rounded-xl border border-slate-200 p-3.5">
-          <div className="flex items-center justify-between">
-            <select value={row.type} onChange={(e) => update(row.id, "type", e.target.value)} className="rounded-md border border-slate-200 px-2 py-1 text-[12.5px] font-semibold">
-              <option value="iso">ISO</option><option value="industry">Industry Cert</option><option value="award">Award</option>
-            </select>
-            <button type="button" onClick={() => removeRow(row.id)}><X className="h-4 w-4 text-slate-400" /></button>
-          </div>
-          <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            <TextField label="Name" value={row.name} onChange={(v) => update(row.id, "name", v)} compact />
-            <TextField label="Issued by" optional value={row.issued_by} onChange={(v) => update(row.id, "issued_by", v)} compact />
-          </div>
-          <div className="mt-2.5">
-            <FileField label="Certificate file" value={row.file_url} onUploaded={(url) => update(row.id, "file_url", url)} token={token} folder="certs" accept="application/pdf,image/*" bucket="seller-documents" compact />
-          </div>
-        </div>
-      ))}
-      <button type="button" onClick={addRow} className="flex items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-200 py-3 text-[13px] font-bold text-[#047084]">
-        <Plus className="h-4 w-4" /> Add certification
-      </button>
-    </div>
-  );
-}
-
 function OperationsStep({ form, update }) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <label className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Manufacturing facility</label>
-        <div className="flex gap-2">
-          {["Yes", "No"].map((opt) => (
-            <button key={opt} type="button" onClick={() => update("manufacturing_facility", opt === "Yes")}
-              className="rounded-lg border-2 px-4 py-2 text-[13px] font-bold"
-              style={{ borderColor: form.manufacturing_facility === (opt === "Yes") ? "#047084" : "#e5e9ea", color: form.manufacturing_facility === (opt === "Yes") ? "#047084" : "#64748b" }}>
-              {opt}
-            </button>
-          ))}
+    <div className="flex flex-col gap-5">
+      <div>
+        <Label optional>Export countries</Label>
+        <CountryMultiSelect value={form.export_countries} onChange={(v) => update("export_countries", v)} />
+      </div>
+
+      <div>
+        <Label>Working days</Label>
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {WEEKDAYS.map((d) => {
+            const active = (form.working_days || []).includes(d);
+            return (
+              <button key={d} type="button"
+                onClick={() => update("working_days", active ? form.working_days.filter((x) => x !== d) : [...(form.working_days || []), d])}
+                className="rounded-lg border-2 px-3 py-1.5 text-[12.5px] font-bold"
+                style={{ borderColor: active ? "#047084" : "#e5e9ea", color: active ? "#047084" : "#64748b", background: active ? "#04708410" : "white" }}>
+                {d}
+              </button>
+            );
+          })}
         </div>
       </div>
-      <TagField label="Export countries" optional value={form.export_countries} onChange={(v) => update("export_countries", v)} placeholder="e.g. UAE, USA" />
-      <TagField label="Industries served" optional value={form.industries_served} onChange={(v) => update("industries_served", v)} placeholder="e.g. Automotive, Pharma" />
-      <TextField label="Production capacity" optional value={form.production_capacity} onChange={(v) => update("production_capacity", v)} />
+
+      <div className="grid grid-cols-2 gap-3">
+        <TimeField label="Order acceptance starts" value={form.order_acceptance_start} onChange={(v) => update("order_acceptance_start", v)} optional />
+        <TimeField label="Order acceptance ends" value={form.order_acceptance_end} onChange={(v) => update("order_acceptance_end", v)} optional />
+      </div>
+
+      <HolidaysField value={form.holidays} onChange={(v) => update("holidays", v)} />
     </div>
   );
 }
 
-function DigitalStep({ form, update }) {
-  return (
-    <div className="flex flex-col gap-4">
-      <TextField label="LinkedIn" optional value={form.linkedin_url} onChange={(v) => update("linkedin_url", v)} />
-      <TextField label="Facebook" optional value={form.facebook_url} onChange={(v) => update("facebook_url", v)} />
-      <TextField label="Instagram" optional value={form.instagram_url} onChange={(v) => update("instagram_url", v)} />
-      <TextField label="YouTube" optional value={form.youtube_url} onChange={(v) => update("youtube_url", v)} />
-    </div>
-  );
-}
+function IdentityStep({ form, update, token }) {
+  const [extracting, setExtracting] = useState(false);
+  const handleLogo = async (url) => {
+    update("logo_url", url);
+    setExtracting(true);
+    try {
+      const { primary, secondary, accent } = await extractColorsFromImage(url);
+      update("primary_color", primary);
+      update("secondary_color", secondary);
+      update("accent_color", accent);
+    } catch { /* keep defaults */ }
+    setExtracting(false);
+  };
 
-const SWATCHES = ["#047084", "#d2462b", "#7c3aed", "#16a34a", "#c026d3", "#0891b2", "#ea580c", "#1d4ed8"];
-function BrandingStep({ form, update }) {
   return (
     <div className="flex flex-col gap-5">
-      <ColorField label="Primary color" value={form.primary_color} onChange={(v) => update("primary_color", v)} />
-      <ColorField label="Secondary color" value={form.secondary_color} onChange={(v) => update("secondary_color", v)} />
+      <FileField label="Company logo" value={form.logo_url} onUploaded={handleLogo} token={token} folder="logo" accept="image/*" />
+      <p className="-mt-3 text-[11.5px] font-medium text-slate-400">We'll automatically pick your shop's colors from your logo. You can add a banner, description and more from your dashboard once your shop is live.</p>
+
       <div>
         <p className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Shop preview</p>
         <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
-          <div className="h-16" style={{ background: `linear-gradient(135deg, ${form.primary_color}, ${form.secondary_color})` }} />
+          <div className="flex h-16 items-center justify-center" style={{ background: `linear-gradient(135deg, ${form.primary_color}, ${form.primary_color}50, ${form.secondary_color}50,${form.secondary_color})` }}>
+            {extracting && <Loader2 className="h-4 w-4 animate-spin text-white/80" />}
+          </div>
           <div className="flex items-center gap-2 bg-white p-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg text-white font-extrabold" style={{ background: form.primary_color }}>
-              {(form.display_name || "S")[0]}
-            </span>
+            {form.logo_url ? (
+              <img src={form.logo_url} alt="" className="h-9 w-9 rounded-lg object-cover" />
+            ) : (
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg text-white font-extrabold" style={{ background: form.primary_color }}>
+                {(form.display_name || "S")[0]}
+              </span>
+            )}
             <div>
               <p className="text-[13px] font-extrabold text-slate-900">{form.display_name || "Your Shop Name"}</p>
               <button className="mt-0.5 rounded-md px-2 py-0.5 text-[10.5px] font-bold text-white" style={{ background: form.secondary_color }}>Contact Supplier</button>
@@ -404,18 +511,87 @@ function BrandingStep({ form, update }) {
 }
 
 function ReviewStep({ form }) {
+  const sections = [
+    {
+      title: "Business Basics",
+      rows: [
+        ["Display name", form.display_name],
+        ["Business type", form.business_type],
+        ["Year established", form.year_established],
+        ["Employees", form.employee_range],
+        ["Annual turnover", form.annual_turnover],
+      ],
+    },
+    {
+      title: "Contact",
+      rows: [
+        ["Contact person", form.contact_person],
+        ["WhatsApp", form.whatsapp_verified ? `+91 ${form.whatsapp_number} — verified` : form.whatsapp_number],
+        ["Website", form.website],
+      ],
+    },
+    {
+      title: "Address",
+      rows: [
+        ["Dispatch address", form.dispatch_same_as_registered ? "Same as GST registered address" : `${form.address}, ${form.city}, ${form.state} ${form.pincode}`],
+      ],
+    },
+    {
+      title: "Credentials",
+      rows: [
+        ["PAN", form.pan], ["IEC code", form.iec_code], ["Udyam number", form.udyam_number], ["CIN", form.cin],
+      ],
+    },
+    {
+      title: "Operations",
+      rows: [
+        ["Export countries", (form.export_countries || []).join(", ")],
+        ["Working days", (form.working_days || []).join(", ")],
+        ["Order hours", form.order_acceptance_start && form.order_acceptance_end ? `${form.order_acceptance_start} – ${form.order_acceptance_end}` : ""],
+        ["Holidays", (form.holidays || []).length ? `${form.holidays.length} date(s) marked` : ""],
+      ],
+    },
+  ];
+
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-5">
       <p className="text-[13.5px] font-medium text-slate-600">Review your details below. Once submitted, our team typically reviews within 24–48 hours.</p>
-      {[
-        ["Display name", form.display_name], ["Business type", form.business_type], ["Industry", form.industry],
-        ["Contact person", form.contact_person], ["Address", `${form.address}, ${form.city}, ${form.state} ${form.pincode}`],
-      ].map(([label, value]) => (
-        <div key={label} className="flex justify-between border-b border-slate-100 py-2 text-[13px]">
-          <span className="font-semibold text-slate-500">{label}</span>
-          <span className="max-w-[60%] text-right font-bold text-slate-800">{value || "—"}</span>
+
+      <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-3">
+        {form.logo_url ? (
+          <img src={form.logo_url} alt="" className="h-12 w-12 rounded-lg object-cover" />
+        ) : (
+          <span className="flex h-12 w-12 items-center justify-center rounded-lg text-white font-extrabold" style={{ background: form.primary_color }}>
+            {(form.display_name || "S")[0]}
+          </span>
+        )}
+        <div>
+          <p className="text-[15px] font-extrabold text-slate-900">{form.display_name || "Your Shop Name"}</p>
+          <div className="mt-1 flex gap-1">
+            {[form.primary_color, form.secondary_color, form.accent_color].filter(Boolean).map((c) => (
+              <span key={c} className="h-4 w-4 rounded-full border border-white shadow" style={{ background: c }} />
+            ))}
+          </div>
         </div>
-      ))}
+      </div>
+
+      {sections.map((s) => {
+        const rows = s.rows.filter(([, v]) => v);
+        if (!rows.length) return null;
+        return (
+          <div key={s.title}>
+            <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide text-[#047084]">{s.title}</p>
+            <div className="rounded-xl border border-slate-100">
+              {rows.map(([label, value], i) => (
+                <div key={label} className={`flex justify-between gap-3 px-3.5 py-2 text-[13px] ${i !== rows.length - 1 ? "border-b border-slate-100" : ""}`}>
+                  <span className="font-semibold text-slate-500">{label}</span>
+                  <span className="max-w-[60%] text-right font-bold text-slate-800">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -441,13 +617,12 @@ function fieldWrap(error) {
 function Label({ children, optional }) {
   return <label className="text-[12px] font-bold uppercase tracking-wide text-slate-500">{children} {optional && <span className="normal-case font-medium text-slate-400">(optional)</span>}</label>;
 }
-function TextField({ label, value = "", onChange, optional, placeholder, inputMode, trailing, compact }) {
+function TextField({ label, value = "", onChange, optional, placeholder, inputMode, trailing }) {
   return (
     <div className="flex flex-col gap-1">
       <Label optional={optional}>{label}</Label>
       <div className="relative">
-        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} inputMode={inputMode}
-          className={fieldWrap() + (compact ? " py-2 text-[13px]" : "")} />
+        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} inputMode={inputMode} className={fieldWrap()} />
         {trailing && <span className="absolute right-3 top-1/2 -translate-y-1/2">{trailing}</span>}
       </div>
     </div>
@@ -455,6 +630,14 @@ function TextField({ label, value = "", onChange, optional, placeholder, inputMo
 }
 function NumberField({ label, value, onChange }) {
   return <TextField label={label} value={value ?? ""} onChange={(v) => onChange(v.replace(/\D/g, ""))} inputMode="numeric" />;
+}
+function TimeField({ label, value = "", onChange, optional }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label optional={optional}>{label}</Label>
+      <input type="time" value={value || ""} onChange={(e) => onChange(e.target.value)} className={fieldWrap()} />
+    </div>
+  );
 }
 function TextAreaField({ label, value = "", onChange, rows = 3, optional }) {
   return (
@@ -486,26 +669,7 @@ function ReadOnlyPill({ label, value, verified }) {
     </div>
   );
 }
-function TagField({ label, value = [], onChange, placeholder, optional }) {
-  const [input, setInput] = useState("");
-  const add = () => { const v = input.trim(); if (v && !value.includes(v)) onChange([...value, v]); setInput(""); };
-  return (
-    <div className="flex flex-col gap-1">
-      <Label optional={optional}>{label}</Label>
-      <div className={fieldWrap() + " flex flex-wrap items-center gap-1.5 py-2"}>
-        {value.map((tag) => (
-          <span key={tag} className="flex items-center gap-1 rounded-full bg-[#047084]/10 px-2.5 py-1 text-[12px] font-bold text-[#047084]">
-            {tag} <button type="button" onClick={() => onChange(value.filter((t) => t !== tag))}><X className="h-3 w-3" /></button>
-          </span>
-        ))}
-        <input value={input} onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add(); } }}
-          onBlur={add} placeholder={placeholder} className="min-w-[100px] flex-1 bg-transparent text-[13px] font-medium focus:outline-none" />
-      </div>
-    </div>
-  );
-}
-function FileField({ label, value, onUploaded, token, folder, accept, bucket = "seller-assets", compact }) {
+function FileField({ label, value, onUploaded, token, folder, accept, bucket = "seller-assets" }) {
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
   const handleChange = async (e) => {
@@ -518,14 +682,10 @@ function FileField({ label, value, onUploaded, token, folder, accept, bucket = "
   };
   return (
     <div className="flex flex-col gap-1">
-      {!compact && <Label>{label}</Label>}
+      <Label>{label}</Label>
       <div className="flex items-center gap-3">
         {value ? (
-          accept?.startsWith("image") ? (
-            <img src={value} alt="" className="h-12 w-12 rounded-lg border border-slate-200 object-cover" />
-          ) : (
-            <span className="flex h-12 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[12px] font-bold text-[#047084]"><CheckCircle2 className="h-3.5 w-3.5" />Uploaded</span>
-          )
+          <img src={value} alt="" className="h-12 w-12 rounded-lg border border-slate-200 object-cover" />
         ) : (
           <span className="flex h-12 w-12 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 text-slate-300"><ImageIcon className="h-5 w-5" /></span>
         )}
@@ -539,51 +699,66 @@ function FileField({ label, value, onUploaded, token, folder, accept, bucket = "
     </div>
   );
 }
-function UploadTile({ onFile }) {
-  const inputRef = useRef(null);
+function CountryMultiSelect({ value = [], onChange }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  // const matches = COUNTRIES.filter((c) => c.toLowerCase().includes(q.toLowerCase()) && !value.includes(c)).slice(0, 8);
+  const matches = searchCountries(q, value);
   return (
-    <>
-      <button type="button" onClick={() => inputRef.current?.click()} className="flex h-16 w-16 items-center justify-center rounded-lg border-2 border-dashed border-slate-200 text-slate-300 hover:border-[#7fb3bd] hover:text-[#047084]">
-        <Plus className="h-5 w-5" />
-      </button>
-      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
-    </>
-  );
-}
-function ColorField({ label, value, onChange }) {
-  return (
-    <div className="flex flex-col gap-2">
-      <Label>{label}</Label>
-      <div className="flex flex-wrap items-center gap-2">
-        {SWATCHES.map((c) => (
-          <button key={c} type="button" onClick={() => onChange(c)} className="h-8 w-8 rounded-full border-2" style={{ background: c, borderColor: value === c ? "#0f172a" : "transparent" }} />
+    <div className="relative flex flex-col gap-1.5">
+      <div className={fieldWrap() + " flex flex-wrap items-center gap-1.5 py-2"}>
+        {value.map((c) => (
+          <span key={c} className="flex items-center gap-1 rounded-full bg-[#047084]/10 px-2.5 py-1 text-[12px] font-bold text-[#047084]">
+            {c} <button type="button" onClick={() => onChange(value.filter((t) => t !== c))}><X className="h-3 w-3" /></button>
+          </span>
         ))}
-        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-8 w-8 rounded-full border border-slate-200" />
-        <span className="text-[12.5px] font-bold text-slate-500">{value}</span>
+        <input value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Search countries…" className="min-w-[100px] flex-1 bg-transparent text-[13px] font-medium focus:outline-none" />
       </div>
+      {open && q && matches.length > 0 && (
+        <div className="absolute top-full z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          {matches.map((c) => (
+            <button key={c} type="button" onMouseDown={() => { onChange([...value, c]); setQ(""); }}
+              className="block w-full px-3 py-1.5 text-left text-[13px] font-medium text-slate-700 hover:bg-[#047084]/5">
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
-
+function HolidaysField({ value = [], onChange }) {
+  const [date, setDate] = useState("");
+  const add = () => { if (date && !value.includes(date)) { onChange([...value, date].sort()); setDate(""); } };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label optional>Holidays / shop closed dates</Label>
+      <div className="flex items-center gap-2">
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={fieldWrap() + " flex-1"} />
+        <button type="button" onClick={add} className="rounded-lg border border-slate-200 px-3 py-2.5 text-[12.5px] font-bold text-[#047084]"><Plus className="h-4 w-4" /></button>
+      </div>
+      {value.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {value.map((d) => (
+            <span key={d} className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[12px] font-bold text-slate-600">
+              {d} <button type="button" onClick={() => onChange(value.filter((x) => x !== d))}><X className="h-3 w-3" /></button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function GstReferencePanel({ gstData }) {
   if (!gstData) return null;
   const rows = [
-    ["Legal name", gstData.legal_name],
-    ["Trade name", gstData.trade_name],
-    ["GSTIN status", gstData.gstin_status],
-    ["Constitution", gstData.constitution],
-    ["Taxpayer type", gstData.taxpayer_type],
-    ["GST registration date", gstData.gst_registration_date],
-    ["GST last updated", gstData.gst_last_updated],
-    ["Registered address", gstData.registered_address],
-    ["District", gstData.district],
-    ["Pincode", gstData.pincode],
-    ["State", gstData.state],
-    ["State code", gstData.state_code],
-    ["PAN (GST record)", gstData.pan],
+    ["Legal name", gstData.legal_name], ["Trade name", gstData.trade_name], ["GSTIN status", gstData.gstin_status],
+    ["Constitution", gstData.constitution], ["Taxpayer type", gstData.taxpayer_type],
+    ["GST registration date", gstData.gst_registration_date], ["Registered address", gstData.registered_address],
+    ["District", gstData.district], ["Pincode", gstData.pincode], ["State", gstData.state], ["PAN (GST record)", gstData.pan],
     ["Nature of business", Array.isArray(gstData.nature_of_business) ? gstData.nature_of_business.join(", ") : gstData.nature_of_business],
   ].filter(([, v]) => v);
-
   return (
     <div className="rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.04] p-4">
       <div className="flex items-center gap-1.5">
