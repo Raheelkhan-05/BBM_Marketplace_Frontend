@@ -367,10 +367,10 @@ function TopCategoriesAccordion() {
                         <div className="lg:hidden">
                             {categories.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
                         </div>
-                        <div className="hidden lg:block lg:flex-1" style={{ borderRight: `1px solid ${C.hair}` }}>
+                        <div className="hidden lg:block lg:min-w-0 lg:flex-1" style={{ borderRight: `1px solid ${C.hair}` }}>
                             {leftColumn.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
                         </div>
-                        <div className="hidden lg:block lg:flex-1">
+                        <div className="hidden lg:block lg:min-w-0 lg:flex-1">
                             {rightColumn.map((cat, idx) => renderCategory(cat, idx, idx === 0))}
                         </div>
                     </>
