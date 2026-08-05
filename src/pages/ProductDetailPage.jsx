@@ -419,16 +419,69 @@ function groupBrandsByName(brands) {
 
 function PageSkeleton() {
     return (
-        <div className="mx-auto max-w-6xl px-3 pt-3 sm:px-6 sm:pt-4 lg:px-8">
-            <div className="grid grid-cols-[2fr,3fr] gap-3 sm:gap-6">
-                <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.4, repeat: Infinity }} className="aspect-square rounded-xl bg-slate-100 sm:rounded-2xl" />
-                <div className="space-y-2 sm:space-y-3">
-                    <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.4, repeat: Infinity }} className="h-6 w-2/3 rounded-lg bg-slate-100 sm:h-8" />
-                    <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.4, repeat: Infinity }} className="h-3 w-1/3 rounded-lg bg-slate-100 sm:h-4" />
-                    <motion.div animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.4, repeat: Infinity }} className="h-16 w-full rounded-lg bg-slate-100 sm:h-24" />
+        <div className="mx-auto max-w-6xl px-3 pb-14 pt-3 sm:px-6 sm:pb-16 sm:pt-4 lg:px-8">
+            {/* Breadcrumb */}
+            <div className="flex items-center justify-between gap-3">
+                <Pulse className="h-3 w-40 rounded sm:h-3.5 sm:w-56" />
+                <Pulse className="hidden h-7 w-32 rounded-lg sm:block" />
+            </div>
+
+            {/* Image + Info */}
+            <div className="mt-3 grid grid-cols-[2fr,3fr] gap-3 sm:mt-5 sm:gap-6">
+                <Pulse className="min-h-[160px] rounded-xl sm:min-h-[220px] sm:rounded-2xl" />
+
+                <div className="flex flex-col">
+                    <Pulse className="h-5 w-4/5 rounded-lg sm:h-8" />
+                    <div className="mt-1.5 flex flex-wrap gap-1 sm:mt-2.5 sm:gap-2">
+                        <Pulse className="h-4 w-24 rounded-sm sm:h-6 sm:w-28" />
+                        <Pulse className="h-4 w-20 rounded-sm sm:h-6 sm:w-24" />
+                    </div>
+                    <Pulse className="mt-1.5 h-3 w-1/2 rounded sm:mt-3 sm:h-4" />
+                    <div className="mt-2 space-y-1.5 sm:mt-4">
+                        <Pulse className="h-3 w-1/4 rounded sm:h-3.5" />
+                        <Pulse className="h-3 w-full rounded sm:h-3.5" />
+                        <Pulse className="h-3 w-full rounded sm:h-3.5" />
+                        <Pulse className="h-3 w-2/3 rounded sm:h-3.5" />
+                    </div>
                 </div>
             </div>
+
+            {/* Buy / Sell CTAs */}
+            <div className="mt-4 grid grid-cols-2 gap-2.5 sm:mt-6 sm:gap-4">
+                <Pulse className="h-[110px] rounded-xl sm:h-[150px] sm:rounded-2xl" />
+                <Pulse className="h-[110px] rounded-xl sm:h-[150px] sm:rounded-2xl" />
+            </div>
+
+            {/* Tabs card */}
+            <div className="mt-4 rounded-xl border border-slate-100 bg-white p-3 sm:mt-6 sm:rounded-2xl sm:p-5">
+                <Pulse className="h-3.5 w-24 rounded sm:h-4 sm:w-28" />
+                <div className="mt-2.5 flex gap-2 border-b border-slate-100 pb-2 sm:mt-3">
+                    <Pulse className="h-6 w-24 rounded-lg sm:h-7 sm:w-28" />
+                    <Pulse className="h-6 w-24 rounded-lg sm:h-7 sm:w-28" />
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-x-8 gap-y-1.5 sm:mt-4 sm:grid-cols-2 sm:gap-y-2">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="flex items-center justify-between border-b border-slate-50 py-1.5 sm:py-2">
+                            <Pulse className="h-3 w-1/3 rounded sm:h-3.5" />
+                            <Pulse className="h-3 w-1/4 rounded sm:h-3.5" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Bottom action bar */}
+            <Pulse className="mt-4 h-14 rounded-xl sm:mt-6 sm:h-16 sm:rounded-2xl" />
         </div>
+    );
+}
+
+function Pulse({ className = "" }) {
+    return (
+        <motion.div
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 1.4, repeat: Infinity }}
+            className={`bg-slate-100 ${className}`}
+        />
     );
 }
 
