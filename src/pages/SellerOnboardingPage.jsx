@@ -12,7 +12,7 @@ import {
 } from "../utils/api.js";
 import { lookupPincode } from "../utils/pincode.js";
 import { extractColorsFromImage } from "../utils/colorExtract.js";
-import { STEPS, BUSINESS_TYPES, EMPLOYEE_RANGES, WEEKDAYS, COUNTRIES, guessBusinessType } from "../components/seller/fieldConfigs.js";
+import { STEPS, BUSINESS_TYPES, EMPLOYEE_RANGES, WEEKDAYS, COUNTRIES, guessBusinessType, searchCountries } from "../components/seller/fieldConfigs.js";
 import { FONT_BODY } from "./ui.jsx";
 
 const STEP_ICONS = [Building2, Phone, MapPin, ShieldCheck, Settings2, Palette, ClipboardCheck];
