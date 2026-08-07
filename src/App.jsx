@@ -2,6 +2,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { RequireAuth, RequireGuest, RequireAdmin } from "./components/RouteGuards.jsx";
+import ScrollToTop from "./lib/ScrollToTop.jsx";
 import Layout from "./components/Layout.jsx";
 import LandingPage from "./pages/LandingPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
@@ -35,6 +36,8 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ScrollToTop />
+
         <Routes>
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<AuthPage />} />
