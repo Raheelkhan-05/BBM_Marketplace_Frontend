@@ -463,3 +463,61 @@ export async function fetchBrandFamily(brandName, { limit } = {}) {
 
   return data; // { brandName, totalMatches, totalProducts, categories }
 }
+
+// Append these to your existing utils/api.js — they follow the exact same
+// fetch/JSON pattern as the functions already in that file.
+
+// ---- seller self-publish: access + pickers ----
+
+export async function fetchSellerAccessStatus(token) {
+  const res = await fetch(`${API_BASE}/seller/catalog/access-status`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  return res.json();
+}
+
+export async function fetchApprovedCategories(q = "") {
+  const params = new URLSearchParams({ q });
+  const res = await fetch(`${API_BASE}/seller/catalog/categories?${params}`);
+  return res.json();
+}
+
+export async function fetchApprovedSubcategories(categoryId, q = "") {
+  const params = new URLSearchParams({ categoryId, q });
+  const res = await fetch(`${API_BASE}/seller/catalog/subcategories?${params}`);
+  return res.json();
+}
+
+export async function fetchApprovedProducts(subcategoryId, q = "") {
+  const params = new URLSearchParams({ subcategoryId, q });
+  const res = await fetch(`${API_BASE}/seller/catalog/products?${params}`);
+  return res.json();
+}
+
+export async function fetchProductSchema(productId) {
+  const res = await fetch(`${API_BASE}/seller/catalog/products/${productId}/schema`);
+  return res.json();
+}
+
+// ---- seller self-publish: listing CRUD ----
+
+export async function createSellerListing(token, payload) {
+  const res = await fetch(`${API_BASE}/seller/catalog/listings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function fetchMySellerListings(token, status) {
+  const params = new URLSearchParams(status ? { status } : {});
+  const res = await fetch(`${API_BASE}/seller/catalog/listings?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+export async function fetchListingFieldDefs() {
+  const res = await fetch(`${API_BASE}/seller/catalog/listing-fields`);
+  return res.json();
+}

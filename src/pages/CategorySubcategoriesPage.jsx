@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, SlidersHorizontal, ArrowUpDown, Box } from "lucide-react";
 import { searchCategories, searchSubcategories } from "../utils/api";
 import { resolveSearchRoute } from "../utils/searchResolve.js";
+import { Link } from "react-router-dom";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 
 /* ------------------------------------------------------------------
@@ -169,12 +170,14 @@ export default function CategorySubcategoriesPage() {
                     <ArrowLeft className="h-4 w-4" />
                 </button>
                 <div className="min-w-0">
-                    <h1
-                        className="truncate font-extrabold leading-tight tracking-[-0.01em]"
-                        style={{ color: C.ink, fontSize: "clamp(19px, 1.8vw, 27px)" }}
-                    >
-                        {category?.name || "Category"}
-                    </h1>
+                    <Link to="/categories" className="block">
+                        <h1
+                            className="truncate font-extrabold leading-tight tracking-[-0.01em] cursor-pointer"
+                            style={{ color: C.ink, fontSize: "clamp(19px, 1.8vw, 27px)" }}
+                        >
+                            {category?.name || "Category"}
+                        </h1>
+                    </Link>
                     <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em]" style={{ color: C.muted }}>
                         {subcategories.length} subcategories
                     </p>

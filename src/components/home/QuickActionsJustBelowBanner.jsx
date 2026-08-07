@@ -6,6 +6,7 @@ import {
     BadgePercent, Circle, TrendingUp, Truck, CreditCard, Plus,
     ScanLine, ClipboardList, Repeat, ShieldCheck, Lock, FileCheck, Clock
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 /* ------------------------------------------------------------------
    DESIGN NOTES — v3, mobile becomes an icon-grid (Paytm/GPay pattern)
@@ -59,6 +60,8 @@ const ICONS = {
 };
 
 function QuickActionsJustBelowBanner({ onOpenRfq }) {
+    const navigate = useNavigate();
+
     const purchaseActions = quickActions.filter((a) =>
         ["explore", "purchase-order", "price-list", "post-rfq"].includes(a.id)
     );
@@ -75,7 +78,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         return (
             <motion.button
                 key={a.id}
-                onClick={a.id === "req" ? onOpenRfq : undefined}
+                onClick={a.id === "add-product" ? () => navigate("/seller/sell") : a.id === "req" ? onOpenRfq : undefined}
                 initial={{ opacity: 0, y: 6 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-30px" }}
@@ -116,7 +119,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         return (
             <motion.button
                 key={a.id}
-                onClick={a.id === "req" ? onOpenRfq : undefined}
+                onClick={a.id === "add-product" ? () => navigate("/seller/sell") : a.id === "req" ? onOpenRfq : undefined}
                 initial={{ opacity: 0, y: 8 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-40px" }}
