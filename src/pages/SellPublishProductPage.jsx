@@ -43,7 +43,13 @@ export default function SellPublishProductPage() {
     const { token } = useAuth();
     const navigate = useNavigate();
 
-    const [access, setAccess] = useState(null); // { canPublish, reason, sellerStatus } | null while loading
+    // Access is checked lazily — only when the seller actually hits
+    // Publish — rather than gating the whole page up front. `access` is
+    // just a best-effort cache so we don't always need a fresh network
+    // round-trip at publish time; `gate` is what actually blocks the UI,
+    // and it's only ever set from handlePublish (or a 401/403 response).
+    const [access, setAccess] = useState(undefined); // undefined = not fetched yet, null = fetch in flight
+    const [gate, setGate] = useState(null); // { canPublish: false, reason, sellerStatus } | null
     const [stepIndex, setStepIndex] = useState(0);
     const [path, setPath] = useState(null); // { category, subcategory, product }
     const [schema, setSchema] = useState({ specSchema: [], hasSpecSchema: false });
@@ -53,7 +59,11 @@ export default function SellPublishProductPage() {
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(null);
 
+    // Best-effort prefetch in the background — NOT used to gate rendering.
+    // If it's still loading (or hasn't run) by the time the seller clicks
+    // Publish, handlePublish fetches a fresh one itself before deciding.
     useEffect(() => {
+        if (!token) return;
         (async () => {
             const res = await fetchSellerAccessStatus(token);
             setAccess(res?.success ? res : { canPublish: false, reason: "NOT_AUTHENTICATED" });
@@ -97,6 +107,21 @@ export default function SellPublishProductPage() {
         ];
         if (missing.length) return setError(`Please fill: ${[...new Set(missing)].join(", ")}`);
 
+        // Auth/seller-approval check happens right here, not on page load.
+        if (!token) {
+            setGate({ canPublish: false, reason: "NOT_AUTHENTICATED" });
+            return;
+        }
+        let currentAccess = access;
+        if (!currentAccess || currentAccess === null) {
+            currentAccess = await fetchSellerAccessStatus(token);
+            setAccess(currentAccess?.success ? currentAccess : { canPublish: false, reason: "NOT_AUTHENTICATED" });
+        }
+        if (!currentAccess?.canPublish) {
+            setGate(currentAccess);
+            return;
+        }
+
         setSubmitting(true);
         try {
             const res = await createSellerListing(token, {
@@ -104,7 +129,15 @@ export default function SellPublishProductPage() {
                 data: form.data,
                 specifications: form.specifications,
             });
-            if (!res?.success) return setError(res?.message || "Couldn't save. Please check the required fields.");
+            if (!res?.success) {
+                // Backend enforces this too (requireAuth + requireApprovedSeller) —
+                // if our cached `access` was stale, fall back to the server's answer.
+                if (["NOT_AUTHENTICATED", "SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"].includes(res?.code)) {
+                    setGate({ canPublish: false, reason: res.code, sellerStatus: res.sellerStatus });
+                    return;
+                }
+                return setError(res?.message || "Couldn't save. Please check the required fields.");
+            }
             setSubmitted(res);
         } finally {
             setSubmitting(false);
@@ -120,10 +153,7 @@ export default function SellPublishProductPage() {
         return res.url;
     };
 
-    if (access === null) {
-        return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#047084]" /></div>;
-    }
-    if (!access.canPublish) return <AccessGate access={access} navigate={navigate} />;
+    if (gate) return <AccessGate access={gate} navigate={navigate} />;
     if (submitted) return <PublishedScreen />;
 
     const progress = ((stepIndex + 1) / STEPS.length) * 100;
