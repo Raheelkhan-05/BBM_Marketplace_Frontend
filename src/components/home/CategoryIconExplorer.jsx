@@ -76,7 +76,7 @@ function IconTile({ image, name, idx, count, onClick }) {
                 )}
             </span>
             <p
-                className="line-clamp-2 w-full text-center text-[11.5px] font-bold leading-tight tracking-[-0.005em]"
+                className="line-clamp-2 w-full text-center text-[11px] sm:text-[13.5px] font-bold leading-tight tracking-[0.01em]"
                 style={{ color: C.ink }}
             >
                 {name}
@@ -133,7 +133,7 @@ function TileRail({ children }) {
                 ref={scrollRef}
                 className="overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
-                <div className="grid snap-x snap-proximity grid-flow-col grid-rows-2 gap-x-3 gap-y-5 [grid-auto-columns:calc((100%-3*0.75rem)/4)] sm:[grid-auto-columns:calc((100%-4*0.75rem)/5)]">
+                <div className="grid snap-x snap-proximity grid-flow-col grid-rows-2 gap-x-3 gap-y-5 [grid-auto-columns:calc((100%-3*0.75rem)/4)] sm:[grid-auto-columns:calc((100%-4*0.75rem)/7)]">
                     {children}
                 </div>
             </div>
@@ -161,9 +161,9 @@ function TileRailSkeleton() {
     return (
         <div className="overflow-hidden pb-1">
             <div
-                className="grid grid-flow-col grid-rows-2 gap-x-3 gap-y-5 [grid-auto-columns:calc((100%-3*0.75rem)/4)] sm:[grid-auto-columns:calc((100%-4*0.75rem)/5)]"
+                className="grid grid-flow-col grid-rows-2 gap-x-3 gap-y-5 [grid-auto-columns:calc((100%-3*0.75rem)/4)] sm:[grid-auto-columns:calc((100%-4*0.75rem)/7)]"
             >
-                {Array.from({ length: 8 }).map((_, i) => (
+                {Array.from({ length: 16 }).map((_, i) => (
                     <div key={i} className="flex flex-col items-center gap-2">
                         <div className="aspect-square w-full animate-pulse rounded-2xl" style={{ background: C.hairSoft }} />
                         <div className="h-2.5 w-3/4 animate-pulse rounded-full" style={{ background: C.hairSoft }} />

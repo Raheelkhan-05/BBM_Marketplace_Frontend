@@ -71,7 +71,7 @@ function IconTile({ image, name, idx, count, onClick }) {
                 )}
             </span>
             <p
-                className="line-clamp-2 w-full text-center text-[11.5px] font-bold leading-tight tracking-[-0.005em]"
+                className="line-clamp-2 w-full text-center text-[11px] sm:text-[13.5px] font-bold leading-tight tracking-[0.01em]"
                 style={{ color: C.ink }}
             >
                 {name}
