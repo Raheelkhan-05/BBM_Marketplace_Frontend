@@ -70,13 +70,8 @@ export default function ProductDetailPage() {
                             <ChevronRight className="h-3 w-3 text-slate-300 sm:h-3.5 sm:w-3.5" />
                             <button
                                 onClick={() =>
-                                    navigate("/browse", {
-                                        state: {
-                                            imageResult: {
-                                                resolved: true,
-                                                stack: [{ id: category.id, name: category.name }],
-                                            },
-                                        },
+                                    navigate(`/category/${category.slug || category.id}/subcategories`, {
+                                        state: { category },
                                     })
                                 }
                                 className="text-[#047084] hover:underline"
@@ -85,6 +80,7 @@ export default function ProductDetailPage() {
                             </button>
                         </>
                     )}
+
                     {subcategory && (
                         <>
                             <ChevronRight className="h-3 w-3 text-slate-300 sm:h-3.5 sm:w-3.5" />

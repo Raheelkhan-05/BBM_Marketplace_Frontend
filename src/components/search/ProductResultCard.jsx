@@ -1,6 +1,7 @@
 //src/components/search/ProductResultCard.jsx
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Heart, ShieldCheck, BadgeCheck, Truck, Info, Package, Lock, CheckCircle2, Users } from "lucide-react";
 import Sparkline from "./Sparkline";
@@ -24,14 +25,21 @@ export default function ProductResultCard({ product }) {
   const [activePack, setActivePack] = useState();
   const { pricing } = product;
   const { isLoggedIn } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <motion.div
+      onClick={() => navigate(`/product/${product.id}`)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") navigate(`/product/${product.id}`);
+      }}
       initial={{ opacity: 0, y: 14 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.1 }}
       transition={{ duration: 0.4 }}
-      className="overflow-hidden border-b border-slate-100 bg-white sm:rounded-2xl sm:border sm:border-slate-100 sm:shadow-[0_16px_40px_-24px_rgba(4,112,132,0.3)]"
+      className="cursor-pointer overflow-hidden border-b border-slate-100 bg-white transition-colors hover:bg-slate-50/60 sm:rounded-2xl sm:border sm:border-slate-100 sm:shadow-[0_16px_40px_-24px_rgba(4,112,132,0.3)]"
     >
 
       {/* Product header block */}
@@ -49,7 +57,10 @@ export default function ProductResultCard({ product }) {
               {product.badge}
             </span>
             <button
-              onClick={() => setLiked((v) => !v)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setLiked((v) => !v);
+              }}
               aria-label="Save product"
               className="shrink-0 text-slate-300 transition-colors hover:text-[#d2462b]"
             >
@@ -82,7 +93,10 @@ export default function ProductResultCard({ product }) {
             {product.packSizes.map((size, i) => (
               <button
                 key={size}
-                onClick={() => setActivePack(i)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePack(i);
+                }}
                 className={`rounded-lg border px-2.5 py-1 text-[11.5px] font-semibold transition-colors ${i === activePack
                   ? "border-[#047084] bg-[#047084]/10 text-[#047084]"
                   : "border-slate-200 text-slate-600 hover:border-[#7fb3bd]"
@@ -163,6 +177,7 @@ export default function ProductResultCard({ product }) {
           </div>
 
           <button
+            onClick={(e) => e.stopPropagation()}
             className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-lg py-2 text-[13px] font-bold text-white shadow-[0_10px_22px_-8px_rgba(199,31,17,0.5)] transition-transform hover:-translate-y-0.5"
             style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
           >

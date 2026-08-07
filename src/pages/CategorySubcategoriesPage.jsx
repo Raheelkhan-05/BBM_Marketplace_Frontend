@@ -76,7 +76,7 @@ function IconTile({ image, name, idx, count, onClick }) {
                 )}
             </span>
             <p
-                className="line-clamp-2 w-full text-center text-[11px] sm:text-[13.5px] font-bold leading-tight tracking-[0.01em]"
+                className="line-clamp-2 w-full text-center text-[11.5px] font-bold leading-tight tracking-[-0.005em]"
                 style={{ color: C.ink }}
             >
                 {name}
@@ -152,11 +152,12 @@ export default function CategorySubcategoriesPage() {
     // exact route when possible instead of always bouncing through /browse.
     const handleSearchSubmit = async (trimmedQuery) => {
         const route = await resolveSearchRoute(trimmedQuery);
-        navigate(route || `/browse?q=${encodeURIComponent(trimmedQuery)}`);
+        if (route) navigate(route.pathname, { state: route.state });
+        else navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
     };
 
     return (
-        <div className="mx-auto max-w-[1400px] px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
+        <div className="mx-auto max-w-7xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
             {/* header: back + category name */}
             <div className="mt-3 flex items-center gap-3">
                 <button
@@ -219,7 +220,19 @@ export default function CategorySubcategoriesPage() {
                                 name={sub.name}
                                 idx={i}
                                 count={sub.productCount}
-                                onClick={() => navigate(`/subcategory/${sub.slug || sub.id}`)}
+                                onClick={() =>
+                                    navigate("/browse", {
+                                        state: {
+                                            imageResult: {
+                                                resolved: true,
+                                                stack: [
+                                                    category && { id: category.id, name: category.name },
+                                                    { id: sub.id, name: sub.name },
+                                                ].filter(Boolean),
+                                            },
+                                        },
+                                    })
+                                }
                             />
                         ))}
                     </TileGrid>

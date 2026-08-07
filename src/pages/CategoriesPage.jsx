@@ -71,7 +71,7 @@ function IconTile({ image, name, idx, count, onClick }) {
                 )}
             </span>
             <p
-                className="line-clamp-2 w-full text-center text-[11px] sm:text-[13.5px] font-bold leading-tight tracking-[0.01em]"
+                className="line-clamp-2 w-full text-center text-[11.5px] font-bold leading-tight tracking-[-0.005em]"
                 style={{ color: C.ink }}
             >
                 {name}
@@ -130,7 +130,8 @@ export default function CategoriesPage() {
 
     const handleSearchSubmit = async (trimmedQuery) => {
         const route = await resolveSearchRoute(trimmedQuery);
-        navigate(route || `/browse?q=${encodeURIComponent(trimmedQuery)}`);
+        if (route) navigate(route.pathname, { state: route.state });
+        else navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
     };
 
     const openCategory = (cat) => {

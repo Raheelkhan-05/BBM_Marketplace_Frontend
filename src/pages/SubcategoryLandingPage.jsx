@@ -162,7 +162,7 @@ function HeroBanner({ subcategory, category, stats, navigate, goBrowseAll }) {
                                 <li><ChevronRight className="h-3 w-3 text-white/30" /></li>
                                 <li>
                                     <button
-                                        onClick={() => navigate(`/category/${category.slug || category.id}`)}
+                                        onClick={() => navigate(`/category/${category.slug || category.id}/subcategories`, { state: { category } })}
                                         className="rounded transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/50"
                                     >
                                         {category.name}

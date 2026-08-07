@@ -79,7 +79,7 @@ function AmazonSearchHeader() {
   const handleSubmit = async (trimmedQuery) => {
     const route = await resolveSearchRoute(trimmedQuery);
     if (route) {
-      navigate(route);
+      navigate(route.pathname, { state: route.state });
       return;
     }
     navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);

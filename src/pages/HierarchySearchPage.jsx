@@ -167,10 +167,10 @@ export default function HierarchySearchPage() {
         const trimmed = term.trim();
         const route = await resolveSearchRoute(trimmed);
         if (route) {
-            navigate(route);
+            navigate(route.pathname, { state: route.state });
             return;
         }
-        setQuery(trimmed); // no exact match — fall back to in-page drill-down/AI-resolve flow
+        setQuery(trimmed);
     };
 
     const isFirstRun = useRef(true);
@@ -221,10 +221,10 @@ export default function HierarchySearchPage() {
         selectItem(item);
     };
 
-    // NEW: takes a category item straight to the marketing/orientation
-    // landing page (/category/:slug) instead of drilling into subcategories.
+    // Takes a category item straight to the new icon-tile subcategory
+    // browser instead of the old marketing/orientation landing page.
     const handleExploreCategory = (item) => {
-        navigate(`/category/${item.slug || item.id}`);
+        navigate(`/category/${item.slug || item.id}/subcategories`, { state: { category: item } });
     };
 
     const showingSuggestions = !loading && items.length === 0 && suggestions.length > 0;

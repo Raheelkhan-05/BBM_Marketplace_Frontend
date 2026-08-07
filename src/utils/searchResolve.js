@@ -1,20 +1,52 @@
 // utils/searchResolve.js
 import { searchHierarchyLevel, searchSmart } from "./api";
 
+// Returns { pathname, state } | null instead of a plain URL string now —
+// subcategory and category matches need router state (a ready-made
+// hierarchy stack) to land in the right place, not just a path.
 function routeForStackTail(stack) {
     const last = stack?.[stack.length - 1];
     if (!last) return null;
-    if (last.level === "brand") return `/brand/${last.slug || last.id}`;
-    if (last.level === "product") return `/product/${last.id}`;
-    if (last.level === "subcategory") return `/subcategory/${last.slug || last.id}`;
+
+    if (last.level === "brand") {
+        return { pathname: `/brand/${last.slug || last.id}`, state: null };
+    }
+
+    if (last.level === "product") {
+        return { pathname: `/product/${last.id}`, state: null };
+    }
+
+    // Subcategory match: instead of the old SubcategoryLandingPage, land
+    // directly on HierarchySearchPage's product-level drill-down for this
+    // subcategory — same pattern used everywhere else in the app (tile
+    // grids, breadcrumbs). `stack` here is the full category->subcategory
+    // path already returned by the backend.
+    if (last.level === "subcategory") {
+        return {
+            pathname: "/browse",
+            state: {
+                imageResult: {
+                    resolved: true,
+                    stack: stack.map((s) => ({ id: s.id, name: s.name })),
+                },
+            },
+        };
+    }
+
+    // Category match: land on the new icon-tile subcategory browser
+    // instead of the old marketing/orientation CategoryLandingPage.
+    if (last.level === "category") {
+        return {
+            pathname: `/category/${last.slug || last.id}/subcategories`,
+            state: { category: { id: last.id, name: last.name, slug: last.slug } },
+        };
+    }
+
     return null;
 }
 
-// NEW: does the term match a known brand FAMILY name (e.g. "Castrol"),
-// as opposed to one specific brand-item SKU? smartSearch's `suggestions.brands`
-// already carries `brandName` on every row, so we reuse that instead of
-// firing a second network call — if any suggestion's brandName matches the
-// typed term, it's a real brand family worth its own page.
+// does the term match a known brand FAMILY name (e.g. "Castrol"), as
+// opposed to one specific brand-item SKU?
 function findBrandFamilyMatch(smart, term) {
     const brands = smart?.suggestions?.brands || [];
     const lower = term.trim().toLowerCase();
@@ -34,13 +66,9 @@ export async function resolveSearchRoute(trimmedQuery) {
         if (trimmedQuery.length >= 2) {
             const smart = await searchSmart(trimmedQuery, 5);
 
-            // Brand-family match takes priority over a single exact
-            // brand-item match — searching "Castrol" should land on the
-            // family page (all products carrying that brand), not one
-            // arbitrarily-chosen SKU that happens to be named "Castrol".
             const familyBrandName = findBrandFamilyMatch(smart, trimmedQuery);
             if (familyBrandName) {
-                return `/brand-family/${encodeURIComponent(familyBrandName)}`;
+                return { pathname: `/brand-family/${encodeURIComponent(familyBrandName)}`, state: null };
             }
 
             const exactStack = smart?.success ? smart.exact?.stack : null;
