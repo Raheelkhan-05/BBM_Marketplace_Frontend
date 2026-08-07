@@ -1,15 +1,10 @@
 //landingPage.jsx
-
-import Header from "../components/Header.jsx";
-import Footer from "../components/Footer.jsx";
 import HeroSection from "../components/landing/HeroSection.jsx";
 import SearchBar from "../components/landing/SearchBar.jsx";
 import InfoBanner from "../components/landing/InfoBanner.jsx";
 import ShowcaseHub from "../components/landing/ShowcaseHub.jsx";
 import CTASection from "../components/landing/CTASection.jsx";
-// import StatsSection from "../components/landing/StatsSection.jsx";
 import WhyBBMSection from "../components/landing/WhyBBMSection.jsx";
-import BackgroundAmbience from "../components/landing/BackgroundAmbience.jsx";
 
 export default function LandingPage() {
   return (

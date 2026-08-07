@@ -34,6 +34,9 @@ const C = {
 };
 
 function WelcomeBanner() {
+    const { isLoggedIn } = useAuth();
+    if (!isLoggedIn) return null;
+
     const { profile } = useAuth();
     const firstName = profile?.name?.trim().split(" ")[0] || "Procurement Director";
 

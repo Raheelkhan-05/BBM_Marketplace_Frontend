@@ -8,7 +8,8 @@ import StartSellingBanner from "../components/home/StartSellingBanner.jsx";
 import Hero16by9Banner from "../components/home/Hero16by9Banner.jsx";
 import QuickActionsJustBelowBanner from "../components/home/QuickActionsJustBelowBanner.jsx";
 import TrustStripLogos from "../components/home/TrustStripLogos.jsx";
-import TopCategoriesAccordion from "../components/home/TopCategoriesAccordion.jsx";
+// import TopCategoriesAccordion from "../components/home/TopCategoriesAccordion.jsx";
+import CategoryIconExplorer from "../components/home/CategoryIconExplorer.jsx";
 import WelcomeBanner from "../components/home/WelcomeBanner.jsx";
 import TrustStrip from "../components/home/TrustStrip.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
@@ -49,7 +50,8 @@ export default function HomePage() {
           <TrustStripLogos />
 
           {/* Industrial Category Department Explorer */}
-          <TopCategoriesAccordion />
+          {/* <TopCategoriesAccordion /> */}
+          <CategoryIconExplorer />
 
           {/* Signature 4-Point Trust & Guarantee Strip */}
           <TrustStrip />

@@ -247,7 +247,7 @@ export default function MarketplaceSearchBar({
             >
                 <div className="flex h-[60px] lg:h-[62px] xl:h-[64px] items-center rounded-full bg-white px-3 pl-5 lg:px-5 lg:pl-7">
                     <div className="flex shrink-0 items-center pr-3 lg:pr-4">
-                        <Link to="/">
+                        <Link to="/home">
                             <img src="/Logo.png" alt="BBM" className="h-6 w-6 lg:h-8 lg:w-8 object-contain" />
                         </Link>
                     </div>
@@ -353,7 +353,7 @@ export default function MarketplaceSearchBar({
                     <input ref={pdfInputRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfFileChange} />
                     <button
                         type="button"
-                        onClick={() => pdfInputRef.current?.click()}
+                        // onClick={() => pdfInputRef.current?.click()}
                         className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0 lg:px-2 lg:pr-1"
                     >
                         <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#F1EEFF]">

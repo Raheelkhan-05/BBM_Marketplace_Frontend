@@ -28,6 +28,8 @@ import AdminCatalogDetailPage from "./pages/admin/AdminCatalogDetailPage.jsx";
 import BrandDetailPage from "./pages/BrandDetailPage.jsx";
 import BrandFamilyPage from "./pages/BrandFamilyPage.jsx";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy.jsx";
+import CategorySubcategoriesPage from "./pages/CategorySubcategoriesPage";
+import CategoriesPage from "./pages/CategoriesPage.jsx";
 
 function App() {
   return (
@@ -42,7 +44,10 @@ function App() {
             <Route path="/" element={<RequireGuest><LandingPage /></RequireGuest>} />
 
             <Route path="/search" element={<SearchResultsPage />} />
-            <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><HomePage /></RequireAuth>} />
+            <Route path="/home" element={<HomePage />} />
+            <Route path="/category/:idOrSlug/subcategories" element={<CategorySubcategoriesPage />} />
+            <Route path="/categories" element={<CategoriesPage />} />
+
             {/* <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><NewHomePage /></RequireAuth>} /> */}
             <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
             <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
