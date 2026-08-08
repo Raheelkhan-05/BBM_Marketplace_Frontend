@@ -7,6 +7,7 @@ import HomePageSkeleton from "../components/skeletons/HomePageSkeleton.jsx";
 import StartSellingBanner from "../components/home/StartSellingBanner.jsx";
 import Hero16by9Banner from "../components/home/Hero16by9Banner.jsx";
 import QuickActionsJustBelowBanner from "../components/home/QuickActionsJustBelowBanner.jsx";
+import SellerQuickManageListings from "../components/home/SellerQuickManageListings.jsx";
 import TrustStripLogos from "../components/home/TrustStripLogos.jsx";
 // import TopCategoriesAccordion from "../components/home/TopCategoriesAccordion.jsx";
 import CategoryIconExplorer from "../components/home/CategoryIconExplorer.jsx";
@@ -46,6 +47,12 @@ export default function HomePage() {
 
           {/* Quick Action Bar JUST BELOW THE HERO BANNER (8 Items in 2x4 Grid) */}
           <QuickActionsJustBelowBanner onOpenRfq={() => setIsRfqOpen(true)} />
+
+          {/* Approved sellers only: quick price/MOQ/lead-time edits + delete,
+              right from the home page. Renders nothing for buyers or
+              not-yet-approved sellers, and nothing if the seller has no
+              live listings yet. */}
+          <SellerQuickManageListings />
 
           <TrustStripLogos />
 
