@@ -1,20 +1,22 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, ChevronRight, Tag, Sparkles, Plus, Folder } from "lucide-react";
+import { Search, ChevronRight, Tag, Sparkles, Plus, Folder, Pencil, Trash2, FileSpreadsheet, Layers } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { adminListCatalog } from "../../utils/api.js";
+import { adminListCatalog, adminDeleteCatalogEntry } from "../../utils/api.js";
 import CreateSimpleCatalogModal from "../../components/CreateSimpleCatalogModal.jsx";
+import BrandItemModal from "../../components/BrandItemModal.jsx";
+import ExcelUploadModal from "../../components/ExcelUploadModal.jsx";
+import ImageLightbox from "../../components/ImageLightbox.jsx";
 
-// Drill-down: Category -> Subcategory -> Generic Product. `path` holds the
-// crumbs picked so far; the level currently being browsed is derived from
-// its length. Each rung is admin-only (name + image).
-// NOTE: review-status tabs/badges removed — catalog is shown flat, no
-// pending/approved/rejected filtering in this view anymore.
-const LEVEL_BY_DEPTH = ["category", "subcategory", "generic_product"];
-const LEVEL_LABEL = { category: "Categories", subcategory: "Subcategories", generic_product: "Generic Products" };
-const CHILD_NOUN = { category: "subcategory", subcategory: "generic product" };
-const ADD_LABEL = { category: "category", subcategory: "subcategory", generic_product: "generic product" };
+// Drill-down: Category -> Subcategory -> Generic Product -> Brand Item.
+// `path` holds the crumbs picked so far; the level currently being
+// browsed is derived from its length. brand_item is the new leaf level.
+const LEVEL_BY_DEPTH = ["category", "subcategory", "generic_product", "brand_item"];
+const LEVEL_LABEL = { category: "Categories", subcategory: "Subcategories", generic_product: "Generic Products", brand_item: "Brand Items" };
+const CHILD_NOUN = { category: "subcategory", subcategory: "generic product", generic_product: "brand item" };
+const ADD_LABEL = { category: "category", subcategory: "subcategory", generic_product: "generic product", brand_item: "brand item" };
+const BULK_SUPPORTED = new Set(["category", "subcategory", "generic_product", "brand_item"]);
 
 function SkeletonRow() {
     return (
@@ -36,6 +38,9 @@ export default function AdminCatalogReviewPage() {
     const [entries, setEntries] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showCreate, setShowCreate] = useState(false);
+    const [showExcel, setShowExcel] = useState(false);
+    const [editEntry, setEditEntry] = useState(null);
+    const [lightboxSrc, setLightboxSrc] = useState(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     const depth = path.length;
@@ -46,7 +51,6 @@ export default function AdminCatalogReviewPage() {
         if (!token || !level) return;
         let active = true;
         setLoading(true);
-        // status: "all" — no more pending/approved/rejected filtering in this view
         adminListCatalog(token, { level, status: "all", q, parentId: parent?.id }).then((res) => {
             if (active && res?.success) setEntries(res.entries);
             if (active) setLoading(false);
@@ -62,15 +66,19 @@ export default function AdminCatalogReviewPage() {
         setPath((p) => p.slice(0, i + 1));
         setQ("");
     }
-    function handleCreated() {
-        setShowCreate(false);
-        setRefreshKey((k) => k + 1);
+    function refresh() { setRefreshKey((k) => k + 1); }
+
+    async function handleDelete(entry) {
+        if (!window.confirm(`Delete "${entry.name}"? This can't be undone.`)) return;
+        const res = await adminDeleteCatalogEntry(token, level, entry.id);
+        if (!res?.success) return alert(res?.message || "Couldn't delete that.");
+        refresh();
     }
 
     if (!level) return null;
 
     return (
-        <div className="mx-auto max-w-5xl min-h-screen px-4 pb-24 pt-6 sm:px-6">
+        <div className="mx-auto max-w-5xl px-4 pb-24 pt-6 sm:px-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-[20px] font-extrabold text-slate-900 sm:text-[22px]">Catalog</h1>
@@ -85,13 +93,19 @@ export default function AdminCatalogReviewPage() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2.5 sm:shrink-0">
+                <div className="flex flex-wrap items-center gap-2.5">
                     <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-sm shadow-slate-100 sm:flex-none">
                         <Search className="h-4 w-4 shrink-0 text-slate-400" />
-                        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${LEVEL_LABEL[level].toLowerCase()}…`} className="w-full bg-transparent text-[13px] font-medium focus:outline-none sm:w-52" />
+                        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${LEVEL_LABEL[level].toLowerCase()}…`} className="w-full bg-transparent text-[13px] font-medium focus:outline-none sm:w-48" />
                     </div>
+                    {BULK_SUPPORTED.has(level) && (
+                        <button onClick={() => setShowExcel(true)}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-[13px] font-bold text-slate-600 hover:bg-slate-50">
+                            <FileSpreadsheet className="h-4 w-4" /> Bulk upload
+                        </button>
+                    )}
                     <button onClick={() => setShowCreate(true)}
-                        className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-[#047084] px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-[#047084]/20 transition-transform hover:scale-[1.02] sm:inline-flex">
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-[#047084] px-4 py-2.5 text-[13px] font-bold text-white shadow-sm shadow-[#047084]/20 transition-transform hover:scale-[1.02]">
                         <Plus className="h-4 w-4" /> Add {ADD_LABEL[level]}
                     </button>
                 </div>
@@ -111,27 +125,69 @@ export default function AdminCatalogReviewPage() {
                     </div>
                 )}
                 <AnimatePresence initial={false}>
-                    {!loading && entries.map((e) => (
-                        <motion.button key={e.id}
-                            onClick={() => (level === "generic_product" ? navigate(`/admin/catalog/generic_product/${e.id}`) : drillInto(e))}
-                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            whileHover={{ backgroundColor: "#f8fafc" }}
-                            className="flex w-full items-center gap-3.5 px-4 py-3.5 text-left">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-100">
-                                {e.image ? <img src={e.image} alt="" className="h-full w-full object-cover" /> : <Tag className="h-5 w-5 text-slate-300" />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5">
-                                    <p className="truncate text-[14px] font-bold text-slate-900">{e.name}</p>
-                                    {e.is_ai_generated && <Sparkles className="h-3 w-3 shrink-0 text-[#047084]" />}
-                                </div>
-                                {level !== "generic_product" && (
-                                    <p className="text-[12px] font-medium text-slate-400">Tap to open {CHILD_NOUN[level]} list</p>
+                    {!loading && entries.map((e) => {
+                        const isLeaf = level === "brand_item";
+                        return (
+                            <motion.div key={e.id}
+                                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                className="group flex w-full items-center gap-3.5 px-4 py-3.5 hover:bg-slate-50">
+                                <button
+                                    onClick={(ev) => { ev.stopPropagation(); if (e.image) setLightboxSrc(e.image); }}
+                                    className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-100"
+                                >
+                                    {e.image ? <img src={e.image} alt="" className="h-full w-full object-cover" /> : <Tag className="h-5 w-5 text-slate-300" />}
+                                </button>
+
+                                <button
+                                    onClick={(ev) => {
+                                        if (level === "generic_product") {
+                                            ev.stopPropagation();
+                                            setPath((p) => [
+                                                ...p,
+                                                { level, id: e.id, name: e.name },
+                                            ]);
+                                        } else if (!isLeaf) {
+                                            drillInto(e);
+                                        } else {
+                                            setEditEntry(e);
+                                        }
+                                    }}
+                                    className="min-w-0 flex-1 text-left"
+                                >
+
+                                    <div className="flex items-center gap-1.5">
+                                        <p className="truncate text-[14px] font-bold text-slate-900">{e.name}</p>
+                                        {e.is_ai_generated && <Sparkles className="h-3 w-3 shrink-0 text-[#047084]" />}
+                                    </div>
+                                    {level === "generic_product" && <p className="text-[12px] font-medium text-slate-400">Tap to open details</p>}
+                                    {level !== "generic_product" && !isLeaf && <p className="text-[12px] font-medium text-slate-400">Tap to open {CHILD_NOUN[level]} list</p>}
+                                    {isLeaf && <p className="text-[12px] font-medium text-slate-400">{e.brand_name} · ₹{e.price} · MOQ {e.moq} {e.unit}</p>}
+                                </button>
+
+                                {level === "generic_product" && (
+                                    <button
+                                        onClick={(ev) => { ev.stopPropagation(); setPath((p) => [...p, { level, id: e.id, name: e.name }]); }}
+                                        className="hidden shrink-0 items-center gap-1 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-100 sm:inline-flex"
+                                    >
+                                        <Layers className="h-3 w-3" /> Brand items
+                                    </button>
                                 )}
-                            </div>
-                            <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-                        </motion.button>
-                    ))}
+
+                                <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                    <button onClick={(ev) => { ev.stopPropagation(); setEditEntry(e); }}
+                                        className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Edit">
+                                        <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button onClick={(ev) => { ev.stopPropagation(); handleDelete(e); }}
+                                        className="rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-[#c71f11]" aria-label="Delete">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+
+                                {!isLeaf && level !== "generic_product" && <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />}
+                            </motion.div>
+                        );
+                    })}
                 </AnimatePresence>
             </div>
 
@@ -141,14 +197,42 @@ export default function AdminCatalogReviewPage() {
                 <Plus className="h-6 w-6" />
             </motion.button>
 
-            <CreateSimpleCatalogModal
+            {
+                level === "brand_item" ? (
+                    <BrandItemModal
+                        token={token}
+                        isOpen={showCreate || !!editEntry}
+                        onClose={() => { setShowCreate(false); setEditEntry(null); }}
+                        parentId={parent?.id}
+                        editEntry={editEntry}
+                        onCreated={refresh}
+                        onUpdated={refresh}
+                    />
+                ) : (
+                    <CreateSimpleCatalogModal
+                        token={token}
+                        isOpen={showCreate || !!editEntry}
+                        onClose={() => { setShowCreate(false); setEditEntry(null); }}
+                        level={level}
+                        parentId={parent?.id}
+                        editEntry={editEntry}
+                        onCreated={refresh}
+                        onUpdated={refresh}
+                    />
+                )
+            }
+
+            <ExcelUploadModal
                 token={token}
-                isOpen={showCreate}
-                onClose={() => setShowCreate(false)}
+                isOpen={showExcel}
+                onClose={() => setShowExcel(false)}
                 level={level}
+                label={LEVEL_LABEL[level]}
                 parentId={parent?.id}
-                onCreated={handleCreated}
+                onDone={refresh}
             />
-        </div>
+
+            {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />}
+        </div >
     );
 }

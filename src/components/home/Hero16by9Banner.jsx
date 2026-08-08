@@ -131,7 +131,7 @@ function Hero16by9Banner({ onOpenRfq }) {
                         initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.55, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                        onClick={() => navigate('/browse')}
+                        onClick={() => navigate('/browse-search')}
                         className="group mt-6 inline-flex w-fit items-center gap-2 rounded-full border bg-white py-1.5 pl-3 pr-2.5 shadow-[0_1px_2px_rgba(11,17,22,0.04)] transition-shadow duration-200 hover:shadow-[0_4px_16px_rgba(11,17,22,0.08)] sm:mt-8"
                         style={{ borderColor: C.hair }}
                     >

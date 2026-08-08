@@ -44,7 +44,7 @@ export default function AdminSellerSubmissionsPage() {
     }
 
     return (
-        <div className="mx-auto max-w-4xl px-4 pb-24 pt-6 sm:px-6">
+        <div className="mx-auto min-h-screen max-w-4xl px-4 pb-24 pt-6 sm:px-6">
             <h1 className="text-[20px] font-extrabold text-slate-900 sm:text-[22px]">Product Review Requests</h1>
             <p className="text-[12.5px] font-medium text-slate-400">Approve or reject what sellers have submitted</p>
 

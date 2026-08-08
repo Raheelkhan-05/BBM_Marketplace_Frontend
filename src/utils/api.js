@@ -546,3 +546,74 @@ export async function adminListCatalog(token, { level = "all", status = "pending
   const res = await fetch(`${API_BASE}/admin/catalog?${params}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();
 }
+
+export async function adminDeleteCatalogEntry(token, level, id) {
+  const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+
+export async function adminDownloadCatalogTemplate(token, level) {
+  const res = await fetch(`${API_BASE}/admin/catalog/${level}/excel-template`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Couldn't download the template.");
+  return res.blob();
+}
+
+export async function adminBulkUploadCatalog(token, level, file, parentId) {
+  const form = new FormData();
+  form.append("file", file);
+  if (parentId) form.append("parentId", parentId);
+  const res = await fetch(`${API_BASE}/admin/catalog/${level}/excel-upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  return res.json();
+}
+
+// ---- New admin-approved catalog hierarchy search ----
+// Category -> Subcategory -> Generic Product -> Brand Item -> Sellers.
+// Entirely separate endpoint namespace from the AI-resolver hierarchy
+// search above — existing functions are untouched.
+const CATALOG_SEARCH_BASE = `${API_BASE}/catalog-search`;
+
+async function getV2(path, params = {}) {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
+  );
+  const res = await fetch(`${CATALOG_SEARCH_BASE}${path}?${query}`);
+  return res.json();
+}
+
+export async function searchCatalogCategories(q = "", limit = 20) {
+  return getV2("/categories", { q, limit });
+}
+export async function searchCatalogSubcategories(categoryId, q = "", limit = 20) {
+  return getV2("/subcategories", { categoryId, q, limit });
+}
+export async function searchCatalogGenericProducts(subcategoryId, q = "", limit = 20) {
+  return getV2("/generic-products", { subcategoryId, q, limit });
+}
+export async function searchCatalogBrandItems(genericProductId, q = "", limit = 20) {
+  return getV2("/brand-items", { genericProductId, q, limit });
+}
+export async function searchCatalogSellers(brandItemId, q = "", limit = 20) {
+  return getV2("/sellers", { brandItemId, q, limit });
+}
+export async function searchCatalogHierarchyLevel(level, parentId, q = "", limit = 20) {
+  const params = { level, q, limit };
+  if (parentId) params.parentId = parentId;
+  return getV2("/hierarchy", params);
+}
+export async function searchCatalogSmart(q, limit = 5) {
+  return getV2("/smart", { q, limit });
+}
+export async function fetchCatalogAutocomplete(q, limit = 8, signal) {
+  const params = new URLSearchParams({ q, limit });
+  const res = await fetch(`${CATALOG_SEARCH_BASE}/autocomplete?${params}`, { signal });
+  return res.json();
+}

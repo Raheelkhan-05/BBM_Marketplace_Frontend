@@ -1,28 +1,38 @@
-import { useState } from "react";
-import { X, Loader2, Plus, ImagePlus } from "lucide-react";
-import { adminCreateCatalogEntry, adminUploadCatalogImage } from "../utils/api.js";
+import { useEffect, useState } from "react";
+import { X, Loader2, Plus, ImagePlus, Save } from "lucide-react";
+import { adminCreateCatalogEntry, adminUpdateCatalogEntry, adminUploadCatalogImage } from "../utils/api.js";
 
 const LEVEL_META = {
-    category: { title: "Add category", folder: "categories" },
-    subcategory: { title: "Add subcategory", folder: "subcategories" },
-    generic_product: { title: "Add generic product", folder: "generic-products" },
+    category: { title: "category", folder: "categories" },
+    subcategory: { title: "subcategory", folder: "subcategories" },
+    generic_product: { title: "generic product", folder: "generic-products" },
 };
 
-// Admin-only creation for the three simplified catalog rungs — name +
-// image only. Uploads to Supabase storage via
-// POST /api/admin/catalog/upload, then creates the row with that URL.
-export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level, parentId, onCreated }) {
+// Handles both create AND edit for the three simplified catalog rungs.
+// Pass `editEntry` to switch into edit mode (prefills + calls update instead of create).
+export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level, parentId, onCreated, onUpdated, editEntry }) {
+    const isEdit = !!editEntry;
     const [name, setName] = useState("");
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
+    useEffect(() => {
+        if (isOpen && editEntry) {
+            setName(editEntry.name || "");
+            setImagePreview(editEntry.image || null);
+            setImageFile(null);
+        } else if (isOpen) {
+            setName(""); setImagePreview(null); setImageFile(null);
+        }
+        setError("");
+    }, [isOpen, editEntry]);
+
     if (!isOpen || !level) return null;
     const meta = LEVEL_META[level];
 
-    function reset() { setName(""); setImageFile(null); setImagePreview(null); setError(""); }
-    function handleClose() { reset(); onClose(); }
+    function handleClose() { onClose(); }
 
     function handleFile(e) {
         const file = e.target.files?.[0];
@@ -35,22 +45,28 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
         setError("");
         const trimmed = name.trim();
         if (trimmed.length < 2) return setError("Name must be at least 2 characters.");
-        if (level !== "category" && !parentId) return setError("Missing parent — please reopen this from inside the list.");
+        if (!isEdit && level !== "category" && !parentId) return setError("Missing parent — please reopen this from inside the list.");
 
         setSaving(true);
         try {
-            let imageUrl = null;
+            let imageUrl = imagePreview && !imageFile ? editEntry?.image : null;
             if (imageFile) {
                 const up = await adminUploadCatalogImage(token, imageFile, meta.folder);
                 if (!up?.success) throw new Error(up?.message || "Image upload failed.");
                 imageUrl = up.url;
             }
-            const payload = { name: trimmed, image: imageUrl };
-            if (level !== "category") payload.parentId = parentId;
 
-            const res = await adminCreateCatalogEntry(token, level, payload);
-            if (!res?.success) throw new Error(res?.message || "Couldn't create that.");
-            onCreated?.(level, res.entry);
+            if (isEdit) {
+                const res = await adminUpdateCatalogEntry(token, level, editEntry.id, { name: trimmed, image: imageUrl });
+                if (!res?.success) throw new Error(res?.message || "Couldn't save changes.");
+                onUpdated?.(level, res.entry);
+            } else {
+                const payload = { name: trimmed, image: imageUrl };
+                if (level !== "category") payload.parentId = parentId;
+                const res = await adminCreateCatalogEntry(token, level, payload);
+                if (!res?.success) throw new Error(res?.message || "Couldn't create that.");
+                onCreated?.(level, res.entry);
+            }
             handleClose();
         } catch (e) {
             setError(e.message);
@@ -63,7 +79,7 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4" onClick={handleClose}>
             <div onClick={(e) => e.stopPropagation()} className="flex w-full flex-col rounded-t-2xl bg-white sm:max-w-sm sm:rounded-2xl">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-                    <h3 className="text-[16px] font-extrabold text-slate-900">{meta.title}</h3>
+                    <h3 className="text-[16px] font-extrabold text-slate-900">{isEdit ? `Edit ${meta.title}` : `Add ${meta.title}`}</h3>
                     <button onClick={handleClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"><X className="h-4.5 w-4.5" /></button>
                 </div>
                 <div className="flex flex-col gap-4 px-5 py-4">
@@ -85,8 +101,8 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
                     <button onClick={handleClose} className="rounded-lg px-3.5 py-2 text-[13px] font-bold text-slate-500">Cancel</button>
                     <button onClick={handleSubmit} disabled={saving}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-[#047084] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50">
-                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                        Create
+                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isEdit ? <Save className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                        {isEdit ? "Save" : "Create"}
                     </button>
                 </div>
             </div>

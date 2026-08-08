@@ -58,7 +58,7 @@ export default function BottomSearchBar() {
             navigate(route.pathname, { state: route.state });
             return;
         }
-        navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
+        navigate(`/browse-search?q=${encodeURIComponent(trimmedQuery)}`);
     };
 
     const handleSubmit = (trimmedQuery) => {

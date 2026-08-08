@@ -20,7 +20,8 @@ import AdminSellerDetailPage from "./pages/admin/AdminSellerDetailPage.jsx";
 import AdminManageAdminsPage from "./pages/admin/AdminManageAdminsPage.jsx";
 import ShopPage from "./pages/ShopPage.jsx";
 import ShopRoute from "./pages/ShopRoute.jsx";
-import HierarchySearchPage from "./pages/HierarchySearchPage.jsx";
+// import HierarchySearchPage from "./pages/HierarchySearchPage.jsx";
+import CatalogHierarchySearchPage from "./pages/CatalogHierarchySearchPage.jsx";
 import ProductDetailPage from "./pages/ProductDetailPage.jsx";
 import CategoryLandingPage from "./pages/CategoryLandingPage.jsx";
 import SubcategoryLandingPage from "./pages/SubcategoryLandingPage.jsx";
@@ -66,7 +67,8 @@ function App() {
             <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
             <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
             <Route path="/shop/:slug" element={<ShopRoute />} />
-            <Route path="/browse" element={<HierarchySearchPage />} />
+            {/* <Route path="/browse" element={<HierarchySearchPage />} /> */}
+            <Route path="/browse-search" element={<CatalogHierarchySearchPage />} />
             <Route path="/product/:id" element={<ProductDetailPage />} />
 
             <Route path="/admin/catalog" element={<RequireAdmin><AdminCatalogReviewPage /></RequireAdmin>} />
