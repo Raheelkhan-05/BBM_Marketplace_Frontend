@@ -24,6 +24,7 @@ export default function SellPublishProductPage() {
     const navigate = useNavigate();
 
     const [access, setAccess] = useState(undefined);
+    const [shopSlug, setShopSlug] = useState(null);
     const [gate, setGate] = useState(null);
     const [stepIndex, setStepIndex] = useState(0);
     const [path, setPath] = useState(null); // { category, subcategory, genericProduct }
@@ -38,6 +39,7 @@ export default function SellPublishProductPage() {
         (async () => {
             const res = await fetchSellerAccessStatus(token);
             setAccess(res?.success ? res : { canPublish: false, reason: "NOT_AUTHENTICATED" });
+            if (res?.success && res.shopSlug) setShopSlug(res.shopSlug);
         })();
     }, [token]);
 
@@ -108,7 +110,7 @@ export default function SellPublishProductPage() {
     };
 
     if (gate) return <AccessGate access={gate} navigate={navigate} />;
-    if (submitted) return <SubmittedScreen />;
+    if (submitted) return <SubmittedScreen shopSlug={shopSlug} />;
 
     const progress = ((stepIndex + 1) / STEPS.length) * 100;
 
@@ -277,13 +279,17 @@ function AccessGate({ access, navigate }) {
     );
 }
 
-function SubmittedScreen() {
+function SubmittedScreen({ shopSlug }) {
     return (
         <div className="mx-auto flex max-w-md flex-col items-center px-6 py-20 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}><CheckCircle2 className="h-7 w-7" /></span>
             <h2 className="mt-4 text-[20px] font-extrabold text-slate-900">Submitted for review</h2>
             <p className="mt-2 text-[13.5px] font-medium text-slate-500">We'll notify you once our team approves it — or let you know what to fix if it's rejected.</p>
-            <Link to="/seller/dashboard" className="mt-6 rounded-xl border border-slate-200 px-5 py-2.5 text-[13.5px] font-bold text-slate-700">Go to my listings</Link>
+            {shopSlug ? (
+                <Link to={`/shop/${shopSlug}`} className="mt-6 rounded-xl border border-slate-200 px-5 py-2.5 text-[13.5px] font-bold text-slate-700">Go to my shop</Link>
+            ) : (
+                <Link to="/seller/dashboard" className="mt-6 rounded-xl border border-slate-200 px-5 py-2.5 text-[13.5px] font-bold text-slate-700">Go to my listings</Link>
+            )}
         </div>
     );
 }

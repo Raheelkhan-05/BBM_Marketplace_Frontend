@@ -32,6 +32,9 @@ import BrandFamilyPage from "./pages/BrandFamilyPage.jsx";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy.jsx";
 import CategorySubcategoriesPage from "./pages/CategorySubcategoriesPage";
 import CategoriesPage from "./pages/CategoriesPage.jsx";
+import SubcategoryGenericProductsPage from "./pages/SubcategoryGenericProductsPage";
+import GenericProductBrandsPage from "./pages/GenericProductBrandsPage";
+import BrandItemSellersPage from "./pages/BrandItemSellersPage";
 import SellPublishProductPage from "./pages/SellPublishProductPage.jsx";
 import AdminSellerSubmissionsPage from "./pages/admin/AdminSellerSubmissionsPage.jsx";
 
@@ -54,6 +57,9 @@ function App() {
             <Route path="/search" element={<SearchResultsPage />} />
             <Route path="/home" element={<HomePage />} />
             <Route path="/category/:idOrSlug/subcategories" element={<CategorySubcategoriesPage />} />
+            <Route path="/subcategory/:idOrSlug/products" element={<SubcategoryGenericProductsPage />} />
+            <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
+            <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
             <Route path="/categories" element={<CategoriesPage />} />
 
             {/* <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><NewHomePage /></RequireAuth>} /> */}

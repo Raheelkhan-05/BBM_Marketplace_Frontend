@@ -288,15 +288,15 @@ export default function MarketplaceSearchBar({
                         type="file"
                         accept="image/*"
                         capture="environment"
-                        className="hidden"
+                        className="hidden disabled"
                         onChange={handleImageFileChange}
                     />
                     <div className="relative" ref={imageMenuRef}>
                         <button
                             type="button"
-                            onClick={handleImageButtonClick}
+                            // onClick={handleImageButtonClick}
                             disabled={imageSearching}
-                            className="flex shrink-0 flex-col items-center justify-center gap-1 px-0 lg:px-2 disabled:opacity-60"
+                            className="flex disabled shrink-0 flex-col items-center justify-center gap-1 px-0 lg:px-2 disabled:opacity-60"
                         >
                             <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#E7F7F7]">
                                 {imageSearching ? (

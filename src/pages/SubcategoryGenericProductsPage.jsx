@@ -2,32 +2,23 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, SlidersHorizontal, ArrowUpDown, Box } from "lucide-react";
-import { searchCategories, searchSubcategories } from "../utils/api";
+import { searchCatalogSubcategories, searchCatalogGenericProducts } from "../utils/api";
 import { resolveSearchRoute } from "../utils/searchResolve.js";
 import { Link } from "react-router-dom";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 
 /* ------------------------------------------------------------------
-   DESIGN NOTES — CategorySubcategoriesPage
+   DESIGN NOTES — SubcategoryGenericProductsPage
    ------------------------------------------------------------------
-   Reached from CategoryIconExplorer's tile grid on the home page
-   (route: /category/:idOrSlug/subcategories). Same design system as
-   the rest of the home surfaces: ink #0B1116, muted #667077, primary
-   #D2462B, secondary #006F83, hairline rgba(11,17,22,0.09),
-   font-sans/font-mono pairing, [0.16,1,0.3,1] easing.
-
-   - Header: back button + category name + subcategory count, same
-     shape as the section headers used across the home page.
-   - Search: reuses the app's existing MarketplaceSearchBar (the same
-     component HomePage's AmazonSearchHeader wraps) — but ONLY on
-     desktop (hidden below lg), matching how HomePage already gates
-     its inline search header with `hidden md:block`. Mobile has no
-     search bar here; it relies on the app's existing bottom search
-     bar rather than duplicating it.
-   - Filter/sort chip row, visual only for now (see caveats).
-   - Subcategories render in the exact same 2-row, horizontally-
-     scrollable icon-tile rail as the category grid on the home page,
-     4 columns visible at a time on mobile.
+   Third rung of the browse ladder: Category > Subcategory > Generic
+   Product > Brand Item > Sellers. Reached from
+   CategorySubcategoriesPage's tile grid (route:
+   /subcategory/:idOrSlug/products). Same design system as every
+   other rung: ink #0B1116, muted #667077, primary #D2462B, secondary
+   #006F83, hairline rgba(11,17,22,0.09), font-sans/font-mono pairing,
+   [0.16,1,0.3,1] easing. Structurally identical to
+   CategorySubcategoriesPage — only the data source and the next-hop
+   route change.
    ------------------------------------------------------------------ */
 
 const C = {
@@ -107,16 +98,17 @@ function TileGridSkeleton() {
     );
 }
 
-export default function CategorySubcategoriesPage() {
+export default function SubcategoryGenericProductsPage() {
     const { idOrSlug } = useParams();
     const { state } = useLocation();
     const navigate = useNavigate();
 
-    // Prefer the category object handed off from the home page tile click
-    // (instant header, no waterfall) — fall back to a lookup by id/slug
-    // when the page is reached directly (deep link, refresh, back-forward).
+    // Prefer the subcategory (and its parent category) handed off from the
+    // previous tile click — instant header, no waterfall. Fall back to a
+    // lookup by id/slug when reached directly (deep link, refresh, back).
+    const [subcategory, setSubcategory] = useState(state?.subcategory || null);
     const [category, setCategory] = useState(state?.category || null);
-    const [subcategories, setSubcategories] = useState([]);
+    const [genericProducts, setGenericProducts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [query, setQuery] = useState("");
 
@@ -125,18 +117,18 @@ export default function CategorySubcategoriesPage() {
         (async () => {
             setLoading(true);
             try {
-                let cat = category;
-                if (!cat) {
-                    const catsRes = await searchCategories(idOrSlug, 5);
-                    cat = catsRes?.items?.find((c) => c.slug === idOrSlug || c.id === idOrSlug) || catsRes?.items?.[0] || null;
-                    if (!cancelled) setCategory(cat);
+                let sub = subcategory;
+                if (!sub) {
+                    const subsRes = await searchCatalogSubcategories(undefined, idOrSlug, 5);
+                    sub = subsRes?.items?.find((s) => s.slug === idOrSlug || s.id === idOrSlug) || subsRes?.items?.[0] || null;
+                    if (!cancelled) setSubcategory(sub);
                 }
-                if (cat) {
-                    const res = await searchSubcategories(cat.id, "", 50);
-                    if (!cancelled) setSubcategories(res?.success ? res.items || [] : []);
+                if (sub) {
+                    const res = await searchCatalogGenericProducts(sub.id, "", 50);
+                    if (!cancelled) setGenericProducts(res?.success ? res.items || [] : []);
                 }
             } catch {
-                if (!cancelled) setSubcategories([]);
+                if (!cancelled) setGenericProducts([]);
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -146,20 +138,24 @@ export default function CategorySubcategoriesPage() {
     }, [idOrSlug]);
 
     const filtered = query.trim()
-        ? subcategories.filter((s) => s.name.toLowerCase().includes(query.trim().toLowerCase()))
-        : subcategories;
+        ? genericProducts.filter((g) => g.name.toLowerCase().includes(query.trim().toLowerCase()))
+        : genericProducts;
 
-    // Same pre-flight resolution the home page search uses — land on an
-    // exact route when possible instead of always bouncing through /browse.
     const handleSearchSubmit = async (trimmedQuery) => {
         const route = await resolveSearchRoute(trimmedQuery);
         if (route) navigate(route.pathname, { state: route.state });
         else navigate(`/browse-search?q=${encodeURIComponent(trimmedQuery)}`);
     };
 
+    const openGenericProduct = (gp) => {
+        navigate(`/product/${gp.slug || gp.id}/brands`, {
+            state: { genericProduct: gp, subcategory, category },
+        });
+    };
+
     return (
         <div className="mx-auto min-h-screen max-w-7xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
-            {/* header: back + category name */}
+            {/* header: back + subcategory name */}
             <div className="mt-3 flex items-center gap-3">
                 <button
                     onClick={() => navigate(-1)}
@@ -170,16 +166,16 @@ export default function CategorySubcategoriesPage() {
                     <ArrowLeft className="h-4 w-4" />
                 </button>
                 <div className="min-w-0">
-                    <Link to="/categories" className="block">
+                    <Link to={category ? `/category/${category.slug || category.id}/subcategories` : "/categories"} className="block">
                         <h1
                             className="truncate font-extrabold leading-tight tracking-[-0.01em] cursor-pointer"
                             style={{ color: C.ink, fontSize: "clamp(19px, 1.8vw, 27px)" }}
                         >
-                            {category?.name || "Category"}
+                            {subcategory?.name || "Products"}
                         </h1>
                     </Link>
                     <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em]" style={{ color: C.muted }}>
-                        {subcategories.length} subcategories
+                        {genericProducts.length} products
                     </p>
                 </div>
             </div>
@@ -206,28 +202,24 @@ export default function CategorySubcategoriesPage() {
                 ))}
             </div>
 
-            {/* subcategory grid */}
+            {/* generic product grid */}
             <div className="mt-5 overflow-hidden rounded-[24px] border bg-white p-4 sm:p-6" style={{ borderColor: C.hair }}>
                 {loading ? (
                     <TileGridSkeleton />
                 ) : filtered.length === 0 ? (
                     <p className="py-8 text-center text-[13px] font-medium" style={{ color: C.muted }}>
-                        {query ? `No subcategories match "${query}".` : "No subcategories available yet."}
+                        {query ? `No products match "${query}".` : "No products available yet."}
                     </p>
                 ) : (
                     <TileGrid>
-                        {filtered.map((sub, i) => (
+                        {filtered.map((gp, i) => (
                             <IconTile
-                                key={sub.id}
-                                image={sub.image}
-                                name={sub.name}
+                                key={gp.id}
+                                image={gp.image}
+                                name={gp.name}
                                 idx={i}
-                                count={sub.productCount}
-                                onClick={() =>
-                                    navigate(`/subcategory/${sub.slug || sub.id}/products`, {
-                                        state: { subcategory: sub, category },
-                                    })
-                                }
+                                count={gp.brandCount}
+                                onClick={() => openGenericProduct(gp)}
                             />
                         ))}
                     </TileGrid>
