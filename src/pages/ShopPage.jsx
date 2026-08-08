@@ -3,16 +3,37 @@ import { useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
   Loader2, ShieldCheck, MapPin, Calendar, Users, Globe, FileText,
-  MessageCircle, Award, Building2, Package,
+  MessageCircle, Award, Building2, Package, Pencil, Trash2,
 } from "lucide-react";
 import { FaFacebook, FaInstagram, FaLinkedin, FaYoutube } from "react-icons/fa";
 import { fetchShopBySlug } from "../utils/api.js";
 
 const CAT_LABELS = { office: "Office", factory: "Factory", warehouse: "Warehouse", team: "Team", product: "Products" };
 
+// group products into Category > Subcategory > Generic Product buckets,
+// with an "Uncategorized" fallback for older rows that predate the hierarchy join
+function groupProducts(products) {
+  const tree = new Map();
+  for (const p of products) {
+    const catKey = p.category?.id || "uncategorized";
+    const catName = p.category?.name || "Other";
+    const subKey = p.subcategory?.id || "uncategorized";
+    const subName = p.subcategory?.name || "Other";
+    const gpKey = p.generic_product?.id || "uncategorized";
+    const gpName = p.generic_product?.name || "Other";
+
+    if (!tree.has(catKey)) tree.set(catKey, { name: catName, subs: new Map() });
+    const cat = tree.get(catKey);
+    if (!cat.subs.has(subKey)) cat.subs.set(subKey, { name: subName, gps: new Map() });
+    const sub = cat.subs.get(subKey);
+    if (!sub.gps.has(gpKey)) sub.gps.set(gpKey, { name: gpName, items: [] });
+    sub.gps.get(gpKey).items.push(p);
+  }
+  return tree;
+}
 
 // ShopPage.jsx — hero section replacement
-export default function ShopPage({ slug: slugProp, previewData = null }) {
+export default function ShopPage({ slug: slugProp, previewData = null, editable = false, onEditProduct, onDeleteProduct }) {
   const { slug: slugParam } = useParams();
   const slug = slugProp || slugParam;
   const [data, setData] = useState(previewData);
@@ -44,9 +65,10 @@ export default function ShopPage({ slug: slugProp, previewData = null }) {
         </div>
       )}
 
-      {/* Banner — fixed, sane height at every breakpoint. Nothing else ever renders on top of it. */}
+      {/* Banner — matches the onboarding IdentityStep preview: soft two-tone
+    gradient fading through both brand colors, not a hard diagonal split */}
       <div className="relative h-32 w-full overflow-hidden sm:h-48 md:h-60"
-        style={{ background: `linear-gradient(135deg, ${primary}, ${secondary})` }}>
+        style={{ background: `linear-gradient(135deg, ${primary}, ${primary}50, ${secondary}50, ${secondary})` }}>
         {seller.banner_url && <img src={seller.banner_url} alt="" className="h-full w-full object-cover" />}
         <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
       </div>
@@ -71,7 +93,7 @@ export default function ShopPage({ slug: slugProp, previewData = null }) {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-[19px] font-extrabold text-slate-900 sm:text-[24px]">{seller.display_name}</h1>
-                <span className="flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold text-white sm:px-2.5 sm:py-1 sm:text-[11px]" style={{ background: primary }}>
+                <span className="flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold text-white sm:px-2.5 sm:py-1 sm:text-[11px]" style={{ background: secondary }}>
                   <ShieldCheck className="h-3 w-3" /> GST Verified
                 </span>
               </div>
@@ -81,14 +103,6 @@ export default function ShopPage({ slug: slugProp, previewData = null }) {
                 {seller.employee_range && <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5 shrink-0" />{seller.employee_range} employees</span>}
               </p>
             </div>
-
-            {seller.whatsapp_number && (
-              <a href={`https://wa.me/91${seller.whatsapp_number}`} target="_blank" rel="noreferrer"
-                className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-[13px] font-bold text-white shadow-lg transition-transform hover:-translate-y-0.5"
-                style={{ background: secondary }}>
-                <MessageCircle className="h-4 w-4" /> Contact Seller
-              </a>
-            )}
           </div>
         </div>
 
@@ -115,20 +129,74 @@ export default function ShopPage({ slug: slugProp, previewData = null }) {
 
         {products.length > 0 && (
           <div className="mt-6 sm:mt-7">
-            <h2 className="flex items-center gap-1.5 text-[13.5px] font-extrabold text-slate-900 sm:text-[14px]"><Package className="h-4 w-4" style={{ color: primary }} /> Products</h2>
-            <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 md:grid-cols-4">
-              {products.map((p) => (
-                <div key={p.id} className="overflow-hidden rounded-xl border border-slate-100 bg-white transition-shadow hover:shadow-md">
-                  <div className="aspect-square w-full bg-slate-50">
-                    {p.image_url ? <img src={p.image_url} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Package className="h-6 w-6 text-slate-300" /></div>}
+            <h2 className="flex items-center gap-1.5 text-[13.5px] font-extrabold text-slate-900 sm:text-[14px]">
+              <Package className="h-4 w-4" style={{ color: primary }} /> Products
+            </h2>
+
+            {[...groupProducts(products).entries()].map(([catKey, cat]) => (
+              <div key={catKey} className="mt-4">
+                <p className="text-[12px] font-extrabold uppercase tracking-wide" style={{ color: primary }}>{cat.name}</p>
+
+                {[...cat.subs.entries()].map(([subKey, sub]) => (
+                  <div key={subKey} className="mt-3 pl-1">
+                    <p className="text-[11.5px] font-bold text-slate-500">{sub.name}</p>
+
+                    {[...sub.gps.entries()].map(([gpKey, gp]) => (
+                      <div key={gpKey} className="mt-2 pl-2">
+                        {gp.name !== "Other" && (
+                          <p className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-400">{gp.name}</p>
+                        )}
+                        <div className="mt-1.5 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 md:grid-cols-4">
+                          {gp.items.map((p) => (
+                            <div
+                              key={p.id}
+                              className="relative overflow-hidden rounded-xl border border-slate-100 bg-white transition-shadow hover:shadow-md"
+                            >
+                              {p.pending_approval && (
+                                <span className="absolute left-2 top-2 z-10 rounded-full bg-amber-100 px-2 py-0.5 text-[9.5px] font-bold text-amber-700">
+                                  Pending approval
+                                </span>
+                              )}
+
+                              {editable && (
+                                <div className="absolute right-1.5 top-1.5 z-10 flex gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => onEditProduct?.(p)}
+                                    className="flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow hover:text-[#047084]"
+                                    aria-label="Edit product"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => onDeleteProduct?.(p)}
+                                    className="flex h-6 w-6 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow hover:text-[#c71f11]"
+                                    aria-label="Delete product"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
+
+                              <div className="aspect-square w-full bg-slate-50">
+                                {p.image_url ? <img src={p.image_url} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Package className="h-6 w-6 text-slate-300" /></div>}
+                              </div>
+                              <div className="p-2.5">
+                                <p className="text-[12px] font-bold text-slate-800 sm:text-[12.5px]">{p.name}</p>
+                                {p.brand_name && <p className="text-[10.5px] font-semibold text-slate-400">{p.brand_name}</p>}
+                                {p.price && <p className="text-[11px] font-semibold sm:text-[11.5px]" style={{ color: primary }}>{p.price}{p.unit ? ` / ${p.unit}` : ""}</p>}
+                                {p.moq && <p className="mt-0.5 text-[10.5px] font-medium text-slate-400">MOQ: {p.moq} {p.unit}</p>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="p-2.5">
-                    <p className="text-[12px] font-bold text-slate-800 sm:text-[12.5px]">{p.name}</p>
-                    {p.price && <p className="text-[11px] font-semibold sm:text-[11.5px]" style={{ color: primary }}>{p.price}{p.unit ? ` / ${p.unit}` : ""}</p>}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ))}
           </div>
         )}
 

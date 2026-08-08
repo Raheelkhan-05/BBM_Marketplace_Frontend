@@ -617,3 +617,20 @@ export async function fetchCatalogAutocomplete(q, limit = 8, signal) {
   const res = await fetch(`${CATALOG_SEARCH_BASE}/autocomplete?${params}`, { signal });
   return res.json();
 }
+
+export async function updateSellerProductSubmission(token, id, payload) {
+  const res = await fetch(`${API_BASE}/seller/catalog/submissions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function deleteSellerProductSubmission(token, id) {
+  const res = await fetch(`${API_BASE}/seller/catalog/submissions/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
