@@ -70,7 +70,7 @@ export default function BrandDetailPage() {
     const attributes = brand.attributes && typeof brand.attributes === "object" ? Object.entries(brand.attributes) : [];
 
     const goBrowseAll = () =>
-        navigate("/browse", { state: { imageResult: { resolved: true, stack: [{ id: category?.id, name: category?.name }].filter(Boolean) } } });
+        navigate("/browse-search", { state: { imageResult: { resolved: true, stack: [{ id: category?.id, name: category?.name }].filter(Boolean) } } });
 
     return (
         <div className="min-h-screen bg-[#f7f9fc]">
@@ -85,7 +85,7 @@ export default function BrandDetailPage() {
                 <div className="relative mx-auto max-w-6xl px-4 pb-8 pt-4 sm:px-6 sm:pb-10 sm:pt-5 lg:px-8">
                     <nav className="flex items-center justify-between" aria-label="Breadcrumb">
                         <ol className="flex flex-wrap items-center gap-1.5 text-[10.5px] font-semibold text-white/60 sm:text-[12.5px]">
-                            <li><button onClick={() => navigate("/browse")} className="hover:text-white">All Categories</button></li>
+                            <li><button onClick={() => navigate("/browse-search")} className="hover:text-white">All Categories</button></li>
                             {category && (<><li><ChevronRight className="h-3 w-3 text-white/30" /></li>
                                 <li><button onClick={() => navigate(`/category/${category.slug || category.id}`)} className="hover:text-white">{category.name}</button></li></>)}
                             {subcategory && (<><li><ChevronRight className="h-3 w-3 text-white/30" /></li>

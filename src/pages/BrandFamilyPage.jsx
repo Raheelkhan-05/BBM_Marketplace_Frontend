@@ -35,7 +35,7 @@ export default function BrandFamilyPage() {
         <div className="flex min-h-[50vh] items-center justify-center px-6 text-center">
             <div>
                 <h3 className="text-[16px] font-extrabold text-slate-900">Brand not found</h3>
-                <button onClick={() => navigate("/browse")} className="mt-4 rounded-xl border border-slate-200 px-5 py-2.5 text-[13px] font-bold text-slate-600 hover:bg-slate-50">Go back</button>
+                <button onClick={() => navigate("/browse-search")} className="mt-4 rounded-xl border border-slate-200 px-5 py-2.5 text-[13px] font-bold text-slate-600 hover:bg-slate-50">Go back</button>
             </div>
         </div>
     );
@@ -50,7 +50,7 @@ export default function BrandFamilyPage() {
         <div className="min-h-screen bg-[#f7f9fc]">
             <div className="relative overflow-hidden" style={{ background: `linear-gradient(145deg, ${TEAL} 0%, ${TEAL_DARK} 45%, ${TEAL_DEEP} 100%)` }}>
                 <div className="mx-auto max-w-6xl px-4 pb-8 pt-5 sm:px-6 lg:px-8">
-                    <button onClick={() => navigate("/browse")} className="text-[11.5px] font-semibold text-white/60 hover:text-white">All Categories</button>
+                    <button onClick={() => navigate("/browse-search")} className="text-[11.5px] font-semibold text-white/60 hover:text-white">All Categories</button>
                     <h1 className="mt-3 text-[24px] font-extrabold text-white sm:text-[34px]" style={{ fontFamily: FONT_DISPLAY }}>{name}</h1>
                     <div className="mt-4 flex flex-wrap gap-2">
                         <StatPill icon={PackageSearch} value={totalMatches} label="SKUs" />

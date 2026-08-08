@@ -131,7 +131,7 @@ export default function CategoriesPage() {
     const handleSearchSubmit = async (trimmedQuery) => {
         const route = await resolveSearchRoute(trimmedQuery);
         if (route) navigate(route.pathname, { state: route.state });
-        else navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
+        else navigate(`/browse-search?q=${encodeURIComponent(trimmedQuery)}`);
     };
 
     const openCategory = (cat) => {

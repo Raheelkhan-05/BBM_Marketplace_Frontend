@@ -64,7 +64,7 @@ export default function ProductDetailPage() {
             {/* Breadcrumb */}
             <div className="flex items-center tracking-wide justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-1 text-[10.5px] font-semibold text-slate-500 sm:text-[12.5px]">
-                    <button onClick={() => navigate("/browse")} className="text-[#047084] hover:underline">All Categories</button>
+                    <button onClick={() => navigate("/browse-search")} className="text-[#047084] hover:underline">All Categories</button>
                     {category && (
                         <>
                             <ChevronRight className="h-3 w-3 text-slate-300 sm:h-3.5 sm:w-3.5" />
@@ -86,7 +86,7 @@ export default function ProductDetailPage() {
                             <ChevronRight className="h-3 w-3 text-slate-300 sm:h-3.5 sm:w-3.5" />
                             <button
                                 onClick={() =>
-                                    navigate("/browse", {
+                                    navigate("/browse-search", {
                                         state: {
                                             imageResult: {
                                                 resolved: true,

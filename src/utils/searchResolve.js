@@ -23,7 +23,7 @@ function routeForStackTail(stack) {
     // path already returned by the backend.
     if (last.level === "subcategory") {
         return {
-            pathname: "/browse",
+            pathname: "/browse-search",
             state: {
                 imageResult: {
                     resolved: true,

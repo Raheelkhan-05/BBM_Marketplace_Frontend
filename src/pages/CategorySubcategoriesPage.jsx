@@ -154,7 +154,7 @@ export default function CategorySubcategoriesPage() {
     const handleSearchSubmit = async (trimmedQuery) => {
         const route = await resolveSearchRoute(trimmedQuery);
         if (route) navigate(route.pathname, { state: route.state });
-        else navigate(`/browse?q=${encodeURIComponent(trimmedQuery)}`);
+        else navigate(`/browse-search?q=${encodeURIComponent(trimmedQuery)}`);
     };
 
     return (
@@ -224,7 +224,7 @@ export default function CategorySubcategoriesPage() {
                                 idx={i}
                                 count={sub.productCount}
                                 onClick={() =>
-                                    navigate("/browse", {
+                                    navigate("/browse-search", {
                                         state: {
                                             imageResult: {
                                                 resolved: true,
