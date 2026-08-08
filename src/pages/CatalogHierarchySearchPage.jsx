@@ -82,16 +82,19 @@ function IconTile({ image, name, idx, count, sub, onClick }) {
                 )}
             </span>
             <p
-                className="line-clamp-2 w-full text-center text-[11.5px] font-bold leading-tight tracking-[-0.005em]"
+                className="w-full text-center text-[12px] font-bold leading-tight tracking-[-0.005em]"
                 style={{ color: C.ink }}
             >
                 {name}
+                {sub && (
+                    <span
+                        className="text-[11px] font-semibold tracking-wide"
+                        style={{ color: C.muted }}
+                    >
+                        {" - "}{sub}
+                    </span>
+                )}
             </p>
-            {sub && (
-                <p className="line-clamp-1 w-full text-center text-[10px] font-semibold" style={{ color: C.muted }}>
-                    {sub}
-                </p>
-            )}
         </motion.button>
     );
 }
@@ -117,55 +120,59 @@ function TileGridSkeleton() {
     );
 }
 
-function SellerRow({ seller, idx, onClick }) {
+function SellerRow({ seller, idx, isLast, onClick }) {
     return (
         <motion.button
             onClick={onClick}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: Math.min(idx * 0.03, 0.3), ease: EASE }}
-            className="flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition-colors duration-150 hover:bg-black/[0.02] sm:p-4"
+            className={`flex w-full items-center gap-2.5 py-2.5 text-left transition-colors duration-150 active:bg-black/[0.02] sm:gap-3 sm:rounded-2xl sm:border sm:bg-white sm:p-4 sm:hover:bg-black/[0.02] ${!isLast ? "border-b sm:border-b-0" : ""}`}
             style={{ borderColor: C.hair }}
         >
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.hair }}>
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white sm:h-14 sm:w-14 sm:rounded-xl" style={{ borderColor: C.hair }}>
                 {seller.logo_url ? (
                     <img src={seller.logo_url} alt={seller.display_name} className="h-full w-full object-contain p-1" />
                 ) : (
-                    <Building2 className="h-6 w-6" style={{ color: C.muted }} />
+                    <Building2 className="h-5 w-5 sm:h-6 sm:w-6" style={{ color: C.muted }} />
                 )}
             </span>
 
             <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                    <p className="truncate text-[13.5px] font-extrabold" style={{ color: C.ink }}>{seller.display_name}</p>
+                <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
+                    <p className="truncate text-[12.5px] font-extrabold sm:text-[13.5px]" style={{ color: C.ink }}>{seller.display_name}</p>
                     <span className="flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold text-white" style={{ background: C.secondary }}>
-                        <ShieldCheck className="h-2.5 w-2.5" /> GST Verified
+                        <ShieldCheck className="h-2.5 w-2.5" /> <span className="hidden sm:inline">GST Verified</span>
                     </span>
                 </div>
                 {(seller.city || seller.state) && (
-                    <p className="mt-0.5 flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: C.muted }}>
-                        <MapPin className="h-3 w-3 shrink-0" /> {[seller.city, seller.state].filter(Boolean).join(", ")}
+                    <p className="mt-0.5 flex items-center gap-1 truncate text-[10.5px] font-semibold sm:text-[11.5px]" style={{ color: C.muted }}>
+                        <MapPin className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" /> {[seller.city, seller.state].filter(Boolean).join(", ")}
                     </p>
                 )}
             </div>
 
             {seller.price != null && (
                 <div className="shrink-0 text-right">
-                    <p className="text-[13px] font-extrabold" style={{ color: C.primary }}>₹{seller.price}{seller.unit ? `/${seller.unit}` : ""}</p>
-                    {seller.moq && <p className="text-[10px] font-semibold" style={{ color: C.muted }}>MOQ {seller.moq}</p>}
+                    <p className="text-[12px] font-extrabold sm:text-[13px]" style={{ color: C.primary }}>₹{seller.price}{seller.unit ? `/${seller.unit}` : ""}</p>
+                    {seller.moq && <p className="text-[9.5px] font-semibold sm:text-[10px]" style={{ color: C.muted }}>MOQ {seller.moq}</p>}
                 </div>
             )}
-            <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.muted }} />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" style={{ color: C.muted }} />
         </motion.button>
     );
 }
 
 function SellerListSkeleton() {
     return (
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col sm:gap-2.5">
             {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-3 rounded-2xl border p-3 sm:p-4" style={{ borderColor: C.hair }}>
-                    <div className="h-14 w-14 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
+                <div
+                    key={i}
+                    className={`flex items-center gap-2.5 py-2.5 sm:gap-3 sm:rounded-2xl sm:border sm:p-4 ${i !== 5 ? "border-b sm:border-b-0" : ""}`}
+                    style={{ borderColor: C.hair }}
+                >
+                    <div className="h-11 w-11 shrink-0 animate-pulse rounded-lg sm:h-14 sm:w-14 sm:rounded-xl" style={{ background: C.hairSoft }} />
                     <div className="flex-1">
                         <div className="h-3 w-1/3 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
                         <div className="mt-2 h-2.5 w-1/4 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
@@ -176,7 +183,7 @@ function SellerListSkeleton() {
     );
 }
 
-function ShopRow({ shop, idx }) {
+function ShopRow({ shop, idx, isLast }) {
     const navigate = useNavigate();
     return (
         <motion.button
@@ -184,27 +191,27 @@ function ShopRow({ shop, idx }) {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: Math.min(idx * 0.03, 0.3), ease: EASE }}
-            className="flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition-colors duration-150 hover:bg-black/[0.02] sm:p-4"
+            className={`flex w-full items-center gap-2.5 py-2.5 text-left transition-colors duration-150 active:bg-black/[0.02] sm:gap-3 sm:rounded-2xl sm:border sm:bg-white sm:p-4 sm:hover:bg-black/[0.02] ${!isLast ? "border-b sm:border-b-0" : ""}`}
             style={{ borderColor: C.hair }}
         >
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.hair }}>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-white sm:h-12 sm:w-12" style={{ borderColor: C.hair }}>
                 {shop.logo_url ? (
                     <img src={shop.logo_url} alt="" className="h-full w-full object-contain p-1" />
                 ) : (
-                    <Building2 className="h-5 w-5" style={{ color: C.muted }} />
+                    <Building2 className="h-4 w-4 sm:h-5 sm:w-5" style={{ color: C.muted }} />
                 )}
             </span>
             <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                    <p className="truncate text-[13.5px] font-extrabold" style={{ color: C.ink }}>{shop.display_name}</p>
-                    <ShieldCheck className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                <div className="flex items-center gap-1 sm:gap-1.5">
+                    <p className="truncate text-[12.5px] font-extrabold sm:text-[13.5px]" style={{ color: C.ink }}>{shop.display_name}</p>
+                    <ShieldCheck className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" style={{ color: C.secondary }} />
                 </div>
-                <p className="mt-0.5 flex items-center gap-1 truncate text-[11.5px] font-semibold" style={{ color: C.muted }}>
+                <p className="mt-0.5 flex items-center gap-1 truncate text-[10.5px] font-semibold sm:text-[11.5px]" style={{ color: C.muted }}>
                     {shop.business_type && <span>{shop.business_type} · </span>}
-                    <MapPin className="h-3 w-3 shrink-0" />{shop.city}, {shop.state}
+                    <MapPin className="h-2.5 w-2.5 shrink-0 sm:h-3 sm:w-3" />{shop.city}, {shop.state}
                 </p>
             </div>
-            <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.muted }} />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" style={{ color: C.muted }} />
         </motion.button>
     );
 }
@@ -288,7 +295,7 @@ export default function CatalogHierarchySearchPage() {
 
             {/* breadcrumbs */}
             {stack.length > 0 && (
-                <div className="mt-3 flex min-h-[18px] flex-wrap items-center gap-1 text-[11.5px] font-semibold" style={{ color: C.muted }}>
+                <div className="mt-3 flex min-h-[18px] flex-wrap items-center gap-1 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                     <button onClick={() => goToBreadcrumb(-1)} style={{ color: C.secondary }} className="hover:underline">All Categories</button>
                     {stack.map((crumb, i) => (
                         <span key={crumb.id} className="flex items-center gap-1">
@@ -340,8 +347,8 @@ export default function CatalogHierarchySearchPage() {
                     <h3 className="flex items-center gap-1.5 text-[13px] font-extrabold" style={{ color: C.ink }}>
                         <Store className="h-4 w-4" style={{ color: C.secondary }} /> Shops matching "{query}"
                     </h3>
-                    <div className="mt-2.5 flex flex-col gap-2">
-                        {shops.map((shop, i) => <ShopRow key={shop.id} shop={shop} idx={i} />)}
+                    <div className="mt-2.5 flex flex-col sm:gap-2">
+                        {shops.map((shop, i) => <ShopRow key={shop.id} shop={shop} idx={i} isLast={i === shops.length - 1} />)}
                     </div>
                 </div>
             )}
@@ -366,9 +373,9 @@ export default function CatalogHierarchySearchPage() {
                         ))}
                     </TileGrid>
                 ) : currentLevel === "seller" ? (
-                    <div className="flex flex-col gap-2.5">
+                    <div className="flex flex-col sm:gap-2.5">
                         {items.map((seller, i) => (
-                            <SellerRow key={seller.offerId ?? i} seller={seller} idx={i} onClick={() => handleSelect(seller)} />
+                            <SellerRow key={seller.offerId ?? i} seller={seller} idx={i} isLast={i === items.length - 1} onClick={() => handleSelect(seller)} />
                         ))}
                     </div>
                 ) : TILE_LEVELS.has(currentLevel) ? (
