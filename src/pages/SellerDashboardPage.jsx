@@ -25,7 +25,7 @@ const GST_FIELD_LABELS = { address: "Registered address", city: "City", state: "
 
 export default function SellerDashboardPage({ slug }) {
   const { token } = useAuth();
-  const [view, setView] = useState("manage");
+  const [view, setView] = useState("preview");
   const [tab, setTab] = useState("info");
   const [previewWidth, setPreviewWidth] = useState("desktop");
   const [loading, setLoading] = useState(true);
