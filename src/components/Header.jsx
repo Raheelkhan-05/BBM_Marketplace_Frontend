@@ -9,7 +9,7 @@ import NotificationBell from "../components/NotificationBell.jsx";
 import SmartLink from "./SmartLink.jsx";
 
 const NAV_LINKS = [
-  { label: "Nav1", href: "#nav1" },
+  { label: "Listing", href: "/admin/listings" },
   { label: "Nav2", href: "#nav2" },
   { label: "Nav3", href: "#nav3" },
   { label: "Nav4", href: "#nav4" },
@@ -181,7 +181,7 @@ export default function Header() {
                             </SmartLink>
                             <SmartLink to="/admin/catalog" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
                               <ListChecks className="h-3.5 w-3.5 text-[#047084]" />
-                              Catalog Review
+                              Catalog
                             </SmartLink>
                             <SmartLink to="/admin/admins" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
                               <ShieldCheck className="h-3.5 w-3.5 text-[#047084]" />
@@ -292,7 +292,7 @@ export default function Header() {
                           </SmartLink>
                           <SmartLink to="/admin/catalog" onClick={() => setOpen(false)} className={MOBILE_ROW}>
                             <ListChecks className="h-4 w-4 text-slate-400" />
-                            Catalog Review
+                            Catalog
                           </SmartLink>
                           <SmartLink to="/admin/admins" onClick={() => setOpen(false)} className={MOBILE_ROW}>
                             <ShieldCheck className="h-4 w-4 text-slate-400" />

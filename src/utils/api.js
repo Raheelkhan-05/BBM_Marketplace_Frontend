@@ -365,11 +365,6 @@ export async function fetchSubcategoryLanding(idOrSlug) {
   return res.json();
 }
 
-export async function adminListCatalog(token, { level = "all", status = "pending_review", q = "" } = {}) {
-  const params = new URLSearchParams({ level, status, ...(q ? { q } : {}) });
-  const res = await fetch(`${API_BASE}/admin/catalog?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-  return res.json();
-}
 export async function adminGetCatalogEntry(token, level, id) {
   const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();
@@ -488,21 +483,28 @@ export async function fetchApprovedSubcategories(categoryId, q = "") {
   return res.json();
 }
 
-export async function fetchApprovedProducts(subcategoryId, q = "") {
+
+// ---- seller self-publish: listing CRUD ---
+export async function adminUploadCatalogImage(token, file, folder) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("folder", folder);
+  const res = await fetch(`${API_BASE}/admin/catalog/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  return res.json();
+}
+
+export async function fetchApprovedGenericProducts(subcategoryId, q = "") {
   const params = new URLSearchParams({ subcategoryId, q });
-  const res = await fetch(`${API_BASE}/seller/catalog/products?${params}`);
+  const res = await fetch(`${API_BASE}/seller/catalog/generic-products?${params}`);
   return res.json();
 }
 
-export async function fetchProductSchema(productId) {
-  const res = await fetch(`${API_BASE}/seller/catalog/products/${productId}/schema`);
-  return res.json();
-}
-
-// ---- seller self-publish: listing CRUD ----
-
-export async function createSellerListing(token, payload) {
-  const res = await fetch(`${API_BASE}/seller/catalog/listings`, {
+export async function createSellerSubmission(token, payload) {
+  const res = await fetch(`${API_BASE}/seller/catalog/submissions`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
@@ -510,14 +512,37 @@ export async function createSellerListing(token, payload) {
   return res.json();
 }
 
-export async function fetchMySellerListings(token, status) {
+export async function fetchMySellerSubmissions(token, status) {
   const params = new URLSearchParams(status ? { status } : {});
-  const res = await fetch(`${API_BASE}/seller/catalog/listings?${params}`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const res = await fetch(`${API_BASE}/seller/catalog/submissions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+
+export async function adminListSellerSubmissions(token, status = "pending_review", q = "") {
+  const params = new URLSearchParams({ status, ...(q ? { q } : {}) });
+  const res = await fetch(`${API_BASE}/admin/seller-submissions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function adminGetSellerSubmission(token, id) {
+  const res = await fetch(`${API_BASE}/admin/seller-submissions/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function adminApproveSellerSubmission(token, id) {
+  const res = await fetch(`${API_BASE}/admin/seller-submissions/${id}/approve`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function adminRejectSellerSubmission(token, id, reason) {
+  const res = await fetch(`${API_BASE}/admin/seller-submissions/${id}/reject`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ reason }),
   });
   return res.json();
 }
-export async function fetchListingFieldDefs() {
-  const res = await fetch(`${API_BASE}/seller/catalog/listing-fields`);
+
+// adminListCatalog now also accepts parentId, for drill-down browsing:
+export async function adminListCatalog(token, { level = "all", status = "pending_review", q = "", parentId = "" } = {}) {
+  const params = new URLSearchParams({ level, status, ...(q ? { q } : {}), ...(parentId ? { parentId } : {}) });
+  const res = await fetch(`${API_BASE}/admin/catalog?${params}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();
 }

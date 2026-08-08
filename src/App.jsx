@@ -31,7 +31,10 @@ import BrandFamilyPage from "./pages/BrandFamilyPage.jsx";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy.jsx";
 import CategorySubcategoriesPage from "./pages/CategorySubcategoriesPage";
 import CategoriesPage from "./pages/CategoriesPage.jsx";
-import SellPublishProductPage from "./pages/SellPublishProductPage.jsx"
+import SellPublishProductPage from "./pages/SellPublishProductPage.jsx";
+import AdminSellerSubmissionsPage from "./pages/admin/AdminSellerSubmissionsPage.jsx";
+
+
 
 function App() {
   return (
@@ -58,6 +61,7 @@ function App() {
 
             <Route path="/seller/sell" element={<SellPublishProductPage />} />
 
+            <Route path="/admin/listings" element={<RequireAdmin><AdminSellerSubmissionsPage /></RequireAdmin>} />
             <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
             <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
             <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />

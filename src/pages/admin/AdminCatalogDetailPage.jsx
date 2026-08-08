@@ -10,12 +10,12 @@ import {
 import CascadingHierarchyPicker from "../../components/CascadingHierarchyPicker.jsx";
 import ImageLightbox from "../../components/ImageLightbox";
 
-const PARENT_FIELD = { subcategory: "category_id", product: "subcategory_id", brand: "product_id" };
-const PARENT_LEVEL = { subcategory: "category", product: "subcategory", brand: "product" };
+const PARENT_FIELD = { subcategory: "category_id", product: "subcategory_id", brand: "product_id", generic_product: "subcategory_id" };
+const PARENT_LEVEL = { subcategory: "category", product: "subcategory", brand: "product", generic_product: "subcategory" };
+const LEVEL_TO_PARENT_ID_FIELD = { subcategory: "category", product: "subcategory", brand: "product", generic_product: "subcategory" };
+const LEVEL_LABEL = { category: "Category", subcategory: "Subcategory", product: "Product", brand: "Brand Item", generic_product: "Generic Product" };
 const JSON_FIELDS = new Set(["variants", "attributes"]);
-const LEVEL_TO_PARENT_ID_FIELD = { subcategory: "category", product: "subcategory", brand: "product" };
 const MULTILINE_FIELDS = new Set(["description", "overview", "tagline"]);
-const LEVEL_LABEL = { category: "Category", subcategory: "Subcategory", product: "Product", brand: "Brand Item" };
 
 const STATUS_STYLE = {
     approved: { bg: "rgba(22,163,74,0.1)", fg: "#15803d", dot: "#22c55e" },

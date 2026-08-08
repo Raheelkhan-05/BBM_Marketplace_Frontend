@@ -19,7 +19,7 @@ export default function CascadingHierarchyPicker({ token, entityLevel, ancestors
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [category, subcategory, product]);
 
-    const showSubcategory = entityLevel === "product" || entityLevel === "brand";
+    const showSubcategory = entityLevel === "product" || entityLevel === "brand" || entityLevel === "generic_product";
     const showProduct = entityLevel === "brand";
 
     return (
