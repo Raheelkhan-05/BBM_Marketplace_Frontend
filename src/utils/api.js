@@ -346,7 +346,7 @@ export async function fetchImageStatuses(pendingImages) {
 // response), which keeps rapid typing feeling instant.
 export async function fetchAutocomplete(q, limit = 8, signal) {
   const params = new URLSearchParams({ q, limit });
-  const res = await fetch(`${API_BASE}/search/autocomplete?${params}`, { signal });
+  const res = await fetch(`${API_BASE}/catalog-search/autocomplete?${params}`, { signal });
   return res.json();
 }
 
