@@ -5,7 +5,6 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { adminListCatalog, adminDeleteCatalogEntry } from "../../utils/api.js";
 import CreateSimpleCatalogModal from "../../components/CreateSimpleCatalogModal.jsx";
-import BrandItemModal from "../../components/BrandItemModal.jsx";
 import ExcelUploadModal from "../../components/ExcelUploadModal.jsx";
 import ImageLightbox from "../../components/ImageLightbox.jsx";
 
@@ -78,7 +77,7 @@ export default function AdminCatalogReviewPage() {
     if (!level) return null;
 
     return (
-        <div className="mx-auto max-w-5xl px-4 pb-24 pt-6 sm:px-6">
+        <div className="mx-auto min-h-screen max-w-5xl px-4 pb-24 pt-6 sm:px-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-[20px] font-extrabold text-slate-900 sm:text-[22px]">Catalog</h1>
@@ -161,19 +160,9 @@ export default function AdminCatalogReviewPage() {
                                     </div>
                                     {level === "generic_product" && <p className="text-[12px] font-medium text-slate-400">Tap to open details</p>}
                                     {level !== "generic_product" && !isLeaf && <p className="text-[12px] font-medium text-slate-400">Tap to open {CHILD_NOUN[level]} list</p>}
-                                    {isLeaf && <p className="text-[12px] font-medium text-slate-400">{e.brand_name} · ₹{e.price} · MOQ {e.moq} {e.unit}</p>}
+                                    {isLeaf && <p className="text-[12px] font-medium text-slate-400">{e.brand_name}</p>}
                                 </button>
-
-                                {level === "generic_product" && (
-                                    <button
-                                        onClick={(ev) => { ev.stopPropagation(); setPath((p) => [...p, { level, id: e.id, name: e.name }]); }}
-                                        className="hidden shrink-0 items-center gap-1 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-500 hover:bg-slate-100 sm:inline-flex"
-                                    >
-                                        <Layers className="h-3 w-3" /> Brand items
-                                    </button>
-                                )}
-
-                                <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                <div className="flex shrink-0 items-center gap-1">
                                     <button onClick={(ev) => { ev.stopPropagation(); setEditEntry(e); }}
                                         className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" aria-label="Edit">
                                         <Pencil className="h-3.5 w-3.5" />
@@ -198,28 +187,17 @@ export default function AdminCatalogReviewPage() {
             </motion.button>
 
             {
-                level === "brand_item" ? (
-                    <BrandItemModal
-                        token={token}
-                        isOpen={showCreate || !!editEntry}
-                        onClose={() => { setShowCreate(false); setEditEntry(null); }}
-                        parentId={parent?.id}
-                        editEntry={editEntry}
-                        onCreated={refresh}
-                        onUpdated={refresh}
-                    />
-                ) : (
-                    <CreateSimpleCatalogModal
-                        token={token}
-                        isOpen={showCreate || !!editEntry}
-                        onClose={() => { setShowCreate(false); setEditEntry(null); }}
-                        level={level}
-                        parentId={parent?.id}
-                        editEntry={editEntry}
-                        onCreated={refresh}
-                        onUpdated={refresh}
-                    />
-                )
+                <CreateSimpleCatalogModal
+                    token={token}
+                    isOpen={showCreate || !!editEntry}
+                    onClose={() => { setShowCreate(false); setEditEntry(null); }}
+                    level={level}
+                    parentId={parent?.id}
+                    editEntry={editEntry}
+                    onCreated={refresh}
+                    onUpdated={refresh}
+                />
+
             }
 
             <ExcelUploadModal

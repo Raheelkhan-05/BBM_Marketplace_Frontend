@@ -6,13 +6,20 @@ const LEVEL_META = {
     category: { title: "category", folder: "categories" },
     subcategory: { title: "subcategory", folder: "subcategories" },
     generic_product: { title: "generic product", folder: "generic-products" },
+    brand_item: { title: "brand item", folder: "brand-items" },
 };
 
-// Handles both create AND edit for the three simplified catalog rungs.
-// Pass `editEntry` to switch into edit mode (prefills + calls update instead of create).
+// Handles create AND edit for every "simple" catalog level — category,
+// subcategory, generic_product, and now brand_item too. brand_item just
+// adds one extra required field (brand_name) on top of the shared
+// name + image shape; price/moq/unit/lead time are NOT part of this
+// form since those live entirely on seller listings, never on the
+// catalog identity itself.
 export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level, parentId, onCreated, onUpdated, editEntry }) {
     const isEdit = !!editEntry;
+    const isBrandItem = level === "brand_item";
     const [name, setName] = useState("");
+    const [brandName, setBrandName] = useState("");
     const [imageFile, setImageFile] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [saving, setSaving] = useState(false);
@@ -21,10 +28,11 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
     useEffect(() => {
         if (isOpen && editEntry) {
             setName(editEntry.name || "");
+            setBrandName(editEntry.brand_name || "");
             setImagePreview(editEntry.image || null);
             setImageFile(null);
         } else if (isOpen) {
-            setName(""); setImagePreview(null); setImageFile(null);
+            setName(""); setBrandName(""); setImagePreview(null); setImageFile(null);
         }
         setError("");
     }, [isOpen, editEntry]);
@@ -45,6 +53,7 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
         setError("");
         const trimmed = name.trim();
         if (trimmed.length < 2) return setError("Name must be at least 2 characters.");
+        if (isBrandItem && !brandName.trim()) return setError("Brand name is required.");
         if (!isEdit && level !== "category" && !parentId) return setError("Missing parent — please reopen this from inside the list.");
 
         setSaving(true);
@@ -56,12 +65,14 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
                 imageUrl = up.url;
             }
 
+            const payload = { name: trimmed, image: imageUrl };
+            if (isBrandItem) payload.brand_name = brandName.trim();
+
             if (isEdit) {
-                const res = await adminUpdateCatalogEntry(token, level, editEntry.id, { name: trimmed, image: imageUrl });
+                const res = await adminUpdateCatalogEntry(token, level, editEntry.id, payload);
                 if (!res?.success) throw new Error(res?.message || "Couldn't save changes.");
                 onUpdated?.(level, res.entry);
             } else {
-                const payload = { name: trimmed, image: imageUrl };
                 if (level !== "category") payload.parentId = parentId;
                 const res = await adminCreateCatalogEntry(token, level, payload);
                 if (!res?.success) throw new Error(res?.message || "Couldn't create that.");
@@ -84,10 +95,17 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
                 </div>
                 <div className="flex flex-col gap-4 px-5 py-4">
                     <div>
-                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Name *</label>
+                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">{isBrandItem ? "Product name *" : "Name *"}</label>
                         <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
                             className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
                     </div>
+                    {isBrandItem && (
+                        <div>
+                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Brand name *</label>
+                            <input value={brandName} onChange={(e) => setBrandName(e.target.value)}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                        </div>
+                    )}
                     <div>
                         <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Image</label>
                         <label className="flex h-28 w-28 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 text-slate-400">
