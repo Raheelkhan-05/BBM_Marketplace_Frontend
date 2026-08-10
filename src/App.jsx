@@ -1,5 +1,5 @@
 // src/App.jsx
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { RequireAuth, RequireGuest, RequireAdmin } from "./components/RouteGuards.jsx";
 import ScrollToTop from "./lib/ScrollToTop.jsx";
@@ -7,10 +7,7 @@ import Layout from "./components/Layout.jsx";
 import LandingPage from "./pages/LandingPage";
 import SearchResultsPage from "./pages/SearchResultsPage";
 import HomePage from "./pages/HomePage.jsx";
-
-import NewHomePage from "./pages/NewHomePage.jsx";
-
-import HomePageSkeleton from "./components/skeletons/HomePageSkeleton.jsx";
+import CatalogLevelPage from "./pages/CatalogLevelPage.jsx";
 import AuthLayout from "./components/AuthLayout.jsx";
 import AuthPage from "./pages/AuthPage.jsx";
 import SellerOnboardingPage from "./pages/SellerOnboardingPage.jsx";
@@ -30,14 +27,23 @@ import AdminCatalogDetailPage from "./pages/admin/AdminCatalogDetailPage.jsx";
 import BrandDetailPage from "./pages/BrandDetailPage.jsx";
 import BrandFamilyPage from "./pages/BrandFamilyPage.jsx";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy.jsx";
-import CategorySubcategoriesPage from "./pages/CategorySubcategoriesPage";
-import CategoriesPage from "./pages/CategoriesPage.jsx";
-import SubcategoryGenericProductsPage from "./pages/SubcategoryGenericProductsPage";
-import GenericProductBrandsPage from "./pages/GenericProductBrandsPage";
+// import CategorySubcategoriesPage from "./pages/CategorySubcategoriesPage";
+// import CategoriesPage from "./pages/CategoriesPage.jsx";
+// import SubcategoryGenericProductsPage from "./pages/SubcategoryGenericProductsPage";
+// import GenericProductBrandsPage from "./pages/GenericProductBrandsPage";
 import BrandItemSellersPage from "./pages/BrandItemSellersPage";
 import SellPublishProductPage from "./pages/SellPublishProductPage.jsx";
 import AdminSellerSubmissionsPage from "./pages/admin/AdminSellerSubmissionsPage.jsx";
 
+function CatalogLevelPageWithKey({ configKey }) {
+  const { idOrSlug } = useParams();
+  return <CatalogLevelPage key={idOrSlug || "root"} configKey={configKey} />;
+}
+
+function BrandItemSellersPageWithKey() {
+  const { idOrSlug } = useParams();
+  return <BrandItemSellersPage key={idOrSlug} />;
+}
 
 
 function App() {
@@ -56,11 +62,11 @@ function App() {
 
             <Route path="/search" element={<SearchResultsPage />} />
             <Route path="/home" element={<HomePage />} />
-            <Route path="/category/:idOrSlug/subcategories" element={<CategorySubcategoriesPage />} />
-            <Route path="/subcategory/:idOrSlug/products" element={<SubcategoryGenericProductsPage />} />
-            <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
-            <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
-            <Route path="/categories" element={<CategoriesPage />} />
+            <Route path="/category/:idOrSlug/subcategories" element={<CatalogLevelPageWithKey configKey="subcategories" />} />
+            <Route path="/subcategory/:idOrSlug/products" element={<CatalogLevelPageWithKey configKey="products" />} />
+            <Route path="/product/:idOrSlug/brands" element={<CatalogLevelPageWithKey configKey="brands" />} />
+            <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPageWithKey />} />
+            <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
 
             {/* <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><NewHomePage /></RequireAuth>} /> */}
             <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />

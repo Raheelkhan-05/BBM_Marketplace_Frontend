@@ -23,7 +23,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-console.log("Supabase URL:", supabaseUrl, "Key present:", !!supabaseAnonKey);
+// console.log("Supabase URL:", supabaseUrl, "Key present:", !!supabaseAnonKey);
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
