@@ -3,27 +3,50 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bell } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchNotifications, markNotificationRead } from "../utils/api.js";
+import { supabase } from "../utils/supabaseClient.js";
 import SmartLink from "./SmartLink.jsx";
 
 export default function NotificationBell() {
-  const { token } = useAuth();
+  const { token, profile } = useAuth();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);
 
+  const userId = profile?.id;
+  const channelToken = profile?.notificationChannel;
+
   useEffect(() => {
-        if (!token) return; // wait for AuthContext to finish hydrating before calling authenticated endpoints
-        let active = true;
-        const load = () => fetchNotifications(token).then((res) => {
-            if (active && res?.success) { setItems(res.notifications); setUnread(res.unreadCount); }
-        });
-        load();
-        const id = setInterval(load, 60000);
-        return () => { active = false; clearInterval(id); };
-    }, [token]);
+    if (!token || !channelToken) return;
+    let active = true;
+
+    const load = () =>
+      fetchNotifications(token).then((res) => {
+        if (active && res?.success) {
+          setItems(res.notifications);
+          setUnread(res.unreadCount);
+        }
+      });
+    load();
+
+    const channel = supabase
+      .channel(`notifications-${channelToken}`)
+      .on("broadcast", { event: "new_notification" }, ({ payload }) => {
+        setItems((prev) => [payload, ...prev]);
+        setUnread((u) => u + 1);
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [token, channelToken]);
 
   const handleClick = (n) => {
-    if (!n.read) markNotificationRead(token, n.id).then(() => setUnread((u) => Math.max(0, u - 1)));
+    if (!n.read) {
+      markNotificationRead(token, n.id).then(() => setUnread((u) => Math.max(0, u - 1)));
+      setItems((prev) => prev.map((i) => (i.id === n.id ? { ...i, read: true } : i)));
+    }
     setOpen(false);
   };
 

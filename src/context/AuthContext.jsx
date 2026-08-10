@@ -25,6 +25,7 @@ export function AuthProvider({ children }) {
           seller_status: res.seller_status,
           businessProfile: res.businessProfile,
           shop_slug: res.businessProfile?.shop_slug ?? res.shop_slug ?? null,
+          notificationChannel: res.notificationChannel,
         });
         return;
       }
