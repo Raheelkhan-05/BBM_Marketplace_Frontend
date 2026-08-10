@@ -1,36 +1,14 @@
 // components/home/SellerQuickManageListings.jsx
 //
-// Shown only to sellers whose shop is approved (mirrors the condition on
-// StartSellingBanner, just inverted). Lets a seller adjust price / MOQ /
-// lead time / stock on hand inline, or remove a listing, without leaving
-// the home page.
-//
-// Requires the stock_quantity column (see add_stock_quantity_migration.sql)
-// and the seller submissions create/update controller to allow it through —
-// flagged separately since I haven't seen that file yet.
-//
-// v3 — adds:
-//   - ImageLightbox integration: tapping a thumbnail opens it full-screen
-//     via the app's existing lightbox (pinch/pan on mobile, wheel-zoom on
-//     desktop) instead of just sitting there as a static crop.
-//   - A real answer to "hover doesn't exist on mobile": pointer devices
-//     get true hover-reveal on the name row (name gets the full line
-//     until you hover, then truncates to make room for the icons —
-//     exactly the affordance you described). Touch devices instead get a
-//     small always-visible kebab that opens a bottom action sheet — same
-//     fixed-overlay pattern ImageLightbox already uses, so it can't be
-//     clipped by the card's rounded corners or the rail's scroll
-//     container, and it reads as a native mobile pattern rather than a
-//     hover state faked with taps.
-//   - A couple more "premium" system moves that were still missing: a
-//     top status bar per card (color reflects stock health — glances
-//     across the whole rail without opening anything), and a pulse dot
-//     on the section icon using the same ping mechanic as the Hero
-//     status chip.
-//
-// Same tokens/motion as the rest of the home page: ink #0B1116,
-// muted #667077, primary #D2462B, secondary #006F83,
-// hairline rgba(11,17,22,0.09), [0.16,1,0.3,1] easing.
+// v4 — removed the nested double-box wrapper (outer rounded-[16px] card
+// + inner rounded-[20px] overflow box) that was reading as a "boxy"
+// panel-within-a-panel. Now a single bordered white container carries
+// the mask-image edge fade directly, same pattern as
+// CategoryIconExplorer's wrapper: overflow-hidden rounded-[20px] border
+// bg-white p-4 px-3 sm:p-6, mask on the container itself. The
+// scroll-aware left/right fade overlays and the lightbox stay put,
+// just re-parented into that single container instead of a padded
+// inner div.
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -57,9 +35,6 @@ const LOW_STOCK_THRESHOLD = 10;
 
 /* ---------------- shared primitives ---------------- */
 
-// Small inline spec, e.g. "MOQ  50 kg" — deliberately typographic rather
-// than boxed or pill-shaped, so status (when present) reads as a colored
-// value in a data row, not a decorative sticker competing with it.
 function Spec({ label, value, tone }) {
     return (
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -88,39 +63,26 @@ function FieldInput({ label, ...props }) {
     );
 }
 
-// Same header pattern CategoryIconExplorer uses — icon chip, title,
-// subtitle, "See all" — plus a pulse dot on the chip borrowed from the
-// Same header pattern CategoryIconExplorer uses — icon chip, title,
-// subtitle, "See all". No motion on the icon itself: a pulsing dot reads
-// as a consumer-app notification badge, not a B2B management tool, so
-// the section earns attention through type and spacing alone.
-function SectionHeader({ title, subtitle, onSeeAll }) {
+function SectionHeader({ title, subtitle }) {
+    const navigate = useNavigate();
     return (
-        <div className="flex items-center justify-between px-4 pt-1 lg:px-8">
-            <div className="flex items-center gap-2.5">
-                <span
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                    style={{ background: `${C.secondary}12`, color: C.secondary }}
+        <div className="flex items-center justify-between pt-1 mb-0">
+            <div>
+                <h2
+                    className="text-left font-extrabold leading-tight tracking-[-0.01em]"
+                    style={{ color: C.ink, fontSize: "clamp(19px, 1.8vw, 27px)" }}
                 >
-                    <PackageSearch className="h-4.5 w-4.5" />
-                </span>
-                <div>
-                    <h2
-                        className="text-left font-extrabold leading-tight tracking-[-0.01em]"
-                        style={{ color: C.ink, fontSize: "clamp(20px, 1.8vw, 25px)" }}
-                    >
-                        {title}
-                    </h2>
-                    {subtitle && (
-                        <p className="mt-0.5 max-w-xs text-[12.5px] font-medium leading-relaxed" style={{ color: C.muted }}>
-                            {subtitle}
-                        </p>
-                    )}
-                </div>
+                    {title}
+                </h2>
+                {subtitle && (
+                    <p className="mt-0.5 max-w-xs text-[12.5px] font-medium leading-relaxed" style={{ color: C.muted }}>
+                        {subtitle}
+                    </p>
+                )}
             </div>
             <button
-                onClick={onSeeAll}
-                className="group flex shrink-0 items-center gap-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide transition-colors duration-150"
+                onClick={() => navigate("/categories")}
+                className="group flex items-center gap-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide transition-colors duration-150"
                 style={{ color: C.primary }}
             >
                 See all
@@ -130,7 +92,6 @@ function SectionHeader({ title, subtitle, onSeeAll }) {
     );
 }
 
-// Scroll-aware edge fades, same logic as CategoryIconExplorer's TileRail.
 function useScrollFades(deps) {
     const scrollRef = useRef(null);
     const [showLeftFade, setShowLeftFade] = useState(false);
@@ -140,8 +101,8 @@ function useScrollFades(deps) {
         const el = scrollRef.current;
         if (!el) return;
         const { scrollLeft, scrollWidth, clientWidth } = el;
-        setShowLeftFade(scrollLeft > 4);
-        setShowRightFade(scrollLeft + clientWidth < scrollWidth - 4);
+        setShowLeftFade(scrollLeft > 0);
+        setShowRightFade(scrollLeft + clientWidth < scrollWidth - 8);
     };
 
     useEffect(() => {
@@ -161,10 +122,6 @@ function useScrollFades(deps) {
     return { scrollRef, showLeftFade, showRightFade };
 }
 
-// The real fix for "hover doesn't work on mobile": ask the platform
-// whether hover + a fine pointer actually exist, rather than guessing
-// from viewport width (a touch laptop or a tablet with a mouse would
-// get the wrong answer from a width check).
 function useCanHover() {
     const [canHover, setCanHover] = useState(
         () => typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches
@@ -179,10 +136,6 @@ function useCanHover() {
 }
 
 /* ---------------- mobile action sheet ---------------- */
-// Portaled to document.body so it can't be clipped by the card's rounded
-// corners or by the rail's horizontal-scroll container, and can't be
-// broken by a `transform` on an animating ancestor. Same fixed-overlay
-// idea as ImageLightbox, scaled down to a bottom sheet.
 function ListingActionSheet({ open, name, onEdit, onDelete, onClose }) {
     if (typeof document === "undefined") return null;
     return createPortal(
@@ -270,9 +223,6 @@ function ListingCard({
             className="group relative w-[280px] shrink-0 snap-start rounded-2xl border bg-white shadow-[0_1px_2px_rgba(11,17,22,0.03)] transition-shadow duration-200 hover:shadow-[0_10px_24px_-14px_rgba(11,17,22,0.16)] sm:w-[300px]"
             style={{ borderColor: C.hair }}
         >
-            {/* status bar — silent by default; only appears as a deliberate
-                signal when a listing actually needs attention, instead of a
-                decorative gradient sitting on every card regardless */}
             {statusColor && (
                 <div
                     className="pointer-events-none absolute inset-x-0 top-0 h-[3px] overflow-hidden rounded-t-2xl"
@@ -282,9 +232,6 @@ function ListingCard({
 
             <div className="relative p-4">
                 <div className="flex items-start gap-3">
-                    {/* thumbnail: flat hairline frame — no gradient border, no
-                        color mixing, just a clean edge so the product photo
-                        itself carries the visual interest */}
                     <button
                         type="button"
                         onClick={(e) => { if (image) { e.stopPropagation(); onOpenImage({ src: image, alt: name }); } }}
@@ -305,11 +252,6 @@ function ListingCard({
                         </span>
                     </button>
 
-                    {/* name + actions row — on pointer devices the name owns
-                        the full line until hover, then the icon rail expands
-                        and the name truncates to make room. On touch devices
-                        a small persistent kebab opens the bottom sheet above
-                        instead of relying on a hover state that never fires. */}
                     <div className="flex min-w-0 flex-1 items-start gap-1 pt-0.5">
                         <div className="min-w-0 flex-1">
                             <p className="truncate text-[14px] font-bold leading-tight tracking-[-0.005em]" style={{ color: C.ink }}>
@@ -452,10 +394,6 @@ function ListingCard({
                             transition={{ duration: 0.2 }}
                             className="mt-4"
                         >
-                            {/* one clear focal point — price — instead of two
-                                bold numbers competing for attention. Stock
-                                moves into the spec row below, where it earns
-                                color only when it actually needs to. */}
                             <p className="leading-none">
                                 <span className="text-[21px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>
                                     ₹{it.price}
@@ -565,60 +503,61 @@ export default function SellerQuickManageListings() {
     }
 
     return (
-        <div className="w-full space-y-4 rounded-[16px] border bg-white pb-6 pt-6 lg:pb-8 lg:pt-5" style={{ borderColor: C.hair }}>
+        <div className="space-y-4">
             <SectionHeader
                 title="Manage your listings"
                 subtitle="Price, MOQ, lead time & stock — updated live"
-                onSeeAll={() => navigate("/seller/products")}
             />
 
-            <div className="relative px-4 lg:px-8">
+            {/* mask-image now reacts to scroll state, so the fade only
+                shows on an edge when there's actually more content past
+                it — same visual style as before, just conditional */}
+            <div
+                className="relative overflow-hidden rounded-[20px] p-0"
+                style={{
+                    borderColor: C.hair,
+                    maskImage: `linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%)`,
+                    WebkitMaskImage: `linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%)`,
+                }}
+            >
                 <div
-                    className="overflow-hidden rounded-[20px]"
-                    style={{
-                        maskImage: "linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%)",
-                        WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%)",
-                    }}
+                    ref={scrollRef}
+                    className="flex snap-x snap-proximity scroll-ps-3 px-4 gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
-                    <div
-                        ref={scrollRef}
-                        className="flex snap-x snap-proximity gap-3 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                    >
-                        {loading
-                            ? Array.from({ length: 3 }).map((_, i) => (
-                                <div
-                                    key={i}
-                                    className="h-[204px] w-[280px] shrink-0 animate-pulse rounded-2xl sm:w-[300px]"
-                                    style={{ background: C.hairSoft }}
-                                />
-                            ))
-                            : items.map((it, i) => (
-                                <ListingCard
-                                    key={it.id}
-                                    it={it}
-                                    i={i}
-                                    canHover={canHover}
-                                    isEditing={editingId === it.id}
-                                    isConfirming={confirmDeleteId === it.id}
-                                    form={form}
-                                    setForm={setForm}
-                                    saving={saving}
-                                    deletingId={deletingId}
-                                    onEdit={startEdit}
-                                    onCancelEdit={cancelEdit}
-                                    onSave={saveEdit}
-                                    onAskDelete={(id) => { setEditingId(null); setConfirmDeleteId(id); }}
-                                    onCancelDelete={() => setConfirmDeleteId(null)}
-                                    onConfirmDelete={confirmDelete}
-                                    onOpenImage={setLightboxImage}
-                                />
-                            ))}
-                    </div>
+                    {loading
+                        ? Array.from({ length: 3 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="h-[204px] w-[280px] shrink-0 animate-pulse rounded-2xl sm:w-[300px]"
+                                style={{ background: C.hairSoft }}
+                            />
+                        ))
+                        : items.map((it, i) => (
+                            <ListingCard
+                                key={it.id}
+                                it={it}
+                                i={i}
+                                canHover={canHover}
+                                isEditing={editingId === it.id}
+                                isConfirming={confirmDeleteId === it.id}
+                                form={form}
+                                setForm={setForm}
+                                saving={saving}
+                                deletingId={deletingId}
+                                onEdit={startEdit}
+                                onCancelEdit={cancelEdit}
+                                onSave={saveEdit}
+                                onAskDelete={(id) => { setEditingId(null); setConfirmDeleteId(id); }}
+                                onCancelDelete={() => setConfirmDeleteId(null)}
+                                onConfirmDelete={confirmDelete}
+                                onOpenImage={setLightboxImage}
+                            />
+                        ))}
                 </div>
 
                 <div
                     aria-hidden
-                    className="pointer-events-none absolute inset-y-1 left-4 w-8 transition-opacity duration-500 ease-out sm:w-12 lg:left-8"
+                    className="pointer-events-none absolute inset-y-1 left-0 w-5 transition-opacity duration-500 ease-out sm:w-12"
                     style={{
                         opacity: showLeftFade ? 1 : 0,
                         background: "linear-gradient(to right, #ffffff 0%, rgba(255,255,255,0) 100%)",
@@ -626,24 +565,24 @@ export default function SellerQuickManageListings() {
                 />
                 <div
                     aria-hidden
-                    className="pointer-events-none absolute inset-y-1 right-4 w-8 transition-opacity duration-500 ease-out sm:w-12 lg:right-8"
+                    className="pointer-events-none absolute inset-y-1 right-0 w-8 transition-opacity duration-500 ease-out sm:w-12"
                     style={{
                         opacity: showRightFade ? 1 : 0,
                         background: "linear-gradient(to left, #ffffff 0%, rgba(255,255,255,0) 100%)",
                     }}
                 />
-            </div>
 
-            <AnimatePresence>
-                {lightboxImage && (
-                    <ImageLightbox
-                        key="listing-lightbox"
-                        src={lightboxImage.src}
-                        alt={lightboxImage.alt}
-                        onClose={() => setLightboxImage(null)}
-                    />
-                )}
-            </AnimatePresence>
+                <AnimatePresence>
+                    {lightboxImage && (
+                        <ImageLightbox
+                            key="listing-lightbox"
+                            src={lightboxImage.src}
+                            alt={lightboxImage.alt}
+                            onClose={() => setLightboxImage(null)}
+                        />
+                    )}
+                </AnimatePresence>
+            </div>
         </div>
     );
 }
