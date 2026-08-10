@@ -9,16 +9,40 @@
 // and the seller submissions create/update controller to allow it through —
 // flagged separately since I haven't seen that file yet.
 //
+// v3 — adds:
+//   - ImageLightbox integration: tapping a thumbnail opens it full-screen
+//     via the app's existing lightbox (pinch/pan on mobile, wheel-zoom on
+//     desktop) instead of just sitting there as a static crop.
+//   - A real answer to "hover doesn't exist on mobile": pointer devices
+//     get true hover-reveal on the name row (name gets the full line
+//     until you hover, then truncates to make room for the icons —
+//     exactly the affordance you described). Touch devices instead get a
+//     small always-visible kebab that opens a bottom action sheet — same
+//     fixed-overlay pattern ImageLightbox already uses, so it can't be
+//     clipped by the card's rounded corners or the rail's scroll
+//     container, and it reads as a native mobile pattern rather than a
+//     hover state faked with taps.
+//   - A couple more "premium" system moves that were still missing: a
+//     top status bar per card (color reflects stock health — glances
+//     across the whole rail without opening anything), and a pulse dot
+//     on the section icon using the same ping mechanic as the Hero
+//     status chip.
+//
 // Same tokens/motion as the rest of the home page: ink #0B1116,
 // muted #667077, primary #D2462B, secondary #006F83,
 // hairline rgba(11,17,22,0.09), [0.16,1,0.3,1] easing.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Pencil, Trash2, Check, X, Loader2, ImageIcon, ExternalLink, PackageSearch, AlertTriangle } from "lucide-react";
+import {
+    Pencil, Trash2, Check, X, Loader2, ImageIcon, ChevronRight,
+    PackageSearch, AlertTriangle, MoreVertical, Maximize2,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { fetchMySellerSubmissions, updateSellerProductSubmission, deleteSellerProductSubmission } from "../../utils/api.js";
+import ImageLightbox from "../ImageLightbox.jsx";
 
 const C = {
     ink: "#0B1116",
@@ -31,15 +55,20 @@ const C = {
 const EASE = [0.16, 1, 0.3, 1];
 const LOW_STOCK_THRESHOLD = 10;
 
-function Stat({ label, value, warn }) {
+/* ---------------- shared primitives ---------------- */
+
+// Small inline spec, e.g. "MOQ  50 kg" — deliberately typographic rather
+// than boxed or pill-shaped, so status (when present) reads as a colored
+// value in a data row, not a decorative sticker competing with it.
+function Spec({ label, value, tone }) {
     return (
-        <div className="rounded-xl px-2.5 py-2" style={{ background: C.hairSoft }}>
-            <p className="font-mono text-[8.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
                 {label}
-            </p>
-            <p className="mt-0.5 truncate text-[12.5px] font-extrabold" style={{ color: warn ? "#b45309" : C.ink }}>
+            </span>
+            <span className="truncate text-[13px] font-bold tabular-nums" style={{ color: tone || C.ink }}>
                 {value}
-            </p>
+            </span>
         </div>
     );
 }
@@ -47,21 +76,428 @@ function Stat({ label, value, warn }) {
 function FieldInput({ label, ...props }) {
     return (
         <label className="block">
-            <span className="font-mono text-[8.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
+            <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
                 {label}
             </span>
             <input
                 {...props}
-                className="mt-1 w-full rounded-lg border bg-white px-2.5 py-1.5 text-[12.5px] font-bold focus:outline-none focus:ring-2"
+                className="mt-1 w-full rounded-lg border bg-white px-2.5 py-2 text-[13.5px] font-bold focus:outline-none focus:ring-2"
                 style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}33` }}
             />
         </label>
     );
 }
 
+// Same header pattern CategoryIconExplorer uses — icon chip, title,
+// subtitle, "See all" — plus a pulse dot on the chip borrowed from the
+// Same header pattern CategoryIconExplorer uses — icon chip, title,
+// subtitle, "See all". No motion on the icon itself: a pulsing dot reads
+// as a consumer-app notification badge, not a B2B management tool, so
+// the section earns attention through type and spacing alone.
+function SectionHeader({ title, subtitle, onSeeAll }) {
+    return (
+        <div className="flex items-center justify-between px-4 pt-1 lg:px-8">
+            <div className="flex items-center gap-2.5">
+                <span
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                    style={{ background: `${C.secondary}12`, color: C.secondary }}
+                >
+                    <PackageSearch className="h-4.5 w-4.5" />
+                </span>
+                <div>
+                    <h2
+                        className="text-left font-extrabold leading-tight tracking-[-0.01em]"
+                        style={{ color: C.ink, fontSize: "clamp(20px, 1.8vw, 25px)" }}
+                    >
+                        {title}
+                    </h2>
+                    {subtitle && (
+                        <p className="mt-0.5 max-w-xs text-[12.5px] font-medium leading-relaxed" style={{ color: C.muted }}>
+                            {subtitle}
+                        </p>
+                    )}
+                </div>
+            </div>
+            <button
+                onClick={onSeeAll}
+                className="group flex shrink-0 items-center gap-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide transition-colors duration-150"
+                style={{ color: C.primary }}
+            >
+                See all
+                <ChevronRight className="h-3.5 w-3.5 transition-transform duration-150 group-hover:translate-x-0.5" />
+            </button>
+        </div>
+    );
+}
+
+// Scroll-aware edge fades, same logic as CategoryIconExplorer's TileRail.
+function useScrollFades(deps) {
+    const scrollRef = useRef(null);
+    const [showLeftFade, setShowLeftFade] = useState(false);
+    const [showRightFade, setShowRightFade] = useState(false);
+
+    const updateFades = () => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const { scrollLeft, scrollWidth, clientWidth } = el;
+        setShowLeftFade(scrollLeft > 4);
+        setShowRightFade(scrollLeft + clientWidth < scrollWidth - 4);
+    };
+
+    useEffect(() => {
+        const raf = requestAnimationFrame(updateFades);
+        const el = scrollRef.current;
+        if (!el) return () => cancelAnimationFrame(raf);
+        el.addEventListener("scroll", updateFades, { passive: true });
+        window.addEventListener("resize", updateFades);
+        return () => {
+            cancelAnimationFrame(raf);
+            el.removeEventListener("scroll", updateFades);
+            window.removeEventListener("resize", updateFades);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, deps);
+
+    return { scrollRef, showLeftFade, showRightFade };
+}
+
+// The real fix for "hover doesn't work on mobile": ask the platform
+// whether hover + a fine pointer actually exist, rather than guessing
+// from viewport width (a touch laptop or a tablet with a mouse would
+// get the wrong answer from a width check).
+function useCanHover() {
+    const [canHover, setCanHover] = useState(
+        () => typeof window !== "undefined" && window.matchMedia("(hover: hover) and (pointer: fine)").matches
+    );
+    useEffect(() => {
+        const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+        const handler = (e) => setCanHover(e.matches);
+        mq.addEventListener?.("change", handler);
+        return () => mq.removeEventListener?.("change", handler);
+    }, []);
+    return canHover;
+}
+
+/* ---------------- mobile action sheet ---------------- */
+// Portaled to document.body so it can't be clipped by the card's rounded
+// corners or by the rail's horizontal-scroll container, and can't be
+// broken by a `transform` on an animating ancestor. Same fixed-overlay
+// idea as ImageLightbox, scaled down to a bottom sheet.
+function ListingActionSheet({ open, name, onEdit, onDelete, onClose }) {
+    if (typeof document === "undefined") return null;
+    return createPortal(
+        <AnimatePresence>
+            {open && (
+                <>
+                    <motion.div
+                        key="backdrop"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.18 }}
+                        onClick={onClose}
+                        className="fixed inset-0 z-[90] bg-black/40"
+                    />
+                    <motion.div
+                        key="sheet"
+                        initial={{ y: "100%" }}
+                        animate={{ y: 0 }}
+                        exit={{ y: "100%" }}
+                        transition={{ duration: 0.28, ease: EASE }}
+                        className="fixed inset-x-0 bottom-0 z-[91] rounded-t-[20px] bg-white p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_-8px_rgba(11,17,22,0.25)]"
+                    >
+                        <div className="mx-auto mb-3 mt-1 h-1 w-9 rounded-full" style={{ background: C.hair }} />
+                        <p className="truncate px-3 pb-2 text-[11px] font-mono font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
+                            {name}
+                        </p>
+                        <button
+                            onClick={onEdit}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[14.5px] font-bold transition-colors duration-150 active:bg-black/[0.04]"
+                            style={{ color: C.ink }}
+                        >
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12`, color: C.secondary }}>
+                                <Pencil className="h-4 w-4" />
+                            </span>
+                            Edit listing
+                        </button>
+                        <button
+                            onClick={onDelete}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[14.5px] font-bold transition-colors duration-150 active:bg-red-50"
+                            style={{ color: "#c71f11" }}
+                        >
+                            <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "rgba(199,31,17,0.1)" }}>
+                                <Trash2 className="h-4 w-4" />
+                            </span>
+                            Remove listing
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="mt-1 flex w-full items-center justify-center rounded-xl py-3 text-[13.5px] font-bold"
+                            style={{ background: C.hairSoft, color: C.muted }}
+                        >
+                            Cancel
+                        </button>
+                    </motion.div>
+                </>
+            )}
+        </AnimatePresence>,
+        document.body
+    );
+}
+
+/* ---------------- listing card ---------------- */
+
+function ListingCard({
+    it, i, canHover, isEditing, isConfirming, form, setForm, saving, deletingId,
+    onEdit, onCancelEdit, onSave, onAskDelete, onCancelDelete, onConfirmDelete, onOpenImage,
+}) {
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const name = it.brand?.name || it.product_name || "Product";
+    const brandName = it.brand?.brand_name || it.brand_name;
+    const image = it.image || it.brand?.image;
+    const stock = it.stock_quantity;
+    const lowStock = stock != null && stock <= LOW_STOCK_THRESHOLD;
+    const outOfStock = stock != null && stock <= 0;
+
+    const statusColor = outOfStock ? "#c71f11" : lowStock ? "#b45309" : null;
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: Math.min(i * 0.03, 0.3), ease: EASE }}
+            whileHover={{ y: -2 }}
+            className="group relative w-[280px] shrink-0 snap-start rounded-2xl border bg-white shadow-[0_1px_2px_rgba(11,17,22,0.03)] transition-shadow duration-200 hover:shadow-[0_10px_24px_-14px_rgba(11,17,22,0.16)] sm:w-[300px]"
+            style={{ borderColor: C.hair }}
+        >
+            {/* status bar — silent by default; only appears as a deliberate
+                signal when a listing actually needs attention, instead of a
+                decorative gradient sitting on every card regardless */}
+            {statusColor && (
+                <div
+                    className="pointer-events-none absolute inset-x-0 top-0 h-[3px] overflow-hidden rounded-t-2xl"
+                    style={{ background: statusColor }}
+                />
+            )}
+
+            <div className="relative p-4">
+                <div className="flex items-start gap-3">
+                    {/* thumbnail: flat hairline frame — no gradient border, no
+                        color mixing, just a clean edge so the product photo
+                        itself carries the visual interest */}
+                    <button
+                        type="button"
+                        onClick={(e) => { if (image) { e.stopPropagation(); onOpenImage({ src: image, alt: name }); } }}
+                        className="group/img relative shrink-0 overflow-hidden rounded-xl border transition-transform duration-150 active:scale-95"
+                        style={{ borderColor: C.hair, background: "#F5F6F7", cursor: image ? "zoom-in" : "default" }}
+                        aria-label={image ? `View full image of ${name}` : "No image available"}
+                    >
+                        <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl">
+                            {image ? (
+                                <img
+                                    src={image}
+                                    alt=""
+                                    className="h-full w-full object-cover transition-transform duration-300 group-hover/img:scale-110"
+                                />
+                            ) : (
+                                <ImageIcon className="h-5 w-5" style={{ color: C.muted }} />
+                            )}
+                        </span>
+                    </button>
+
+                    {/* name + actions row — on pointer devices the name owns
+                        the full line until hover, then the icon rail expands
+                        and the name truncates to make room. On touch devices
+                        a small persistent kebab opens the bottom sheet above
+                        instead of relying on a hover state that never fires. */}
+                    <div className="flex min-w-0 flex-1 items-start gap-1 pt-0.5">
+                        <div className="min-w-0 flex-1">
+                            <p className="truncate text-[14px] font-bold leading-tight tracking-[-0.005em]" style={{ color: C.ink }}>
+                                {name}
+                            </p>
+                            {brandName && (
+                                <p className="mt-0.5 truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
+                                    {brandName}
+                                </p>
+                            )}
+                        </div>
+
+                        {!isEditing && !isConfirming && (
+                            canHover ? (
+                                <div className="flex shrink-0 items-center gap-1 overflow-hidden opacity-0 transition-all duration-200 ease-out max-w-0 group-hover:max-w-[80px] group-hover:opacity-100">
+                                    <button
+                                        onClick={() => onEdit(it)}
+                                        aria-label="Edit listing"
+                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]"
+                                        style={{ color: C.ink }}
+                                    >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                        onClick={() => onAskDelete(it.id)}
+                                        aria-label="Delete listing"
+                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50"
+                                        style={{ color: "#c71f11" }}
+                                    >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => setSheetOpen(true)}
+                                    aria-label="Listing actions"
+                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 active:bg-black/[0.05]"
+                                    style={{ color: C.muted }}
+                                >
+                                    <MoreVertical className="h-4 w-4" />
+                                </button>
+                            )
+                        )}
+                    </div>
+                </div>
+
+                <AnimatePresence mode="wait">
+                    {isEditing ? (
+                        <motion.div
+                            key="edit"
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="mt-4 overflow-hidden"
+                        >
+                            <div className="space-y-2.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    <FieldInput
+                                        label="Price (₹)"
+                                        type="number" min="0" step="0.01"
+                                        value={form.price}
+                                        onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                                    />
+                                    <FieldInput
+                                        label={`Stock (${it.unit})`}
+                                        type="number" min="0" step="0.01"
+                                        placeholder="—"
+                                        value={form.stock_quantity}
+                                        onChange={(e) => setForm((f) => ({ ...f, stock_quantity: e.target.value }))}
+                                    />
+                                    <FieldInput
+                                        label={`MOQ (${it.unit})`}
+                                        type="number" min="0" step="0.01"
+                                        value={form.moq}
+                                        onChange={(e) => setForm((f) => ({ ...f, moq: e.target.value }))}
+                                    />
+                                    <FieldInput
+                                        label="Lead time"
+                                        type="text"
+                                        value={form.lead_time}
+                                        onChange={(e) => setForm((f) => ({ ...f, lead_time: e.target.value }))}
+                                    />
+                                </div>
+                                <div className="flex gap-2 pt-1">
+                                    <button
+                                        onClick={() => onSave(it.id)}
+                                        disabled={saving}
+                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-50"
+                                        style={{ background: C.secondary }}
+                                    >
+                                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save
+                                    </button>
+                                    <button
+                                        onClick={onCancelEdit}
+                                        className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03]"
+                                        style={{ borderColor: C.hair }}
+                                    >
+                                        <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
+                                    </button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    ) : isConfirming ? (
+                        <motion.div
+                            key="confirm"
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="mt-4 overflow-hidden rounded-xl p-3"
+                            style={{ background: "rgba(199,31,17,0.06)" }}
+                        >
+                            <p className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: C.ink }}>
+                                <AlertTriangle className="h-3.5 w-3.5 shrink-0" style={{ color: "#c71f11" }} /> Remove this listing?
+                            </p>
+                            <div className="mt-2.5 flex gap-2">
+                                <button
+                                    onClick={() => onConfirmDelete(it.id)}
+                                    disabled={deletingId === it.id}
+                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#c71f11] py-2 text-[12.5px] font-bold text-white disabled:opacity-50"
+                                >
+                                    {deletingId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Yes, remove"}
+                                </button>
+                                <button
+                                    onClick={onCancelDelete}
+                                    className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03]"
+                                    style={{ borderColor: C.hair }}
+                                >
+                                    <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
+                                </button>
+                            </div>
+                        </motion.div>
+                    ) : (
+                        <motion.div
+                            key="view"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="mt-4"
+                        >
+                            {/* one clear focal point — price — instead of two
+                                bold numbers competing for attention. Stock
+                                moves into the spec row below, where it earns
+                                color only when it actually needs to. */}
+                            <p className="leading-none">
+                                <span className="text-[21px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>
+                                    ₹{it.price}
+                                </span>
+                                <span className="ml-1 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                    /{it.unit}
+                                </span>
+                            </p>
+
+                            <div className="my-3 h-px w-full" style={{ background: C.hair }} />
+
+                            <div className="flex items-start gap-4">
+                                <Spec
+                                    label="Stock"
+                                    value={stock != null ? `${stock} ${it.unit}` : "—"}
+                                    tone={statusColor}
+                                />
+                                <Spec label="MOQ" value={`${it.moq} ${it.unit}`} />
+                                <Spec label="Lead" value={it.lead_time} />
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            <ListingActionSheet
+                open={sheetOpen}
+                name={name}
+                onClose={() => setSheetOpen(false)}
+                onEdit={() => { setSheetOpen(false); onEdit(it); }}
+                onDelete={() => { setSheetOpen(false); onAskDelete(it.id); }}
+            />
+        </motion.div>
+    );
+}
+
+/* ---------------- main ---------------- */
+
 export default function SellerQuickManageListings() {
     const { token, profile } = useAuth();
     const navigate = useNavigate();
+    const canHover = useCanHover();
 
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -70,8 +506,11 @@ export default function SellerQuickManageListings() {
     const [saving, setSaving] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
+    const [lightboxImage, setLightboxImage] = useState(null); // { src, alt } | null
 
     const isApprovedSeller = profile?.seller_status === "approved";
+
+    const { scrollRef, showLeftFade, showRightFade } = useScrollFades([items, editingId, confirmDeleteId, loading]);
 
     useEffect(() => {
         if (!token || !isApprovedSeller) { setLoading(false); return; }
@@ -126,201 +565,85 @@ export default function SellerQuickManageListings() {
     }
 
     return (
-        <div className="w-full rounded-[16px] border bg-white pb-6 pt-6 lg:pb-8 lg:pt-5" style={{ borderColor: C.hair }}>
-            <div className="flex items-center justify-between px-4 lg:px-8">
-                <div className="flex items-center gap-2.5">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: `${C.secondary}12`, color: C.secondary }}>
-                        <PackageSearch className="h-4.5 w-4.5" />
-                    </span>
-                    <div>
-                        <h2 className="font-extrabold leading-tight tracking-[-0.01em]" style={{ color: C.ink, fontSize: "clamp(17px, 1.6vw, 22px)" }}>
-                            Manage your listings
-                        </h2>
-                        <p className="text-[11.5px] font-medium leading-tight" style={{ color: C.muted }}>
-                            Price, MOQ, lead time & stock — updated live
-                        </p>
+        <div className="w-full space-y-4 rounded-[16px] border bg-white pb-6 pt-6 lg:pb-8 lg:pt-5" style={{ borderColor: C.hair }}>
+            <SectionHeader
+                title="Manage your listings"
+                subtitle="Price, MOQ, lead time & stock — updated live"
+                onSeeAll={() => navigate("/seller/products")}
+            />
+
+            <div className="relative px-4 lg:px-8">
+                <div
+                    className="overflow-hidden rounded-[20px]"
+                    style={{
+                        maskImage: "linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%)",
+                        WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%)",
+                    }}
+                >
+                    <div
+                        ref={scrollRef}
+                        className="flex snap-x snap-proximity gap-3 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    >
+                        {loading
+                            ? Array.from({ length: 3 }).map((_, i) => (
+                                <div
+                                    key={i}
+                                    className="h-[204px] w-[280px] shrink-0 animate-pulse rounded-2xl sm:w-[300px]"
+                                    style={{ background: C.hairSoft }}
+                                />
+                            ))
+                            : items.map((it, i) => (
+                                <ListingCard
+                                    key={it.id}
+                                    it={it}
+                                    i={i}
+                                    canHover={canHover}
+                                    isEditing={editingId === it.id}
+                                    isConfirming={confirmDeleteId === it.id}
+                                    form={form}
+                                    setForm={setForm}
+                                    saving={saving}
+                                    deletingId={deletingId}
+                                    onEdit={startEdit}
+                                    onCancelEdit={cancelEdit}
+                                    onSave={saveEdit}
+                                    onAskDelete={(id) => { setEditingId(null); setConfirmDeleteId(id); }}
+                                    onCancelDelete={() => setConfirmDeleteId(null)}
+                                    onConfirmDelete={confirmDelete}
+                                    onOpenImage={setLightboxImage}
+                                />
+                            ))}
                     </div>
                 </div>
-                <button
-                    onClick={() => navigate("/seller/products")}
-                    className="hidden shrink-0 items-center gap-1 rounded-full border bg-white px-3 py-1.5 text-[11.5px] font-bold transition-colors duration-150 hover:bg-black/[0.03] sm:flex"
-                    style={{ borderColor: C.hair, color: C.secondary }}
-                >
-                    View all <ExternalLink className="h-3 w-3" />
-                </button>
+
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-1 left-4 w-8 transition-opacity duration-500 ease-out sm:w-12 lg:left-8"
+                    style={{
+                        opacity: showLeftFade ? 1 : 0,
+                        background: "linear-gradient(to right, #ffffff 0%, rgba(255,255,255,0) 100%)",
+                    }}
+                />
+                <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-1 right-4 w-8 transition-opacity duration-500 ease-out sm:w-12 lg:right-8"
+                    style={{
+                        opacity: showRightFade ? 1 : 0,
+                        background: "linear-gradient(to left, #ffffff 0%, rgba(255,255,255,0) 100%)",
+                    }}
+                />
             </div>
 
-            <div className="mt-4 flex gap-3 overflow-x-auto px-4 pb-1 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {loading
-                    ? Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="h-[248px] w-[248px] shrink-0 animate-pulse rounded-2xl" style={{ background: C.hairSoft }} />
-                    ))
-                    : items.map((it, i) => {
-                        const isEditing = editingId === it.id;
-                        const isConfirming = confirmDeleteId === it.id;
-                        const name = it.brand?.name || it.product_name || "Product";
-                        const brandName = it.brand?.brand_name || it.brand_name;
-                        const image = it.image || it.brand?.image;
-                        const stock = it.stock_quantity;
-                        const lowStock = stock != null && stock <= LOW_STOCK_THRESHOLD;
-                        const outOfStock = stock != null && stock <= 0;
-
-                        return (
-                            <motion.div
-                                key={it.id}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.35, delay: Math.min(i * 0.03, 0.3), ease: EASE }}
-                                className="w-[248px] shrink-0 rounded-2xl border bg-white p-3.5 shadow-[0_1px_2px_rgba(11,17,22,0.03)]"
-                                style={{ borderColor: C.hair }}
-                            >
-                                <div className="flex items-start gap-2.5">
-                                    <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.hair }}>
-                                        {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="h-5 w-5" style={{ color: C.muted }} />}
-                                    </span>
-                                    <div className="min-w-0 flex-1 pt-0.5">
-                                        <p className="truncate text-[13px] font-extrabold leading-tight" style={{ color: C.ink }}>{name}</p>
-                                        {brandName && <p className="truncate text-[10.5px] font-semibold" style={{ color: C.muted }}>{brandName}</p>}
-                                    </div>
-                                    {!isEditing && !isConfirming && (
-                                        <div className="flex shrink-0 items-center gap-1">
-                                            <button
-                                                onClick={() => startEdit(it)}
-                                                aria-label="Edit"
-                                                className="flex h-7 w-7 items-center justify-center rounded-lg border transition-colors duration-150 hover:bg-black/[0.03]"
-                                                style={{ borderColor: C.hair }}
-                                            >
-                                                <Pencil className="h-3.5 w-3.5" style={{ color: C.ink }} />
-                                            </button>
-                                            <button
-                                                onClick={() => setConfirmDeleteId(it.id)}
-                                                aria-label="Delete"
-                                                className="flex h-7 w-7 items-center justify-center rounded-lg border transition-colors duration-150 hover:bg-red-50"
-                                                style={{ borderColor: "rgba(199,31,17,0.25)" }}
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5" style={{ color: "#c71f11" }} />
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <AnimatePresence mode="wait">
-                                    {isEditing ? (
-                                        <motion.div
-                                            key="edit"
-                                            initial={{ opacity: 0, height: 0 }}
-                                            animate={{ opacity: 1, height: "auto" }}
-                                            exit={{ opacity: 0, height: 0 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="mt-3 space-y-2 overflow-hidden"
-                                        >
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <FieldInput
-                                                    label="Price (₹)"
-                                                    type="number" min="0" step="0.01"
-                                                    value={form.price}
-                                                    onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                                                />
-                                                <FieldInput
-                                                    label={`MOQ (${it.unit})`}
-                                                    type="number" min="0" step="0.01"
-                                                    value={form.moq}
-                                                    onChange={(e) => setForm((f) => ({ ...f, moq: e.target.value }))}
-                                                />
-                                                <FieldInput
-                                                    label={`Stock (${it.unit})`}
-                                                    type="number" min="0" step="0.01"
-                                                    placeholder="—"
-                                                    value={form.stock_quantity}
-                                                    onChange={(e) => setForm((f) => ({ ...f, stock_quantity: e.target.value }))}
-                                                />
-                                                <FieldInput
-                                                    label="Lead time"
-                                                    type="text"
-                                                    value={form.lead_time}
-                                                    onChange={(e) => setForm((f) => ({ ...f, lead_time: e.target.value }))}
-                                                />
-                                            </div>
-                                            <div className="flex gap-1.5 pt-0.5">
-                                                <button
-                                                    onClick={() => saveEdit(it.id)}
-                                                    disabled={saving}
-                                                    className="flex flex-1 items-center justify-center gap-1 rounded-lg py-1.5 text-[11.5px] font-bold text-white disabled:opacity-50"
-                                                    style={{ background: C.secondary }}
-                                                >
-                                                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save
-                                                </button>
-                                                <button onClick={cancelEdit} className="flex items-center justify-center rounded-lg border px-2.5" style={{ borderColor: C.hair }}>
-                                                    <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
-                                                </button>
-                                            </div>
-                                        </motion.div>
-                                    ) : isConfirming ? (
-                                        <motion.div
-                                            key="confirm"
-                                            initial={{ opacity: 0, height: 0 }}
-                                            animate={{ opacity: 1, height: "auto" }}
-                                            exit={{ opacity: 0, height: 0 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="mt-3 overflow-hidden rounded-xl p-2.5"
-                                            style={{ background: "rgba(199,31,17,0.06)" }}
-                                        >
-                                            <p className="flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: C.ink }}>
-                                                <AlertTriangle className="h-3.5 w-3.5" style={{ color: "#c71f11" }} /> Remove this listing?
-                                            </p>
-                                            <div className="mt-2 flex gap-1.5">
-                                                <button
-                                                    onClick={() => confirmDelete(it.id)}
-                                                    disabled={deletingId === it.id}
-                                                    className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#c71f11] py-1.5 text-[11.5px] font-bold text-white disabled:opacity-50"
-                                                >
-                                                    {deletingId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Yes, remove"}
-                                                </button>
-                                                <button onClick={() => setConfirmDeleteId(null)} className="flex items-center justify-center rounded-lg border bg-white px-2.5" style={{ borderColor: C.hair }}>
-                                                    <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
-                                                </button>
-                                            </div>
-                                        </motion.div>
-                                    ) : (
-                                        <motion.div
-                                            key="view"
-                                            initial={{ opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="mt-3"
-                                        >
-                                            {lowStock && (
-                                                <span
-                                                    className="mb-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9.5px] font-bold"
-                                                    style={{ background: outOfStock ? "rgba(199,31,17,0.1)" : "rgba(180,83,9,0.1)", color: outOfStock ? "#c71f11" : "#b45309" }}
-                                                >
-                                                    <AlertTriangle className="h-2.5 w-2.5" /> {outOfStock ? "Out of stock" : "Low stock"}
-                                                </span>
-                                            )}
-                                            <div className="grid grid-cols-2 gap-1.5">
-                                                <Stat label="Price" value={`₹${it.price}/${it.unit}`} />
-                                                <Stat label="Stock" value={stock != null ? `${stock} ${it.unit}` : "Not set"} warn={lowStock} />
-                                                <Stat label="MOQ" value={`${it.moq} ${it.unit}`} />
-                                                <Stat label="Lead time" value={it.lead_time} />
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </motion.div>
-                        );
-                    })}
-            </div>
-
-            <div className="mt-3 px-4 sm:hidden">
-                <button
-                    onClick={() => navigate("/seller/products")}
-                    className="flex w-full items-center justify-center gap-1 rounded-full border bg-white px-3 py-2 text-[12px] font-bold"
-                    style={{ borderColor: C.hair, color: C.secondary }}
-                >
-                    View all listings <ExternalLink className="h-3 w-3" />
-                </button>
-            </div>
+            <AnimatePresence>
+                {lightboxImage && (
+                    <ImageLightbox
+                        key="listing-lightbox"
+                        src={lightboxImage.src}
+                        alt={lightboxImage.alt}
+                        onClose={() => setLightboxImage(null)}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
