@@ -82,7 +82,7 @@ function SectionHeader({ title, subtitle }) {
             </div>
             <button
                 onClick={() => navigate("/categories")}
-                className="group flex items-center gap-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide transition-colors duration-150"
+                className="group flex hidden items-center gap-0.5 font-mono text-[11px] font-semibold uppercase tracking-wide transition-colors duration-150"
                 style={{ color: C.primary }}
             >
                 See all

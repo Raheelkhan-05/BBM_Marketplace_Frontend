@@ -9,31 +9,17 @@ import {
 import { useNavigate } from "react-router-dom";
 
 /* ------------------------------------------------------------------
-   DESIGN NOTES — v3, mobile becomes an icon-grid (Paytm/GPay pattern)
+   DESIGN NOTES — v4, mobile 3-across icon grid, desktop single-row
    ------------------------------------------------------------------
-   The row-card layout is a desktop pattern — it needs width for the
-   description text to earn its place. On mobile, a stacked list of
-   rows is what every generic app does when it hasn't rethought the
-   layout; the pattern people actually recognize as "quick actions"
-   on a phone is the icon-on-top, label-below grid (Paytm, GPay,
-   PhonePe): 4-across, big tappable icon, short label, no description.
+   Same MOBILE icon-on-top tile pattern as before (Paytm/GPay style),
+   just switched from a 4-column grid to a 3-column grid so each row
+   holds exactly the 3 actions per group — no leftover 4th slot on a
+   short row.
 
-   So this is now two real layouts, not one squeezed into both sizes:
-
-     - MOBILE (<lg): a 4-column icon grid per group. Icon in a large
-       rounded-square chip (group-accent tint), label below in two
-       lines max, count as a small badge on the chip's corner. No
-       description — the label alone has to carry it, same discipline
-       Paytm/GPay use.
-
-     - DESKTOP (lg+): the detailed row-card from the previous pass is
-       kept as-is — icon + label + description in a horizontal card,
-       two-column grid, vertical divider between Purchase/Sales.
-
-   Both layouts share the same tokens and the same group-accent icon
-   tinting introduced last pass (icon color comes from the group,
-   not arbitrary per-item colors) so the two breakpoints still read
-   as one system, not two different designs stitched together.
+   DESKTOP row-cards previously wrapped 3 cards into a 2-column grid
+   (2 + 1, uneven last row). Now each group renders its 3 cards across
+   a single horizontal row (grid-cols-3) so Purchase and Sales each
+   read as one clean line instead of wrapping.
 
    Palette/tokens unchanged: ink #0B1116, muted #667077,
    primary #D2462B, secondary #006F83, hairline rgba(11,17,22,0.09).
@@ -63,10 +49,10 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
     const navigate = useNavigate();
 
     const purchaseActions = quickActions.filter((a) =>
-        ["explore", "purchase-order", "price-list", "post-rfq"].includes(a.id)
+        ["explore", "purchase-order", "post-rfq"].includes(a.id)
     );
     const salesActions = quickActions.filter((a) =>
-        ["add-product", "update-stock", "seller-orders", "marketing"].includes(a.id)
+        ["add-product", "seller-orders", "marketing"].includes(a.id)
     );
 
     /* ---------- MOBILE: icon-on-top tile (Paytm/GPay pattern) ---------- */
@@ -106,6 +92,58 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
                 >
                     {a.label}
                 </p>
+            </motion.button>
+        );
+    };
+
+    /* ---------- DESKTOP: enhanced tile — same icon-first language as
+       mobile, but sized and spaced for a pointer/hover context: larger
+       chip, room for a one-line description, hover lift + shadow + a
+       subtle accent-tinted ring instead of a flat tap target. ---------- */
+    const renderDesktopTile = (a, accent, i) => {
+        const Icon = ICONS[a.icon] || Box;
+        const chipBg = a.bg ?? `${accent}14`;
+        const chipFg = a.fg ?? accent;
+
+        return (
+            <motion.button
+                key={a.id}
+                onClick={a.id === "add-product" ? () => navigate("/seller/sell") : a.id === "req" ? onOpenRfq : undefined}
+                initial={{ opacity: 0, y: 8 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: "-40px" }}
+                transition={{ duration: 0.4, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] }}
+                whileHover={{ y: -3 }}
+                whileTap={{ y: 0, scale: 0.98 }}
+                className="group relative flex w-[168px] shrink-0 flex-col items-center gap-2.5 rounded-2xl p-4 text-center outline-none transition-colors duration-200 hover:bg-black/[0.025] focus-visible:ring-2 focus-visible:ring-offset-2"
+                style={{ ["--tw-ring-color"]: accent }}
+            >
+                <span
+                    className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl transition-transform duration-200 group-hover:scale-[1.06] group-hover:shadow-[0_8px_20px_-8px_var(--glow)]"
+                    style={{ background: chipBg, color: chipFg, ["--glow"]: `${accent}55` }}
+                >
+                    <Icon className="h-6 w-6" />
+                    {a.count && (
+                        <span
+                            className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums text-white ring-2 ring-white"
+                            style={{ background: accent }}
+                        >
+                            {a.count}
+                        </span>
+                    )}
+                </span>
+                <div className="min-w-0">
+                    <p className="truncate text-[13.5px] font-bold leading-tight tracking-[0.005em]" style={{ color: C.ink }}>
+                        {a.label}
+                    </p>
+                    <p className="mt-0.5 line-clamp-1 text-[11px] font-medium leading-tight" style={{ color: C.muted }}>
+                        {a.desc}
+                    </p>
+                </div>
+                <span
+                    className="pointer-events-none absolute inset-x-5 bottom-1.5 h-[2px] scale-x-0 rounded-full transition-transform duration-200 group-hover:scale-x-100"
+                    style={{ background: accent, transformOrigin: "center" }}
+                />
             </motion.button>
         );
     };
@@ -180,38 +218,36 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
                 Everything you need to buy or sell, one tap away.
             </p>
 
-            {/* ---------------- MOBILE: icon grid, GPay/Paytm pattern ---------------- */}
+            {/* ---------------- MOBILE: icon grid, 3-across ---------------- */}
             <div className="mt-4 space-y-4 px-4 lg:hidden">
                 <div>
                     {groupLabel("Purchase", purchaseActions.length, C.primary, "justify-center")}
-                    <div className="mt-4 grid grid-cols-4 gap-x-2 gap-y-4">
+                    <div className="mt-4 grid grid-cols-3 gap-x-2 gap-y-4">
                         {purchaseActions.map((a, i) => renderTile(a, C.primary, i))}
                     </div>
                 </div>
                 <div className="h-px w-full hidden sm:block" style={{ background: C.hair }} />
                 <div>
                     {groupLabel("Sales", salesActions.length, C.secondary, "justify-center")}
-                    <div className="mt-4 grid grid-cols-4 gap-x-2 gap-y-4">
+                    <div className="mt-4 grid grid-cols-3 gap-x-2 gap-y-4">
                         {salesActions.map((a, i) => renderTile(a, C.secondary, i))}
                     </div>
                 </div>
             </div>
 
-            {/* ---------------- DESKTOP: detailed row cards ---------------- */}
-            <div className="mt-8 hidden w-full flex-row gap-0 px-8 lg:flex">
-                <div className="flex-1">
-                    {groupLabel("Purchase", purchaseActions.length, C.primary)}
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                        {purchaseActions.map((a, i) => renderCard(a, C.primary, i))}
+            {/* ---------------- DESKTOP: enhanced tiles, all 6 in one balanced row ---------------- */}
+            <div className="mt-8 hidden w-full items-start justify-center gap-2 px-8 lg:flex xl:gap-6">
+                <div className="flex flex-col items-center">
+                    {groupLabel("Purchase", purchaseActions.length, C.primary, "justify-center")}
+                    <div className="mt-4 flex items-start justify-center gap-1 xl:gap-3">
+                        {purchaseActions.map((a, i) => renderDesktopTile(a, C.primary, i))}
                     </div>
                 </div>
-                <div className="shrink-0 self-stretch px-8">
-                    <div className="h-full w-px" style={{ background: C.hair }} />
-                </div>
-                <div className="flex-1">
-                    {groupLabel("Sales", salesActions.length, C.secondary)}
-                    <div className="mt-3 grid grid-cols-2 gap-3">
-                        {salesActions.map((a, i) => renderCard(a, C.secondary, i))}
+                <div className="mt-10 h-24 w-px self-start" style={{ background: C.hair }} />
+                <div className="flex flex-col items-center">
+                    {groupLabel("Sales", salesActions.length, C.secondary, "justify-center")}
+                    <div className="mt-4 flex items-start justify-center gap-1 xl:gap-3">
+                        {salesActions.map((a, i) => renderDesktopTile(a, C.secondary, i))}
                     </div>
                 </div>
             </div>
