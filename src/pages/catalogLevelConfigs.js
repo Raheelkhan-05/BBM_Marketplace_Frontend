@@ -1,29 +1,39 @@
 import {
-    searchCategories, searchSubcategories,
-    searchCatalogSubcategories, searchCatalogGenericProducts, searchCatalogBrandItems,
+    searchCatalogCategories,
+    searchCatalogSubcategories,
+    searchCatalogGenericProducts,
+    searchCatalogBrandItems,
 } from "../utils/api";
 import { LEVEL_ROUTES, ROOT_ROUTE } from "../components/catalog/catalogRoutes";
 
 // Everything that differs between the 4 tile-grid pages lives here.
 // CatalogLevelPage.jsx is the only component; this is just data.
+//
+// IMPORTANT: every fetchItems below must go through the *paginated*
+// searchCatalog* helpers (which accept and respect offset/limit and
+// return { items, hasMore, nextOffset }). Plain searchCategories /
+// searchSubcategories ignore offset entirely, which is why pagination
+// previously got stuck after the first page.
 export const CATALOG_LEVEL_CONFIGS = {
     categories: {
         level: "category",
         label: "categories",
         isRoot: true,
-        fetchItems: () => searchCategories("", 100),
+        fetchItems: (_parent, { offset = 0, limit = 20 } = {}) =>
+            searchCatalogCategories("", limit, offset),
         itemCountField: "subcategoryCount",
-        onSelectRoute: (item) => ({ pathname: LEVEL_ROUTES.category(item), state: { category: item } }),
+        onSelectRoute: (item) => ({ pathname: LEVEL_ROUTES.brand_item(item), state: { brand: item } }),
     },
     subcategories: {
         level: "subcategory",
         label: "subcategories",
         parentLevel: "category",
         lookupParent: async (idOrSlug) => {
-            const res = await searchCategories(idOrSlug, 5);
+            const res = await searchCatalogCategories(idOrSlug, 5);
             return res?.items?.find((c) => c.slug === idOrSlug || c.id === idOrSlug) || res?.items?.[0] || null;
         },
-        fetchItems: (parent) => searchSubcategories(parent.id, "", 50),
+        fetchItems: (parent, { offset = 0, limit = 20 } = {}) =>
+            searchCatalogSubcategories(parent.id, "", limit, offset),
         itemCountField: "productCount",
         onSelectRoute: (item, { parent }) => ({
             pathname: LEVEL_ROUTES.subcategory(item),
@@ -39,7 +49,8 @@ export const CATALOG_LEVEL_CONFIGS = {
             const res = await searchCatalogSubcategories(undefined, idOrSlug, 5);
             return res?.items?.find((s) => s.slug === idOrSlug || s.id === idOrSlug) || res?.items?.[0] || null;
         },
-        fetchItems: (parent) => searchCatalogGenericProducts(parent.id, "", 50),
+        fetchItems: (parent, { offset = 0, limit = 30 } = {}) =>
+            searchCatalogGenericProducts(parent.id, "", limit, offset),
         itemCountField: "brandCount",
         onSelectRoute: (item, { parent, grandparent }) => ({
             pathname: LEVEL_ROUTES.generic_product(item),
@@ -57,7 +68,8 @@ export const CATALOG_LEVEL_CONFIGS = {
             const res = await searchCatalogGenericProducts(undefined, idOrSlug, 5);
             return res?.items?.find((g) => g.slug === idOrSlug || g.id === idOrSlug) || res?.items?.[0] || null;
         },
-        fetchItems: (parent) => searchCatalogBrandItems(parent.id, "", 50),
+        fetchItems: (parent, { offset = 0, limit = 30 } = {}) =>
+            searchCatalogBrandItems(parent.id, "", limit, offset),
         itemCountField: "sellerCount",
         onSelectRoute: (item, { parent, grandparent }) => ({
             pathname: LEVEL_ROUTES.brand_item(item),

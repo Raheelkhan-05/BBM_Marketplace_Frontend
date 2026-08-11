@@ -160,7 +160,7 @@ function ListingActionSheet({ open, name, onEdit, onDelete, onClose }) {
                         className="fixed inset-x-0 bottom-0 z-[91] rounded-t-[20px] bg-white p-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_30px_-8px_rgba(11,17,22,0.25)]"
                     >
                         <div className="mx-auto mb-3 mt-1 h-1 w-9 rounded-full" style={{ background: C.hair }} />
-                        <p className="truncate px-3 pb-2 text-[11px] font-mono font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
+                        <p className="px-3 pb-2 text-[11px] font-mono font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
                             {name}
                         </p>
                         <button

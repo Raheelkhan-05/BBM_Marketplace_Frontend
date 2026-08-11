@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, CheckCircle2, X, ImageIcon } from "lucide-react";
+import { Loader2, CheckCircle2, X, ImageIcon, Pencil, Save } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { adminListSellerSubmissions, adminApproveSellerSubmission, adminRejectSellerSubmission } from "../../utils/api.js";
+import {
+    adminListSellerSubmissions, adminApproveSellerSubmission,
+    adminRejectSellerSubmission, adminUpdateSellerSubmission,
+} from "../../utils/api.js";
+import ImageLightbox from "../../components/ImageLightbox.jsx";
 
 const STATUS_TABS = [
     { key: "pending_review", label: "Pending" },
@@ -10,6 +14,8 @@ const STATUS_TABS = [
     { key: "rejected", label: "Rejected" },
     { key: "all", label: "All" },
 ];
+
+const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
 
 export default function AdminSellerSubmissionsPage() {
     const { token } = useAuth();
@@ -19,6 +25,8 @@ export default function AdminSellerSubmissionsPage() {
     const [busyId, setBusyId] = useState(null);
     const [rejecting, setRejecting] = useState(null);
     const [reason, setReason] = useState("");
+    const [lightbox, setLightbox] = useState(null); // { images, index }
+    const [editing, setEditing] = useState(null); // the submission item being edited
 
     function load() {
         setLoading(true);
@@ -43,6 +51,12 @@ export default function AdminSellerSubmissionsPage() {
         if (res?.success) { setRejecting(null); setReason(""); load(); }
     }
 
+    function openLightbox(it) {
+        const gallery = it.images?.length ? it.images : (it.image ? [it.image] : []);
+        if (!gallery.length) return;
+        setLightbox({ images: gallery });
+    }
+
     return (
         <div className="mx-auto min-h-screen max-w-4xl px-4 pb-24 pt-6 sm:px-6">
             <h1 className="text-[20px] font-extrabold text-slate-900 sm:text-[22px]">Product Review Requests</h1>
@@ -65,9 +79,18 @@ export default function AdminSellerSubmissionsPage() {
                     {!loading && items.map((it) => (
                         <motion.div key={it.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             className="flex gap-3.5 rounded-xl border border-slate-100 bg-white p-4">
-                            <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-100">
+                            <button
+                                onClick={() => openLightbox(it)}
+                                className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-100"
+                                aria-label="View image"
+                            >
                                 {it.image ? <img src={it.image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="m-auto h-6 w-6 text-slate-300" />}
-                            </div>
+                                {it.images?.length > 1 && (
+                                    <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 px-1 text-[8.5px] font-bold text-white">
+                                        +{it.images.length - 1}
+                                    </span>
+                                )}
+                            </button>
                             <div className="min-w-0 flex-1">
                                 <p className="truncate text-[14px] font-bold text-slate-900">{it.product_name}</p>
                                 <p className="text-[12px] font-semibold text-slate-400">
@@ -79,18 +102,24 @@ export default function AdminSellerSubmissionsPage() {
                                 <p className="text-[11.5px] font-medium text-slate-400">Seller: {it.seller?.display_name || "—"}</p>
                                 {it.rejection_reason && <p className="mt-1 text-[11.5px] font-semibold text-[#c71f11]">Rejected: {it.rejection_reason}</p>}
                             </div>
-                            {it.review_status === "pending_review" && (
-                                <div className="flex shrink-0 flex-col gap-1.5">
-                                    <button onClick={() => approve(it.id)} disabled={busyId === it.id}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-[#047084] px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-50">
-                                        {busyId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Approve
-                                    </button>
-                                    <button onClick={() => { setRejecting(it.id); setReason(""); }}
-                                        className="inline-flex items-center gap-1 rounded-lg border border-[#c71f11]/25 px-3 py-1.5 text-[12px] font-bold text-[#c71f11]">
-                                        <X className="h-3.5 w-3.5" /> Reject
-                                    </button>
-                                </div>
-                            )}
+                            <div className="flex shrink-0 flex-col gap-1.5">
+                                <button onClick={() => setEditing(it)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-[12px] font-bold text-slate-600">
+                                    <Pencil className="h-3.5 w-3.5" /> Edit
+                                </button>
+                                {it.review_status === "pending_review" && (
+                                    <>
+                                        <button onClick={() => approve(it.id)} disabled={busyId === it.id}
+                                            className="inline-flex items-center gap-1 rounded-lg bg-[#047084] px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-50">
+                                            {busyId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Approve
+                                        </button>
+                                        <button onClick={() => { setRejecting(it.id); setReason(""); }}
+                                            className="inline-flex items-center gap-1 rounded-lg border border-[#c71f11]/25 px-3 py-1.5 text-[12px] font-bold text-[#c71f11]">
+                                            <X className="h-3.5 w-3.5" /> Reject
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         </motion.div>
                     ))}
                 </AnimatePresence>
@@ -110,6 +139,136 @@ export default function AdminSellerSubmissionsPage() {
                     </div>
                 </div>
             )}
+
+            {lightbox && (
+                <ImageLightbox images={lightbox.images} alt="" onClose={() => setLightbox(null)} />
+            )}
+
+            {editing && (
+                <EditSubmissionModal
+                    token={token}
+                    item={editing}
+                    onClose={() => setEditing(null)}
+                    onSaved={() => { setEditing(null); load(); }}
+                />
+            )}
+        </div>
+    );
+}
+
+function EditSubmissionModal({ token, item, onClose, onSaved }) {
+    const [productName, setProductName] = useState(item.product_name || "");
+    const [brandName, setBrandName] = useState(item.brand_name || "");
+    const [price, setPrice] = useState(String(item.price ?? ""));
+    const [moq, setMoq] = useState(String(item.moq ?? ""));
+    const [unit, setUnit] = useState(item.unit || "");
+    const [leadTime, setLeadTime] = useState(item.lead_time || "");
+    const [images, setImages] = useState(item.images?.length ? item.images : (item.image ? [item.image] : []));
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState("");
+
+    // NOTE: adding a NEW image file here would need an upload call first
+    // (adminUploadCatalogImage, same as CreateSimpleCatalogModal) before
+    // pushing the returned url into `images`. Wire that in if admins need
+    // to add fresh photos, not just remove/reorder existing ones.
+    function removeImageAt(i) {
+        setImages((imgs) => imgs.filter((_, idx) => idx !== i));
+    }
+
+    async function handleSave() {
+        setError("");
+        if (!productName.trim() || !brandName.trim()) return setError("Product name and brand name are required.");
+        if (!(Number(price) > 0)) return setError("Price must be greater than 0.");
+        if (!(Number(moq) > 0)) return setError("MOQ must be greater than 0.");
+        if (!unit) return setError("Select a unit.");
+        if (!leadTime.trim()) return setError("Lead time is required.");
+        if (!images.length) return setError("At least one image is required.");
+
+        setSaving(true);
+        try {
+            const res = await adminUpdateSellerSubmission(token, item.id, {
+                productName: productName.trim(),
+                brandName: brandName.trim(),
+                price: Number(price),
+                moq: Number(moq),
+                unit,
+                leadTime: leadTime.trim(),
+                images,
+            });
+            if (!res?.success) throw new Error(res?.message || "Couldn't save changes.");
+            onSaved();
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4" onClick={onClose}>
+            <div onClick={(e) => e.stopPropagation()} className="flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white sm:max-w-md sm:rounded-2xl">
+                <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                    <h3 className="text-[16px] font-extrabold text-slate-900">Edit listing</h3>
+                    <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"><X className="h-4.5 w-4.5" /></button>
+                </div>
+
+                <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
+                    <Field label="Product name *" value={productName} onChange={setProductName} />
+                    <Field label="Brand name *" value={brandName} onChange={setBrandName} />
+
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Images</label>
+                        <div className="flex flex-wrap gap-2">
+                            {images.map((src, i) => (
+                                <div key={src + i} className="relative h-20 w-20">
+                                    <img src={src} alt="" className="h-full w-full rounded-lg border border-slate-200 object-cover" />
+                                    <button type="button" onClick={() => removeImageAt(i)}
+                                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] leading-none text-white">×</button>
+                                    {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-black/60 py-0.5 text-center text-[8.5px] font-bold text-white">Cover</span>}
+                                </div>
+                            ))}
+                            {images.length === 0 && <p className="text-[12px] font-medium text-slate-400">No images left — this listing needs at least one.</p>}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <Field label="Price (₹) *" value={price} onChange={(v) => setPrice(v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
+                        <Field label="MOQ *" value={moq} onChange={(v) => setMoq(v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
+                    </div>
+
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Unit *</label>
+                        <select value={unit} onChange={(e) => setUnit(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25">
+                            <option value="" disabled>Select unit…</option>
+                            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                    </div>
+
+                    <Field label="Lead time *" value={leadTime} onChange={setLeadTime} placeholder="e.g. 7–10 days" />
+
+                    {error && <p className="text-[12.5px] font-semibold text-[#c71f11]">{error}</p>}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3.5">
+                    <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[13px] font-bold text-slate-500">Cancel</button>
+                    <button onClick={handleSave} disabled={saving}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#047084] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50">
+                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                        Save changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function Field({ label, value, onChange, placeholder, inputMode }) {
+    return (
+        <div>
+            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">{label}</label>
+            <input value={value} inputMode={inputMode} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
         </div>
     );
 }

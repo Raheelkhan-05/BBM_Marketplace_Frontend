@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { searchCatalogBrandItems, searchCatalogSellers, fetchSellerAccessStatus, createSellerListingForBrand, uploadSellerFile } from "../utils/api";
 import { resolveSearchRoute } from "../utils/searchResolve.js";
+import StackedImagePreview from "../components/StackedImagePreview.jsx";
 import { Link } from "react-router-dom";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -14,6 +15,7 @@ import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerRow, SellerListSkeleton, FilterSortChips, CatalogHeader, CatalogLoadError } from "../components/catalog/CatalogUI";
 import { C, EASE } from "../components/catalog/tokens";
 import useAsyncCatalogData from "../hooks/useAsyncCatalogData";
+
 
 /* ------------------------------------------------------------------
    DESIGN NOTES — BrandItemSellersPage v2
@@ -152,7 +154,7 @@ function SellThisItemModal({ brand, onClose }) {
 
     return (
         <motion.div
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-4"
+            className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={onClose}
         >
@@ -217,24 +219,6 @@ function SellThisItemModal({ brand, onClose }) {
                                 </select>
                             </div>
                             <TextField label="Lead time" value={form.leadTime} onChange={(v) => setField("leadTime", v)} placeholder="e.g. 7–10 days" />
-
-                            <div className="flex flex-col gap-1">
-                                <label className="text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Photo of your stock (optional)</label>
-                                <div className="flex items-center gap-3">
-                                    {form.image ? (
-                                        <div className="relative h-16 w-16">
-                                            <img src={form.image} alt="" className="h-full w-full rounded-lg border object-cover" style={{ borderColor: C.hair }} />
-                                            <button type="button" onClick={() => setField("image", "")} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[10px] leading-none text-white">×</button>
-                                        </div>
-                                    ) : (
-                                        <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed text-center" style={{ borderColor: C.hair, color: C.muted }}>
-                                            <span className="text-[9px] font-bold">{uploadingImage ? "…" : "Add"}</span>
-                                            <input type="file" accept="image/*" onChange={handleImageFile} className="hidden" disabled={uploadingImage} />
-                                        </label>
-                                    )}
-                                    <p className="text-[11px] font-medium" style={{ color: C.muted }}>Defaults to the catalog photo if you skip this.</p>
-                                </div>
-                            </div>
                         </div>
 
                         {error && <p className="mt-4 text-[12px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
@@ -269,11 +253,13 @@ export default function BrandItemSellersPage() {
     const [query, setQuery] = useState("");
     const [showSellModal, setShowSellModal] = useState(false);
     const [showLightbox, setShowLightbox] = useState(false);
+    const [lightboxIndex, setLightboxIndex] = useState(0);
 
     const { data: sellers, loading, error, retry } = useAsyncCatalogData(async () => {
         let b = brand;
         if (!b) {
             const brandsRes = await searchCatalogBrandItems(undefined, idOrSlug, 5);
+            console.log("brandsRes", brandsRes);
             b = brandsRes?.items?.find((x) => x.slug === idOrSlug || x.id === idOrSlug) || brandsRes?.items?.[0] || null;
             setBrand(b);
         }
@@ -304,14 +290,16 @@ export default function BrandItemSellersPage() {
     return (
         <div className="mx-auto max-w-7xl px-2.5 pb-28 pt-3 sm:px-4 sm:pb-10 lg:px-6">
             {/* back */}
-            <button
-                onClick={() => navigate(-1)}
-                className="mt-3 flex h-9 w-9 items-center justify-center rounded-full border transition-colors duration-150 hover:bg-black/[0.03]"
-                style={{ borderColor: C.hair, color: C.ink }}
-                aria-label="Back"
-            >
-                <ArrowLeft className="h-4 w-4" />
-            </button>
+            <div className="mt-3 flex items-center justify-between gap-3">
+                <button
+                    onClick={() => navigate(-1)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border transition-colors duration-150 hover:bg-black/[0.03]"
+                    style={{ borderColor: C.hair, color: C.ink }}
+                    aria-label="Back"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                </button>
+            </div>
 
             {/* breadcrumb trail */}
             {(category?.name || genericProduct?.name) && (
@@ -344,23 +332,11 @@ export default function BrandItemSellersPage() {
                         }}
                     >
                         <div className="flex gap-4">
-                            <button
-                                onClick={() => brand?.image && setShowLightbox(true)}
-                                className="group relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-white shadow-sm sm:h-28 sm:w-28"
-                                style={{ borderColor: C.hair }}
-                                aria-label="View full image"
-                            >
-                                {brand?.image ? (
-                                    <>
-                                        <img src={brand.image} alt={brand?.name} className="h-full w-full object-cover" />
-                                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-150 group-hover:bg-black/25 group-active:bg-black/25">
-                                            <Maximize2 className="h-4 w-4 text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-active:opacity-100" />
-                                        </span>
-                                    </>
-                                ) : (
-                                    <Package className="h-8 w-8" style={{ color: C.muted }} />
-                                )}
-                            </button>
+                            <StackedImagePreview
+                                images={brand?.images?.length ? brand.images : (brand?.image ? [brand.image] : [])}
+                                name={brand?.name}
+                                onOpen={(idx) => { setLightboxIndex(idx); setShowLightbox(true); }}
+                            />
 
                             <div className="min-w-0 flex-1">
                                 {brand?.brand_name && (
@@ -393,6 +369,13 @@ export default function BrandItemSellersPage() {
                                     style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}
                                 >
                                     <Plus className="h-3.5 w-3.5" /> I want to sell this
+                                </button>
+                                <button
+                                    onClick={() => setShowSellModal(true)}
+                                    className="flex shrink-0 items-center gap-1 rounded-md px-3 py-1 mt-2 text-[12px] font-bold text-white sm:hidden"
+                                    style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}
+                                >
+                                    <Plus className="h-3.5 w-3.5" /> Sell this
                                 </button>
                             </div>
                         </div>
@@ -430,26 +413,17 @@ export default function BrandItemSellersPage() {
                 )}
             </div>
 
-            {/* mobile: fixed bottom action bar, always reachable */}
-            <div
-                className="fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-md sm:hidden"
-                style={{ borderColor: C.hair }}
-            >
-                <button
-                    onClick={() => setShowSellModal(true)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-xl px-4 py-3 text-[13.5px] font-bold text-white"
-                    style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}
-                >
-                    <Plus className="h-4 w-4" /> I want to sell this
-                </button>
-            </div>
-
             <AnimatePresence>
                 {showSellModal && brand && (
                     <SellThisItemModal brand={brand} onClose={() => setShowSellModal(false)} />
                 )}
                 {showLightbox && brand?.image && (
-                    <ImageLightbox src={brand.image} alt={brand.name} onClose={() => setShowLightbox(false)} />
+                    <ImageLightbox
+                        images={brand.images?.length ? brand.images : [brand.image]}
+                        initialIndex={lightboxIndex}
+                        alt={brand.name}
+                        onClose={() => setShowLightbox(false)}
+                    />
                 )}
             </AnimatePresence>
         </div>

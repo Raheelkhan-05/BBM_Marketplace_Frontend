@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     ArrowRight, ArrowLeft, Loader2, CheckCircle2,
-    Package, ClipboardList, IndianRupee, ClipboardCheck, Lock, Clock,
+    Package, ClipboardList, IndianRupee, ClipboardCheck, Lock, Clock, ImagePlus,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchSellerAccessStatus, createSellerSubmission, uploadSellerFile } from "../utils/api.js";
@@ -17,7 +17,7 @@ const STEPS = [
 ];
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
-const EMPTY_FORM = { productName: "", brandName: "", image: "", price: "", moq: "", unit: "", leadTime: "" };
+const EMPTY_FORM = { productName: "", brandName: "", images: [], price: "", moq: "", unit: "", leadTime: "" };
 
 export default function SellPublishProductPage() {
     const { token } = useAuth();
@@ -46,21 +46,32 @@ export default function SellPublishProductPage() {
     const choosePath = (picked) => { setPath(picked); setError(null); setStepIndex(1); };
     const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
-    const handleImageFile = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    // Uploads every selected file in order and appends the resulting URLs
+    // to form.images. Sequential (not Promise.all) so upload order always
+    // matches selection order even if network timing varies.
+    const handleImageFiles = async (e) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
         setUploadingImage(true);
         setError(null);
         try {
-            const res = await uploadSellerFile(token, file, "listings");
-            if (!res?.success) throw new Error("Upload failed — check the network tab for the /seller/upload response.");
-            setField("image", res.url);
+            const urls = [];
+            for (const file of files) {
+                const res = await uploadSellerFile(token, file, "listings");
+                if (!res?.success) throw new Error("Upload failed — check the network tab for the /seller/upload response.");
+                urls.push(res.url);
+            }
+            setForm((f) => ({ ...f, images: [...f.images, ...urls] }));
         } catch (err) {
             setError(err.message || "Image upload failed.");
         } finally {
             setUploadingImage(false);
             e.target.value = "";
         }
+    };
+
+    const removeImageAt = (i) => {
+        setForm((f) => ({ ...f, images: f.images.filter((_, idx) => idx !== i) }));
     };
 
     const goNext = () => {
@@ -94,7 +105,8 @@ export default function SellPublishProductPage() {
                 moq: form.moq,
                 unit: form.unit,
                 leadTime: form.leadTime,
-                image: form.image,
+                images: form.images,
+                image: form.images[0] || "", // kept for any backend/consumer still reading the single field
             });
             if (!res?.success) {
                 if (["NOT_AUTHENTICATED", "SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"].includes(res?.code)) {
@@ -135,7 +147,7 @@ export default function SellPublishProductPage() {
                             <div className="flex flex-col gap-4">
                                 <TextField label="Product name" value={form.productName} onChange={(v) => setField("productName", v)} placeholder="e.g. Premium Stainless Steel Hinges" />
                                 <TextField label="Brand name" value={form.brandName} onChange={(v) => setField("brandName", v)} />
-                                <ImageField image={form.image} uploading={uploadingImage} onFile={handleImageFile} onRemove={() => setField("image", "")} />
+                                <ImageField images={form.images} uploading={uploadingImage} onFiles={handleImageFiles} onRemove={removeImageAt} />
                             </div>
                         )}
 
@@ -192,7 +204,7 @@ function requiredMissing(stepKey, form) {
         const missing = [];
         if (!form.productName.trim()) missing.push("Product name");
         if (!form.brandName.trim()) missing.push("Brand name");
-        if (!form.image) missing.push("Product image");
+        if (!form.images.length) missing.push("Product image");
         return missing;
     }
     if (stepKey === "pricing") {
@@ -216,21 +228,29 @@ function TextField({ label, value, onChange, placeholder, inputMode }) {
     );
 }
 
-function ImageField({ image, uploading, onFile, onRemove }) {
+function ImageField({ images, uploading, onFiles, onRemove }) {
     return (
         <div className="flex flex-col gap-1">
-            <label className="text-[12px] font-bold uppercase tracking-wide text-slate-500">Product image</label>
-            {image ? (
-                <div className="relative h-28 w-28">
-                    <img src={image} alt="" className="h-full w-full rounded-xl border border-slate-200 object-cover" />
-                    <button type="button" onClick={onRemove} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[11px] leading-none text-white">×</button>
-                </div>
-            ) : (
-                <label className="flex h-28 w-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-200 text-slate-400">
-                    <span className="text-[10px] font-bold">{uploading ? "Uploading…" : "Add photo"}</span>
-                    <input type="file" accept="image/*" onChange={onFile} className="hidden" disabled={uploading} />
+            <label className="text-[12px] font-bold uppercase tracking-wide text-slate-500">
+                Product images {images.length > 0 && `(${images.length})`}
+            </label>
+            <div className="flex flex-wrap gap-2">
+                {images.map((src, i) => (
+                    <div key={src + i} className="relative h-24 w-24">
+                        <img src={src} alt="" className="h-full w-full rounded-xl border border-slate-200 object-cover" />
+                        <button type="button" onClick={() => onRemove(i)}
+                            className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[11px] leading-none text-white">×</button>
+                        {i === 0 && (
+                            <span className="absolute bottom-0 left-0 right-0 rounded-b-xl bg-black/60 py-0.5 text-center text-[9px] font-bold text-white">Cover</span>
+                        )}
+                    </div>
+                ))}
+                <label className="flex h-24 w-24 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-slate-200 text-slate-400">
+                    {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImagePlus className="h-5 w-5" />}
+                    <span className="text-[10px] font-bold">{uploading ? "Uploading…" : "Add photos"}</span>
+                    <input type="file" accept="image/*" multiple onChange={onFiles} className="hidden" disabled={uploading} />
                 </label>
-            )}
+            </div>
         </div>
     );
 }
@@ -249,7 +269,13 @@ function ReviewStep({ form, path }) {
     return (
         <div className="flex flex-col gap-5">
             <p className="text-[13.5px] font-medium text-slate-600">Review before submitting for approval.</p>
-            {form.image && <img src={form.image} alt="" className="h-32 w-32 rounded-xl border border-slate-200 object-cover" />}
+            {form.images.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                    {form.images.map((src, i) => (
+                        <img key={src + i} src={src} alt="" className="h-24 w-24 rounded-xl border border-slate-200 object-cover" />
+                    ))}
+                </div>
+            )}
             <div className="rounded-xl border border-slate-100">
                 {rows.filter(([, v]) => v).map(([label, value], i, arr) => (
                     <div key={label} className={`flex justify-between gap-3 px-3.5 py-2 text-[13px] ${i !== arr.length - 1 ? "border-b border-slate-100" : ""}`}>

@@ -24,7 +24,7 @@ export async function fetchMe(token) {
     const res = await fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
     let data = {};
     try { data = await res.json(); } catch { /* non-JSON body */ }
-    console.log("fetch me data : ", data);
+    // console.log("fetch me data : ", data);
     return { ...data, status: res.status, success: res.ok && data?.success !== false };
   } catch (e) {
     return { success: false, status: 0, message: "Network error." };
@@ -271,25 +271,25 @@ export async function searchCategories(q = "", limit = 20) {
   return get("/search/categories", { q, limit });
 }
 
-export async function searchSubcategories(categoryId, q = "", limit = 20) {
+export async function searchSubcategories(categoryId, q = "", limit = 30) {
   return get("/search/subcategories", { categoryId, q, limit });
 }
 
-export async function searchProductsInSubcategory(subcategoryId, q = "", limit = 20) {
+export async function searchProductsInSubcategory(subcategoryId, q = "", limit = 30) {
   return get("/search/products", { subcategoryId, q, limit });
 }
 
-export async function searchBrandsForProduct(productId, q = "", limit = 20) {
+export async function searchBrandsForProduct(productId, q = "", limit = 30) {
   return get("/search/brands", { productId, q, limit });
 }
 
-export async function searchSellersForProduct(productId, q = "", limit = 20, brandId) {
+export async function searchSellersForProduct(productId, q = "", limit = 30, brandId) {
   return get("/search/sellers", { productId, brandId, q, limit });
 }
 
 // Single convenience call used by useHierarchySearch — avoids branching
 // on which of the four functions above to call.
-export async function searchHierarchyLevel(level, parentId, q = "", limit = 20, productId) {
+export async function searchHierarchyLevel(level, parentId, q = "", limit = 30, productId) {
   const params = { level, q, limit };
   if (level === "subcategory") params.categoryId = parentId;
   if (level === "product") params.subcategoryId = parentId;
@@ -523,10 +523,21 @@ export async function adminListSellerSubmissions(token, status = "pending_review
   const res = await fetch(`${API_BASE}/admin/seller-submissions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();
 }
+
 export async function adminGetSellerSubmission(token, id) {
   const res = await fetch(`${API_BASE}/admin/seller-submissions/${id}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();
 }
+
+export async function adminUpdateSellerSubmission(token, id, payload) {
+  const res = await fetch(`${API_BASE}/api/admin/seller-submissions/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
 export async function adminApproveSellerSubmission(token, id) {
   const res = await fetch(`${API_BASE}/admin/seller-submissions/${id}/approve`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
   return res.json();
@@ -589,29 +600,32 @@ async function getV2(path, params = {}) {
   return res.json();
 }
 
-export async function searchCatalogCategories(q = "", limit = 20) {
-  return getV2("/categories", { q, limit });
+export async function searchCatalogCategories(q = "", limit = 20, offset = 0) {
+  return getV2("/categories", { q, limit, offset });
 }
-export async function searchCatalogSubcategories(categoryId, q = "", limit = 20) {
-  return getV2("/subcategories", { categoryId, q, limit });
+export async function searchCatalogSubcategories(categoryId, q = "", limit = 20, offset = 0) {
+  return getV2("/subcategories", { categoryId, q, limit, offset });
 }
-export async function searchCatalogGenericProducts(subcategoryId, q = "", limit = 20) {
-  return getV2("/generic-products", { subcategoryId, q, limit });
+export async function searchCatalogGenericProducts(subcategoryId, q = "", limit = 30, offset = 0) {
+  return getV2("/generic-products", { subcategoryId, q, limit, offset });
 }
-export async function searchCatalogBrandItems(genericProductId, q = "", limit = 20) {
-  return getV2("/brand-items", { genericProductId, q, limit });
+export async function searchCatalogBrandItems(genericProductId, q = "", limit = 30, offset = 0) {
+  return getV2("/brand-items", { genericProductId, q, limit, offset });
 }
-export async function searchCatalogSellers(brandItemId, q = "", limit = 20) {
-  return getV2("/sellers", { brandItemId, q, limit });
+export async function searchCatalogSellers(brandItemId, q = "", limit = 30, offset = 0) {
+  return getV2("/sellers", { brandItemId, q, limit, offset });
 }
-export async function searchCatalogHierarchyLevel(level, parentId, q = "", limit = 20) {
-  const params = { level, q, limit };
+
+export async function searchCatalogHierarchyLevel(level, parentId, q = "", limit = 20, offset = 0) {
+  const params = { level, q, limit, offset };
   if (parentId) params.parentId = parentId;
   return getV2("/hierarchy", params);
 }
+
 export async function searchCatalogSmart(q, limit = 5) {
   return getV2("/smart", { q, limit });
 }
+
 export async function fetchCatalogAutocomplete(q, limit = 8, signal) {
   const params = new URLSearchParams({ q, limit });
   const res = await fetch(`${CATALOG_SEARCH_BASE}/autocomplete?${params}`, { signal });

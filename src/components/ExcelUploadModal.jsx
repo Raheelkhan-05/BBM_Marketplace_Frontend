@@ -68,6 +68,11 @@ export default function ExcelUploadModal({ token, isOpen, onClose, level, label,
                         <span className="text-[12.5px] font-semibold text-slate-500">{file ? file.name : "Choose .xlsx file to upload"}</span>
                         <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); }} />
                     </label>
+                    {level === "brand_item" && (
+                        <p className="text-[11.5px] font-medium text-slate-400">
+                            For multiple photos, separate the links with a comma in the "Image Links" column. The first link becomes the cover photo.
+                        </p>
+                    )}
 
                     {error && <p className="text-[12.5px] font-semibold text-[#c71f11]">{error}</p>}
 

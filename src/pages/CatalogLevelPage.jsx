@@ -1,26 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { CatalogHeader, FilterSortChips, IconTile, TileGrid, TileGridSkeleton } from "../components/catalog/CatalogUI";
+import { CatalogHeader, FilterSortChips, IconTile, TileGrid, TileGridSkeleton, CatalogLoadError } from "../components/catalog/CatalogUI";
 import { C } from "../components/catalog/tokens";
 import { CATALOG_LEVEL_CONFIGS } from "./catalogLevelConfigs";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import { resolveSearchRoute } from "../utils/searchResolve.js";
-import useAsyncCatalogData from "../hooks/useAsyncCatalogData";
-import { CatalogLoadError } from "../components/catalog/CatalogUI";
+import useInfiniteCatalogData from "../hooks/useInfiniteCatalogData";
 
-
-// Replaces CategoriesPage, CategorySubcategoriesPage,
-// SubcategoryGenericProductsPage, GenericProductBrandsPage.
-// Which one it behaves as is picked purely by `configKey`, wired from App.jsx.
 export default function CatalogLevelPage({ configKey }) {
     const config = CATALOG_LEVEL_CONFIGS[configKey];
     const { idOrSlug } = useParams();
     const { state } = useLocation();
     const navigate = useNavigate();
 
-
-    // For non-root levels, state carries {category|subcategory|genericProduct}
-    // from the tile that was clicked to get here — instant header, no waterfall.
     const stateParentKey = { subcategories: "category", products: "subcategory", brands: "genericProduct" }[configKey];
     const stateGrandparentKey = { products: "category", brands: "subcategory" }[configKey];
 
@@ -30,25 +22,64 @@ export default function CatalogLevelPage({ configKey }) {
             ? { subcategory: state?.subcategory || null, category: state?.category || null }
             : state?.[stateGrandparentKey] || null
     );
-    const { data: items, loading, error, retry } = useAsyncCatalogData(async () => {
-        let p = parent;
+
+    const parentRef = useRef(parent);
+    parentRef.current = parent;
+
+    const fetchPage = async (offset, limit) => {
+        let p = parentRef.current;
         if (!config.isRoot && !p) {
             p = await config.lookupParent(idOrSlug);
             setParent(p);
+            parentRef.current = p;
         }
-        const res = await config.fetchItems(p);
+        const res = await config.fetchItems(p, { offset, limit });
         if (!res?.success) throw new Error("Request failed");
-        return res.items || [];
-    }, [idOrSlug]);
+        return res; // { items, hasMore, nextOffset }
+    };
 
-    const safeItems = items || [];
+    const { items, loading, loadingMore, error, hasMore, loadMore, retry } =
+        useInfiniteCatalogData(fetchPage, [idOrSlug]);
+
     const [query, setQuery] = useState("");
-
-
-
     const filtered = query.trim()
-        ? safeItems.filter((i) => i.name.toLowerCase().includes(query.trim().toLowerCase()))
-        : safeItems;
+        ? items.filter((i) => i.name.toLowerCase().includes(query.trim().toLowerCase()))
+        : items;
+
+    // Infinite scroll sentinel — starts loading before user hits the very bottom.
+    // NOTE: plain IntersectionObserver is unreliable here because Lenis
+    // scrolls via CSS transform on a wrapper (with html/body overflow
+    // hidden) rather than native window scrolling, so we check the
+    // sentinel's position directly on Lenis's own scroll tick instead.
+    const sentinelRef = useRef(null);
+    useEffect(() => {
+        if (query.trim()) return; // don't paginate while client-filtering
+
+        const checkSentinel = () => {
+            const el = sentinelRef.current;
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const buffer = 600; // start loading before it's actually visible
+            if (rect.top <= window.innerHeight + buffer) loadMore();
+        };
+
+        // Preferred: hook into the app's Lenis instance directly.
+        const lenis = window.lenis;
+        if (lenis?.on) {
+            lenis.on("scroll", checkSentinel);
+            checkSentinel(); // in case we land already-scrolled or content is short
+            return () => lenis.off?.("scroll", checkSentinel);
+        }
+
+        // Fallback if no Lenis instance is found on window: plain scroll/resize.
+        window.addEventListener("scroll", checkSentinel, { passive: true });
+        window.addEventListener("resize", checkSentinel);
+        checkSentinel();
+        return () => {
+            window.removeEventListener("scroll", checkSentinel);
+            window.removeEventListener("resize", checkSentinel);
+        };
+    }, [loadMore, query]);
 
     const handleSearchSubmit = async (trimmedQuery) => {
         const route = await resolveSearchRoute(trimmedQuery);
@@ -62,9 +93,6 @@ export default function CatalogLevelPage({ configKey }) {
     };
 
     const title = config.isRoot ? "All Categories" : (parent?.name || "Loading…");
-
-    console.log("Title : ", title);
-
     const titleHref = config.isRoot || !config.upRoute ? null : config.upRoute(grandparent);
 
     return (
@@ -72,7 +100,7 @@ export default function CatalogLevelPage({ configKey }) {
             <CatalogHeader
                 title={title}
                 titleHref={titleHref}
-                subtitle={`${safeItems.length} ${config.label}`}
+                subtitle={`${items.length}${hasMore ? "+" : ""} ${config.label}`}
             />
 
             <div className="mt-4 hidden lg:block">
@@ -91,18 +119,25 @@ export default function CatalogLevelPage({ configKey }) {
                         {query ? `No ${config.label} match "${query}".` : `No ${config.label} available yet.`}
                     </p>
                 ) : (
-                    <TileGrid>
-                        {filtered.map((item, i) => (
-                            <IconTile
-                                key={item.id}
-                                image={item.image}
-                                name={item.name}
-                                idx={i}
-                                count={item[config.itemCountField]}
-                                onClick={() => openItem(item)}
-                            />
-                        ))}
-                    </TileGrid>
+                    <>
+                        <TileGrid>
+                            {filtered.map((item, i) => (
+                                <IconTile
+                                    key={item.id}
+                                    image={item.image}
+                                    name={item.name}
+                                    idx={i}
+                                    count={item[config.itemCountField]}
+                                    onClick={() => openItem(item)}
+                                />
+                            ))}
+                        </TileGrid>
+                        {!query.trim() && hasMore && (
+                            <div ref={sentinelRef} className="mt-4 flex justify-center py-4">
+                                {loadingMore && <TileGridSkeleton rows={1} />}
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>

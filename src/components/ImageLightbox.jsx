@@ -1,15 +1,22 @@
 // src/components/ImageLightbox.jsx
 import { useEffect, useRef, useState, useCallback } from "react";
-import { motion } from "framer-motion";
-import { X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLightboxVisibility } from "./Layout.jsx";
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
 
-export default function ImageLightbox({ src, alt, onClose }) {
+// Accepts either:
+//   <ImageLightbox src="url" alt="..." onClose={...} />                (single image, old behavior)
+//   <ImageLightbox images={["url1","url2"]} alt="..." onClose={...} /> (gallery)
+export default function ImageLightbox({ src, images, alt, initialIndex = 0, onClose }) {
     const { setLightboxOpen } = useLightboxVisibility();
     const overlayRef = useRef(null);
+
+    const gallery = images && images.length > 0 ? images : src ? [src] : [];
+    const [index, setIndex] = useState(Math.min(initialIndex, Math.max(gallery.length - 1, 0)));
+    const currentSrc = gallery[index];
 
     const [scale, setScale] = useState(1);
     const [translate, setTranslate] = useState({ x: 0, y: 0 });
@@ -17,12 +24,23 @@ export default function ImageLightbox({ src, alt, onClose }) {
     const pointers = useRef(new Map());
     const gestureStart = useRef(null); // 2-finger pinch state
     const panStart = useRef(null);     // 1-finger / mouse drag state
+    const swipeStart = useRef(null);   // 1-finger horizontal swipe-to-navigate (only when scale === 1)
+
+    const resetZoom = () => { setScale(1); setTranslate({ x: 0, y: 0 }); };
 
     const closeAndReset = useCallback(() => {
-        setScale(1);
-        setTranslate({ x: 0, y: 0 });
+        resetZoom();
         onClose();
     }, [onClose]);
+
+    const goTo = useCallback((next) => {
+        if (gallery.length <= 1) return;
+        resetZoom();
+        setIndex((i) => (next + gallery.length) % gallery.length);
+    }, [gallery.length]);
+
+    const goPrev = useCallback(() => goTo(index - 1), [goTo, index]);
+    const goNext = useCallback(() => goTo(index + 1), [goTo, index]);
 
     // Hide the bottom bar, lock page scroll, and block native pinch-zoom
     // on the page — all scoped to this component's lifetime, and always
@@ -66,10 +84,14 @@ export default function ImageLightbox({ src, alt, onClose }) {
     }, [setLightboxOpen]);
 
     useEffect(() => {
-        const onKey = (e) => e.key === "Escape" && closeAndReset();
+        const onKey = (e) => {
+            if (e.key === "Escape") closeAndReset();
+            else if (e.key === "ArrowLeft") goPrev();
+            else if (e.key === "ArrowRight") goNext();
+        };
         window.addEventListener("keydown", onKey);
         return () => window.removeEventListener("keydown", onKey);
-    }, [closeAndReset]);
+    }, [closeAndReset, goPrev, goNext]);
 
     const clampScale = (s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
 
@@ -101,19 +123,24 @@ export default function ImageLightbox({ src, alt, onClose }) {
         setTranslate({ x: 0, y: 0 });
     };
 
-    // Mobile: real two-finger pinch + one-finger pan once zoomed
+    // Mobile: real two-finger pinch + one-finger pan once zoomed,
+    // or one-finger horizontal swipe to move between images when not zoomed.
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
     const handlePointerDown = (e) => {
+        if (e.target.closest("button")) return;
         overlayRef.current?.setPointerCapture?.(e.pointerId);
         pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (pointers.current.size === 2) {
             const [a, b] = [...pointers.current.values()];
             gestureStart.current = { dist: dist(a, b), scale, midpoint: midpoint(a, b) };
             panStart.current = null;
+            swipeStart.current = null;
         } else if (pointers.current.size === 1 && scale > 1) {
             panStart.current = { x: e.clientX, y: e.clientY, origin: translate };
+        } else if (pointers.current.size === 1 && scale === 1 && gallery.length > 1) {
+            swipeStart.current = { x: e.clientX, y: e.clientY };
         }
     };
 
@@ -134,13 +161,24 @@ export default function ImageLightbox({ src, alt, onClose }) {
                 y: panStart.current.origin.y + (e.clientY - panStart.current.y),
             });
         }
+        // swipeStart: no live transform, just measured on pointer up (keeps it simple/stable)
     };
 
     const handlePointerUp = (e) => {
+        if (e.target.closest("button")) { pointers.current.delete(e.pointerId); return; }
+        if (swipeStart.current && pointers.current.size === 1) {
+            const dx = e.clientX - swipeStart.current.x;
+            const dy = e.clientY - swipeStart.current.y;
+            if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                if (dx < 0) goNext(); else goPrev();
+            }
+        }
         pointers.current.delete(e.pointerId);
         if (pointers.current.size < 2) gestureStart.current = null;
-        if (pointers.current.size === 0) panStart.current = null;
+        if (pointers.current.size === 0) { panStart.current = null; swipeStart.current = null; }
     };
+
+    if (gallery.length === 0) return null;
 
     return (
         <motion.div
@@ -154,7 +192,7 @@ export default function ImageLightbox({ src, alt, onClose }) {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/90 backdrop-blur-sm"
+            className="fixed inset-0 z-[999] flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm"
             style={{ touchAction: "none", overscrollBehavior: "contain" }}
         >
             <button
@@ -165,24 +203,74 @@ export default function ImageLightbox({ src, alt, onClose }) {
                 <X className="h-5 w-5" />
             </button>
 
-            <img
-                src={src}
-                alt={alt}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={stopDrag}
-                onMouseLeave={stopDrag}
-                onDoubleClick={handleDoubleClick}
-                onClick={(e) => e.stopPropagation()}
-                draggable={false}
-                className="max-h-[88vh] max-w-[92vw] select-none rounded-xl object-contain shadow-2xl"
-                style={{
-                    transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-                    transition: dragState.current || pointers.current.size > 0 ? "none" : "transform 0.15s ease-out",
-                    cursor: scale > 1 ? "grab" : "zoom-in",
-                    touchAction: "none",
-                }}
-            />
+            {gallery.length > 1 && (
+                <span className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full bg-white/15 px-3 py-1 text-[12px] font-bold text-white backdrop-blur-md sm:top-6">
+                    {index + 1} / {gallery.length}
+                </span>
+            )}
+
+            {gallery.length > 1 && (
+                <>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); goPrev(); }}
+                        className="absolute left-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition hover:bg-white/25 sm:left-4"
+                        aria-label="Previous image"
+                    >
+                        <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); goNext(); }}
+                        className="absolute right-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-md transition hover:bg-white/25 sm:right-4"
+                        aria-label="Next image"
+                    >
+                        <ChevronRight className="h-5 w-5" />
+                    </button>
+                </>
+            )}
+
+            <AnimatePresence mode="wait" initial={false}>
+                <motion.img
+                    key={index}
+                    src={currentSrc}
+                    alt={alt}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={stopDrag}
+                    onMouseLeave={stopDrag}
+                    onDoubleClick={handleDoubleClick}
+                    onClick={(e) => e.stopPropagation()}
+                    draggable={false}
+                    className="max-h-[80vh] max-w-[92vw] select-none rounded-xl object-contain shadow-2xl"
+                    style={{
+                        transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
+                        transition: dragState.current || pointers.current.size > 0 ? "none" : "transform 0.15s ease-out",
+                        cursor: scale > 1 ? "grab" : gallery.length > 1 ? "default" : "zoom-in",
+                        touchAction: "none",
+                    }}
+                />
+            </AnimatePresence>
+
+            {gallery.length > 1 && (
+                <div
+                    className="mt-4 flex max-w-[92vw] gap-2 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {gallery.map((thumb, i) => (
+                        <button
+                            key={thumb + i}
+                            onClick={() => goTo(i)}
+                            className="h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-2 transition"
+                            style={{ ringColor: i === index ? "#fff" : "transparent", opacity: i === index ? 1 : 0.5 }}
+                        >
+                            <img src={thumb} alt="" className="h-full w-full object-cover" draggable={false} />
+                        </button>
+                    ))}
+                </div>
+            )}
         </motion.div>
     );
 }

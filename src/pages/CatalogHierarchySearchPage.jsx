@@ -1,13 +1,16 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, ChevronRight, SlidersHorizontal, ArrowUpDown, Store, Box, ShieldCheck, MapPin, Building2, Package, Maximize2, Users } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, SlidersHorizontal, ArrowUpDown, Store, Box, ShieldCheck, MapPin, Building2, Package, Maximize2, Users } from "lucide-react";
+import SellThisItemModal from "../components/SellThisItemModal.jsx";
+import { AnimatePresence } from "framer-motion";
 import ImageLightbox from "../components/ImageLightbox.jsx";
 import useCatalogHierarchySearch from "../hooks/useCatalogHierarchySearch";
 import useShopSearch from "../hooks/useShopSearch";
 import { IconTile, TileGrid, TileGridSkeleton, SellerRow, SellerListSkeleton, FilterSortChips, CatalogLoadError } from "../components/catalog/CatalogUI";
 import { C, EASE } from "../components/catalog/tokens";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
+import StackedImagePreview from "../components/StackedImagePreview.jsx";
 
 /* ------------------------------------------------------------------
    DESIGN NOTES — CatalogHierarchySearchPage
@@ -106,17 +109,17 @@ export default function CatalogHierarchySearchPage() {
     const initialQuery = searchParams.get("q") || "";
 
     const [showLightbox, setShowLightbox] = useState(false);
+    const [lightboxIndex, setLightboxIndex] = useState(0);
+    const [showSellModal, setShowSellModal] = useState(false);
 
     const {
         stack, currentLevel, parent, query, setQuery,
-        items, suggestions, loading, error, retry,
-        selectItem, selectSuggestion, goBack, goToBreadcrumb, canGoBack,
+        items, suggestions, loading, loadingMore, hasMore, error, retry,
+        selectItem, selectSuggestion, loadMore, goBack, goToBreadcrumb, canGoBack,
     } = useCatalogHierarchySearch(initialQuery);
 
     const brandHero = currentLevel === "seller" ? parent : null;
-
-    // console.log(parent);
-
+    const brandHeroImages = brandHero?.images?.length ? brandHero.images : (brandHero?.image ? [brandHero.image] : []);
 
     const lowestPrice = useMemo(() => {
         if (currentLevel !== "seller") return null;
@@ -130,6 +133,42 @@ export default function CatalogHierarchySearchPage() {
 
     useEffect(() => setInputValue(query), [query]);
     useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, [query]);
+
+    // Infinite scroll sentinel. Same approach as CatalogLevelPage: check
+    // the sentinel's position directly on Lenis's own scroll tick rather
+    // than IntersectionObserver, since Lenis scrolls via CSS transform
+    // (with html/body overflow hidden) rather than native scrolling, and
+    // that can make IntersectionObserver unreliable.
+    const sentinelRef = useRef(null);
+    const showingSuggestionsForScroll = !loading && items.length === 0 && suggestions.length > 0;
+    useEffect(() => {
+        // Don't paginate while showing "did you mean" suggestions — those
+        // aren't a paginated list, and there's nothing to load more of.
+        if (showingSuggestionsForScroll) return;
+
+        const checkSentinel = () => {
+            const el = sentinelRef.current;
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const buffer = 600;
+            if (rect.top <= window.innerHeight + buffer) loadMore();
+        };
+
+        const lenis = window.lenis;
+        if (lenis?.on) {
+            lenis.on("scroll", checkSentinel);
+            checkSentinel();
+            return () => lenis.off?.("scroll", checkSentinel);
+        }
+
+        window.addEventListener("scroll", checkSentinel, { passive: true });
+        window.addEventListener("resize", checkSentinel);
+        checkSentinel();
+        return () => {
+            window.removeEventListener("scroll", checkSentinel);
+            window.removeEventListener("resize", checkSentinel);
+        };
+    }, [loadMore, showingSuggestionsForScroll]);
 
     function handleBack() {
         if (canGoBack) goBack();
@@ -149,25 +188,28 @@ export default function CatalogHierarchySearchPage() {
     return (
         <div className="mx-auto min-h-screen max-w-7xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
             {/* header: back + title */}
-            <div className="mt-3 flex items-center gap-3 sm:mb-1">
-                <button
-                    onClick={handleBack}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors duration-150 hover:bg-black/[0.03]"
-                    style={{ borderColor: C.hair, color: C.ink }}
-                    aria-label="Back"
-                >
-                    <ArrowLeft className="h-4 w-4" />
-                </button>
-                <div className="min-w-0">
-                    <h1
-                        className="truncate font-extrabold leading-tight tracking-[-0.01em]"
-                        style={{ color: C.ink, fontSize: "clamp(19px, 1.8vw, 27px)" }}
+            <div className="mt-3 flex items-center justify-between gap-3 sm:mb-1">
+                <div className="flex min-w-0 items-center gap-3">
+
+                    <button
+                        onClick={handleBack}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors duration-150 hover:bg-black/[0.03]"
+                        style={{ borderColor: C.hair, color: C.ink }}
+                        aria-label="Back"
                     >
-                        {showingSuggestions ? "Did you mean" : LEVEL_LABEL[currentLevel]}
-                    </h1>
-                    <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em]" style={{ color: C.muted }}>
-                        {parent ? `in ${parent.name}` : `${items.length} results`}
-                    </p>
+                        <ArrowLeft className="h-4 w-4" />
+                    </button>
+                    <div className="min-w-0">
+                        <h1
+                            className="truncate font-extrabold leading-tight tracking-[-0.01em]"
+                            style={{ color: C.ink, fontSize: "clamp(19px, 1.8vw, 27px)" }}
+                        >
+                            {showingSuggestions ? "Did you mean" : LEVEL_LABEL[currentLevel]}
+                        </h1>
+                        <p className="font-mono text-[10px] font-medium uppercase tracking-[0.18em]" style={{ color: C.muted }}>
+                            {parent ? `in ${parent.name}` : `${items.length}${hasMore ? "+" : ""} results`}
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -200,23 +242,11 @@ export default function CatalogHierarchySearchPage() {
                         style={{ borderColor: C.hair, background: `linear-gradient(160deg, ${C.secondary}08 0%, #fff 45%)` }}
                     >
                         <div className="flex gap-4">
-                            <button
-                                onClick={() => brandHero?.image && setShowLightbox(true)}
-                                className="group relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-white shadow-sm sm:h-28 sm:w-28"
-                                style={{ borderColor: C.hair }}
-                                aria-label="View full image"
-                            >
-                                {brandHero?.image ? (
-                                    <>
-                                        <img src={brandHero.image} alt={brandHero?.name} className="h-full w-full object-cover" />
-                                        <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-150 group-hover:bg-black/25 group-active:bg-black/25">
-                                            <Maximize2 className="h-4 w-4 text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-active:opacity-100" />
-                                        </span>
-                                    </>
-                                ) : (
-                                    <Package className="h-8 w-8" style={{ color: C.muted }} />
-                                )}
-                            </button>
+                            <StackedImagePreview
+                                images={brandHeroImages}
+                                name={brandHero?.name}
+                                onOpen={(idx) => { setLightboxIndex(idx); setShowLightbox(true); }}
+                            />
 
                             <div className="min-w-0 flex-1">
                                 {brandHero?.brand_name && (
@@ -230,7 +260,7 @@ export default function CatalogHierarchySearchPage() {
 
                                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                                     <span className="flex items-center gap-1 text-[11.5px] font-bold" style={{ color: C.muted }}>
-                                        <Users className="h-3 w-3" /> {items.length} seller{items.length === 1 ? "" : "s"}
+                                        <Users className="h-3 w-3" /> {items.length}{hasMore ? "+" : ""} seller{items.length === 1 && !hasMore ? "" : "s"}
                                     </span>
                                     {lowestPrice && (
                                         <span className="flex items-baseline gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-extrabold" style={{ background: `${C.primary}12`, color: C.primary }}>
@@ -238,6 +268,20 @@ export default function CatalogHierarchySearchPage() {
                                         </span>
                                     )}
                                 </div>
+                                <button
+                                    onClick={() => setShowSellModal(true)}
+                                    className="mt-3 hidden items-center gap-1.5 rounded-xl px-4 py-2.5 text-[12.5px] font-bold text-white sm:inline-flex"
+                                    style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}
+                                >
+                                    <Plus className="h-3.5 w-3.5" /> I want to sell this
+                                </button>
+                                <button
+                                    onClick={() => setShowSellModal(true)}
+                                    className="flex shrink-0 items-center gap-1 rounded-md px-3 py-1 mt-2 text-[12px] font-bold text-white sm:hidden"
+                                    style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}
+                                >
+                                    <Plus className="h-3.5 w-3.5" /> Sell this
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -290,30 +334,55 @@ export default function CatalogHierarchySearchPage() {
                         ))}
                     </TileGrid>
                 ) : currentLevel === "seller" ? (
-                    <div className="flex flex-col sm:gap-2.5">
-                        {items.map((seller, i) => (
-                            <SellerRow key={seller.offerId ?? i} seller={seller} idx={i} isLast={i === items.length - 1} onClick={() => handleSelect(seller)} />
-                        ))}
-                    </div>
+                    <>
+                        <div className="flex flex-col sm:gap-2.5">
+                            {items.map((seller, i) => (
+                                <SellerRow key={seller.offerId ?? i} seller={seller} idx={i} isLast={i === items.length - 1} onClick={() => handleSelect(seller)} />
+                            ))}
+                        </div>
+                        {hasMore && (
+                            <div ref={sentinelRef} className="mt-4 flex justify-center py-4">
+                                {loadingMore && <SellerListSkeleton rows={1} />}
+                            </div>
+                        )}
+                    </>
                 ) : TILE_LEVELS.has(currentLevel) ? (
-                    <TileGrid>
-                        {items.map((item, i) => (
-                            <IconTile
-                                key={item.id ?? i}
-                                image={item.image}
-                                name={item.name}
-                                idx={i}
-                                count={item.subcategoryCount ?? item.productCount ?? item.brandCount ?? item.sellerCount}
-                                sub={currentLevel === "brand_item" ? item.brand_name : null}
-                                onClick={() => handleSelect(item)}
-                            />
-                        ))}
-                    </TileGrid>
+                    <>
+                        <TileGrid>
+                            {items.map((item, i) => (
+                                <IconTile
+                                    key={item.id ?? i}
+                                    image={item.image}
+                                    name={item.name}
+                                    idx={i}
+                                    count={item.subcategoryCount ?? item.productCount ?? item.brandCount ?? item.sellerCount}
+                                    sub={currentLevel === "brand_item" ? item.brand_name : null}
+                                    onClick={() => handleSelect(item)}
+                                />
+                            ))}
+                        </TileGrid>
+                        {hasMore && (
+                            <div ref={sentinelRef} className="mt-4 flex justify-center py-4">
+                                {loadingMore && <TileGridSkeleton rows={1} />}
+                            </div>
+                        )}
+                    </>
                 ) : null}
             </div>
-            {showLightbox && brandHero?.image && (
-                <ImageLightbox src={brandHero.image} alt={brandHero.name} onClose={() => setShowLightbox(false)} />
+            {showLightbox && brandHeroImages.length > 0 && (
+                <ImageLightbox
+                    images={brandHeroImages}
+                    initialIndex={lightboxIndex}
+                    alt={brandHero.name}
+                    onClose={() => setShowLightbox(false)}
+                />
             )}
+
+            <AnimatePresence>
+                {showSellModal && brandHero && (
+                    <SellThisItemModal brand={brandHero} onClose={() => setShowSellModal(false)} />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
