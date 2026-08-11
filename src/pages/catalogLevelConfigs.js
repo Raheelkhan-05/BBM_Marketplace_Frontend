@@ -22,7 +22,10 @@ export const CATALOG_LEVEL_CONFIGS = {
         fetchItems: (_parent, { offset = 0, limit = 20 } = {}) =>
             searchCatalogCategories("", limit, offset),
         itemCountField: "subcategoryCount",
-        onSelectRoute: (item) => ({ pathname: LEVEL_ROUTES.brand_item(item), state: { brand: item } }),
+        onSelectRoute: (item) => ({
+            pathname: LEVEL_ROUTES.category(item),
+            state: { category: item },
+        }),
     },
     subcategories: {
         level: "subcategory",
@@ -57,7 +60,7 @@ export const CATALOG_LEVEL_CONFIGS = {
             state: { genericProduct: item, subcategory: parent, category: grandparent },
         }),
         upRoute: (grandparent) => grandparent
-            ? { pathname: LEVEL_ROUTES.category(grandparent) }
+            ? { pathname: LEVEL_ROUTES.category(grandparent), state: { category: grandparent } }
             : { pathname: ROOT_ROUTE },
     },
     brands: {
@@ -75,8 +78,17 @@ export const CATALOG_LEVEL_CONFIGS = {
             pathname: LEVEL_ROUTES.brand_item(item),
             state: { brand: item, genericProduct: parent, subcategory: grandparent?.subcategory, category: grandparent?.category },
         }),
-        upRoute: (grandparent) => grandparent
-            ? { pathname: LEVEL_ROUTES.subcategory(grandparent), state: { subcategory: grandparent } }
+        // NOTE: on the brands page, `grandparent` is the wrapper object
+        // { subcategory, category } built in CatalogLevelPage.jsx —
+        // NOT the subcategory itself. Must unwrap it here, otherwise
+        // the "up" navigation hands the next page a fake parent whose
+        // .name is undefined ("Products in undefined") and whose .id
+        // is missing, breaking the next fetch.
+        upRoute: (grandparent) => grandparent?.subcategory
+            ? {
+                pathname: LEVEL_ROUTES.subcategory(grandparent.subcategory),
+                state: { subcategory: grandparent.subcategory, category: grandparent.category },
+            }
             : { pathname: ROOT_ROUTE },
     },
 };

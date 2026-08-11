@@ -92,7 +92,9 @@ export default function CatalogLevelPage({ configKey }) {
         navigate(pathname, { state });
     };
 
-    const title = config.isRoot ? "All Categories" : (parent?.name || "Loading…");
+    const title = config.isRoot
+        ? "All Categories"
+        : config.label.charAt(0).toUpperCase() + config.label.slice(1);
     const titleHref = config.isRoot || !config.upRoute ? null : config.upRoute(grandparent);
 
     return (
@@ -100,7 +102,7 @@ export default function CatalogLevelPage({ configKey }) {
             <CatalogHeader
                 title={title}
                 titleHref={titleHref}
-                subtitle={`${items.length}${hasMore ? "+" : ""} ${config.label}`}
+                subtitle={parent ? `in ${parent.name}` : `${items.length}${hasMore ? "+" : ""} ${config.label}`}
             />
 
             <div className="mt-4 hidden lg:block">
@@ -128,6 +130,7 @@ export default function CatalogLevelPage({ configKey }) {
                                     name={item.name}
                                     idx={i}
                                     count={item[config.itemCountField]}
+                                    sub={configKey === "brands" ? item.brand_name : null}
                                     onClick={() => openItem(item)}
                                 />
                             ))}
