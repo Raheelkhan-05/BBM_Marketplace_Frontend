@@ -158,7 +158,7 @@ export default function ShopPage({ slug: slugProp, previewData = null, editable 
                                 </span>
                               )}
 
-                              {editable && (
+                              {editable && !p.pending_approval && (
                                 <div className="absolute right-1.5 top-1.5 z-10 flex gap-1">
                                   <button
                                     type="button"

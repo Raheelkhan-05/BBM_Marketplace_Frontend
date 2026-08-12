@@ -348,7 +348,7 @@ function ProductEditModal({ item, token, onClose, onSaved, onDeleted }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[99] flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-t-2xl bg-white p-5 sm:rounded-2xl">
         <div className="flex items-center justify-between">
           <p className="text-[14px] font-extrabold text-slate-900">{item.brand?.name || item.name}</p>
@@ -363,13 +363,13 @@ function ProductEditModal({ item, token, onClose, onSaved, onDeleted }) {
           <LabeledInput label="Lead time (days)" value={leadTime} onChange={setLeadTime} type="number" />
         </div>
 
-        <div className="mt-3 flex items-center gap-2">
+        {/* <div className="mt-3 flex items-center gap-2">
           <img src={image} alt="" className="h-10 w-10 rounded-lg border border-slate-200 object-cover" />
           <label className="cursor-pointer rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11.5px] font-bold text-slate-600">
             {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Replace image"}
             <input type="file" accept="image/*" onChange={handleImage} className="hidden" />
           </label>
-        </div>
+        </div> */}
 
         {err && <p className="mt-2.5 text-[11.5px] font-semibold text-[#c71f11]">{err}</p>}
 
