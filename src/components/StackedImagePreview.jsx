@@ -1,7 +1,7 @@
 // src/components/StackedImagePreview.jsx
 import { useRef, useState } from "react";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
-import { Maximize2, Package } from "lucide-react";
+import { Maximize2, Package, Layers } from "lucide-react";
 
 // How far (px) — or how fast (px/s) — a swipe must travel before it
 // commits to the next/prev image instead of springing back.
@@ -173,7 +173,7 @@ export default function StackedImagePreview({ images, name, onOpen, size = "h-24
                     {gallery.length > 2 && (
                         <div
                             className={`absolute inset-0 origin-bottom-right ${cardChrome}`}
-                            style={{ ...cardBorder, transform: "rotate(9deg) translate(3px, 3px) scale(0.92)" }}
+                            style={{ ...cardBorder, transform: "rotate(8deg) translate(3px, 3px) scale(0.92)" }}
                             aria-hidden="true"
                         >
                             <AnimatePresence mode="wait" initial={false}>
@@ -193,7 +193,7 @@ export default function StackedImagePreview({ images, name, onOpen, size = "h-24
                     )}
                     <div
                         className={`absolute inset-0 origin-bottom-right ${cardChrome}`}
-                        style={{ ...cardBorder, transform: "rotate(5deg) translate(1.5px, 1.5px) scale(0.96)" }}
+                        style={{ ...cardBorder, transform: "rotate(-6deg) translate(-6px, -6px) scale(0.96)" }}
                         aria-hidden="true"
                     >
                         <AnimatePresence mode="wait" initial={false}>
@@ -205,10 +205,11 @@ export default function StackedImagePreview({ images, name, onOpen, size = "h-24
                                 initial="initial"
                                 animate="animate"
                                 exit="exit"
-                                className="h-full w-full object-cover brightness-95"
+                                className="h-full w-full object-cover"
                                 draggable={false}
                             />
                         </AnimatePresence>
+                        <div className="pointer-events-none absolute inset-0 bg-black/5" />
                     </div>
                 </>
             )}
