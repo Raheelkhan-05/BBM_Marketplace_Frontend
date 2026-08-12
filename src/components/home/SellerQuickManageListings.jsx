@@ -229,6 +229,14 @@ function ListingCard({
                     style={{ background: statusColor }}
                 />
             )}
+            {it.review_status === "pending_review" && (
+                <span
+                    className="absolute right-3 top-6 z-10 rounded-full px-2 py-0.5 text-[9.5px] font-bold"
+                    style={{ background: "#fef3c7", color: "#b45309" }}
+                >
+                    Pending review
+                </span>
+            )}
 
             <div className="relative p-4">
                 <div className="flex items-start gap-3">
@@ -264,7 +272,7 @@ function ListingCard({
                             )}
                         </div>
 
-                        {!isEditing && !isConfirming && (
+                        {!isEditing && !isConfirming && (it.review_status !== "pending_review") && (
                             canHover ? (
                                 <div className="flex shrink-0 items-center gap-1 overflow-hidden opacity-0 transition-all duration-200 ease-out max-w-0 group-hover:max-w-[80px] group-hover:opacity-100">
                                     <button
@@ -453,9 +461,14 @@ export default function SellerQuickManageListings() {
     useEffect(() => {
         if (!token || !isApprovedSeller) { setLoading(false); return; }
         let cancelled = false;
-        fetchMySellerSubmissions(token, "approved").then((res) => {
+        fetchMySellerSubmissions(token).then((res) => {
             if (cancelled) return;
-            if (res?.success) setItems(res.items || []);
+            if (res?.success) {
+                // Show everything buyers could eventually see: approved + pending.
+                // Rejected listings aren't surfaced here — the seller manages
+                // those from the full dashboard's Products tab instead.
+                setItems((res.items || []).filter((it) => it.review_status !== "rejected"));
+            }
             setLoading(false);
         });
         return () => { cancelled = true; };
