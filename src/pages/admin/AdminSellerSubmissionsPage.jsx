@@ -97,7 +97,7 @@ export default function AdminSellerSubmissionsPage() {
                                     {it.brand_name} · {it.generic_product?.subcategory?.category?.name} / {it.generic_product?.subcategory?.name} / {it.generic_product?.name}
                                 </p>
                                 <p className="mt-1 text-[12.5px] font-medium text-slate-600">
-                                    ₹{it.price} · MOQ {it.moq} {it.unit} · Lead time {it.lead_time}
+                                    ₹{it.price} · MOQ {it.moq} {it.unit} · Lead time {it.lead_time} days
                                 </p>
                                 <p className="text-[11.5px] font-medium text-slate-400">Seller: {it.seller?.display_name || "—"}</p>
                                 {it.rejection_reason && <p className="mt-1 text-[11.5px] font-semibold text-[#c71f11]">Rejected: {it.rejection_reason}</p>}
@@ -181,7 +181,7 @@ function EditSubmissionModal({ token, item, onClose, onSaved }) {
         if (!(Number(price) > 0)) return setError("Price must be greater than 0.");
         if (!(Number(moq) > 0)) return setError("MOQ must be greater than 0.");
         if (!unit) return setError("Select a unit.");
-        if (!leadTime.trim()) return setError("Lead time is required.");
+        if (!(Number(leadTime) >= 0)) return setError("Lead time must be a valid number of days.");
         if (!images.length) return setError("At least one image is required.");
 
         setSaving(true);
@@ -192,7 +192,7 @@ function EditSubmissionModal({ token, item, onClose, onSaved }) {
                 price: Number(price),
                 moq: Number(moq),
                 unit,
-                leadTime: leadTime.trim(),
+                leadTime: Number(leadTime),
                 images,
             });
             if (!res?.success) throw new Error(res?.message || "Couldn't save changes.");
@@ -245,7 +245,7 @@ function EditSubmissionModal({ token, item, onClose, onSaved }) {
                         </select>
                     </div>
 
-                    <Field label="Lead time *" value={leadTime} onChange={setLeadTime} placeholder="e.g. 7–10 days" />
+                    <Field label="Lead time (days) *" value={leadTime} type="number" min="0" onChange={(v) => setLeadTime(v.replace(/[^\d]/g, ""))} placeholder="e.g. 7" />
 
                     {error && <p className="text-[12.5px] font-semibold text-[#c71f11]">{error}</p>}
                 </div>
@@ -263,11 +263,11 @@ function EditSubmissionModal({ token, item, onClose, onSaved }) {
     );
 }
 
-function Field({ label, value, onChange, placeholder, inputMode }) {
+function Field({ label, value, onChange, placeholder, inputMode, type = "text", min }) {
     return (
         <div>
             <label className="mb-1.5 block text-[12px] font-bold text-slate-500">{label}</label>
-            <input value={value} inputMode={inputMode} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
+            <input type={type} min={min} value={value} inputMode={inputMode} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
         </div>
     );
