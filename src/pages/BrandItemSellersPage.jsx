@@ -52,11 +52,12 @@ function HeroSkeleton() {
 
 /* ---------------- "I want to sell this" modal ---------------- */
 
-function TextField({ label, value, onChange, placeholder, inputMode }) {
+function TextField({ label, value, onChange, placeholder, inputMode, type = "text" }) {
     return (
         <div className="flex flex-col gap-1">
             <label className="text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{label}</label>
             <input
+                type={type}
                 value={value}
                 inputMode={inputMode}
                 placeholder={placeholder}
@@ -113,7 +114,7 @@ function SellThisItemModal({ brand, onClose }) {
         if (!(Number(form.price) > 0)) missing.push("Price");
         if (!(Number(form.moq) > 0)) missing.push("MOQ");
         if (!form.unit) missing.push("Unit");
-        if (!form.leadTime.trim()) missing.push("Lead time");
+        if (!(Number(form.leadTime) >= 0)) missing.push("Lead time");
         if (missing.length) return setError(`Please fill: ${missing.join(", ")}`);
 
         setSubmitting(true);
@@ -124,7 +125,7 @@ function SellThisItemModal({ brand, onClose }) {
                 price: form.price,
                 moq: form.moq,
                 unit: form.unit,
-                leadTime: form.leadTime,
+                leadTime: Number(form.leadTime),
                 image: form.image || undefined,
             });
             if (!res?.success) {
@@ -218,7 +219,13 @@ function SellThisItemModal({ brand, onClose }) {
                                     {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
                                 </select>
                             </div>
-                            <TextField label="Lead time" value={form.leadTime} onChange={(v) => setField("leadTime", v)} placeholder="e.g. 7–10 days" />
+                            <TextField
+                                label="Lead time (days)"
+                                value={form.leadTime}
+                                onChange={(v) => setField("leadTime", v.replace(/[^\d]/g, ""))}
+                                type="number"
+                                placeholder="e.g. 7"
+                            />
                         </div>
 
                         {error && <p className="mt-4 text-[12px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
