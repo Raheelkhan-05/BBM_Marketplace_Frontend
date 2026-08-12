@@ -360,7 +360,7 @@ function ProductEditModal({ item, token, onClose, onSaved, onDeleted }) {
           <LabeledInput label="Price" value={price} onChange={setPrice} type="number" />
           <LabeledInput label="MOQ" value={moq} onChange={setMoq} type="number" />
           <LabeledInput label="Unit" value={unit} onChange={setUnit} />
-          <LabeledInput label="Lead time" value={leadTime} onChange={setLeadTime} />
+          <LabeledInput label="Lead time (days)" value={leadTime} onChange={setLeadTime} type="number" />
         </div>
 
         <div className="mt-3 flex items-center gap-2">
@@ -510,7 +510,8 @@ function AddProductForm({ token, onCancel, onCreated }) {
         <LabeledInput label="Price" value={price} onChange={setPrice} type="number" />
         <LabeledInput label="MOQ" value={moq} onChange={setMoq} type="number" />
         <LabeledInput label="Unit" value={unit} onChange={setUnit} placeholder="e.g. Kg, Pieces" />
-        <LabeledInput label="Lead time" value={leadTime} onChange={setLeadTime} placeholder="e.g. 7-10 days" />
+        {/* <LabeledInput label="Lead time" value={leadTime} onChange={setLeadTime} placeholder="e.g. 7-10 days" /> */}
+        <LabeledInput label="Lead time (days)" value={leadTime} onChange={setLeadTime} type="number" placeholder="e.g. 7" />
       </div>
 
       <div className="mt-3 flex items-center gap-3">

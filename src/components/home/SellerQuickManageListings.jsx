@@ -338,8 +338,8 @@ function ListingCard({
                                         onChange={(e) => setForm((f) => ({ ...f, moq: e.target.value }))}
                                     />
                                     <FieldInput
-                                        label="Lead time"
-                                        type="text"
+                                        label="Lead time (days)"
+                                        type="number" min="0" step="1"
                                         value={form.lead_time}
                                         onChange={(e) => setForm((f) => ({ ...f, lead_time: e.target.value }))}
                                     />
