@@ -319,14 +319,14 @@ export default function ImageLightbox({ src, images, alt, initialIndex = 0, onCl
 
             {gallery.length > 1 && (
                 <div
-                    className="mt-5 flex max-w-[92vw] gap-2.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    className="mt-5 pt-3 flex max-w-[92vw] gap-2.5 overflow-x-auto px-2 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {gallery.map((thumb, i) => (
                         <button
                             key={thumb + i}
                             onClick={() => goTo(i)}
-                            className={`h-14 w-14 shrink-0 overflow-hidden rounded-xl ring-2 ring-offset-2 ring-offset-transparent transition-all duration-200 ${i === index
+                            className={`h-14 w-14 shrink-0 overflow-hidden rounded-xl ring-0 ring-offset-1 ring-offset-transparent transition-all duration-200 ${i === index
                                 ? "scale-105 opacity-100 shadow-md ring-neutral-900"
                                 : "opacity-45 ring-transparent hover:opacity-75"
                                 }`}

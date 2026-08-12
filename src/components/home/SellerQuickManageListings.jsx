@@ -21,6 +21,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { fetchMySellerSubmissions, updateSellerProductSubmission, deleteSellerProductSubmission } from "../../utils/api.js";
 import ImageLightbox from "../ImageLightbox.jsx";
+import StackedImagePreview from "../StackedImagePreview.jsx";
 
 const C = {
     ink: "#0B1116",
@@ -208,6 +209,7 @@ function ListingCard({
     const name = it.brand?.name || it.product_name || "Product";
     const brandName = it.brand?.brand_name || it.brand_name;
     const image = it.image || it.brand?.image;
+    const gallery = it.images?.length ? it.images : (it.brand?.images?.length ? it.brand.images : (image ? [image] : []));
     const stock = it.stock_quantity;
     const lowStock = stock != null && stock <= LOW_STOCK_THRESHOLD;
     const outOfStock = stock != null && stock <= 0;
@@ -240,25 +242,12 @@ function ListingCard({
 
             <div className="relative p-4">
                 <div className="flex items-start gap-3">
-                    <button
-                        type="button"
-                        onClick={(e) => { if (image) { e.stopPropagation(); onOpenImage({ src: image, alt: name }); } }}
-                        className="group/img relative shrink-0 overflow-hidden rounded-xl border transition-transform duration-150 active:scale-95"
-                        style={{ borderColor: C.hair, background: "#F5F6F7", cursor: image ? "zoom-in" : "default" }}
-                        aria-label={image ? `View full image of ${name}` : "No image available"}
-                    >
-                        <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl">
-                            {image ? (
-                                <img
-                                    src={image}
-                                    alt=""
-                                    className="h-full w-full object-cover transition-transform duration-300 group-hover/img:scale-110"
-                                />
-                            ) : (
-                                <ImageIcon className="h-5 w-5" style={{ color: C.muted }} />
-                            )}
-                        </span>
-                    </button>
+                    <StackedImagePreview
+                        images={gallery}
+                        name={name}
+                        size="h-14 w-14"
+                        onOpen={(idx) => onOpenImage({ images: gallery, index: idx, alt: name })}
+                    />
 
                     <div className="flex min-w-0 flex-1 items-start gap-1 pt-0.5">
                         <div className="min-w-0 flex-1">
@@ -585,16 +574,15 @@ export default function SellerQuickManageListings() {
                     }}
                 />
 
-                <AnimatePresence>
-                    {lightboxImage && (
-                        <ImageLightbox
-                            key="listing-lightbox"
-                            src={lightboxImage.src}
-                            alt={lightboxImage.alt}
-                            onClose={() => setLightboxImage(null)}
-                        />
-                    )}
-                </AnimatePresence>
+                {lightboxImage && createPortal(
+                    <ImageLightbox
+                        images={lightboxImage.images}
+                        initialIndex={lightboxImage.index}
+                        alt={lightboxImage.alt}
+                        onClose={() => setLightboxImage(null)}
+                    />,
+                    document.body
+                )}
             </div>
         </div>
     );
