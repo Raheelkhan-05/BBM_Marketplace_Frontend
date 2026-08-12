@@ -157,7 +157,13 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         return (
             <motion.button
                 key={a.id}
-                onClick={a.id === "add-product" ? () => navigate("/seller/sell") : a.id === "req" ? onOpenRfq : undefined}
+                onClick={
+                    a.id === "add-product" ? () => navigate("/seller/sell")
+                        : a.id === "seller-orders" ? () => navigate("/seller/orders")
+                            : a.id === "purchase-order" ? () => navigate("/orders")
+                                : a.id === "req" ? onOpenRfq
+                                    : undefined
+                }
                 initial={{ opacity: 0, y: 8 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-40px" }}

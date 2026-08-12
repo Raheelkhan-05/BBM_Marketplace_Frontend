@@ -15,6 +15,7 @@ import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerRow, SellerListSkeleton, FilterSortChips, CatalogHeader, CatalogLoadError } from "../components/catalog/CatalogUI";
 import { C, EASE } from "../components/catalog/tokens";
 import useAsyncCatalogData from "../hooks/useAsyncCatalogData";
+import BuyNowModal from "../components/BuyNowModal.jsx";
 
 
 /* ------------------------------------------------------------------
@@ -255,7 +256,7 @@ export default function BrandItemSellersPage() {
     const [brand, setBrand] = useState(state?.brand || null);
     const [genericProduct] = useState(state?.genericProduct || null);
     const [category] = useState(state?.category || null);
-
+    const [buySeller, setBuySeller] = useState(null);
 
     const [query, setQuery] = useState("");
     const [showSellModal, setShowSellModal] = useState(false);
@@ -414,7 +415,7 @@ export default function BrandItemSellersPage() {
                 ) : (
                     <div className="flex flex-col sm:gap-2.5">
                         {filtered.map((s, i) => (
-                            <SellerRow key={s.id} seller={s} idx={i} isLast={i === filtered.length - 1} />
+                            <SellerRow key={s.id} seller={s} idx={i} isLast={i === filtered.length - 1} onClick={() => setBuySeller(s)} />
                         ))}
                     </div>
                 )}
@@ -432,6 +433,7 @@ export default function BrandItemSellersPage() {
                         onClose={() => setShowLightbox(false)}
                     />
                 )}
+                {buySeller && <BuyNowModal seller={buySeller} product={brand} onClose={() => setBuySeller(null)} />}
             </AnimatePresence>
         </div>
     );

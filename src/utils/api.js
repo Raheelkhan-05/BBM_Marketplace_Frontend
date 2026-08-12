@@ -659,3 +659,63 @@ export async function createSellerListingForBrand(token, payload) {
   });
   return res.json();
 }
+
+// ---- Checkout / Orders ----
+export async function fetchCheckoutStatus(token) {
+  const res = await fetch(`${API_BASE}/orders/checkout-status`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  return res.json();
+}
+export async function fetchOrderQuote(submissionId, quantity) {
+  const params = new URLSearchParams({ submissionId, quantity });
+  const res = await fetch(`${API_BASE}/orders/quote?${params}`);
+  return res.json();
+}
+export async function placeOrder(token, payload) {
+  const res = await fetch(`${API_BASE}/orders`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+export async function fetchMyOrders(token, status) {
+  const params = new URLSearchParams(status ? { status } : {});
+  const res = await fetch(`${API_BASE}/orders?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function cancelMyOrder(token, id, reason) {
+  const res = await fetch(`${API_BASE}/orders/${id}/cancel`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ reason }),
+  });
+  return res.json();
+}
+
+// ---- Seller order management ----
+export async function fetchSellerOrders(token, status) {
+  const params = new URLSearchParams(status ? { status } : {});
+  const res = await fetch(`${API_BASE}/seller/orders?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+function sellerOrderAction(action) {
+  return async (token, id, reason) => {
+    const res = await fetch(`${API_BASE}/seller/orders/${id}/${action}`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ reason }),
+    });
+    return res.json();
+  };
+}
+export const confirmSellerOrder = sellerOrderAction("confirm");
+export const rejectSellerOrder = sellerOrderAction("reject");
+export const processSellerOrder = sellerOrderAction("process");
+export const shipSellerOrder = sellerOrderAction("ship");
+export const deliverSellerOrder = sellerOrderAction("deliver");
+
+// ---- Buyer address book ----
+export async function fetchBuyerAddresses(token) {
+  const res = await fetch(`${API_BASE}/buyer/addresses`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function createBuyerAddress(token, payload) {
+  const res = await fetch(`${API_BASE}/buyer/addresses`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+  });
+  return res.json();
+}

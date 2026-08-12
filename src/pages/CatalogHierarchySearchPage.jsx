@@ -11,6 +11,7 @@ import { IconTile, TileGrid, TileGridSkeleton, SellerRow, SellerListSkeleton, Fi
 import { C, EASE } from "../components/catalog/tokens";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import StackedImagePreview from "../components/StackedImagePreview.jsx";
+import BuyNowModal from "../components/BuyNowModal.jsx";
 
 /* ------------------------------------------------------------------
    DESIGN NOTES — CatalogHierarchySearchPage
@@ -112,6 +113,8 @@ export default function CatalogHierarchySearchPage() {
     const [lightboxIndex, setLightboxIndex] = useState(0);
     const [showSellModal, setShowSellModal] = useState(false);
 
+    const [buySeller, setBuySeller] = useState(null);
+
     const {
         stack, currentLevel, parent, query, setQuery,
         items, suggestions, loading, loadingMore, hasMore, error, retry,
@@ -174,9 +177,10 @@ export default function CatalogHierarchySearchPage() {
         if (canGoBack) goBack();
         else navigate(-1);
     }
+
     function handleSelect(item) {
         if (currentLevel === "seller") {
-            navigate(`/shop/${item.shop_slug}`);
+            setBuySeller(item);
             return;
         }
         selectItem(item);
@@ -382,6 +386,7 @@ export default function CatalogHierarchySearchPage() {
                 {showSellModal && brandHero && (
                     <SellThisItemModal brand={brandHero} onClose={() => setShowSellModal(false)} />
                 )}
+                {buySeller && <BuyNowModal seller={buySeller} product={brandHero} onClose={() => setBuySeller(null)} />}
             </AnimatePresence>
         </div>
     );

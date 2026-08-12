@@ -192,8 +192,10 @@ export default function StackedImagePreview({ images, name, onOpen, size = "h-24
                         </div>
                     )}
                     <div
-                        className={`absolute inset-0 origin-bottom-right ${cardChrome}`}
-                        style={{ ...cardBorder, transform: "rotate(-6deg) translate(-6px, -6px) scale(0.96)" }}
+                        className={`absolute inset-0 border-1 border-slate-400 origin-bottom-right ${cardChrome}`}
+                        style={{
+                            transform: "rotate(-6deg) translate(-6px, -6px) scale(0.96)"
+                        }}
                         aria-hidden="true"
                     >
                         <AnimatePresence mode="wait" initial={false}>
