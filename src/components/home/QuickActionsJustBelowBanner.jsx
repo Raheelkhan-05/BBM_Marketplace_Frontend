@@ -6,7 +6,10 @@ import {
     BadgePercent, Circle, TrendingUp, Truck, CreditCard, Plus,
     ScanLine, ClipboardList, Repeat, ShieldCheck, Lock, FileCheck, Clock
 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useAuth } from "../../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
+import { fetchMyOrders, fetchSellerOrders } from "../../utils/api.js";
 
 /* ------------------------------------------------------------------
    DESIGN NOTES — v4, mobile 3-across icon grid, desktop single-row
@@ -47,14 +50,58 @@ const ICONS = {
 
 function QuickActionsJustBelowBanner({ onOpenRfq }) {
     const navigate = useNavigate();
+    const { token, profile } = useAuth();
 
-    const purchaseActions = quickActions.filter((a) =>
-        ["explore", "purchase-order", "post-rfq"].includes(a.id)
-    );
+    const isLoggedIn = !!token;
+    const isApprovedSeller = profile?.seller_status === "approved";
 
-    const salesActions = quickActions.filter((a) =>
-        ["add-product", "seller-orders", "marketing"].includes(a.id)
-    );
+    const [purchaseOrderCount, setPurchaseOrderCount] = useState(null);
+    const [salesOrderCount, setSalesOrderCount] = useState(null);
+
+    const ACTIVE_PURCHASE_STATUSES = ["pending_confirmation", "confirmed", "processing", "shipped"];
+    const ACTIVE_SALES_STATUSES = ["pending_confirmation", "confirmed", "processing", "shipped"];
+
+    useEffect(() => {
+        if (!isLoggedIn) { setPurchaseOrderCount(null); return; }
+        let cancelled = false;
+        fetchMyOrders(token)
+            .then((res) => {
+                if (cancelled || !res?.success) return;
+                const count = (res.orders || []).filter((o) => ACTIVE_PURCHASE_STATUSES.includes(o.status)).length;
+                setPurchaseOrderCount(count);
+            })
+            .catch(() => { });
+        return () => { cancelled = true; };
+    }, [isLoggedIn, token]);
+
+    useEffect(() => {
+        if (!isApprovedSeller) { setSalesOrderCount(null); return; }
+        let cancelled = false;
+        fetchSellerOrders(token)
+            .then((res) => {
+                if (cancelled || !res?.success) return;
+                const count = (res.orders || []).filter((o) => ACTIVE_SALES_STATUSES.includes(o.status)).length;
+                setSalesOrderCount(count);
+            })
+            .catch(() => { });
+        return () => { cancelled = true; };
+    }, [isApprovedSeller, token]);
+
+    const purchaseActions = quickActions
+        .filter((a) => ["explore", "purchase-order", "post-rfq"].includes(a.id))
+        .map((a) =>
+            a.id === "purchase-order"
+                ? { ...a, count: isLoggedIn && purchaseOrderCount > 0 ? purchaseOrderCount : undefined }
+                : a
+        );
+
+    const salesActions = quickActions
+        .filter((a) => ["add-product", "seller-orders", "marketing"].includes(a.id))
+        .map((a) =>
+            a.id === "seller-orders"
+                ? { ...a, count: isApprovedSeller && salesOrderCount > 0 ? salesOrderCount : undefined }
+                : a
+        );
 
     const handleActionClick = (id) => {
         switch (id) {
@@ -63,9 +110,21 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
             case "post-rfq":
                 return onOpenRfq;
             case "seller-orders":
-                return () => navigate("/seller/orders");
+                return () => {
+                    if (!isApprovedSeller) {
+                        navigate("/seller/onboarding");
+                        return;
+                    }
+                    navigate("/seller/orders");
+                };
             case "purchase-order":
-                return () => navigate("/orders");
+                return () => {
+                    if (!isLoggedIn) {
+                        navigate("/login", { state: { from: "/orders" } });
+                        return;
+                    }
+                    navigate("/orders");
+                };
             case "explore":
                 return () => navigate("/categories"); // ← confirm this route
 
