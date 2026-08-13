@@ -51,9 +51,28 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
     const purchaseActions = quickActions.filter((a) =>
         ["explore", "purchase-order", "post-rfq"].includes(a.id)
     );
+
     const salesActions = quickActions.filter((a) =>
         ["add-product", "seller-orders", "marketing"].includes(a.id)
     );
+
+    const handleActionClick = (id) => {
+        switch (id) {
+            case "add-product":
+                return () => navigate("/seller/sell");
+            case "post-rfq":
+                return onOpenRfq;
+            case "seller-orders":
+                return () => navigate("/seller/orders");
+            case "purchase-order":
+                return () => navigate("/orders");
+            case "explore":
+                return () => navigate("/categories"); // ← confirm this route
+
+            default:
+                return undefined;
+        }
+    };
 
     /* ---------- MOBILE: icon-on-top tile (Paytm/GPay pattern) ---------- */
     const renderTile = (a, accent, i) => {
@@ -64,7 +83,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         return (
             <motion.button
                 key={a.id}
-                onClick={a.id === "add-product" ? () => navigate("/seller/sell") : a.id === "req" ? onOpenRfq : undefined}
+                onClick={handleActionClick(a.id)}
                 initial={{ opacity: 0, y: 6 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-30px" }}
@@ -108,7 +127,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         return (
             <motion.button
                 key={a.id}
-                onClick={a.id === "add-product" ? () => navigate("/seller/sell") : a.id === "req" ? onOpenRfq : undefined}
+                onClick={handleActionClick(a.id)}
                 initial={{ opacity: 0, y: 8 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-40px" }}
@@ -157,13 +176,7 @@ function QuickActionsJustBelowBanner({ onOpenRfq }) {
         return (
             <motion.button
                 key={a.id}
-                onClick={
-                    a.id === "add-product" ? () => navigate("/seller/sell")
-                        : a.id === "seller-orders" ? () => navigate("/seller/orders")
-                            : a.id === "purchase-order" ? () => navigate("/orders")
-                                : a.id === "req" ? onOpenRfq
-                                    : undefined
-                }
+                onClick={handleActionClick(a.id)}
                 initial={{ opacity: 0, y: 8 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-40px" }}

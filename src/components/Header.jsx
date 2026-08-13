@@ -246,7 +246,7 @@ export default function Header() {
             >
               <div className="mx-auto max-w-7xl px-5 py-4">
                 {/* Identity strip — mirrors the desktop avatar button so mobile
-                    users get the same "signed in as" context before diving into links. */}
+                      users get the same "signed in as" context before diving into links. */}
                 {isLoggedIn && (
                   <div className="mb-3 flex items-center gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5">
                     <span

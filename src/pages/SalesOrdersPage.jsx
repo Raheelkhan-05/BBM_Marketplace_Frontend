@@ -21,6 +21,7 @@ const NEXT_ACTION = {
 };
 
 function OrderCard({ order, idx, onAction }) {
+    const navigate = useNavigate();
     const [busy, setBusy] = useState(null);
     const actions = NEXT_ACTION[order.status] || [];
     const addr = order.shipping_address_snapshot || {};
@@ -36,7 +37,8 @@ function OrderCard({ order, idx, onAction }) {
 
     return (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: Math.min(idx * 0.03, 0.3), ease: EASE }}
-            className="rounded-2xl border bg-white p-3.5 sm:p-4" style={{ borderColor: C.hair }}>
+            onClick={() => navigate(`/seller/orders/${order.id}`)}
+            className="cursor-pointer rounded-2xl border bg-white p-3.5 sm:p-4" style={{ borderColor: C.hair }}>
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-mono text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{order.order_number}</p>
                 <span className="rounded-full px-2 py-0.5 text-[10.5px] font-extrabold" style={{ background: `${C.secondary}14`, color: C.secondary }}>{order.status.replace("_", " ")}</span>

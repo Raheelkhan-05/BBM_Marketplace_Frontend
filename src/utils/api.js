@@ -719,3 +719,17 @@ export async function createBuyerAddress(token, payload) {
   });
   return res.json();
 }
+
+export async function fetchOrderById(token, id) {
+  const res = await fetch(`${API_BASE}/orders/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function fetchSellerOrderById(token, id) {
+  const res = await fetch(`${API_BASE}/seller/orders/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+
+export async function markAllNotificationsRead(token) {
+  const res = await fetch(`${API_BASE}/notifications/read-all`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}

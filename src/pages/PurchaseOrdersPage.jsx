@@ -29,6 +29,7 @@ function StatusChip({ status }) {
 }
 
 function OrderCard({ order, idx, onCancel }) {
+    const navigate = useNavigate();
     const [cancelling, setCancelling] = useState(false);
     const canCancel = order.status === "pending_confirmation";
     const item = order.items?.[0];
@@ -36,7 +37,8 @@ function OrderCard({ order, idx, onCancel }) {
 
     return (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: Math.min(idx * 0.03, 0.3), ease: EASE }}
-            className="rounded-2xl border bg-white p-3.5 sm:p-4" style={{ borderColor: C.hair }}>
+            onClick={() => navigate(`/orders/${order.id}`)}
+            className=" cursor-pointer rounded-2xl border bg-white p-3.5 sm:p-4" style={{ borderColor: C.hair }}>
             <div className="flex items-center justify-between gap-2">
                 <p className="font-mono text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{order.order_number}</p>
                 <StatusChip status={order.status} />
@@ -56,7 +58,8 @@ function OrderCard({ order, idx, onCancel }) {
             <div className="mt-3 flex items-center justify-between gap-2">
                 <p className="text-[10.5px] font-semibold" style={{ color: C.muted }}>{new Date(order.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</p>
                 {canCancel && (
-                    <button disabled={cancelling} onClick={async () => { setCancelling(true); await onCancel(order.id); setCancelling(false); }}
+                    <button disabled={cancelling}
+                        onClick={(e) => { e.stopPropagation(); (async () => { setCancelling(true); await onCancel(order.id); setCancelling(false); })(); }}
                         className="rounded-lg border px-3 py-1.5 text-[11px] font-bold" style={{ borderColor: C.hair, color: C.primary }}>
                         {cancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : "Cancel order"}
                     </button>
@@ -77,7 +80,7 @@ export default function PurchaseOrdersPage() {
         return res.orders;
     }, [token, activeStatus]);
 
-    const { orders, loading, reload } = useRealtimeOrders({ role: "buyer", ownerId: profile?.id, fetcher });
+    const { orders, loading, reload } = useRealtimeOrders({ channelToken: profile?.notificationChannel, fetcher });
     const handleCancel = async (orderId) => { const res = await cancelMyOrder(token, orderId, "Cancelled by buyer"); if (res?.success) reload(); };
 
     return (

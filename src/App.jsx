@@ -32,6 +32,9 @@ import SellPublishProductPage from "./pages/SellPublishProductPage.jsx";
 import AdminSellerSubmissionsPage from "./pages/admin/AdminSellerSubmissionsPage.jsx";
 import PurchaseOrdersPage from "./pages/PurchaseOrdersPage.jsx";
 import SalesOrdersPage from "./pages/SalesOrdersPage.jsx";
+import OrderDetailPage from "./pages/OrderDetailPage.jsx";
+import SellerOrderDetailPage from "./pages/SellerOrderDetailPage.jsx";
+
 
 function CatalogLevelPageWithKey({ configKey }) {
   const { idOrSlug } = useParams();
@@ -68,6 +71,8 @@ function App() {
 
             <Route path="/orders" element={<PurchaseOrdersPage />} />
             <Route path="/seller/orders" element={<SalesOrdersPage />} />
+            <Route path="/orders/:id" element={<OrderDetailPage />} />
+            <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
 
             {/* <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><NewHomePage /></RequireAuth>} /> */}
             <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
