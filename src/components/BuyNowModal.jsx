@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import { Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee, Minus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -21,6 +21,33 @@ function Field({ label, value, onChange }) {
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 
+// Instant, client-side price computation off the seller data we already
+// have in hand (price/moq/unit/stock). This is what renders the moment the
+// user types a quantity — no network round-trip. The debounced backend
+// call in the effect below still runs afterwards and, once it resolves,
+// silently overwrites these numbers with the authoritative server figures
+// (covers things like tiered pricing, tax, or stock that changed after the
+// page loaded). The backend contract/route is untouched.
+function computeLocalQuote(seller, quantity) {
+    const qty = Number(quantity);
+    if (!seller || !(qty > 0) || !(Number(seller.price) > 0)) return null;
+    const unitPrice = Number(seller.price);
+    const moq = Number(seller.moq) || 0;
+    const availableStock = seller.availableStock != null ? Number(seller.availableStock) : null;
+    return {
+        quantity: qty,
+        unit: seller.unit,
+        unitPrice,
+        subtotal: Math.round(unitPrice * qty * 100) / 100,
+        moq,
+        meetsMoq: moq ? qty >= moq : true,
+        availableStock,
+        hasEnoughStock: availableStock != null ? qty <= availableStock : true,
+        leadTime: seller.leadTime,
+        isEstimate: true,
+    };
+}
+
 export default function BuyNowModal({ seller, product, onClose }) {
     const { token } = useAuth();
     const navigate = useNavigate();
@@ -33,13 +60,23 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const [quantity, setQuantity] = useState(seller?.moq || 1);
     const [notes, setNotes] = useState("");
-    const [quote, setQuote] = useState(null);
-    const [quoting, setQuoting] = useState(false);
+
+    // `quote` always holds whatever is currently good enough to show the
+    // user: it's set synchronously from local math the instant quantity
+    // changes, then silently replaced with the server's confirmed quote
+    // once that response lands — no loading state tied to this at all.
+    const [quote, setQuote] = useState(() => computeLocalQuote(seller, seller?.moq || 1));
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
     const [done, setDone] = useState(null);
     const quoteTimer = useRef(null);
+    const requestIdRef = useRef(0);
+    // Holds the in-flight (or most recently scheduled) background quote
+    // confirmation, so handleSubmit can silently wait on it — no spinner,
+    // no disabled button, just a guarantee we check with the server before
+    // the order actually goes through.
+    const pendingQuoteRef = useRef(Promise.resolve());
 
     useEffect(() => {
         let cancelled = false;
@@ -63,15 +100,44 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return () => { cancelled = true; };
     }, [access, token]);
 
+    // 1) INSTANT: recompute the local estimate synchronously on every
+    // quantity keystroke, so the total on screen never lags behind typing.
     useEffect(() => {
-        if (!seller?.offerId || !(Number(quantity) > 0)) { setQuote(null); return; }
+        if (!(Number(quantity) > 0)) { setQuote(null); return; }
+        setQuote((prev) => {
+            const local = computeLocalQuote(seller, quantity);
+            // If we don't have enough seller data to estimate locally, just
+            // keep whatever we last had (server quote, if any) so the UI
+            // doesn't blank out.
+            return local || prev;
+        });
+    }, [seller, quantity]);
+
+    // 2) CONFIRM: debounced call to the backend to fetch the authoritative
+    // quote for the current quantity. Same endpoint/payload as before.
+    // Runs entirely silently — no spinner or text tied to this — but
+    // handleSubmit awaits `pendingQuoteRef` before placing the order, so
+    // the click always goes through with a server-confirmed quote even
+    // though nothing in the UI shows it working.
+    useEffect(() => {
+        if (!seller?.offerId || !(Number(quantity) > 0)) return;
         clearTimeout(quoteTimer.current);
-        quoteTimer.current = setTimeout(async () => {
-            setQuoting(true);
-            const res = await fetchOrderQuote(seller.offerId, quantity);
-            setQuoting(false);
-            if (res?.success) setQuote(res);
-        }, 300);
+        const myRequestId = ++requestIdRef.current;
+        const qtyAtSchedule = quantity;
+
+        pendingQuoteRef.current = new Promise((resolve) => {
+            quoteTimer.current = setTimeout(async () => {
+                const res = await fetchOrderQuote(seller.offerId, qtyAtSchedule);
+                if (myRequestId === requestIdRef.current && res?.success) {
+                    const confirmed = { ...res, isEstimate: false };
+                    setQuote(confirmed);
+                    resolve(confirmed);
+                } else {
+                    resolve(null);
+                }
+            }, 300);
+        });
+
         return () => clearTimeout(quoteTimer.current);
     }, [seller?.offerId, quantity]);
 
@@ -99,6 +165,21 @@ export default function BuyNowModal({ seller, product, onClose }) {
         if (!(Number(quantity) > 0)) return setError("Please enter a valid quantity.");
 
         setSubmitting(true);
+
+        // Wait on whatever background quote confirmation is currently in
+        // flight for this quantity, so we never place an order against a
+        // stale local estimate — without ever showing that wait in the UI.
+        const confirmed = await pendingQuoteRef.current;
+        const finalQuote = confirmed || quote;
+        if (finalQuote && (!finalQuote.meetsMoq || !finalQuote.hasEnoughStock)) {
+            setSubmitting(false);
+            return setError(
+                !finalQuote.meetsMoq
+                    ? `Minimum order quantity is ${finalQuote.moq} ${finalQuote.unit}.`
+                    : `Only ${finalQuote.availableStock} ${finalQuote.unit} in stock.`
+            );
+        }
+
         const res = await placeOrder(token, { submissionId: seller.offerId, quantity: Number(quantity), shippingAddressId: addressId, notes: notes.trim() || undefined });
         setSubmitting(false);
         if (!res?.success) return setError(res?.message || "Couldn't place the order.");
@@ -203,15 +284,18 @@ export default function BuyNowModal({ seller, product, onClose }) {
                         </div>
 
                         <div className="mt-4 rounded-xl p-3" style={{ background: `${C.secondary}08` }}>
-                            {quoting ? <p className="text-[12px] font-semibold" style={{ color: C.muted }}>Calculating…</p> : quote ? (
+                            {quote ? (
                                 <>
                                     <div className="flex items-center justify-between text-[12px] font-semibold" style={{ color: C.muted }}>
                                         <span>{quote.quantity} {quote.unit} × ₹{quote.unitPrice}</span><span>₹{quote.subtotal}</span>
                                     </div>
                                     <div className="mt-1.5 flex items-center justify-between text-[14px] font-extrabold" style={{ color: C.ink }}>
-                                        <span>You pay</span><span className="flex items-center"><IndianRupee className="h-3.5 w-3.5" />{quote.subtotal}</span>
+                                        <span>You pay</span>
+                                        <span className="flex items-center">
+                                            <IndianRupee className="h-3.5 w-3.5" />{quote.subtotal}
+                                        </span>
                                     </div>
-                                    {quote.leadTime && <p className="mt-1 text-[10.5px] font-medium" style={{ color: C.muted }}>Estimated lead time: {quote.leadTime} day(s)</p>}
+                                    {quote.leadTime != null && <p className="mt-1 text-[10.5px] font-medium" style={{ color: C.muted }}>Estimated lead time: {quote.leadTime} day(s)</p>}
                                 </>
                             ) : <p className="text-[12px] font-semibold" style={{ color: C.muted }}>Enter a quantity to see the total.</p>}
                         </div>
@@ -223,7 +307,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                         {error && <p className="mt-3 text-[12px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
 
-                        <button onClick={handleSubmit} disabled={submitting || (quote && (!quote.meetsMoq || !quote.hasEnoughStock))}
+                        <button onClick={handleSubmit} disabled={submitting}
                             className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white disabled:opacity-50"
                             style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}>
                             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Place order"}
