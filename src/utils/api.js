@@ -648,6 +648,8 @@ export async function deleteSellerProductSubmission(token, id) {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
+  console.log(res);
+
   return res.json();
 }
 

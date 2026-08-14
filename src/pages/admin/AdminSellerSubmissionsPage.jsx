@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2, X, ImageIcon, Pencil, Save } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { supabase } from "../../utils/supabaseClient.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import {
     adminListSellerSubmissions, adminApproveSellerSubmission,
@@ -19,14 +21,28 @@ const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxe
 
 export default function AdminSellerSubmissionsPage() {
     const { token } = useAuth();
-    const [status, setStatus] = useState("pending_review");
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [status, setStatus] = useState(() =>
+        searchParams.get("highlight") ? "all" : "pending_review"
+    );
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState(null);
     const [rejecting, setRejecting] = useState(null);
     const [reason, setReason] = useState("");
-    const [lightbox, setLightbox] = useState(null); // { images, index }
-    const [editing, setEditing] = useState(null); // the submission item being edited
+    const [lightbox, setLightbox] = useState(null);
+    const [editing, setEditing] = useState(null);
+    const [highlightId, setHighlightId] = useState(null);
+    // const [highlightId, setHighlightId] = useState(searchParams.get("highlight"));
+    const itemRefs = useRef(new Map());
+
+    useEffect(() => {
+        const id = searchParams.get("highlight");
+        if (id) {
+            setHighlightId(id);
+            setStatus("all"); // the item may no longer be in "pending" — see fix #4
+        }
+    }, [searchParams]);
 
     function load() {
         setLoading(true);
@@ -36,6 +52,47 @@ export default function AdminSellerSubmissionsPage() {
         });
     }
     useEffect(() => { if (token) load(); }, [token, status]);
+
+
+    // Realtime: any submission created/approved/rejected/edited anywhere
+    // pings this channel — refetch whatever tab is open.
+    useEffect(() => {
+        if (!token) return;
+        const channel = supabase
+            .channel("admin-submissions")
+            .on("broadcast", { event: "submissions_changed" }, () => load())
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token, status]);
+
+    // Poll for the row instead of assuming it's already rendered — items
+    // may still be loading when this fires.
+    useEffect(() => {
+        if (!highlightId) return;
+        let cancelled = false;
+        let attempts = 0;
+        function tryScroll() {
+            if (cancelled) return;
+            const el = itemRefs.current.get(highlightId);
+            if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                setTimeout(() => {
+                    if (cancelled) return;
+                    setHighlightId(null);
+                    const next = new URLSearchParams(searchParams);
+                    next.delete("highlight");
+                    setSearchParams(next, { replace: true });
+                }, 2500);
+                return;
+            }
+            attempts += 1;
+            if (attempts < 40) setTimeout(tryScroll, 100);
+        }
+        tryScroll();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [highlightId]);
 
     async function approve(id) {
         setBusyId(id);
@@ -77,8 +134,16 @@ export default function AdminSellerSubmissionsPage() {
                 {!loading && items.length === 0 && <p className="py-14 text-center text-[13px] font-medium text-slate-400">Nothing here.</p>}
                 <AnimatePresence initial={false}>
                     {!loading && items.map((it) => (
-                        <motion.div key={it.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="flex gap-3.5 rounded-xl border border-slate-100 bg-white p-4">
+                        <motion.div
+                            key={it.id}
+                            ref={(el) => { if (el) itemRefs.current.set(it.id, el); }}
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="flex gap-3.5 rounded-xl border bg-white p-4 transition-shadow duration-300"
+                            style={{
+                                borderColor: highlightId === it.id ? "#047084" : "#f1f5f9",
+                                boxShadow: highlightId === it.id ? "0 0 0 3px rgba(4,112,132,0.18)" : undefined,
+                            }}
+                        >
                             <button
                                 onClick={() => openLightbox(it)}
                                 className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-100"

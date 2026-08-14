@@ -1,16 +1,53 @@
-// src/context/AuthContext.jsx
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabaseClient.js";
 import { fetchMe } from "../utils/api.js";
 
 const AuthContext = createContext(null);
 const DEV_TOKEN_KEY = "bbm_dev_bypass_token";
-const AUTH_TOKEN_KEY = "bbm_auth_token"; // separate, real-session storage
+const AUTH_TOKEN_KEY = "bbm_auth_token";
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [initializing, setInitializing] = useState(true);
+
+  // Single shared realtime channel per user. Multiple components want
+  // events off the SAME `user-<token>` topic (bell, quick-manage
+  // listings, etc). Opening a separate supabase.channel() per component
+  // for the same topic breaks the earlier one — so everyone registers a
+  // callback here instead of opening their own channel.
+  const channelRef = useRef(null);
+  const listenersRef = useRef({ new_notification: new Set(), submissions_changed: new Set() });
+
+  const subscribeUserEvent = useCallback((event, callback) => {
+    listenersRef.current[event]?.add(callback);
+    return () => listenersRef.current[event]?.delete(callback);
+  }, []);
+
+  useEffect(() => {
+    const chanToken = profile?.notificationChannel;
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+    if (!chanToken) return;
+
+    const channel = supabase
+      .channel(`user-${chanToken}`)
+      .on("broadcast", { event: "new_notification" }, ({ payload }) => {
+        listenersRef.current.new_notification.forEach((cb) => cb(payload));
+      })
+      .on("broadcast", { event: "submissions_changed" }, ({ payload }) => {
+        listenersRef.current.submissions_changed.forEach((cb) => cb(payload));
+      })
+      .subscribe();
+    channelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (channelRef.current === channel) channelRef.current = null;
+    };
+  }, [profile?.notificationChannel]);
 
   const loadProfile = useCallback(async (token) => {
     if (!token) {
@@ -128,6 +165,7 @@ export function AuthProvider({ children }) {
         clearSession,
         setDevSession,
         setAuthSession,
+        subscribeUserEvent,
         refreshProfile: () => loadProfile(session?.access_token),
       }}
     >

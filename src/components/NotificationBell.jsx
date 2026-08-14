@@ -6,9 +6,9 @@ import useRealtimeNotifications from "../hooks/useRealtimeNotifications.js";
 import SmartLink from "./SmartLink.jsx";
 
 export default function NotificationBell() {
-  const { token, profile } = useAuth();
+  const { token } = useAuth();
   const [open, setOpen] = useState(false);
-  const { notifications, unreadCount, markRead } = useRealtimeNotifications({ token, channelToken: profile?.notificationChannel });
+  const { notifications, unreadCount, markRead } = useRealtimeNotifications({ token });
 
   const handleClick = (n) => { if (!n.read) markRead(n.id); setOpen(false); };
 

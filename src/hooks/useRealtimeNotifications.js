@@ -1,8 +1,9 @@
 import { useEffect, useCallback, useState } from "react";
-import { supabase } from "../utils/supabaseClient.js";
+import { useAuth } from "../context/AuthContext.jsx";
 import { fetchNotifications, markNotificationRead as apiMarkRead, markAllNotificationsRead as apiMarkAllRead } from "../utils/api.js";
 
-export default function useRealtimeNotifications({ token, channelToken }) {
+export default function useRealtimeNotifications({ token }) {
+    const { subscribeUserEvent } = useAuth();
     const [notifications, setNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -17,13 +18,10 @@ export default function useRealtimeNotifications({ token, channelToken }) {
     useEffect(() => { load(); }, [load]);
 
     useEffect(() => {
-        if (!channelToken) return;
-        const channel = supabase
-            .channel(`user-${channelToken}`)
-            .on("broadcast", { event: "new_notification" }, ({ payload }) => setNotifications((prev) => [payload, ...prev]))
-            .subscribe();
-        return () => { supabase.removeChannel(channel); };
-    }, [channelToken]);
+        return subscribeUserEvent("new_notification", (payload) => {
+            setNotifications((prev) => [payload, ...prev]);
+        });
+    }, [subscribeUserEvent]);
 
     const markRead = async (id) => {
         setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));

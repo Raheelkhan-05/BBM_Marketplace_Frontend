@@ -10,18 +10,20 @@
 // just re-parented into that single container instead of a padded
 // inner div.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Pencil, Trash2, Check, X, Loader2, ImageIcon, ChevronRight,
     PackageSearch, AlertTriangle, MoreVertical, Maximize2,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { fetchMySellerSubmissions, updateSellerProductSubmission, deleteSellerProductSubmission } from "../../utils/api.js";
 import ImageLightbox from "../ImageLightbox.jsx";
 import StackedImagePreview from "../StackedImagePreview.jsx";
+import { supabase } from "../../utils/supabaseClient.js";
+
 
 const C = {
     ink: "#0B1116",
@@ -202,7 +204,7 @@ function ListingActionSheet({ open, name, onEdit, onDelete, onClose }) {
 /* ---------------- listing card ---------------- */
 
 function ListingCard({
-    it, i, canHover, isEditing, isConfirming, form, setForm, saving, deletingId,
+    it, i, canHover, isEditing, isConfirming, form, setForm, saving, deletingId, highlighted,
     onEdit, onCancelEdit, onSave, onAskDelete, onCancelDelete, onConfirmDelete, onOpenImage,
 }) {
     const [sheetOpen, setSheetOpen] = useState(false);
@@ -222,8 +224,11 @@ function ListingCard({
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, delay: Math.min(i * 0.03, 0.3), ease: EASE }}
             whileHover={{ y: -2 }}
-            className="group relative w-[280px] shrink-0 snap-start rounded-2xl border bg-white shadow-[0_1px_2px_rgba(11,17,22,0.03)] transition-shadow duration-200 hover:shadow-[0_10px_24px_-14px_rgba(11,17,22,0.16)] sm:w-[300px]"
-            style={{ borderColor: C.hair }}
+            className="group relative w-[280px] shrink-0 rounded-2xl border bg-white shadow-[0_1px_2px_rgba(11,17,22,0.03)] transition-shadow duration-300 hover:shadow-[0_10px_24px_-14px_rgba(11,17,22,0.16)] sm:w-[300px]"
+            style={{
+                borderColor: highlighted ? C.secondary : C.hair,
+                boxShadow: highlighted ? `0 0 0 3px ${C.secondary}33` : undefined,
+            }}
         >
             {statusColor && (
                 <div
@@ -237,6 +242,11 @@ function ListingCard({
                     style={{ background: "#fef3c7", color: "#b45309" }}
                 >
                     Pending review
+                </span>
+            )}
+            {it.review_status === "rejected" && (
+                <span className="absolute right-3 top-6 z-10 rounded-full px-2 py-0.5 text-[9.5px] font-bold" style={{ background: "#fee2e2", color: "#c71f11" }}>
+                    Rejected
                 </span>
             )}
 
@@ -340,7 +350,8 @@ function ListingCard({
                                         className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-50"
                                         style={{ background: C.secondary }}
                                     >
-                                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Save
+                                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                        {it.review_status === "rejected" ? "Resubmit" : "Save"}
                                     </button>
                                     <button
                                         onClick={onCancelEdit}
@@ -410,6 +421,11 @@ function ListingCard({
                                 />
                                 <Spec label="MOQ" value={`${it.moq} ${it.unit}`} />
                                 <Spec label="Lead" value={it.lead_time} />
+                                {it.review_status === "rejected" && it.rejection_reason && (
+                                    <div className="mt-2.5 rounded-lg px-2.5 py-2 text-[11.5px] font-semibold leading-snug" style={{ background: "rgba(199,31,17,0.08)", color: "#c71f11" }}>
+                                        Rejected: {it.rejection_reason} — edit and save to resubmit.
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     )}
@@ -430,9 +446,13 @@ function ListingCard({
 /* ---------------- main ---------------- */
 
 export default function SellerQuickManageListings() {
-    const { token, profile } = useAuth();
-    const navigate = useNavigate();
+    const { token, profile, subscribeUserEvent } = useAuth();
+
     const canHover = useCanHover();
+    const [searchParams, setSearchParams] = useSearchParams();
+    // const [highlightId, setHighlightId] = useState(searchParams.get("highlight"));
+    const [highlightId, setHighlightId] = useState(null);
+    const itemRefs = useRef(new Map());
 
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -447,6 +467,48 @@ export default function SellerQuickManageListings() {
 
     const { scrollRef, showLeftFade, showRightFade } = useScrollFades([items, editingId, confirmDeleteId, loading]);
 
+    const reload = useCallback(() => {
+        if (!token || !isApprovedSeller) return;
+        fetchMySellerSubmissions(token).then((res) => {
+            if (res?.success) setItems(res.items || []); // see fix #2 — no longer filtering out rejected
+        });
+    }, [token, isApprovedSeller]);
+
+    useEffect(() => {
+        const id = searchParams.get("highlight");
+        if (id) setHighlightId(id);
+    }, [searchParams]);
+
+    useEffect(() => {
+        if (!highlightId) return;
+        let cancelled = false;
+        let attempts = 0;
+        function tryScroll() {
+            if (cancelled) return;
+            const el = itemRefs.current.get(highlightId);
+            if (el) {
+                el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+                setTimeout(() => {
+                    if (cancelled) return;
+                    setHighlightId(null);
+                    const next = new URLSearchParams(searchParams);
+                    next.delete("highlight");
+                    setSearchParams(next, { replace: true });
+                }, 2500);
+                return;
+            }
+            attempts += 1;
+            if (attempts < 40) setTimeout(tryScroll, 100);
+        }
+        tryScroll();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [highlightId]);
+
+    useEffect(() => {
+        return subscribeUserEvent("submissions_changed", reload);
+    }, [subscribeUserEvent, reload]);
+
     useEffect(() => {
         if (!token || !isApprovedSeller) { setLoading(false); return; }
         let cancelled = false;
@@ -456,13 +518,52 @@ export default function SellerQuickManageListings() {
                 // Show everything buyers could eventually see: approved + pending.
                 // Rejected listings aren't surfaced here — the seller manages
                 // those from the full dashboard's Products tab instead.
-                setItems((res.items || []).filter((it) => it.review_status !== "rejected"));
+                // setItems((res.items || []).filter((it) => it.review_status !== "rejected"));
+                setItems(res.items || []);
             }
             setLoading(false);
         });
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token, isApprovedSeller]);
+
+    // Realtime: approvals/rejections/edits ping this user's own channel.
+    useEffect(() => {
+        if (!profile?.notificationChannel) return;
+        const channel = supabase
+            .channel(`user-${profile.notificationChannel}`)
+            .on("broadcast", { event: "submissions_changed" }, () => reload())
+            .subscribe();
+        return () => { supabase.removeChannel(channel); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [profile?.notificationChannel, token, isApprovedSeller]);
+
+    useEffect(() => {
+        if (!highlightId) return;
+        let cancelled = false;
+        let attempts = 0;
+
+        function tryScroll() {
+            if (cancelled) return;
+            const el = itemRefs.current.get(highlightId);
+            if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                setTimeout(() => {
+                    if (cancelled) return;
+                    setHighlightId(null);
+                    const next = new URLSearchParams(searchParams);
+                    next.delete("highlight");
+                    setSearchParams(next, { replace: true });
+                }, 2500);
+                return;
+            }
+            attempts += 1;
+            if (attempts < 40) setTimeout(tryScroll, 100); // polls for ~4s
+        }
+        tryScroll();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [highlightId]);
 
     if (!isApprovedSeller) return null;
     if (!loading && items.length === 0) return null;
@@ -535,25 +636,27 @@ export default function SellerQuickManageListings() {
                             />
                         ))
                         : items.map((it, i) => (
-                            <ListingCard
-                                key={it.id}
-                                it={it}
-                                i={i}
-                                canHover={canHover}
-                                isEditing={editingId === it.id}
-                                isConfirming={confirmDeleteId === it.id}
-                                form={form}
-                                setForm={setForm}
-                                saving={saving}
-                                deletingId={deletingId}
-                                onEdit={startEdit}
-                                onCancelEdit={cancelEdit}
-                                onSave={saveEdit}
-                                onAskDelete={(id) => { setEditingId(null); setConfirmDeleteId(id); }}
-                                onCancelDelete={() => setConfirmDeleteId(null)}
-                                onConfirmDelete={confirmDelete}
-                                onOpenImage={setLightboxImage}
-                            />
+                            <div key={it.id} ref={(el) => { if (el) itemRefs.current.set(it.id, el); }} className="shrink-0 snap-start">
+                                <ListingCard
+                                    it={it}
+                                    i={i}
+                                    canHover={canHover}
+                                    isEditing={editingId === it.id}
+                                    isConfirming={confirmDeleteId === it.id}
+                                    form={form}
+                                    setForm={setForm}
+                                    saving={saving}
+                                    deletingId={deletingId}
+                                    onEdit={startEdit}
+                                    onCancelEdit={cancelEdit}
+                                    onSave={saveEdit}
+                                    onAskDelete={(id) => { setEditingId(null); setConfirmDeleteId(id); }}
+                                    onCancelDelete={() => setConfirmDeleteId(null)}
+                                    onConfirmDelete={confirmDelete}
+                                    onOpenImage={setLightboxImage}
+                                    highlighted={highlightId === it.id}
+                                />
+                            </div>
                         ))}
                 </div>
 
