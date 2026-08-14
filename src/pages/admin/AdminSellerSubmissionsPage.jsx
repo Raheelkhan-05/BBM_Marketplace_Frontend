@@ -44,6 +44,19 @@ export default function AdminSellerSubmissionsPage() {
         }
     }, [searchParams]);
 
+    useEffect(() => {
+        function onVisible() {
+            if (document.visibilityState === "visible") load();
+        }
+        document.addEventListener("visibilitychange", onVisible);
+        window.addEventListener("focus", onVisible);
+        return () => {
+            document.removeEventListener("visibilitychange", onVisible);
+            window.removeEventListener("focus", onVisible);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [status]);
+
     function load() {
         setLoading(true);
         adminListSellerSubmissions(token, status).then((res) => {

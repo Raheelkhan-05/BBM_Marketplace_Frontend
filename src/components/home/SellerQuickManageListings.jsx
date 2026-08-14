@@ -446,7 +446,7 @@ function ListingCard({
 /* ---------------- main ---------------- */
 
 export default function SellerQuickManageListings() {
-    const { token, profile, subscribeUserEvent } = useAuth();
+    const { token, profile, subscribeUserEvent, registerResyncHandler } = useAuth();
 
     const canHover = useCanHover();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -527,16 +527,12 @@ export default function SellerQuickManageListings() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token, isApprovedSeller]);
 
-    // Realtime: approvals/rejections/edits ping this user's own channel.
+    // resync registration instead — same safety-net pattern
+    // as the notifications hook, so a dropped socket doesn't leave stale
+    // listings sitting on screen until a manual refresh:
     useEffect(() => {
-        if (!profile?.notificationChannel) return;
-        const channel = supabase
-            .channel(`user-${profile.notificationChannel}`)
-            .on("broadcast", { event: "submissions_changed" }, () => reload())
-            .subscribe();
-        return () => { supabase.removeChannel(channel); };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [profile?.notificationChannel, token, isApprovedSeller]);
+        return registerResyncHandler(reload);
+    }, [registerResyncHandler, reload]);
 
     useEffect(() => {
         if (!highlightId) return;
