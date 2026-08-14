@@ -735,3 +735,13 @@ export async function markAllNotificationsRead(token) {
   const res = await fetch(`${API_BASE}/notifications/read-all`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
   return res.json();
 }
+
+export async function fetchCatalogBrowse(params, signal) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === null || v === undefined || v === "") return;
+    qs.set(k, Array.isArray(v) ? v.join(",") : v);
+  });
+  const res = await fetch(`${API_BASE}/catalog-search/browse?${qs}`, { signal });
+  return res.json();
+}

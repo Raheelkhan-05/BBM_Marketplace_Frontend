@@ -228,7 +228,7 @@ function CategoryIconExplorer() {
     // render its header (name, count) immediately instead of waiting on
     // a redundant fetch for data we already have in memory.
     const openCategory = (cat) => {
-        navigate(`/category/${cat.slug || cat.id}/subcategories`, { state: { category: cat } });
+        navigate(`/category/${cat.slug || cat.id}/browse`, { state: { category: cat } });
     };
 
     return (

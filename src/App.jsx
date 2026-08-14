@@ -34,6 +34,7 @@ import PurchaseOrdersPage from "./pages/PurchaseOrdersPage.jsx";
 import SalesOrdersPage from "./pages/SalesOrdersPage.jsx";
 import OrderDetailPage from "./pages/OrderDetailPage.jsx";
 import SellerOrderDetailPage from "./pages/SellerOrderDetailPage.jsx";
+import BrowsePage from "./pages/BrowsePage.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -63,11 +64,11 @@ function App() {
 
             <Route path="/search" element={<SearchResultsPage />} />
             <Route path="/home" element={<HomePage />} />
-            <Route path="/category/:idOrSlug/subcategories" element={<CatalogLevelPageWithKey configKey="subcategories" />} />
-            <Route path="/subcategory/:idOrSlug/products" element={<CatalogLevelPageWithKey configKey="products" />} />
-            <Route path="/product/:idOrSlug/brands" element={<CatalogLevelPageWithKey configKey="brands" />} />
             <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPageWithKey />} />
             <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
+
+            <Route path="/category/:idOrSlug/browse" element={<BrowsePage />} />
+            <Route path="/browse" element={<BrowsePage />} />
 
             <Route path="/orders" element={<PurchaseOrdersPage />} />
             <Route path="/seller/orders" element={<SalesOrdersPage />} />
@@ -85,8 +86,6 @@ function App() {
             <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
             <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
             <Route path="/shop/:slug" element={<ShopRoute />} />
-            {/* <Route path="/browse" element={<HierarchySearchPage />} /> */}
-            <Route path="/browse-search" element={<CatalogHierarchySearchPage />} />
             <Route path="/product/:id" element={<ProductDetailPage />} />
 
             <Route path="/admin/catalog" element={<RequireAdmin><AdminCatalogReviewPage /></RequireAdmin>} />

@@ -14,7 +14,7 @@ import CategoryIconExplorer from "../components/home/CategoryIconExplorer.jsx";
 import WelcomeBanner from "../components/home/WelcomeBanner.jsx";
 import TrustStrip from "../components/home/TrustStrip.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
-import { resolveSearchRoute } from "../utils/searchResolve.js";
+import { performSearchNavigation } from "../utils/searchResolve.js";
 
 const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -79,18 +79,7 @@ function AmazonSearchHeader() {
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
 
-  // Same pre-flight resolution BottomSearchBar and HierarchySearchPage already
-  // do — resolve to an exact product/brand/subcategory route BEFORE navigating,
-  // instead of always landing on /browse and letting it redirect a moment later.
-  // That redirect-after-mount is what caused the visible page flash.
-  const handleSubmit = async (trimmedQuery) => {
-    const route = await resolveSearchRoute(trimmedQuery);
-    if (route) {
-      navigate(route.pathname, { state: route.state });
-      return;
-    }
-    navigate(`/browse-search?q=${encodeURIComponent(trimmedQuery)}`);
-  };
+  const handleSubmit = (trimmedQuery) => performSearchNavigation(navigate, trimmedQuery);
 
   const handleImageResolved = (result) => {
     navigate("/browse", { state: { imageResult: result } });

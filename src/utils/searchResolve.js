@@ -80,3 +80,14 @@ export async function resolveSearchRoute(trimmedQuery) {
     }
     return null;
 }
+
+export async function performSearchNavigation(navigate, rawQuery) {
+    const term = rawQuery.trim();
+    if (!term) return;
+    const route = await resolveSearchRoute(term);
+    if (route) {
+        navigate(route.pathname, { state: route.state });
+        return;
+    }
+    navigate(`/browse?q=${encodeURIComponent(term)}`); // fixed: was /browse-search
+}

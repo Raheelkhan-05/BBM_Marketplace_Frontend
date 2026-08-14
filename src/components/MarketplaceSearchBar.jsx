@@ -56,6 +56,7 @@ export default function MarketplaceSearchBar({
     value, onChange, onSubmit, onImageResolved, onFileImport,
     placeholder = "Search any product, brand, category...",
     suggestionsDirection = "down",
+    clearOnSubmit = true,
 }) {
     const [imageSearching, setImageSearching] = useState(false);
     const [imageError, setImageError] = useState(null);
@@ -150,8 +151,8 @@ export default function MarketplaceSearchBar({
         if (!trimmed) return;
         setImageError(null);
         setShowSuggestions(false);
-        onChange("");        // clear the input immediately for a snappy feel
-        onSubmit(trimmed);   // pass the actual term along separately
+        if (clearOnSubmit) onChange("");
+        onSubmit(trimmed);
     };
 
 
