@@ -1,14 +1,13 @@
 // components/home/SellerQuickManageListings.jsx
 //
-// v4 — removed the nested double-box wrapper (outer rounded-[16px] card
-// + inner rounded-[20px] overflow box) that was reading as a "boxy"
-// panel-within-a-panel. Now a single bordered white container carries
-// the mask-image edge fade directly, same pattern as
-// CategoryIconExplorer's wrapper: overflow-hidden rounded-[20px] border
-// bg-white p-4 px-3 sm:p-6, mask on the container itself. The
-// scroll-aware left/right fade overlays and the lightbox stay put,
-// just re-parented into that single container instead of a padded
-// inner div.
+// v5 — switched from a horizontally-scrolling card carousel to a
+// vertical list view, styled after holdings/watchlist rows in trading
+// apps (Groww etc): thumbnail + name/brand on the left, price and
+// stock as a right-aligned "quote" block, actions tucked behind a
+// three-dot / hover affordance. Edit and delete still expand inline
+// under the row, same interaction as before — only the container and
+// row markup changed. All state, handlers, and API calls are
+// untouched from v4.
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
@@ -35,21 +34,9 @@ const C = {
 };
 const EASE = [0.16, 1, 0.3, 1];
 const LOW_STOCK_THRESHOLD = 10;
+const LIST_MAX_HEIGHT = 428; // px — roughly 5 rows before it scrolls
 
 /* ---------------- shared primitives ---------------- */
-
-function Spec({ label, value, tone }) {
-    return (
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
-                {label}
-            </span>
-            <span className="truncate text-[13px] font-bold tabular-nums" style={{ color: tone || C.ink }}>
-                {value}
-            </span>
-        </div>
-    );
-}
 
 function FieldInput({ label, ...props }) {
     return (
@@ -95,17 +82,20 @@ function SectionHeader({ title, subtitle }) {
     );
 }
 
-function useScrollFades(deps) {
+// Tracks scroll position on a *vertical* scroller so we can fade the
+// top/bottom edges only when there's actually more list past them —
+// same idea as the old left/right fade, rotated 90°.
+function useVerticalScrollFades(deps) {
     const scrollRef = useRef(null);
-    const [showLeftFade, setShowLeftFade] = useState(false);
-    const [showRightFade, setShowRightFade] = useState(false);
+    const [showTopFade, setShowTopFade] = useState(false);
+    const [showBottomFade, setShowBottomFade] = useState(false);
 
     const updateFades = () => {
         const el = scrollRef.current;
         if (!el) return;
-        const { scrollLeft, scrollWidth, clientWidth } = el;
-        setShowLeftFade(scrollLeft > 0);
-        setShowRightFade(scrollLeft + clientWidth < scrollWidth - 8);
+        const { scrollTop, scrollHeight, clientHeight } = el;
+        setShowTopFade(scrollTop > 0);
+        setShowBottomFade(scrollTop + clientHeight < scrollHeight - 8);
     };
 
     useEffect(() => {
@@ -122,7 +112,7 @@ function useScrollFades(deps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, deps);
 
-    return { scrollRef, showLeftFade, showRightFade };
+    return { scrollRef, showTopFade, showBottomFade };
 }
 
 function useCanHover() {
@@ -201,9 +191,9 @@ function ListingActionSheet({ open, name, onEdit, onDelete, onClose }) {
     );
 }
 
-/* ---------------- listing card ---------------- */
+/* ---------------- listing row ---------------- */
 
-function ListingCard({
+function ListingRow({
     it, i, canHover, isEditing, isConfirming, form, setForm, saving, deletingId, highlighted,
     onEdit, onCancelEdit, onSave, onAskDelete, onCancelDelete, onConfirmDelete, onOpenImage,
 }) {
@@ -216,145 +206,210 @@ function ListingCard({
     const lowStock = stock != null && stock <= LOW_STOCK_THRESHOLD;
     const outOfStock = stock != null && stock <= 0;
 
-    const statusColor = outOfStock ? "#c71f11" : lowStock ? "#b45309" : null;
+    const statusColor = outOfStock ? "#c71f11" : lowStock ? "#b45309" : C.secondary;
+    const stockLabel = outOfStock ? "Out of stock" : stock != null ? `${stock} ${it.unit} left` : "Stock —";
+    const isExpanded = isEditing || isConfirming;
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: Math.min(i * 0.03, 0.3), ease: EASE }}
-            whileHover={{ y: -2 }}
-            className="group relative w-[280px] shrink-0 rounded-2xl border bg-white shadow-[0_1px_2px_rgba(11,17,22,0.03)] transition-shadow duration-300 hover:shadow-[0_10px_24px_-14px_rgba(11,17,22,0.16)] sm:w-[300px]"
-            style={{
-                borderColor: highlighted ? C.secondary : C.hair,
-                boxShadow: highlighted ? `0 0 0 3px ${C.secondary}33` : undefined,
-            }}
+            transition={{ duration: 0.3, delay: Math.min(i * 0.025, 0.25), ease: EASE }}
+            className="relative"
+            style={{ background: highlighted ? `${C.secondary}0d` : "transparent" }}
         >
-            {statusColor && (
-                <div
-                    className="pointer-events-none absolute inset-x-0 top-0 h-[3px] overflow-hidden rounded-t-2xl"
-                    style={{ background: statusColor }}
+            {highlighted && (
+                <motion.div
+                    layoutId="row-highlight-ring"
+                    className="pointer-events-none absolute inset-0 rounded-xl"
+                    style={{ boxShadow: `inset 0 0 0 2px ${C.secondary}` }}
                 />
             )}
-            {it.review_status === "pending_review" && (
+
+            {/* row body */}
+            <div className="group relative flex items-center gap-3 px-3 py-3 sm:px-4">
+                {/* status accent bar — reads like a ticker's up/down edge */}
                 <span
-                    className="absolute right-3 top-6 z-10 rounded-full px-2 py-0.5 text-[9.5px] font-bold"
-                    style={{ background: "#fef3c7", color: "#b45309" }}
-                >
-                    Pending review
-                </span>
-            )}
-            {it.review_status === "rejected" && (
-                <span className="absolute right-3 top-6 z-10 rounded-full px-2 py-0.5 text-[9.5px] font-bold" style={{ background: "#fee2e2", color: "#c71f11" }}>
-                    Rejected
-                </span>
-            )}
+                    aria-hidden
+                    className="absolute inset-y-2 left-0 w-[3px] rounded-full"
+                    style={{ background: statusColor, opacity: lowStock || outOfStock ? 1 : 0 }}
+                />
 
-            <div className="relative p-4">
-                <div className="flex items-start gap-3">
-                    <StackedImagePreview
-                        images={gallery}
-                        name={name}
-                        size="h-14 w-14"
-                        onOpen={(idx) => onOpenImage({ images: gallery, index: idx, alt: name })}
-                    />
+                <StackedImagePreview
+                    images={gallery}
+                    name={name}
+                    size="h-12 w-12"
+                    onOpen={(idx) => onOpenImage({ images: gallery, index: idx, alt: name })}
+                />
 
-                    <div className="flex min-w-0 flex-1 items-start gap-1 pt-0.5">
-                        <div className="min-w-0 flex-1">
-                            <p className="truncate text-[14px] font-bold leading-tight tracking-[-0.005em]" style={{ color: C.ink }}>
-                                {name}
-                            </p>
-                            {brandName && (
-                                <p className="mt-0.5 truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
-                                    {brandName}
-                                </p>
-                            )}
-                        </div>
-
-                        {!isEditing && !isConfirming && (it.review_status !== "pending_review") && (
-                            canHover ? (
-                                <div className="flex shrink-0 items-center gap-1 overflow-hidden opacity-0 transition-all duration-200 ease-out max-w-0 group-hover:max-w-[80px] group-hover:opacity-100">
-                                    <button
-                                        onClick={() => onEdit(it)}
-                                        aria-label="Edit listing"
-                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]"
-                                        style={{ color: C.ink }}
-                                    >
-                                        <Pencil className="h-3.5 w-3.5" />
-                                    </button>
-                                    <button
-                                        onClick={() => onAskDelete(it.id)}
-                                        aria-label="Delete listing"
-                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50"
-                                        style={{ color: "#c71f11" }}
-                                    >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            ) : (
-                                <button
-                                    onClick={() => setSheetOpen(true)}
-                                    aria-label="Listing actions"
-                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 active:bg-black/[0.05]"
-                                    style={{ color: C.muted }}
-                                >
-                                    <MoreVertical className="h-4 w-4" />
-                                </button>
-                            )
+                {/* name / brand / specs column */}
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                        <p className="truncate text-[14px] font-bold leading-tight tracking-[-0.005em]" style={{ color: C.ink }}>
+                            {name}
+                        </p>
+                        {it.review_status === "pending_review" && (
+                            <span
+                                className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold"
+                                style={{ background: "#fef3c7", color: "#b45309" }}
+                            >
+                                Pending
+                            </span>
+                        )}
+                        {it.review_status === "rejected" && (
+                            <span
+                                className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold"
+                                style={{ background: "#fee2e2", color: "#c71f11" }}
+                            >
+                                Rejected
+                            </span>
                         )}
                     </div>
+                    <p className="mt-0.5 truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
+                        {brandName ? `${brandName} · ` : ""}MOQ {it.moq} {it.unit} · Lead {it.lead_time}
+                    </p>
                 </div>
 
-                <AnimatePresence mode="wait">
-                    {isEditing ? (
-                        <motion.div
-                            key="edit"
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="mt-4 overflow-hidden"
+                {/* price / stock "quote" column, right aligned like a ticker row */}
+                {!isExpanded && (
+                    <div className="flex shrink-0 flex-col items-end pl-2 text-right">
+                        <p className="leading-none">
+                            <span className="text-[15.5px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>
+                                ₹{it.price}
+                            </span>
+                            <span className="ml-0.5 text-[10.5px] font-semibold" style={{ color: C.muted }}>
+                                /{it.unit}
+                            </span>
+                        </p>
+                        <p className="mt-1 whitespace-nowrap text-[10.5px] font-bold tabular-nums" style={{ color: statusColor }}>
+                            {stockLabel}
+                        </p>
+                    </div>
+                )}
+
+                {/* actions */}
+                {!isExpanded && it.review_status !== "pending_review" && (
+                    canHover ? (
+                        <div className="flex shrink-0 items-center gap-1 overflow-hidden pl-1 opacity-0 transition-all duration-200 ease-out max-w-0 group-hover:max-w-[80px] group-hover:opacity-100">
+                            <button
+                                onClick={() => onEdit(it)}
+                                aria-label="Edit listing"
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]"
+                                style={{ color: C.ink }}
+                            >
+                                <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                                onClick={() => onAskDelete(it.id)}
+                                aria-label="Delete listing"
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50"
+                                style={{ color: "#c71f11" }}
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => setSheetOpen(true)}
+                            aria-label="Listing actions"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg pl-1 transition-colors duration-150 active:bg-black/[0.05]"
+                            style={{ color: C.muted }}
                         >
-                            <div className="space-y-2.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.hairSoft }}>
-                                <div className="grid grid-cols-2 gap-2.5">
-                                    <FieldInput
-                                        label="Price (₹)"
-                                        type="number" min="0" step="0.01"
-                                        value={form.price}
-                                        onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
-                                    />
-                                    <FieldInput
-                                        label={`Stock (${it.unit})`}
-                                        type="number" min="0" step="0.01"
-                                        placeholder="—"
-                                        value={form.stock_quantity}
-                                        onChange={(e) => setForm((f) => ({ ...f, stock_quantity: e.target.value }))}
-                                    />
-                                    <FieldInput
-                                        label={`MOQ (${it.unit})`}
-                                        type="number" min="0" step="0.01"
-                                        value={form.moq}
-                                        onChange={(e) => setForm((f) => ({ ...f, moq: e.target.value }))}
-                                    />
-                                    <FieldInput
-                                        label="Lead time (days)"
-                                        type="number" min="0" step="1"
-                                        value={form.lead_time}
-                                        onChange={(e) => setForm((f) => ({ ...f, lead_time: e.target.value }))}
-                                    />
-                                </div>
-                                <div className="flex gap-2 pt-1">
+                            <MoreVertical className="h-4 w-4" />
+                        </button>
+                    )
+                )}
+            </div>
+
+            {/* rejection note — sits under the row in view state, same as before */}
+            {!isExpanded && it.review_status === "rejected" && it.rejection_reason && (
+                <div className="mx-3 mb-2.5 rounded-lg px-2.5 py-2 text-[11.5px] font-semibold leading-snug sm:mx-4" style={{ background: "rgba(199,31,17,0.08)", color: "#c71f11" }}>
+                    Rejected: {it.rejection_reason} — edit and save to resubmit.
+                </div>
+            )}
+
+            <AnimatePresence mode="wait">
+                {isEditing ? (
+                    <motion.div
+                        key="edit"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden px-3 pb-3 sm:px-4"
+                    >
+                        <div className="space-y-2.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                                <FieldInput
+                                    label="Price (₹)"
+                                    type="number" min="0" step="0.01"
+                                    value={form.price}
+                                    onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                                />
+                                <FieldInput
+                                    label={`Stock (${it.unit})`}
+                                    type="number" min="0" step="0.01"
+                                    placeholder="—"
+                                    value={form.stock_quantity}
+                                    onChange={(e) => setForm((f) => ({ ...f, stock_quantity: e.target.value }))}
+                                />
+                                <FieldInput
+                                    label={`MOQ (${it.unit})`}
+                                    type="number" min="0" step="0.01"
+                                    value={form.moq}
+                                    onChange={(e) => setForm((f) => ({ ...f, moq: e.target.value }))}
+                                />
+                                <FieldInput
+                                    label="Lead time (days)"
+                                    type="number" min="0" step="1"
+                                    value={form.lead_time}
+                                    onChange={(e) => setForm((f) => ({ ...f, lead_time: e.target.value }))}
+                                />
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                                <button
+                                    onClick={() => onSave(it.id)}
+                                    disabled={saving}
+                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-50 sm:flex-none sm:px-6"
+                                    style={{ background: C.secondary }}
+                                >
+                                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                    {it.review_status === "rejected" ? "Resubmit" : "Save"}
+                                </button>
+                                <button
+                                    onClick={onCancelEdit}
+                                    className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03]"
+                                    style={{ borderColor: C.hair }}
+                                >
+                                    <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
+                                </button>
+                            </div>
+                        </div>
+                    </motion.div>
+                ) : isConfirming ? (
+                    <motion.div
+                        key="confirm"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden px-3 pb-3 sm:px-4"
+                    >
+                        <div className="rounded-xl p-3" style={{ background: "rgba(199,31,17,0.06)" }}>
+                            <div className="flex items-center justify-between gap-3">
+                                <p className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: C.ink }}>
+                                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" style={{ color: "#c71f11" }} /> Remove this listing?
+                                </p>
+                                <div className="flex shrink-0 gap-2">
                                     <button
-                                        onClick={() => onSave(it.id)}
-                                        disabled={saving}
-                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-50"
-                                        style={{ background: C.secondary }}
+                                        onClick={() => onConfirmDelete(it.id)}
+                                        disabled={deletingId === it.id}
+                                        className="flex items-center justify-center gap-1.5 rounded-lg bg-[#c71f11] px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-50"
                                     >
-                                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                                        {it.review_status === "rejected" ? "Resubmit" : "Save"}
+                                        {deletingId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Yes, remove"}
                                     </button>
                                     <button
-                                        onClick={onCancelEdit}
+                                        onClick={onCancelDelete}
                                         className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03]"
                                         style={{ borderColor: C.hair }}
                                     >
@@ -362,75 +417,12 @@ function ListingCard({
                                     </button>
                                 </div>
                             </div>
-                        </motion.div>
-                    ) : isConfirming ? (
-                        <motion.div
-                            key="confirm"
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="mt-4 overflow-hidden rounded-xl p-3"
-                            style={{ background: "rgba(199,31,17,0.06)" }}
-                        >
-                            <p className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: C.ink }}>
-                                <AlertTriangle className="h-3.5 w-3.5 shrink-0" style={{ color: "#c71f11" }} /> Remove this listing?
-                            </p>
-                            <div className="mt-2.5 flex gap-2">
-                                <button
-                                    onClick={() => onConfirmDelete(it.id)}
-                                    disabled={deletingId === it.id}
-                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#c71f11] py-2 text-[12.5px] font-bold text-white disabled:opacity-50"
-                                >
-                                    {deletingId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Yes, remove"}
-                                </button>
-                                <button
-                                    onClick={onCancelDelete}
-                                    className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03]"
-                                    style={{ borderColor: C.hair }}
-                                >
-                                    <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
-                                </button>
-                            </div>
-                        </motion.div>
-                    ) : (
-                        <motion.div
-                            key="view"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="mt-4"
-                        >
-                            <p className="leading-none">
-                                <span className="text-[21px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>
-                                    ₹{it.price}
-                                </span>
-                                <span className="ml-1 text-[12px] font-semibold" style={{ color: C.muted }}>
-                                    /{it.unit}
-                                </span>
-                            </p>
+                        </div>
+                    </motion.div>
+                ) : null}
+            </AnimatePresence>
 
-                            <div className="my-3 h-px w-full" style={{ background: C.hair }} />
-
-                            <div className="flex items-start gap-4">
-                                <Spec
-                                    label="Stock"
-                                    value={stock != null ? `${stock} ${it.unit}` : "—"}
-                                    tone={statusColor}
-                                />
-                                <Spec label="MOQ" value={`${it.moq} ${it.unit}`} />
-                                <Spec label="Lead" value={it.lead_time} />
-                                {it.review_status === "rejected" && it.rejection_reason && (
-                                    <div className="mt-2.5 rounded-lg px-2.5 py-2 text-[11.5px] font-semibold leading-snug" style={{ background: "rgba(199,31,17,0.08)", color: "#c71f11" }}>
-                                        Rejected: {it.rejection_reason} — edit and save to resubmit.
-                                    </div>
-                                )}
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
+            <div className="h-px w-full" style={{ background: C.hairSoft }} />
 
             <ListingActionSheet
                 open={sheetOpen}
@@ -465,7 +457,7 @@ export default function SellerQuickManageListings() {
 
     const isApprovedSeller = profile?.seller_status === "approved";
 
-    const { scrollRef, showLeftFade, showRightFade } = useScrollFades([items, editingId, confirmDeleteId, loading]);
+    const { scrollRef, showTopFade, showBottomFade } = useVerticalScrollFades([items, editingId, confirmDeleteId, loading]);
 
     const reload = useCallback(() => {
         if (!token || !isApprovedSeller) return;
@@ -487,7 +479,7 @@ export default function SellerQuickManageListings() {
             if (cancelled) return;
             const el = itemRefs.current.get(highlightId);
             if (el) {
-                el.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
                 setTimeout(() => {
                     if (cancelled) return;
                     setHighlightId(null);
@@ -498,7 +490,7 @@ export default function SellerQuickManageListings() {
                 return;
             }
             attempts += 1;
-            if (attempts < 40) setTimeout(tryScroll, 100);
+            if (attempts < 40) setTimeout(tryScroll, 100); // polls for ~4s
         }
         tryScroll();
         return () => { cancelled = true; };
@@ -533,33 +525,6 @@ export default function SellerQuickManageListings() {
     useEffect(() => {
         return registerResyncHandler(reload);
     }, [registerResyncHandler, reload]);
-
-    useEffect(() => {
-        if (!highlightId) return;
-        let cancelled = false;
-        let attempts = 0;
-
-        function tryScroll() {
-            if (cancelled) return;
-            const el = itemRefs.current.get(highlightId);
-            if (el) {
-                el.scrollIntoView({ behavior: "smooth", block: "center" });
-                setTimeout(() => {
-                    if (cancelled) return;
-                    setHighlightId(null);
-                    const next = new URLSearchParams(searchParams);
-                    next.delete("highlight");
-                    setSearchParams(next, { replace: true });
-                }, 2500);
-                return;
-            }
-            attempts += 1;
-            if (attempts < 40) setTimeout(tryScroll, 100); // polls for ~4s
-        }
-        tryScroll();
-        return () => { cancelled = true; };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [highlightId]);
 
     if (!isApprovedSeller) return null;
     if (!loading && items.length === 0) return null;
@@ -608,32 +573,36 @@ export default function SellerQuickManageListings() {
                 subtitle="Price, MOQ, lead time & stock — updated live"
             />
 
-            {/* mask-image now reacts to scroll state, so the fade only
-                shows on an edge when there's actually more content past
-                it — same visual style as before, just conditional */}
+            {/* single bordered container, vertical list inside. Top/bottom
+                mask reacts to scroll state so the fade only shows on an
+                edge when there's actually more content past it. */}
             <div
-                className="relative overflow-hidden rounded-[20px] p-0"
-                style={{
-                    borderColor: C.hair,
-                    maskImage: `linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%)`,
-                    WebkitMaskImage: `linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%)`,
-                }}
+                className="relative overflow-hidden rounded-[20px] border bg-white"
+                style={{ borderColor: C.hair }}
             >
                 <div
                     ref={scrollRef}
-                    className="flex snap-x snap-proximity scroll-ps-3 px-4 gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    className="divide-y overflow-y-auto"
+                    style={{
+                        maxHeight: LIST_MAX_HEIGHT,
+                        maskImage: `linear-gradient(to bottom, transparent 0%, black 3%, black 97%, transparent 100%)`,
+                        WebkitMaskImage: `linear-gradient(to bottom, transparent 0%, black 3%, black 97%, transparent 100%)`,
+                    }}
                 >
                     {loading
-                        ? Array.from({ length: 3 }).map((_, i) => (
-                            <div
-                                key={i}
-                                className="h-[204px] w-[280px] shrink-0 animate-pulse rounded-2xl sm:w-[300px]"
-                                style={{ background: C.hairSoft }}
-                            />
+                        ? Array.from({ length: 4 }).map((_, i) => (
+                            <div key={i} className="flex items-center gap-3 border-b px-3 py-3 sm:px-4" style={{ borderColor: C.hairSoft }}>
+                                <div className="h-12 w-12 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
+                                <div className="flex-1 space-y-2">
+                                    <div className="h-3.5 w-2/5 animate-pulse rounded" style={{ background: C.hairSoft }} />
+                                    <div className="h-2.5 w-3/5 animate-pulse rounded" style={{ background: C.hairSoft }} />
+                                </div>
+                                <div className="h-8 w-16 shrink-0 animate-pulse rounded-lg" style={{ background: C.hairSoft }} />
+                            </div>
                         ))
                         : items.map((it, i) => (
-                            <div key={it.id} ref={(el) => { if (el) itemRefs.current.set(it.id, el); }} className="shrink-0 snap-start">
-                                <ListingCard
+                            <div key={it.id} ref={(el) => { if (el) itemRefs.current.set(it.id, el); }}>
+                                <ListingRow
                                     it={it}
                                     i={i}
                                     canHover={canHover}
@@ -658,18 +627,18 @@ export default function SellerQuickManageListings() {
 
                 <div
                     aria-hidden
-                    className="pointer-events-none absolute inset-y-1 left-0 w-5 transition-opacity duration-500 ease-out sm:w-12"
+                    className="pointer-events-none absolute inset-x-0 top-0 h-6 transition-opacity duration-500 ease-out"
                     style={{
-                        opacity: showLeftFade ? 1 : 0,
-                        background: "linear-gradient(to right, #ffffff 0%, rgba(255,255,255,0) 100%)",
+                        opacity: showTopFade ? 1 : 0,
+                        background: "linear-gradient(to bottom, #ffffff 0%, rgba(255,255,255,0) 100%)",
                     }}
                 />
                 <div
                     aria-hidden
-                    className="pointer-events-none absolute inset-y-1 right-0 w-8 transition-opacity duration-500 ease-out sm:w-12"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-8 transition-opacity duration-500 ease-out"
                     style={{
-                        opacity: showRightFade ? 1 : 0,
-                        background: "linear-gradient(to left, #ffffff 0%, rgba(255,255,255,0) 100%)",
+                        opacity: showBottomFade ? 1 : 0,
+                        background: "linear-gradient(to top, #ffffff 0%, rgba(255,255,255,0) 100%)",
                     }}
                 />
 
