@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Store, MapPin, ShieldCheck, Building2 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import BrowseFilterBar from "../components/catalog/BrowseFilterBar";
 import BrandItemCard from "../components/catalog/BrandItemCard";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import { TileGridSkeleton, CatalogLoadError } from "../components/catalog/CatalogUI";
+import BuySellChoiceSheet from "../components/catalog/BuySellChoiceSheet";
+import SellThisItemModal from "../components/catalog/SellThisItemModal";
 import { C, EASE } from "../components/catalog/tokens";
 import useCatalogBrowse, { DEFAULT_FILTERS } from "../hooks/useCatalogBrowse";
 import useShopSearch from "../hooks/useShopSearch";
@@ -81,7 +83,17 @@ export default function BrowsePage() {
         };
     }, [loadMore]);
 
-    const openItem = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brand: item } });
+    // Tapping a tile no longer jumps straight to the sellers page — it
+    // opens a Buy/Sell choice first (see BuySellChoiceSheet), same idea
+    // as tapping a holding in a trading app. `choiceItem` drives that
+    // sheet; `sellItem` drives the "list your price" modal once someone
+    // picks Sell, so it can stay open here on /browse without a detour
+    // through the sellers list.
+    const [choiceItem, setChoiceItem] = useState(null);
+    const [sellItem, setSellItem] = useState(null);
+
+    const openItem = (item) => setChoiceItem(item);
+    const goToSellersPage = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brand: item } });
 
     return (
         <div className="mx-auto min-h-screen max-w-7xl px-2.5 pb-10 pt-6 sm:px-4 lg:px-6">
@@ -186,6 +198,27 @@ export default function BrowsePage() {
                     </>
                 )}
             </div>
+
+            <AnimatePresence>
+                {choiceItem && (
+                    <BuySellChoiceSheet
+                        item={choiceItem}
+                        onClose={() => setChoiceItem(null)}
+                        onBuy={() => {
+                            const it = choiceItem;
+                            setChoiceItem(null);
+                            goToSellersPage(it);
+                        }}
+                        onSell={() => {
+                            setSellItem(choiceItem);
+                            setChoiceItem(null);
+                        }}
+                    />
+                )}
+                {sellItem && (
+                    <SellThisItemModal brand={sellItem} onClose={() => setSellItem(null)} />
+                )}
+            </AnimatePresence>
         </div>
     );
 }
