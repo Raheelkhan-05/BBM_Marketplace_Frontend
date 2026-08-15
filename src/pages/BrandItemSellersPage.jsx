@@ -296,7 +296,7 @@ export default function BrandItemSellersPage() {
     };
 
     return (
-        <div className="mx-auto max-w-7xl px-2.5 pb-28 pt-3 sm:px-4 sm:pb-10 lg:px-6">
+        <div className="mx-auto min-h-screen max-w-7xl px-2.5 pb-28 pt-3 sm:px-4 sm:pb-10 lg:px-6">
             {/* back */}
             <div className="mt-3 flex items-center justify-between gap-3">
                 <button
