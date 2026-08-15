@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import BrowseFilterBar from "../components/catalog/BrowseFilterBar";
 import BrandItemCard from "../components/catalog/BrandItemCard";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
+import { useAuth } from "../context/AuthContext.jsx";
 import { TileGridSkeleton, CatalogLoadError } from "../components/catalog/CatalogUI";
 import BuySellChoiceSheet from "../components/catalog/BuySellChoiceSheet";
 import SellThisItemModal from "../components/catalog/SellThisItemModal";
@@ -19,12 +20,14 @@ export default function BrowsePage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const [category] = useState(() => state?.category || null);
     const navigate = useNavigate();
+    const { token } = useAuth();
 
     // const category = state?.category || null;
     const initialQ = searchParams.get("q") || "";
 
     const { filters, setFilters, items, facets, total, loading, loadingMore, error, hasMore, loadMore, retry } =
-        useCatalogBrowse({ categoryId: category?.id || null, q: initialQ });
+        useCatalogBrowse({ categoryId: category?.id || null, q: initialQ }, token); // token passed in
+
 
     const [searchInput, setSearchInput] = useState(initialQ);
     useEffect(() => { setFilters({ q: searchInput }); }, [searchInput]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -91,9 +94,11 @@ export default function BrowsePage() {
     // through the sellers list.
     const [choiceItem, setChoiceItem] = useState(null);
     const [sellItem, setSellItem] = useState(null);
+    const [noSellersItem, setNoSellersItem] = useState(null);
 
     const openItem = (item) => setChoiceItem(item);
     const goToSellersPage = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brand: item } });
+
 
     return (
         <div className="mx-auto min-h-screen max-w-7xl px-2.5 pb-10 pt-6 sm:px-4 lg:px-6">
@@ -187,7 +192,22 @@ export default function BrowsePage() {
                     <>
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
                             {items.map((item, i) => (
-                                <BrandItemCard key={item.id} item={item} idx={i} onClick={() => openItem(item)} />
+                                <div key={item.id} className="relative">
+                                    {item.has_own_listing && (
+                                        <span
+                                            className="absolute top-1 right-1 z-10 rounded-full px-2 py-0.5 text-[9px] font-bold text-white"
+                                            style={{
+                                                background: C.secondary,
+                                                boxShadow: `0 0 0 1px rgba(255,255,255,0.9), 0 0 10px 2px ${C.secondary}99, 0 2px 6px rgba(11,17,22,0.25)`,
+                                            }}
+                                        >
+                                            You sell this
+                                        </span>
+                                    )}
+                                    <div style={item.has_own_listing ? { borderRadius: 16, boxShadow: `0 0 0 1px ${C.secondary}` } : undefined}>
+                                        <BrandItemCard item={item} idx={i} onClick={() => openItem(item)} />
+                                    </div>
+                                </div>
                             ))}
                         </div>
                         {hasMore && (
@@ -198,7 +218,6 @@ export default function BrowsePage() {
                     </>
                 )}
             </div>
-
             <AnimatePresence>
                 {choiceItem && (
                     <BuySellChoiceSheet

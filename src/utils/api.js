@@ -738,13 +738,14 @@ export async function markAllNotificationsRead(token) {
   return res.json();
 }
 
-export async function fetchCatalogBrowse(params, signal) {
+export async function fetchCatalogBrowse(params, signal, token) {
   const qs = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v === null || v === undefined || v === "") return;
     qs.set(k, Array.isArray(v) ? v.join(",") : v);
   });
-  const res = await fetch(`${API_BASE}/catalog-search/browse?${qs}`, { signal });
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const res = await fetch(`${API_BASE}/catalog-search/browse?${qs}`, { signal, headers });
   return res.json();
 }
 

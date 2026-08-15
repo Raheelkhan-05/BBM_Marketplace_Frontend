@@ -18,7 +18,7 @@ function cacheSet(key, value) {
     }
 }
 
-function signatureFor(filters) {
+function signatureFor(filters, hasToken) {
     return JSON.stringify({
         categoryId: filters.categoryId || null,
         subcategoryIds: [...filters.subcategoryIds].sort(),
@@ -26,6 +26,7 @@ function signatureFor(filters) {
         brands: [...filters.brands].sort(),
         q: filters.q.trim().toLowerCase(),
         sort: filters.sort,
+        hasToken, // added — separates "as seller" results from anonymous ones
     });
 }
 
@@ -43,7 +44,7 @@ export const DEFAULT_FILTERS = {
 // user drives live via setFilters — every change here refetches, but the
 // debounce + cache + abort-on-supersede below is what keeps that feeling
 // instant rather than janky.
-export default function useCatalogBrowse(initialFilters = {}) {
+export default function useCatalogBrowse(initialFilters = {}, token = null) {
     const [filters, setFiltersState] = useState({ ...DEFAULT_FILTERS, ...initialFilters });
     const [debouncedQ, setDebouncedQ] = useState(filters.q);
 
@@ -68,7 +69,8 @@ export default function useCatalogBrowse(initialFilters = {}) {
     }, [filters.q]);
 
     const effectiveFilters = useMemo(() => ({ ...filters, q: debouncedQ }), [filters, debouncedQ]);
-    const sig = useMemo(() => signatureFor(effectiveFilters), [effectiveFilters]);
+    const sig = useMemo(() => signatureFor(effectiveFilters, !!token), [effectiveFilters, token]);
+
 
     const runFetch = useCallback(async (isInitial) => {
         const runId = ++runIdRef.current;
@@ -103,7 +105,8 @@ export default function useCatalogBrowse(initialFilters = {}) {
                     limit: PAGE_SIZE,
                     offset: isInitial ? 0 : offsetRef.current,
                 },
-                controller.signal
+                controller.signal,
+                token
             );
             if (runId !== runIdRef.current) return; // superseded by a newer filter change
             if (!res?.success) throw new Error(res?.message || "Request failed");
@@ -125,7 +128,7 @@ export default function useCatalogBrowse(initialFilters = {}) {
                 setLoadingMore(false);
             }
         }
-    }, [sig, effectiveFilters]);
+    }, [sig, effectiveFilters, token]);
 
     // Refetch from the top whenever the filter signature changes.
     useEffect(() => {
