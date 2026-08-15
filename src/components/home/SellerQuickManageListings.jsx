@@ -14,11 +14,11 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Pencil, Trash2, Check, X, Loader2, ImageIcon, ChevronRight,
-    PackageSearch, AlertTriangle, MoreVertical, Maximize2,
+    PackageSearch, AlertTriangle, MoreVertical, PowerOff, Power
 } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { fetchMySellerSubmissions, updateSellerProductSubmission, deleteSellerProductSubmission } from "../../utils/api.js";
+import { fetchMySellerSubmissions, updateSellerProductSubmission, deleteSellerProductSubmission, setSellerSubmissionActive } from "../../utils/api.js";
 import ImageLightbox from "../ImageLightbox.jsx";
 import StackedImagePreview from "../StackedImagePreview.jsx";
 import { supabase } from "../../utils/supabaseClient.js";
@@ -129,7 +129,7 @@ function useCanHover() {
 }
 
 /* ---------------- mobile action sheet ---------------- */
-function ListingActionSheet({ open, name, onEdit, onDelete, onClose }) {
+function ListingActionSheet({ open, name, isActive, onEdit, onToggleActive, onClose }) {
     if (typeof document === "undefined") return null;
     return createPortal(
         <AnimatePresence>
@@ -166,16 +166,29 @@ function ListingActionSheet({ open, name, onEdit, onDelete, onClose }) {
                             </span>
                             Edit listing
                         </button>
-                        <button
-                            onClick={onDelete}
-                            className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[14.5px] font-bold transition-colors duration-150 active:bg-red-50"
-                            style={{ color: "#c71f11" }}
-                        >
-                            <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "rgba(199,31,17,0.1)" }}>
-                                <Trash2 className="h-4 w-4" />
-                            </span>
-                            Remove listing
-                        </button>
+                        {isActive ? (
+                            <button
+                                onClick={onToggleActive}
+                                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[14.5px] font-bold transition-colors duration-150 active:bg-red-50"
+                                style={{ color: "#c71f11" }}
+                            >
+                                <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: "rgba(199,31,17,0.1)" }}>
+                                    <PowerOff className="h-4 w-4" />
+                                </span>
+                                Deactivate listing
+                            </button>
+                        ) : (
+                            <button
+                                onClick={onToggleActive}
+                                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[14.5px] font-bold transition-colors duration-150 active:bg-black/[0.04]"
+                                style={{ color: C.secondary }}
+                            >
+                                <span className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12` }}>
+                                    <Power className="h-4 w-4" />
+                                </span>
+                                Activate listing
+                            </button>
+                        )}
                         <button
                             onClick={onClose}
                             className="mt-1 flex w-full items-center justify-center rounded-xl py-3 text-[13.5px] font-bold"
@@ -192,10 +205,9 @@ function ListingActionSheet({ open, name, onEdit, onDelete, onClose }) {
 }
 
 /* ---------------- listing row ---------------- */
-
 function ListingRow({
-    it, i, canHover, isEditing, isConfirming, form, setForm, saving, deletingId, highlighted,
-    onEdit, onCancelEdit, onSave, onAskDelete, onCancelDelete, onConfirmDelete, onOpenImage,
+    it, i, canHover, isEditing, isConfirming, form, setForm, saving, togglingId, highlighted,
+    onEdit, onCancelEdit, onSave, onAskDeactivate, onCancelDeactivate, onConfirmDeactivate, onActivate, onOpenImage,
 }) {
     const [sheetOpen, setSheetOpen] = useState(false);
     const name = it.brand?.name || it.product_name || "Product";
@@ -205,8 +217,9 @@ function ListingRow({
     const stock = it.stock_quantity;
     const lowStock = stock != null && stock <= LOW_STOCK_THRESHOLD;
     const outOfStock = stock != null && stock <= 0;
+    const isActive = it.is_active !== false; // treat undefined as active for safety
 
-    const statusColor = outOfStock ? "#c71f11" : lowStock ? "#b45309" : C.secondary;
+    const statusColor = !isActive ? C.muted : outOfStock ? "#c71f11" : lowStock ? "#b45309" : C.secondary;
     const stockLabel = outOfStock ? "Out of stock" : stock != null ? `${stock} ${it.unit} left` : "Stock —";
     const isExpanded = isEditing || isConfirming;
 
@@ -227,20 +240,32 @@ function ListingRow({
             )}
 
             {/* row body */}
-            <div className="group relative flex items-center gap-3 px-3 py-3 sm:px-4">
-                {/* status accent bar — reads like a ticker's up/down edge */}
+            <div
+                className="group relative flex items-center gap-3 px-3 py-3 sm:px-4 transition-opacity duration-200"
+                style={{ opacity: isActive ? 1 : 0.55 }}
+            >
+                {/* status accent bar */}
                 <span
                     aria-hidden
                     className="absolute inset-y-2 left-0 w-[3px] rounded-full"
-                    style={{ background: statusColor, opacity: lowStock || outOfStock ? 1 : 0 }}
+                    style={{ background: statusColor, opacity: !isActive || lowStock || outOfStock ? 1 : 0 }}
                 />
 
-                <StackedImagePreview
-                    images={gallery}
-                    name={name}
-                    size="h-12 w-12"
-                    onOpen={(idx) => onOpenImage({ images: gallery, index: idx, alt: name })}
-                />
+                <div className="relative shrink-0">
+                    <StackedImagePreview
+                        images={gallery}
+                        name={name}
+                        size="h-12 w-12"
+                        onOpen={(idx) => onOpenImage({ images: gallery, index: idx, alt: name })}
+                    />
+                    {!isActive && (
+                        <div
+                            aria-hidden
+                            className="pointer-events-none absolute inset-0 rounded-xl"
+                            style={{ background: "rgba(255,255,255,0.5)" }}
+                        />
+                    )}
+                </div>
 
                 {/* name / brand / specs column */}
                 <div className="min-w-0 flex-1">
@@ -248,7 +273,15 @@ function ListingRow({
                         <p className="truncate text-[14px] font-bold leading-tight tracking-[-0.005em]" style={{ color: C.ink }}>
                             {name}
                         </p>
-                        {it.review_status === "pending_review" && (
+                        {!isActive && (
+                            <span
+                                className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wide"
+                                style={{ background: C.hairSoft, color: C.muted }}
+                            >
+                                Deactivated
+                            </span>
+                        )}
+                        {isActive && it.review_status === "pending_review" && (
                             <span
                                 className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold"
                                 style={{ background: "#fef3c7", color: "#b45309" }}
@@ -256,7 +289,7 @@ function ListingRow({
                                 Pending
                             </span>
                         )}
-                        {it.review_status === "rejected" && (
+                        {isActive && it.review_status === "rejected" && (
                             <span
                                 className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold"
                                 style={{ background: "#fee2e2", color: "#c71f11" }}
@@ -270,7 +303,7 @@ function ListingRow({
                     </p>
                 </div>
 
-                {/* price / stock "quote" column, right aligned like a ticker row */}
+                {/* price / stock "quote" column */}
                 {!isExpanded && (
                     <div className="flex shrink-0 flex-col items-end pl-2 text-right">
                         <p className="leading-none">
@@ -282,7 +315,7 @@ function ListingRow({
                             </span>
                         </p>
                         <p className="mt-1 whitespace-nowrap text-[10.5px] font-bold tabular-nums" style={{ color: statusColor }}>
-                            {stockLabel}
+                            {isActive ? stockLabel : "Hidden from buyers"}
                         </p>
                     </div>
                 )}
@@ -291,22 +324,36 @@ function ListingRow({
                 {!isExpanded && it.review_status !== "pending_review" && (
                     canHover ? (
                         <div className="flex shrink-0 items-center gap-1 overflow-hidden pl-1 opacity-0 transition-all duration-200 ease-out max-w-0 group-hover:max-w-[80px] group-hover:opacity-100">
-                            <button
-                                onClick={() => onEdit(it)}
-                                aria-label="Edit listing"
-                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]"
-                                style={{ color: C.ink }}
-                            >
-                                <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                                onClick={() => onAskDelete(it.id)}
-                                aria-label="Delete listing"
-                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50"
-                                style={{ color: "#c71f11" }}
-                            >
-                                <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            {isActive ? (
+                                <>
+                                    <button
+                                        onClick={() => onEdit(it)}
+                                        aria-label="Edit listing"
+                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]"
+                                        style={{ color: C.ink }}
+                                    >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button
+                                        onClick={() => onAskDeactivate(it.id)}
+                                        aria-label="Deactivate listing"
+                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50"
+                                        style={{ color: "#c71f11" }}
+                                    >
+                                        <PowerOff className="h-3.5 w-3.5" />
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    onClick={() => onActivate(it.id)}
+                                    disabled={togglingId === it.id}
+                                    aria-label="Activate listing"
+                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05] disabled:opacity-50"
+                                    style={{ color: C.secondary }}
+                                >
+                                    {togglingId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Power className="h-3.5 w-3.5" />}
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <button
@@ -321,8 +368,8 @@ function ListingRow({
                 )}
             </div>
 
-            {/* rejection note — sits under the row in view state, same as before */}
-            {!isExpanded && it.review_status === "rejected" && it.rejection_reason && (
+            {/* rejection note */}
+            {!isExpanded && isActive && it.review_status === "rejected" && it.rejection_reason && (
                 <div className="mx-3 mb-2.5 rounded-lg px-2.5 py-2 text-[11.5px] font-semibold leading-snug sm:mx-4" style={{ background: "rgba(199,31,17,0.08)", color: "#c71f11" }}>
                     Rejected: {it.rejection_reason} — edit and save to resubmit.
                 </div>
@@ -398,18 +445,18 @@ function ListingRow({
                         <div className="rounded-xl p-3" style={{ background: "rgba(199,31,17,0.06)" }}>
                             <div className="flex items-center justify-between gap-3">
                                 <p className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: C.ink }}>
-                                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" style={{ color: "#c71f11" }} /> Remove this listing?
+                                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" style={{ color: "#c71f11" }} /> Deactivate this listing? Buyers won't see it until you reactivate.
                                 </p>
                                 <div className="flex shrink-0 gap-2">
                                     <button
-                                        onClick={() => onConfirmDelete(it.id)}
-                                        disabled={deletingId === it.id}
+                                        onClick={() => onConfirmDeactivate(it.id)}
+                                        disabled={togglingId === it.id}
                                         className="flex items-center justify-center gap-1.5 rounded-lg bg-[#c71f11] px-3.5 py-2 text-[12.5px] font-bold text-white disabled:opacity-50"
                                     >
-                                        {deletingId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Yes, remove"}
+                                        {togglingId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Yes, deactivate"}
                                     </button>
                                     <button
-                                        onClick={onCancelDelete}
+                                        onClick={onCancelDeactivate}
                                         className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03]"
                                         style={{ borderColor: C.hair }}
                                     >
@@ -427,9 +474,14 @@ function ListingRow({
             <ListingActionSheet
                 open={sheetOpen}
                 name={name}
+                isActive={isActive}
                 onClose={() => setSheetOpen(false)}
                 onEdit={() => { setSheetOpen(false); onEdit(it); }}
-                onDelete={() => { setSheetOpen(false); onAskDelete(it.id); }}
+                onToggleActive={() => {
+                    setSheetOpen(false);
+                    if (isActive) onAskDeactivate(it.id);
+                    else onActivate(it.id);
+                }}
             />
         </motion.div>
     );
@@ -452,6 +504,8 @@ export default function SellerQuickManageListings() {
     const [form, setForm] = useState({ price: "", moq: "", lead_time: "", stock_quantity: "" });
     const [saving, setSaving] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+    const [confirmDeactivateId, setConfirmDeactivateId] = useState(null);
+    const [togglingId, setTogglingId] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
     const [lightboxImage, setLightboxImage] = useState(null); // { src, alt } | null
 
@@ -539,6 +593,26 @@ export default function SellerQuickManageListings() {
             stock_quantity: it.stock_quantity ?? "",
         });
     }
+
+    async function activateListing(id) {
+        setTogglingId(id);
+        const res = await setSellerSubmissionActive(token, id, true);
+        setTogglingId(null);
+        if (res?.success) {
+            setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...res.submission } : it)));
+        }
+    }
+
+    async function confirmDeactivate(id) {
+        setTogglingId(id);
+        const res = await setSellerSubmissionActive(token, id, false);
+        setTogglingId(null);
+        if (res?.success) {
+            setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...res.submission } : it)));
+            setConfirmDeactivateId(null);
+        }
+    }
+
     function cancelEdit() {
         setEditingId(null);
     }
@@ -607,17 +681,21 @@ export default function SellerQuickManageListings() {
                                     i={i}
                                     canHover={canHover}
                                     isEditing={editingId === it.id}
-                                    isConfirming={confirmDeleteId === it.id}
+                                    // isConfirming={confirmDeleteId === it.id}
+                                    isConfirming={confirmDeactivateId === it.id}
+                                    togglingId={togglingId}
+                                    onAskDeactivate={(id) => {
+                                        setEditingId(null); setConfirmDeactivateId(id)
+                                    }}
+                                    onCancelDeactivate={() => setConfirmDeactivateId(null)}
+                                    onConfirmDeactivate={confirmDeactivate}
+                                    onActivate={activateListing}
                                     form={form}
                                     setForm={setForm}
                                     saving={saving}
-                                    deletingId={deletingId}
                                     onEdit={startEdit}
                                     onCancelEdit={cancelEdit}
                                     onSave={saveEdit}
-                                    onAskDelete={(id) => { setEditingId(null); setConfirmDeleteId(id); }}
-                                    onCancelDelete={() => setConfirmDeleteId(null)}
-                                    onConfirmDelete={confirmDelete}
                                     onOpenImage={setLightboxImage}
                                     highlighted={highlightId === it.id}
                                 />

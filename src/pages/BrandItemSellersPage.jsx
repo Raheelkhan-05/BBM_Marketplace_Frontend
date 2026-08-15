@@ -252,6 +252,7 @@ export default function BrandItemSellersPage() {
     const { idOrSlug } = useParams();
     const { state } = useLocation();
     const navigate = useNavigate();
+    const { token } = useAuth();
 
     const [brand, setBrand] = useState(state?.brand || null);
     const [genericProduct] = useState(state?.genericProduct || null);
@@ -267,15 +268,14 @@ export default function BrandItemSellersPage() {
         let b = brand;
         if (!b) {
             const brandsRes = await searchCatalogBrandItems(undefined, idOrSlug, 5);
-            console.log("brandsRes", brandsRes);
             b = brandsRes?.items?.find((x) => x.slug === idOrSlug || x.id === idOrSlug) || brandsRes?.items?.[0] || null;
             setBrand(b);
         }
         if (!b) return [];
-        const res = await searchCatalogSellers(b.id, "", 50);
+        const res = await searchCatalogSellers(b.id, "", 50, 0, token); // pass token through
         if (!res?.success) throw new Error("Request failed");
         return res.items || [];
-    }, [idOrSlug]);
+    }, [idOrSlug, token]); // token added to deps so it refetches on login/logout
 
     const safeSellers = sellers || [];
 

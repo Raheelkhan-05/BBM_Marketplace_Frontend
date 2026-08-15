@@ -516,7 +516,7 @@ export async function fetchMySellerSubmissions(token, status) {
   const params = new URLSearchParams(status ? { status } : {});
   const res = await fetch(`${API_BASE}/seller/catalog/submissions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
-  console.log("fetchMySellerSubmissions", data);
+  // console.log("fetchMySellerSubmissions", data);
   return data;
 }
 
@@ -594,12 +594,17 @@ export async function adminBulkUploadCatalog(token, level, file, parentId) {
 // search above — existing functions are untouched.
 const CATALOG_SEARCH_BASE = `${API_BASE}/catalog-search`;
 
-async function getV2(path, params = {}) {
+async function getV2(path, params = {}, token) {
   const query = new URLSearchParams(
     Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== "")
   );
-  const res = await fetch(`${CATALOG_SEARCH_BASE}${path}?${query}`);
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const res = await fetch(`${CATALOG_SEARCH_BASE}${path}?${query}`, { headers });
   return res.json();
+}
+
+export async function searchCatalogSellers(brandItemId, q = "", limit = 30, offset = 0, token) {
+  return getV2("/sellers", { brandItemId, q, limit, offset }, token);
 }
 
 export async function searchCatalogCategories(q = "", limit = 20, offset = 0) {
@@ -613,9 +618,6 @@ export async function searchCatalogGenericProducts(subcategoryId, q = "", limit 
 }
 export async function searchCatalogBrandItems(genericProductId, q = "", limit = 30, offset = 0) {
   return getV2("/brand-items", { genericProductId, q, limit, offset });
-}
-export async function searchCatalogSellers(brandItemId, q = "", limit = 30, offset = 0) {
-  return getV2("/sellers", { brandItemId, q, limit, offset });
 }
 
 export async function searchCatalogHierarchyLevel(level, parentId, q = "", limit = 20, offset = 0) {
@@ -648,7 +650,7 @@ export async function deleteSellerProductSubmission(token, id) {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
   });
-  console.log(res);
+  // console.log(res);
 
   return res.json();
 }
@@ -743,5 +745,14 @@ export async function fetchCatalogBrowse(params, signal) {
     qs.set(k, Array.isArray(v) ? v.join(",") : v);
   });
   const res = await fetch(`${API_BASE}/catalog-search/browse?${qs}`, { signal });
+  return res.json();
+}
+
+export async function setSellerSubmissionActive(token, id, isActive) {
+  const res = await fetch(`${API_BASE}/seller/catalog/submissions/${id}/active`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ isActive }),
+  });
   return res.json();
 }
