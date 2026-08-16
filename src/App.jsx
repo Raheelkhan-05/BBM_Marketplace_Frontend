@@ -25,7 +25,6 @@ import AdminCatalogDetailPage from "./pages/admin/AdminCatalogDetailPage.jsx";
 import BrandDetailPage from "./pages/BrandDetailPage.jsx";
 import BrandFamilyPage from "./pages/BrandFamilyPage.jsx";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy.jsx";
-import BrandItemSellersPage from "./pages/BrandItemSellersPage.jsx";
 import SellPublishProductPage from "./pages/SellPublishProductPage.jsx";
 import AdminSellerSubmissionsPage from "./pages/admin/AdminSellerSubmissionsPage.jsx";
 import PurchaseOrdersPage from "./pages/PurchaseOrdersPage.jsx";
@@ -40,12 +39,6 @@ function CatalogLevelPageWithKey({ configKey }) {
   const { idOrSlug } = useParams();
   return <CatalogLevelPage key={idOrSlug || "root"} configKey={configKey} />;
 }
-
-function BrandItemSellersPageWithKey() {
-  const { idOrSlug } = useParams();
-  return <BrandItemSellersPage key={idOrSlug} />;
-}
-
 
 function App() {
   return (
@@ -63,7 +56,6 @@ function App() {
 
             <Route path="/search" element={<SearchResultsPage />} />
             <Route path="/home" element={<HomePage />} />
-            {/* <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPageWithKey />} /> */}
             <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
             <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
 
@@ -75,7 +67,6 @@ function App() {
             <Route path="/orders/:id" element={<OrderDetailPage />} />
             <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
 
-            {/* <Route path="/home" element={<RequireAuth fallback={<HomePageSkeleton />}><NewHomePage /></RequireAuth>} /> */}
             <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
             <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
 
