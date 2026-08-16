@@ -515,6 +515,13 @@ export async function fetchMySellerSubmissions(token, status) {
   return data;
 }
 
+export async function fetchSellerSubmissionDetail(token, id) {
+  const res = await fetch(`${API_BASE}/seller/catalog/submissions/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+
 export async function adminListSellerSubmissions(token, status = "pending_review", q = "") {
   const params = new URLSearchParams({ status, ...(q ? { q } : {}) });
   const res = await fetch(`${API_BASE}/admin/seller-submissions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
