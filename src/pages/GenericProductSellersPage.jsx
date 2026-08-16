@@ -41,9 +41,7 @@ function SellerBrandRow({ row, idx, isLast, onClick }) {
                 {/* Line 2 — seller identity, now secondary */}
                 <div className="mt-0.5 flex flex-wrap items-center gap-1 sm:gap-1.5">
                     <p className="truncate text-[10.5px] font-bold sm:text-[11.5px]" style={{ color: C.muted }}>{row.display_name}</p>
-                    <span className="flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold text-white" style={{ background: C.secondary }}>
-                        <ShieldCheck className="h-2.5 w-2.5" /> <span className="hidden sm:inline">GST Verified</span>
-                    </span>
+
                 </div>
                 {(row.city || row.state) && (
                     <p className="mt-0.5 truncate text-[10px] font-semibold sm:text-[10.5px]" style={{ color: C.muted }}>{[row.city, row.state].filter(Boolean).join(", ")}</p>
