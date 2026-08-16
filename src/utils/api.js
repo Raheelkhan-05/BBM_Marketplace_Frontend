@@ -817,3 +817,9 @@ export async function fetchApprovedBrandsForGenericProduct(genericProductId, q =
   const res = await fetch(`${API_BASE}/catalog-search/generic-products/${genericProductId}/brands?${params}`);
   return res.json();
 }
+
+export async function fetchHomeFeed(cursor = 0, limit = 3) {
+  const params = new URLSearchParams({ cursor, limit });
+  const res = await fetch(`${API_BASE}/catalog-search/home-feed?${params}`);
+  return res.json();
+}

@@ -2,56 +2,55 @@ import { useEffect, useMemo, useRef, useState, useCallback, memo } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, Package, CheckCircle2 } from "lucide-react";
-import { searchCategories, fetchGenericProductBrowse } from "../../utils/api";
+import { searchCategories, fetchGenericProductBrowse, fetchHomeFeed } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext.jsx";
 import useInViewOnce from "../../hooks/useInViewOnce";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 
 /* ------------------------------------------------------------------
-   DESIGN NOTES — HomeProductShelves, v4
+   DESIGN + PERF NOTES — HomeProductShelves, v5
    ------------------------------------------------------------------
-   v3 was diagnosed correctly as "muddy": two low-saturation accents
-   (primary terracotta, secondary teal) alternating every shelf across
-   icon chips, prices AND glows, laid on top of translucent full-bleed
-   colour bands. That's colour noise stacked on colour noise — nothing
-   reads as intentional because nothing is quiet enough to set anything
-   else off. Premium reads as *contrast* and *restraint*, not more
-   ornament, so this pass removes rather than adds:
+   v4 was still fetching per-shelf, on scroll-into-view: mount a shelf
+   -> show a skeleton -> fetch -> sometimes discover it's empty -> the
+   shelf collapses to nothing. That's the "loads, then goes off" bug,
+   and because each shelf only starts its own fetch once it scrolls
+   in, nothing was ever ready ahead of time — it always felt like it
+   was computing live, because it was.
 
-     1. ONE ACCENT, NOT TWO ALTERNATING. Primary is now the only
-        commercial accent — used exactly twice: the price figure, and
-        the hairline that draws in under a card on hover. Secondary
-        keeps its actual job elsewhere in this app (QuickActions'
-        "Sales" group, the seller badge) — trust/seller signals only:
-        seller count and "You sell this". Nothing alternates by index
-        anymore, so the eye isn't re-parsing a new colour every row.
+   v5 inverts the order: RESOLVE FIRST, RENDER SECOND.
 
-     2. NO MORE COLOUR-WASH BANDS. The translucent primary/secondary
-        tint under every other shelf is gone. Editorial rhythm now
-        comes from generous vertical spacing + a single hairline rule
-        between shelves — the printed-catalog cue this was reaching
-        for, without smearing colour across a white canvas.
+     1. A background resolver walks the category list a few at a time
+        (CONCURRENCY, in parallel) and only appends a category to the
+        feed once its products are already confirmed non-empty. A
+        shelf is never mounted, then found empty, then removed —
+        empty categories are filtered out before they ever reach the
+        DOM. `ProductShelf` is now a pure presentational component; it
+        no longer fetches anything itself.
 
-     3. REAL ELEVATION. Card hover is a neutral ink-tinted shadow
-        (rgba(11,17,22,…)) with a subtle lift, not a colour-tinted glow.
-        Neutral shadow = "this card is physically raised." Colour glow
-        = "this card is highlighted for no clear reason." The former
-        reads premium, the latter reads like a demo.
+     2. The resolver always keeps a few shelves resolved AHEAD of what
+        is currently visible (PREFETCH_AHEAD). So when the infinite-
+        scroll sentinel fires, the next batch is usually already
+        sitting there confirmed — revealing it is instant instead of
+        starting a new fetch-and-wait.
 
-     4. PRICE IS THE ONE LOUD THING. Bumped price to a larger, bolder
-        figure — the actual hierarchy anchor of the card — with a tiny
-        mono "Starting at" caption above it. MOQ / seller count / brand
-        all drop to quiet, same-weight captions underneath so there's
-        one clear read order instead of four things competing.
+     3. The resolved plan (which categories have live stock, plus
+        their first page of products) is persisted to localStorage for
+        a short TTL. Reload the home page, or come back to it within
+        that window, and the feed paints fully populated with no
+        loading state at all — actually precalculated, not just
+        cached for the current tab session. The cache is keyed to the
+        current login state so switching accounts never shows a stale
+        "You sell this" badge.
 
-     5. Slightly warmer canvas (#FBFCFD, the same token Hero16by9Banner
-        already defines) instead of flat white — consistent with the
-        rest of the page, and a touch softer than pure #FFF.
+     4. A failed probe for a category is treated as "skip it this
+        session" rather than surfacing a "couldn't load" block inline
+        — a broken shelf reads worse than a shelf that simply isn't
+        there.
 
-   Tokens/easing otherwise unchanged: ink #0B1116, muted #667077,
-   primary #D2462B, secondary #006F83, hairline rgba(11,17,22,0.08),
-   [0.16,1,0.3,1] easing. Data contract, hooks, caching all identical
-   to v2/v3 — this is a visual-only pass.
+   Visual language (single accent, neutral elevation, hairline rhythm)
+   is unchanged from v4. Tokens: ink #0B1116, muted #667077, primary
+   #D2462B, secondary #006F83, hairline rgba(11,17,22,0.08),
+   [0.16,1,0.3,1] easing.
    ------------------------------------------------------------------ */
 
 const C = {
@@ -72,9 +71,16 @@ const PAGE_PAD = "px-2.5 sm:px-4 lg:px-6";
 const PAGE_PAD_NEG = "-mx-2.5 sm:-mx-4 lg:-mx-6";
 
 const SHELF_PRODUCT_LIMIT = 14;
-const INITIAL_SHELF_COUNT = 3;
-const SHELVES_PER_BATCH = 3;
-const MAX_CATEGORIES = 40; // caps total feed length — "feels infinite", isn't
+const CONCURRENCY = 4;              // categories probed in parallel per resolver batch
+const INITIAL_SHELF_COUNT = 3;      // confirmed shelves shown before any scroll
+const SHELVES_PER_BATCH = 3;        // additional shelves revealed per scroll trigger
+const PREFETCH_AHEAD = 3;           // resolver stays this far ahead of what's revealed
+const MAX_RESOLVED_SHELVES = 30;    // hard cap so the feed can't grow unbounded
+const MAX_CATEGORIES_TO_SCAN = 60;  // safety cap on how many categories we'll ever probe
+
+const PLAN_CACHE_KEY = "home_feed_plan_v1";
+const PLAN_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min — long enough to feel instant on a quick revisit, short enough that stock/price won't go stale
+const PLAN_CACHE_MAX_SHELVES = 15;        // only persist the first N shelves — deep-scroll content doesn't need to survive a reload
 
 const SHELF_TITLES = [
     (n) => `Popular in ${n}`,
@@ -84,13 +90,45 @@ const SHELF_TITLES = [
     (n) => `New listings in ${n}`,
 ];
 
-// Session-lifetime cache, keyed by category id — same pattern as
-// useCatalogBrowse's responseCache.
+// Session-lifetime item cache (module scope — survives this component
+// remounting within the same tab, cleared on a full page reload).
+// Separate from the localStorage plan cache below, which survives a
+// reload too but only for a short TTL.
 const shelfCache = new Map();
 const SHELF_CACHE_CAP = 60;
 function cacheShelf(id, items) {
     shelfCache.set(id, items);
     if (shelfCache.size > SHELF_CACHE_CAP) shelfCache.delete(shelfCache.keys().next().value);
+}
+
+function authKeyFor(token) {
+    return token ? String(token).slice(0, 16) : "guest";
+}
+
+function loadPlanCache(authKey) {
+    try {
+        const raw = localStorage.getItem(PLAN_CACHE_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || parsed.authKey !== authKey) return null;
+        if (Date.now() - parsed.ts > PLAN_CACHE_TTL_MS) return null;
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+function savePlanCache(authKey, categories, resolvedShelves, cursor, exhausted) {
+    try {
+        const shelves = resolvedShelves.slice(0, PLAN_CACHE_MAX_SHELVES).map((s) => ({ category: s.category, items: s.items }));
+        localStorage.setItem(
+            PLAN_CACHE_KEY,
+            JSON.stringify({ ts: Date.now(), authKey, categories, shelves, cursor, exhausted })
+        );
+    } catch {
+        // storage full/unavailable/private-mode — the cache is a speed
+        // optimization, not a requirement, so just skip it silently
+    }
 }
 
 /* ---------------- shared eyebrow (reused from Hero / QuickActions) ---------------- */
@@ -154,9 +192,6 @@ const ShelfProductCard = memo(function ShelfProductCard({ item, idx, onClick }) 
                         You sell this
                     </span>
                 )}
-                {/* the one accent moment — a hairline that draws in under the
-                    image on hover, echoing QuickActionsJustBelowBanner's
-                    desktop-tile underline device */}
                 <span
                     className="pointer-events-none absolute inset-x-3 bottom-0 h-[2px] scale-x-0 rounded-full transition-transform duration-300 ease-out group-hover/card:scale-x-100"
                     style={{ background: C.primary, transformOrigin: "left" }}
@@ -220,10 +255,23 @@ function ShelfCardSkeleton() {
     );
 }
 
+// A full shelf-shaped skeleton (title bar + a row of card skeletons) —
+// used only for the brief window where the resolver hasn't yet caught
+// up to what's about to be revealed. Thanks to PREFETCH_AHEAD this
+// should rarely be visible for more than a frame or two.
+function ShelfSkeletonBlock({ isFirst }) {
+    return (
+        <div className="space-y-3 py-6 ps-3" style={{ borderTop: isFirst ? "none" : `1px solid ${C.hairSoft}` }}>
+            <div className={`h-5 w-40 animate-pulse rounded-full ${PAGE_PAD}`} style={{ background: C.hairSoft }} />
+            <div className={`flex gap-3.5 overflow-hidden ${PAGE_PAD}`}>
+                {Array.from({ length: 6 }).map((_, j) => <ShelfCardSkeleton key={j} />)}
+            </div>
+        </div>
+    );
+}
+
 // Hairline progress track under the rail — mirrors Hero16by9Banner's
-// mono index + accent progress line, driven by real scroll position
-// rather than an autoplay timer. Neutral track, single primary fill —
-// no per-shelf colour switching.
+// mono index + accent progress line, driven by real scroll position.
 function RailProgress({ scrollRef, itemCount }) {
     const [ratio, setRatio] = useState(0);
     const [span, setSpan] = useState(1);
@@ -247,9 +295,9 @@ function RailProgress({ scrollRef, itemCount }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [scrollRef, itemCount]);
 
-    if (span >= 1) return null; // everything fits on screen — nothing to indicate
+    if (span >= 1) return null;
 
-    const trackWidth = 56; // px
+    const trackWidth = 56;
     const fillWidth = Math.max(10, trackWidth * span);
     const travel = trackWidth - fillWidth;
 
@@ -265,44 +313,14 @@ function RailProgress({ scrollRef, itemCount }) {
     );
 }
 
-/* ---------------- one shelf ---------------- */
-const ProductShelf = memo(function ProductShelf({ category, idx, token, isFirst }) {
+/* ---------------- one shelf — purely presentational, no fetching ---------------- */
+const ProductShelf = memo(function ProductShelf({ category, items, idx, isFirst }) {
     const navigate = useNavigate();
     const [ref, inView] = useInViewOnce({ lookahead: 500 });
-    const [items, setItems] = useState(() => shelfCache.get(category.id) || null);
-    const [loading, setLoading] = useState(!shelfCache.has(category.id));
-    const [error, setError] = useState(false);
     const railRef = useRef(null);
-
-    useEffect(() => {
-        if (!inView || shelfCache.has(category.id)) return;
-        let cancelled = false;
-        const controller = new AbortController();
-        setLoading(true);
-        setError(false);
-        fetchGenericProductBrowse(
-            { categoryId: category.id, subcategoryIds: [], q: "", sort: "relevance", limit: SHELF_PRODUCT_LIMIT, offset: 0 },
-            controller.signal,
-            token
-        )
-            .then((res) => {
-                if (cancelled) return;
-                if (!res?.success) throw new Error("failed");
-                cacheShelf(category.id, res.items || []);
-                setItems(res.items || []);
-            })
-            .catch(() => { if (!cancelled) setError(true); })
-            .finally(() => { if (!cancelled) setLoading(false); });
-        return () => { cancelled = true; controller.abort(); };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [inView, category.id, token]);
 
     const openCategory = () => navigate(`/category/${category.slug || category.id}/browse`, { state: { category } });
     const openProduct = (item) => navigate(`/product/${item.slug || item.id}/sellers`, { state: { genericProduct: item, category } });
-
-    // A category with zero live products just doesn't exist in the feed
-    // once we know that — no dead-end empty rails.
-    if (!loading && !error && items && items.length === 0) return null;
 
     const title = SHELF_TITLES[idx % SHELF_TITLES.length](category.name);
 
@@ -341,10 +359,6 @@ const ProductShelf = memo(function ProductShelf({ category, idx, token, isFirst 
                 </button>
             </div>
 
-            {/* Edge-to-edge rail: bleeds past the page's own padding via
-                matching negative margins, then re-applies that same padding
-                inside so the first card still lines up with the rest of the
-                page at rest. */}
             <div
                 className={`overflow-hidden ${PAGE_PAD_NEG}`}
                 style={{
@@ -356,80 +370,66 @@ const ProductShelf = memo(function ProductShelf({ category, idx, token, isFirst 
                     ref={railRef}
                     className={`flex snap-x snap-proximity gap-3.5 overflow-x-auto pb-1 ${PAGE_PAD} [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}
                 >
-                    {loading || !items ? (
-                        Array.from({ length: 6 }).map((_, i) => <ShelfCardSkeleton key={i} />)
-                    ) : error ? (
-                        <p className="py-6 text-[12.5px] font-medium" style={{ color: C.muted }}>
-                            Couldn't load this section.
-                        </p>
-                    ) : (
-                        items.map((item, i) => (
-                            <ShelfProductCard key={item.id} item={item} idx={i} onClick={() => openProduct(item)} />
-                        ))
-                    )}
+                    {items.map((item, i) => (
+                        <ShelfProductCard key={item.id} item={item} idx={i} onClick={() => openProduct(item)} />
+                    ))}
                 </div>
             </div>
 
-            {!loading && !error && items && items.length > 0 && (
-                <RailProgress scrollRef={railRef} itemCount={items.length} />
-            )}
+            <RailProgress scrollRef={railRef} itemCount={items.length} />
         </motion.section>
     );
 });
 
 /* ---------------- feed ---------------- */
 export default function HomeProductShelves() {
-    const { token } = useAuth();
-    const [categories, setCategories] = useState([]);
-    const [categoriesLoading, setCategoriesLoading] = useState(true);
-    const [visibleCount, setVisibleCount] = useState(INITIAL_SHELF_COUNT);
-    const revealLockRef = useRef(false);
+    const [shelves, setShelves] = useState([]);
+    const [cursor, setCursor] = useState(0);
+    const [hasMore, setHasMore] = useState(true);
+    const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const loadedOnce = useRef(false);
 
-    useEffect(() => {
-        let cancelled = false;
-        searchCategories("", MAX_CATEGORIES)
-            .then((res) => {
-                if (cancelled) return;
-                if (res?.success) setCategories(res.items || []);
-            })
-            .catch(() => { })
-            .finally(() => { if (!cancelled) setCategoriesLoading(false); });
-        return () => { cancelled = true; };
+    const loadPage = useCallback(async (startCursor) => {
+        const res = await fetchHomeFeed(startCursor, SHELVES_PER_BATCH);
+        if (!res?.success) return { shelves: [], hasMore: false, nextCursor: startCursor };
+        return res;
     }, []);
 
-    const hasMore = visibleCount < categories.length;
-
-    // Called on every qualifying Lenis scroll tick (see
-    // useInfiniteScrollSentinel) — guards its own re-entrancy the same
-    // way loadMore() does in useCatalogBrowse, instead of relying on a
-    // timed "revealing" flag.
-    const handleNearBottom = useCallback(() => {
-        if (revealLockRef.current) return;
-        setVisibleCount((c) => {
-            if (c >= categories.length) return c;
-            revealLockRef.current = true;
-            setTimeout(() => { revealLockRef.current = false; }, 250);
-            return Math.min(c + SHELVES_PER_BATCH, categories.length);
+    useEffect(() => {
+        if (loadedOnce.current) return;
+        loadedOnce.current = true;
+        loadPage(0).then((res) => {
+            setShelves(res.shelves);
+            setCursor(res.nextCursor);
+            setHasMore(res.hasMore);
+            setLoading(false);
         });
-    }, [categories.length]);
+    }, [loadPage]);
+
+    const handleNearBottom = useCallback(() => {
+        if (loadingMore || !hasMore) return;
+        setLoadingMore(true);
+        loadPage(cursor).then((res) => {
+            setShelves((prev) => [...prev, ...res.shelves]);
+            setCursor(res.nextCursor);
+            setHasMore(res.hasMore);
+            setLoadingMore(false);
+        });
+    }, [cursor, hasMore, loadingMore, loadPage]);
 
     const sentinelRef = useInfiniteScrollSentinel(handleNearBottom, {
         lookahead: 900,
-        disabled: !hasMore || categoriesLoading,
+        disabled: !hasMore || loading,
     });
 
-    const visibleCategories = useMemo(() => categories.slice(0, visibleCount), [categories, visibleCount]);
-
-    if (!categoriesLoading && categories.length === 0) return null;
+    if (!loading && shelves.length === 0) return null;
 
     return (
         <div className="rounded-[20px]" style={{ background: C.canvas }}>
             <div className={`space-y-2 pb-2 pt-6 ${PAGE_PAD}`}>
                 <PulseEyebrow label="Live catalog" />
-                <h2
-                    className="font-extrabold leading-[0.98] tracking-[-0.015em]"
-                    style={{ color: C.ink, fontSize: "clamp(22px, 2.1vw, 32px)" }}
-                >
+                <h2 className="font-extrabold leading-[0.98] tracking-[-0.015em]" style={{ color: C.ink, fontSize: "clamp(22px, 2.1vw, 32px)" }}>
                     More to explore
                 </h2>
                 <p className="max-w-sm text-[13px] font-medium leading-relaxed" style={{ color: C.muted }}>
@@ -437,25 +437,23 @@ export default function HomeProductShelves() {
                 </p>
             </div>
 
-            {categoriesLoading
-                ? Array.from({ length: INITIAL_SHELF_COUNT }).map((_, i) => (
-                    <div key={i} className="space-y-3 py-6" style={{ borderTop: i === 0 ? "none" : `1px solid ${C.hairSoft}` }}>
-                        <div className={`h-5 w-40 animate-pulse rounded-full ${PAGE_PAD}`} style={{ background: C.hairSoft }} />
-                        <div className={`flex gap-3.5 overflow-hidden ${PAGE_PAD}`}>
-                            {Array.from({ length: 6 }).map((_, j) => <ShelfCardSkeleton key={j} />)}
-                        </div>
-                    </div>
-                ))
-                : visibleCategories.map((cat, i) => (
-                    <ProductShelf key={cat.id} category={cat} idx={i} token={token} isFirst={i === 0} />
-                ))}
+            {loading ? (
+                Array.from({ length: INITIAL_SHELF_COUNT }).map((_, i) => <ShelfSkeletonBlock key={`init-${i}`} isFirst={i === 0} />)
+            ) : (
+                <>
+                    {shelves.map((s, i) => (
+                        <ProductShelf key={s.category.id} category={s.category} items={s.items} idx={i} isFirst={i === 0} />
+                    ))}
+                    {loadingMore && <ShelfSkeletonBlock isFirst={false} />}
+                </>
+            )}
 
             {hasMore ? (
                 <div ref={sentinelRef} className="flex justify-center py-5">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: C.hair }} />
                 </div>
             ) : (
-                !categoriesLoading && (
+                !loading && shelves.length > 0 && (
                     <div className={`flex flex-col items-center gap-1.5 py-9 text-center ${PAGE_PAD}`}>
                         <CheckCircle2 className="h-5 w-5" style={{ color: C.secondary }} />
                         <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>You're all caught up</p>
