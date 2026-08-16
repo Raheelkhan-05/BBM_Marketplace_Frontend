@@ -26,7 +26,6 @@ export default function HomePageSkeleton() {
         <QuickActionsSkeleton />
         <TrustStripLogosSkeleton />
         <TopCategoriesSkeleton />
-        <TrustStripSkeleton />
         <StartSellingBannerSkeleton />
       </main>
     </div>
