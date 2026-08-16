@@ -369,12 +369,7 @@ export async function adminGetCatalogEntry(token, level, id) {
   const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();
 }
-export async function adminUpdateCatalogEntry(token, level, id, payload) {
-  const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}`, {
-    method: "PATCH", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
-  });
-  return res.json();
-}
+
 export async function adminApproveCatalogEntry(token, level, id, corrections) {
   const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}/approve`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(corrections || {}),
@@ -418,6 +413,15 @@ export async function adminCreatePickerOption(token, pickerLevel, name, parentId
 export async function adminCreateCatalogEntry(token, level, payload) {
   const res = await fetch(`${API_BASE}/admin/catalog/${level}`, {
     method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+export async function adminUpdateCatalogEntry(token, level, id, payload) {
+  const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}`, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
   });
