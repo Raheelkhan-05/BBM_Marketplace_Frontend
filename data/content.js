@@ -29,12 +29,6 @@ export const heroContent = {
 };
 
 
-export const infoBanner = {
-  highlight: "10,00,000+",
-  text: "products",
-  subtext: "Compare prices before you buy.",
-};
-
 export const bannerCards = [
   { id: "compare", icon: "bar-chart", title: "Compare Multiple Quotations", desc: "Buy at competitive prices." },
   { id: "reduce", icon: "wallet", title: "Reduce Procurement Costs", desc: "Save on every purchase." },
@@ -75,14 +69,6 @@ export const features = [
 ];
 
 export const trustBadges = ["100% Secure", "Transparent", "Reliable"];
-
-export const stats = [
-  { id: "buyers", value: "50,000+", label: "Buyers", icon: "users", fg: "text-blue-600" },
-  { id: "suppliers", value: "10,000+", label: "Suppliers", icon: "storefront", fg: "text-green-600" },
-  { id: "products", value: "10,00,000+", label: "Products", icon: "box", fg: "text-orange-500" },
-];
-
-export const closingLine = "One platform. Every industry. Endless opportunities.";
 
 export const whyBBM = [
   {

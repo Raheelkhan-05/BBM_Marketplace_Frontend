@@ -11,23 +11,6 @@ export const C = {
     hair: "rgba(11,17,22,0.09)",
     hairSoft: "rgba(11,17,22,0.05)",
 };
-export const EASE = [0.16, 1, 0.3, 1];
-
-export function Label({ children, hint }) {
-    return (
-        <span className="flex items-center gap-1 text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
-            {children}
-            {hint && (
-                <span className="group relative">
-                    <Info className="h-3 w-3 cursor-help" style={{ color: C.muted }} />
-                    <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 w-48 -translate-x-1/2 rounded-lg bg-[#0B1116] px-2.5 py-1.5 text-[10.5px] font-medium normal-case tracking-normal text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
-                        {hint}
-                    </span>
-                </span>
-            )}
-        </span>
-    );
-}
 
 export function TextField({ label, value, onChange, placeholder, inputMode, type = "text", hint, required, disabled }) {
     return (

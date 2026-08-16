@@ -176,33 +176,6 @@ function TopCategoriesSkeleton() {
   );
 }
 
-/* ---------------- TrustStrip ---------------- */
-function TrustStripSkeleton() {
-  return (
-    <div className="w-full">
-      <div className="text-center">
-        <Shimmer className="mx-auto h-2.5 w-32 rounded" />
-        <Shimmer className="mx-auto mt-2 h-6 w-72 rounded" />
-      </div>
-
-      <div
-        className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-[24px] border sm:grid-cols-2 lg:grid-cols-4"
-        style={{ borderColor: C.hair, background: C.hair }}
-      >
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="flex items-center gap-3.5 bg-white p-4 sm:p-5 lg:gap-4 lg:p-6">
-            <Shimmer className="h-10 w-10 shrink-0 rounded-xl lg:h-11 lg:w-11" />
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <Shimmer className="h-3 w-4/5 rounded" />
-              <Shimmer className="h-2.5 w-3/5 rounded" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ---------------- StartSellingBanner ---------------- */
 function StartSellingBannerSkeleton() {
   return (
