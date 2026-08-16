@@ -783,3 +783,37 @@ export async function adminListBrandItemSubmissions(token, brandItemId) {
   });
   return res.json();
 }
+
+export async function fetchGenericProductBrowse(params, signal, token) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === null || v === undefined || v === "") return;
+    qs.set(k, Array.isArray(v) ? v.join(",") : v);
+  });
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const res = await fetch(`${API_BASE}/catalog-search/browse-products?${qs}`, { signal, headers });
+  return res.json();
+}
+
+export async function fetchGenericProductSellers(params) {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === null || v === undefined || v === "") return;
+    qs.set(k, Array.isArray(v) ? v.join(",") : v);
+  });
+  const res = await fetch(`${API_BASE}/catalog-search/generic-product-sellers?${qs}`);
+  return res.json();
+}
+
+export async function fetchPublicListingDetail(id) {
+  const res = await fetch(`${API_BASE}/catalog-search/listing/${id}`);
+  //Now log the response
+  console.log(res)
+  return res.json();
+}
+
+export async function fetchApprovedBrandsForGenericProduct(genericProductId, q = "") {
+  const params = new URLSearchParams({ q });
+  const res = await fetch(`${API_BASE}/catalog-search/generic-products/${genericProductId}/brands?${params}`);
+  return res.json();
+}

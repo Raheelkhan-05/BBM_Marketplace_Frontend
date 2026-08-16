@@ -33,6 +33,7 @@ import SalesOrdersPage from "./pages/SalesOrdersPage.jsx";
 import OrderDetailPage from "./pages/OrderDetailPage.jsx";
 import SellerOrderDetailPage from "./pages/SellerOrderDetailPage.jsx";
 import BrowsePage from "./pages/BrowsePage.jsx";
+import GenericProductSellersPage from "./pages/GenericProductSellersPage.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -62,7 +63,8 @@ function App() {
 
             <Route path="/search" element={<SearchResultsPage />} />
             <Route path="/home" element={<HomePage />} />
-            <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPageWithKey />} />
+            {/* <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPageWithKey />} /> */}
+            <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
             <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
 
             <Route path="/category/:idOrSlug/browse" element={<BrowsePage />} />

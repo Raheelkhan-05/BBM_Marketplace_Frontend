@@ -3,16 +3,20 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { ArrowLeft, Store, MapPin, ShieldCheck, Building2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import BrowseFilterBar from "../components/catalog/BrowseFilterBar";
+import SimpleFacetFilterBar from "../components/catalog/SimpleFacetFilterBar";
 import BrandItemCard from "../components/catalog/BrandItemCard";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import { useAuth } from "../context/AuthContext.jsx";
 import { TileGridSkeleton, CatalogLoadError } from "../components/catalog/CatalogUI";
 import BuySellChoiceSheet from "../components/catalog/BuySellChoiceSheet";
 import SellThisItemModal from "../components/catalog/SellThisItemModal";
+import ChooseBrandToSellModal from "../components/catalog/ChooseBrandToSellModal";
 import { C, EASE } from "../components/catalog/tokens";
-import useCatalogBrowse, { DEFAULT_FILTERS } from "../hooks/useCatalogBrowse";
+import useCatalogBrowse from "../hooks/useCatalogBrowse";
+import useGenericProductBrowse from "../hooks/useGenericProductBrowse";
 import useShopSearch from "../hooks/useShopSearch";
 import { resolveSearchRoute } from "../utils/searchResolve.js";
+import { Tag } from "lucide-react";
 
 export default function BrowsePage() {
     const { idOrSlug } = useParams();
@@ -22,12 +26,17 @@ export default function BrowsePage() {
     const navigate = useNavigate();
     const { token } = useAuth();
 
-    // const category = state?.category || null;
     const initialQ = searchParams.get("q") || "";
 
-    const { filters, setFilters, items, facets, total, loading, loadingMore, error, hasMore, loadMore, retry } =
-        useCatalogBrowse({ categoryId: category?.id || null, q: initialQ }, token); // token passed in
-
+    // Two data sources, same shape (filters/items/facets/total/loading/…):
+    // inside a category we browse Generic Products; outside one (global
+    // search) we keep the existing Brand Item results, since global text
+    // search is already precise enough to land on a specific item.
+    const productBrowse = useGenericProductBrowse({ categoryId: category?.id || null, q: initialQ }, token);
+    const brandBrowse = useCatalogBrowse({ categoryId: category?.id || null, q: initialQ }, token);
+    const {
+        filters, setFilters, items, facets, total, loading, loadingMore, error, hasMore, loadMore, retry,
+    } = category ? productBrowse : brandBrowse;
 
     const [searchInput, setSearchInput] = useState(initialQ);
     useEffect(() => { setFilters({ q: searchInput }); }, [searchInput]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -36,25 +45,18 @@ export default function BrowsePage() {
         const t = setTimeout(() => {
             const next = new URLSearchParams(searchParams);
             if (filters.q.trim()) next.set("q", filters.q.trim()); else next.delete("q");
-            setSearchParams(next, { replace: true, state: { category } }); // preserve it explicitly too
+            setSearchParams(next, { replace: true, state: { category } });
         }, 250);
         return () => clearTimeout(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filters.q]);
 
-    // Picks up ?q= changes that originate outside this component (e.g. the
-    // mobile BottomSearchBar navigating while /browse is already mounted).
     useEffect(() => {
         const urlQ = searchParams.get("q") || "";
         if (urlQ !== searchInput) setSearchInput(urlQ);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchParams]);
 
-    // Submitting from THIS page's bar only navigates when the term resolves
-    // to something exact (a category/brand/product page) — otherwise we're
-    // already filtering live via searchInput, so there's nothing else to do.
-    // clearOnSubmit is off (see MarketplaceSearchBar) so the box keeps
-    // showing what's actually driving the results on screen.
     const handleSearchSubmit = async (term) => {
         const route = await resolveSearchRoute(term);
         if (route) navigate(route.pathname, { state: route.state });
@@ -86,19 +88,25 @@ export default function BrowsePage() {
         };
     }, [loadMore]);
 
-    // Tapping a tile no longer jumps straight to the sellers page — it
-    // opens a Buy/Sell choice first (see BuySellChoiceSheet), same idea
-    // as tapping a holding in a trading app. `choiceItem` drives that
-    // sheet; `sellItem` drives the "list your price" modal once someone
-    // picks Sell, so it can stay open here on /browse without a detour
-    // through the sellers list.
+    // Choice-sheet state is shared between the two levels — the item
+    // shape (name/brand_name/lowest_price/seller_count/has_own_listing)
+    // is compatible whether it's a brand item or a generic product, so
+    // BuySellChoiceSheet needs no changes at all.
     const [choiceItem, setChoiceItem] = useState(null);
-    const [sellItem, setSellItem] = useState(null);
-    const [noSellersItem, setNoSellersItem] = useState(null);
+    const [sellItem, setSellItem] = useState(null);       // brand-item flow (global search branch)
+    const [sellProduct, setSellProduct] = useState(null); // generic-product flow (category branch) -> ChooseBrandToSellModal
 
     const openItem = (item) => setChoiceItem(item);
-    const goToSellersPage = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brand: item } });
 
+    const goToSellersPage = (item) => {
+        if (category) {
+            // Generic product -> the new aggregated sellers page (all brands).
+            navigate(`/product/${item.slug || item.id}/sellers`, { state: { genericProduct: item, category } });
+        } else {
+            // Brand item -> unchanged, single-brand sellers page.
+            navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brand: item } });
+        }
+    };
 
     return (
         <div className="mx-auto min-h-screen max-w-7xl px-2.5 pb-10 pt-6 sm:px-4 lg:px-6">
@@ -118,7 +126,7 @@ export default function BrowsePage() {
                     </h1>
                     <p className="mt-1 text-[12.5px] font-medium" style={{ color: C.muted }}>
                         {category
-                            ? `Browsing every listed product in ${category.name}`
+                            ? `Every product listed in ${category.name} — pick one to buy or sell`
                             : filters.q
                                 ? "Matching products across all categories"
                                 : "Explore products across every category"}
@@ -126,7 +134,6 @@ export default function BrowsePage() {
                 </div>
             </div>
 
-            {/* Desktop only — mobile relies solely on the global BottomSearchBar. */}
             <div className="mt-4 hidden md:block">
                 <MarketplaceSearchBar
                     value={searchInput}
@@ -139,7 +146,32 @@ export default function BrowsePage() {
             </div>
 
             <div className="mt-4">
-                <BrowseFilterBar filters={filters} setFilters={setFilters} facets={facets} total={total} loading={loading} />
+                {category ? (
+                    <SimpleFacetFilterBar
+                        title="Filters"
+                        total={total}
+                        loading={loading}
+                        sort={filters.sort}
+                        onSortChange={(sort) => setFilters({ sort })}
+                        groups={[
+                            {
+                                key: "subcategory",
+                                label: "Subcategory",
+                                icon: Tag,
+                                options: facets.subcategories,
+                                selected: filters.subcategoryIds,
+                                onToggle: (id) => setFilters((f) => ({
+                                    subcategoryIds: f.subcategoryIds.includes(id)
+                                        ? f.subcategoryIds.filter((x) => x !== id)
+                                        : [...f.subcategoryIds, id],
+                                })),
+                                onClear: () => setFilters({ subcategoryIds: [] }),
+                            },
+                        ]}
+                    />
+                ) : (
+                    <BrowseFilterBar filters={filters} setFilters={setFilters} facets={facets} total={total} loading={loading} />
+                )}
             </div>
 
             {showShops && (
@@ -196,15 +228,14 @@ export default function BrowsePage() {
                                     {item.has_own_listing && (
                                         <span
                                             className="absolute top-1 right-1 z-10 rounded-full px-2 py-0.5 text-[9px] font-bold text-white"
-                                            style={{
-                                                background: C.secondary,
-                                                boxShadow: `0 0 0 1px rgba(255,255,255,0.9), 0 0 10px 2px ${C.secondary}99, 0 2px 6px rgba(11,17,22,0.25)`,
-                                            }}
+                                            style={{ background: C.secondary, boxShadow: `0 0 0 1px rgba(255,255,255,0.9), 0 0 10px 2px ${C.secondary}99, 0 2px 6px rgba(11,17,22,0.25)` }}
                                         >
                                             You sell this
                                         </span>
                                     )}
                                     <div style={item.has_own_listing ? { borderRadius: 16, boxShadow: `0 0 0 1px ${C.secondary}` } : undefined}>
+                                        {/* BrandItemCard works for both shapes: generic-product tiles omit
+                                            brand_name, which the card already treats as optional. */}
                                         <BrandItemCard item={item} idx={i} onClick={() => openItem(item)} />
                                     </div>
                                 </div>
@@ -218,6 +249,7 @@ export default function BrowsePage() {
                     </>
                 )}
             </div>
+
             <AnimatePresence>
                 {choiceItem && (
                     <BuySellChoiceSheet
@@ -229,13 +261,17 @@ export default function BrowsePage() {
                             goToSellersPage(it);
                         }}
                         onSell={() => {
-                            setSellItem(choiceItem);
+                            if (category) setSellProduct(choiceItem);
+                            else setSellItem(choiceItem);
                             setChoiceItem(null);
                         }}
                     />
                 )}
                 {sellItem && (
                     <SellThisItemModal brand={sellItem} onClose={() => setSellItem(null)} />
+                )}
+                {sellProduct && (
+                    <ChooseBrandToSellModal genericProduct={sellProduct} onClose={() => setSellProduct(null)} />
                 )}
             </AnimatePresence>
         </div>
