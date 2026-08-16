@@ -1,29 +1,48 @@
 import { useEffect, useState } from "react";
-import { X, Loader2, Plus, ImagePlus, Save } from "lucide-react";
+import { X, Loader2, Plus, ImagePlus, Save, Trash2 } from "lucide-react";
 import { adminCreateCatalogEntry, adminUpdateCatalogEntry, adminUploadCatalogImage } from "../utils/api.js";
 
-const ALLOWED_UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
+// NOTE: this brand-item form is now IDENTITY ONLY — name, brand, images,
+// manufacturer, model/part no., grade/variant, specifications. Price/MOQ/
+// unit/lead time used to live here, but under the current schema those
+// are commercial terms that belong to a *seller's* listing
+// (seller_product_submissions), not the catalog identity — every seller
+// selling this same brand item can have different pricing/MOQ/lead time.
+// If you're maintaining a separate seller-facing form for that, don't
+// port price/moq/unit/lead_time back in here.
+//
+// This mirrors CreateSimpleCatalogModal.jsx's brand_item branch — if
+// both files are live in your app, prefer consolidating onto one of them
+// so this identity shape can't drift out of sync between the two again.
 
 export default function BrandItemModal({ token, isOpen, onClose, parentId, onCreated, onUpdated, editEntry }) {
     const isEdit = !!editEntry;
-    const [form, setForm] = useState({ name: "", brand_name: "", price: "", moq: "", unit: ALLOWED_UNITS[0], lead_time: "" });
-    const [imageFile, setImageFile] = useState(null);
-    const [imagePreview, setImagePreview] = useState(null);
+    const [form, setForm] = useState({ name: "", brand_name: "", manufacturer: "", model_no: "", grade_variant: "" });
+    const [specifications, setSpecifications] = useState([]); // [{ key, value }]
+
+    // Multi-image, matching brand_item's real shape (images[] + image cover)
+    const [imageFiles, setImageFiles] = useState([]);
+    const [imagePreviews, setImagePreviews] = useState([]);
+
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
     useEffect(() => {
         if (isOpen && editEntry) {
             setForm({
-                name: editEntry.name || "", brand_name: editEntry.brand_name || "",
-                price: editEntry.price ?? "", moq: editEntry.moq ?? "",
-                unit: editEntry.unit || ALLOWED_UNITS[0], lead_time: editEntry.lead_time || "",
+                name: editEntry.name || "",
+                brand_name: editEntry.brand_name || "",
+                manufacturer: editEntry.manufacturer || "",
+                model_no: editEntry.model_no || "",
+                grade_variant: editEntry.grade_variant || "",
             });
-            setImagePreview(editEntry.image || null);
-            setImageFile(null);
+            setSpecifications(editEntry.specifications || []);
+            setImagePreviews(editEntry?.images?.length ? editEntry.images : editEntry?.image ? [editEntry.image] : []);
+            setImageFiles([]);
         } else if (isOpen) {
-            setForm({ name: "", brand_name: "", price: "", moq: "", unit: ALLOWED_UNITS[0], lead_time: "" });
-            setImagePreview(null); setImageFile(null);
+            setForm({ name: "", brand_name: "", manufacturer: "", model_no: "", grade_variant: "" });
+            setSpecifications([]);
+            setImagePreviews([]); setImageFiles([]);
         }
         setError("");
     }, [isOpen, editEntry]);
@@ -31,11 +50,32 @@ export default function BrandItemModal({ token, isOpen, onClose, parentId, onCre
     if (!isOpen) return null;
     const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-    function handleFile(e) {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setImageFile(file);
-        setImagePreview(URL.createObjectURL(file));
+    function updateSpec(i, field, val) {
+        setSpecifications((rows) => rows.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)));
+    }
+    function removeSpec(i) {
+        setSpecifications((rows) => rows.filter((_, idx) => idx !== i));
+    }
+    function addSpec() {
+        setSpecifications((rows) => [...rows, { key: "", value: "" }]);
+    }
+
+    function handleFiles(e) {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        setImageFiles((f) => [...f, ...files]);
+        setImagePreviews((p) => [...p, ...files.map((f) => URL.createObjectURL(f))]);
+        e.target.value = "";
+    }
+    function removeImageAt(i) {
+        const removedUrl = imagePreviews[i];
+        setImagePreviews((p) => p.filter((_, idx) => idx !== i));
+        if (removedUrl?.startsWith("blob:")) {
+            setImageFiles((files) => {
+                const blobIdx = imagePreviews.slice(0, i).filter((u) => u.startsWith("blob:")).length;
+                return files.filter((_, idx) => idx !== blobIdx);
+            });
+        }
     }
 
     async function handleSubmit() {
@@ -43,26 +83,30 @@ export default function BrandItemModal({ token, isOpen, onClose, parentId, onCre
         const missing = [];
         if (form.name.trim().length < 2) missing.push("Product name");
         if (!form.brand_name.trim()) missing.push("Brand name");
-        if (!(Number(form.price) > 0)) missing.push("Price");
-        if (!(Number(form.moq) > 0)) missing.push("MOQ");
-        if (!form.lead_time.trim()) missing.push("Lead time");
-        if (!isEdit && !imageFile) missing.push("Image");
+        if (!form.manufacturer.trim()) missing.push("Manufacturer");
+        if (!form.model_no.trim()) missing.push("Model / Part No. / SKU");
+        if (imagePreviews.length === 0) missing.push("Product image");
         if (missing.length) return setError(`Please provide: ${missing.join(", ")}.`);
         if (!isEdit && !parentId) return setError("Missing parent — please reopen this from inside a generic product.");
 
         setSaving(true);
         try {
-            let imageUrl = imagePreview && !imageFile ? editEntry?.image : null;
-            if (imageFile) {
-                const up = await adminUploadCatalogImage(token, imageFile, "brand-items");
+            const finalUrls = imagePreviews.filter((p) => !p.startsWith("blob:")); // kept existing urls
+            for (const file of imageFiles) {
+                const up = await adminUploadCatalogImage(token, file, "brand-items");
                 if (!up?.success) throw new Error(up?.message || "Image upload failed.");
-                imageUrl = up.url;
+                finalUrls.push(up.url);
             }
 
             const payload = {
-                name: form.name.trim(), brand_name: form.brand_name.trim(),
-                price: Number(form.price), moq: Number(form.moq),
-                unit: form.unit, lead_time: form.lead_time.trim(), image: imageUrl,
+                name: form.name.trim(),
+                brand_name: form.brand_name.trim(),
+                manufacturer: form.manufacturer.trim(),
+                model_no: form.model_no.trim(),
+                grade_variant: form.grade_variant.trim() || null,
+                specifications: specifications.filter((s) => s?.key?.trim()),
+                images: finalUrls,
+                image: finalUrls[0] || null,
             };
 
             if (isEdit) {
@@ -95,36 +139,80 @@ export default function BrandItemModal({ token, isOpen, onClose, parentId, onCre
                         <input value={form.name} onChange={set("name")} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
                     </div>
                     <div>
-                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Brand name *</label>
+                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Brand *</label>
                         <input value={form.brand_name} onChange={set("brand_name")} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Price *</label>
-                            <input type="number" value={form.price} onChange={set("price")} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Manufacturer *</label>
+                        <input value={form.manufacturer} onChange={set("manufacturer")} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                    </div>
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Model / Part No. / SKU *</label>
+                        <input value={form.model_no} onChange={set("model_no")} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                    </div>
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Product Grade / Variant</label>
+                        <input value={form.grade_variant} onChange={set("grade_variant")} placeholder="Where applicable"
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                    </div>
+
+                    <div>
+                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Specifications / Technical Data Sheet</label>
+                        <div className="flex flex-col gap-2">
+                            {specifications.map((row, i) => (
+                                <div key={i} className="flex items-center gap-1.5">
+                                    <input
+                                        value={row.key || ""}
+                                        placeholder="Attribute (e.g. Material)"
+                                        onChange={(e) => updateSpec(i, "key", e.target.value)}
+                                        className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25"
+                                    />
+                                    <input
+                                        value={row.value || ""}
+                                        placeholder="Value (e.g. SS304)"
+                                        onChange={(e) => updateSpec(i, "value", e.target.value)}
+                                        className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25"
+                                    />
+                                    <button type="button" onClick={() => removeSpec(i)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-red-50">
+                                        <Trash2 className="h-3.5 w-3.5 text-[#c71f11]" />
+                                    </button>
+                                </div>
+                            ))}
+                            <button type="button" onClick={addSpec} className="flex w-fit items-center gap-1 text-[12px] font-bold text-[#047084]">
+                                <Plus className="h-3.5 w-3.5" /> Add specification
+                            </button>
                         </div>
-                        <div>
-                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">MOQ *</label>
-                            <input type="number" value={form.moq} onChange={set("moq")} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
-                        </div>
                     </div>
+
                     <div>
-                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Unit *</label>
-                        <select value={form.unit} onChange={set("unit")} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25">
-                            {ALLOWED_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Lead time *</label>
-                        <input value={form.lead_time} onChange={set("lead_time")} placeholder="e.g. 5-7 days" className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
-                    </div>
-                    <div>
-                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Image {isEdit ? "" : "*"}</label>
-                        <label className="flex h-28 w-28 cursor-pointer items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 text-slate-400">
-                            {imagePreview ? <img src={imagePreview} alt="" className="h-full w-full object-cover" /> : <ImagePlus className="h-6 w-6" />}
-                            <input type="file" accept="image/*" onChange={handleFile} className="hidden" />
+                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">
+                            Images {imagePreviews.length > 0 && `(${imagePreviews.length})`} *
                         </label>
+                        <div className="flex flex-wrap gap-2">
+                            {imagePreviews.map((src, i) => (
+                                <div key={src + i} className="relative h-20 w-20">
+                                    <img src={src} alt="" className="h-full w-full rounded-lg border border-slate-200 object-cover" />
+                                    <button
+                                        type="button"
+                                        onClick={() => removeImageAt(i)}
+                                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] leading-none text-white"
+                                        aria-label="Remove image"
+                                    >
+                                        ×
+                                    </button>
+                                    {i === 0 && (
+                                        <span className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-black/60 py-0.5 text-center text-[8.5px] font-bold text-white">Cover</span>
+                                    )}
+                                </div>
+                            ))}
+                            <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-200 text-slate-400">
+                                <ImagePlus className="h-5 w-5" />
+                                <span className="text-[9px] font-bold">Add</span>
+                                <input type="file" accept="image/*" multiple onChange={handleFiles} className="hidden" />
+                            </label>
+                        </div>
                     </div>
+
                     {error && <p className="text-[12.5px] font-semibold text-[#c71f11]">{error}</p>}
                 </div>
                 <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3.5">

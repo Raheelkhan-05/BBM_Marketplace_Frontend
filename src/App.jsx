@@ -25,7 +25,7 @@ import AdminCatalogDetailPage from "./pages/admin/AdminCatalogDetailPage.jsx";
 import BrandDetailPage from "./pages/BrandDetailPage.jsx";
 import BrandFamilyPage from "./pages/BrandFamilyPage.jsx";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy.jsx";
-import BrandItemSellersPage from "./pages/BrandItemSellersPage";
+import BrandItemSellersPage from "./pages/BrandItemSellersPage.jsx";
 import SellPublishProductPage from "./pages/SellPublishProductPage.jsx";
 import AdminSellerSubmissionsPage from "./pages/admin/AdminSellerSubmissionsPage.jsx";
 import PurchaseOrdersPage from "./pages/PurchaseOrdersPage.jsx";

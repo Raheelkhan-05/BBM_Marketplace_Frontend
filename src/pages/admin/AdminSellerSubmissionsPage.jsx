@@ -1,6 +1,9 @@
 import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, CheckCircle2, X, ImageIcon, Pencil, Save } from "lucide-react";
+import {
+    Loader2, CheckCircle2, X, ImageIcon, Pencil, Save, ChevronDown,
+    Package, IndianRupee, Boxes, Archive, Truck, FileText, Handshake, ShieldCheck, Plus, Trash2,
+} from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "../../utils/supabaseClient.js";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -18,6 +21,7 @@ const STATUS_TABS = [
 ];
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
+const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
 
 export default function AdminSellerSubmissionsPage() {
     const { token } = useAuth();
@@ -33,14 +37,13 @@ export default function AdminSellerSubmissionsPage() {
     const [lightbox, setLightbox] = useState(null);
     const [editing, setEditing] = useState(null);
     const [highlightId, setHighlightId] = useState(null);
-    // const [highlightId, setHighlightId] = useState(searchParams.get("highlight"));
     const itemRefs = useRef(new Map());
 
     useEffect(() => {
         const id = searchParams.get("highlight");
         if (id) {
             setHighlightId(id);
-            setStatus("all"); // the item may no longer be in "pending" — see fix #4
+            setStatus("all"); // the item may no longer be in "pending"
         }
     }, [searchParams]);
 
@@ -65,7 +68,6 @@ export default function AdminSellerSubmissionsPage() {
         });
     }
     useEffect(() => { if (token) load(); }, [token, status]);
-
 
     // Realtime: any submission created/approved/rejected/edited anywhere
     // pings this channel — refetch whatever tab is open.
@@ -176,12 +178,17 @@ export default function AdminSellerSubmissionsPage() {
                                 </p>
                                 <p className="mt-1 text-[12.5px] font-medium text-slate-600">
                                     ₹{it.price} · MOQ {it.moq} {it.unit} · Lead time {it.lead_time} days
+                                    {it.stock_type && <span className="ml-1.5 text-slate-400">· {it.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"}</span>}
                                 </p>
-                                <p className="text-[11.5px] font-medium text-slate-400">Seller: {it.seller?.display_name || "—"}</p>
+                                <p className="text-[11.5px] font-medium text-slate-400">
+                                    Seller: {it.seller?.display_name || "—"}
+                                    {it.hsn_code && <span> · HSN {it.hsn_code}</span>}
+                                    {it.is_active === false && <span className="ml-1.5 font-bold text-amber-600">· Hidden by seller</span>}
+                                </p>
                                 {it.rejection_reason && <p className="mt-1 text-[11.5px] font-semibold text-[#c71f11]">Rejected: {it.rejection_reason}</p>}
                             </div>
                             <div className="flex shrink-0 flex-col gap-1.5">
-                                <button onClick={() => setEditing(it)}
+                                <button onClick={() => setEditing(it.id)}
                                     className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-[12px] font-bold text-slate-600">
                                     <Pencil className="h-3.5 w-3.5" /> Edit
                                 </button>
@@ -225,7 +232,7 @@ export default function AdminSellerSubmissionsPage() {
             {editing && (
                 <EditSubmissionModal
                     token={token}
-                    item={editing}
+                    submissionId={editing}
                     onClose={() => setEditing(null)}
                     onSaved={() => { setEditing(null); load(); }}
                 />
@@ -234,44 +241,200 @@ export default function AdminSellerSubmissionsPage() {
     );
 }
 
-function EditSubmissionModal({ token, item, onClose, onSaved }) {
-    const [productName, setProductName] = useState(item.product_name || "");
-    const [brandName, setBrandName] = useState(item.brand_name || "");
-    const [price, setPrice] = useState(String(item.price ?? ""));
-    const [moq, setMoq] = useState(String(item.moq ?? ""));
-    const [unit, setUnit] = useState(item.unit || "");
-    const [leadTime, setLeadTime] = useState(item.lead_time || "");
-    const [images, setImages] = useState(item.images?.length ? item.images : (item.image ? [item.image] : []));
+/* =====================================================================
+   Full-spec edit modal — mirrors every section of the seller's own
+   SellerListingForm so admin can see and correct anything the seller
+   filled in. Fetches the full record on open (list rows only carry the
+   lighter "hot" columns), so an admin never has to guess a field's
+   current value before the record has loaded.
+   ===================================================================== */
+
+const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25";
+
+function Field({ label, children, required, hint }) {
+    return (
+        <div>
+            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">
+                {label} {required && <span className="text-[#c71f11]">*</span>}
+            </label>
+            {children}
+            {hint && <p className="mt-1 text-[11px] font-medium text-slate-400">{hint}</p>}
+        </div>
+    );
+}
+function TextInput(props) { return <input {...props} className={inputClass} />; }
+function SelectInput({ children, ...props }) { return <select {...props} className={inputClass}>{children}</select>; }
+function TextArea(props) { return <textarea rows={props.rows || 3} {...props} className={`${inputClass} resize-none`} />; }
+function ToggleRow({ label, checked, onChange }) {
+    return (
+        <label className="flex items-center gap-2.5 text-[13px] font-bold text-slate-700">
+            <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded" />
+            {label}
+        </label>
+    );
+}
+
+function Accordion({ icon: Icon, title, subtitle, defaultOpen, children }) {
+    const [open, setOpen] = useState(!!defaultOpen);
+    return (
+        <div className="overflow-hidden rounded-xl border border-slate-100">
+            <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2.5 px-4 py-3 text-left hover:bg-slate-50">
+                <Icon className="h-4 w-4 shrink-0 text-[#047084]" />
+                <span className="min-w-0 flex-1">
+                    <span className="block text-[13.5px] font-extrabold text-slate-900">{title}</span>
+                    {subtitle && <span className="block text-[11px] font-medium text-slate-400">{subtitle}</span>}
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform" style={{ transform: open ? "rotate(180deg)" : "none" }} />
+            </button>
+            {open && <div className="flex flex-col gap-3.5 border-t border-slate-100 px-4 py-4">{children}</div>}
+        </div>
+    );
+}
+
+function RowsEditor({ rows, onChange, columns, addLabel }) {
+    const update = (i, key, val) => onChange(rows.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)));
+    const remove = (i) => onChange(rows.filter((_, idx) => idx !== i));
+    const add = () => onChange([...rows, Object.fromEntries(columns.map((c) => [c.key, ""]))]);
+    return (
+        <div className="flex flex-col gap-2">
+            {rows.map((row, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                    {columns.map((c) => (
+                        <input key={c.key} value={row[c.key] ?? ""} placeholder={c.placeholder}
+                            onChange={(e) => update(i, c.key, e.target.value)}
+                            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                    ))}
+                    <button type="button" onClick={() => remove(i)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-red-50">
+                        <Trash2 className="h-3.5 w-3.5 text-[#c71f11]" />
+                    </button>
+                </div>
+            ))}
+            <button type="button" onClick={add} className="flex w-fit items-center gap-1 text-[12px] font-bold text-[#047084]">
+                <Plus className="h-3.5 w-3.5" /> {addLabel}
+            </button>
+        </div>
+    );
+}
+
+function EditSubmissionModal({ token, submissionId, onClose, onSaved }) {
+    const [loading, setLoading] = useState(true);
+    const [form, setForm] = useState(null);
+    const [images, setImages] = useState([]);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
-    // NOTE: adding a NEW image file here would need an upload call first
-    // (adminUploadCatalogImage, same as CreateSimpleCatalogModal) before
-    // pushing the returned url into `images`. Wire that in if admins need
-    // to add fresh photos, not just remove/reorder existing ones.
-    function removeImageAt(i) {
-        setImages((imgs) => imgs.filter((_, idx) => idx !== i));
-    }
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const { adminGetSellerSubmission } = await import("../../utils/api.js");
+            const res = await adminGetSellerSubmission(token, submissionId);
+            if (cancelled) return;
+            if (res?.success) {
+                const s = res.submission;
+                setForm({
+                    productName: s.product_name || "",
+                    brandName: s.brand_name || "",
+                    manufacturer: s.manufacturer || "",
+                    modelNo: s.model_no || "",
+                    gradeVariant: s.grade_variant || "",
+                    specifications: s.specifications || [],
+                    basePrice: s.base_price ?? "",
+                    gstPercent: s.gst_percent ?? 18,
+                    ratePerPack: s.rate_per_pack ?? "",
+                    ratePerMasterPack: s.rate_per_master_pack ?? "",
+                    priceValidityTill: s.price_validity_till || "",
+                    moq: s.moq ?? "",
+                    sampleAvailable: s.sample_available || false,
+                    samplePrice: s.sample_price ?? "",
+                    priceSlabs: s.price_slabs || [],
+                    quantityDiscounts: s.quantity_discounts || [],
+                    packSize: s.pack_size ?? "",
+                    unit: s.unit || "",
+                    unitsPerMasterPack: s.units_per_master_pack ?? "",
+                    masterPackSize: s.master_pack_size ?? "",
+                    packagingType: s.packaging_type || "",
+                    stockQuantity: s.stock_quantity ?? "",
+                    stockType: s.stock_type || "ready_stock",
+                    dispatchTimeDays: s.dispatch_time_days ?? "",
+                    productionLeadTimeDays: s.production_lead_time_days ?? "",
+                    sellerLocation: s.seller_location || "",
+                    dispatchLocation: s.dispatch_location || "",
+                    deliveryTimeline: s.delivery_timeline || "",
+                    freightTerms: s.freight_terms || "",
+                    hsnCode: s.hsn_code || "",
+                    gstRegistrationStatus: s.gst_registration_status || "regular",
+                    taxInvoiceAvailable: s.tax_invoice_available ?? true,
+                    paymentTerms: s.payment_terms || "",
+                    returnPolicy: s.return_policy || "",
+                    warranty: s.warranty || "",
+                    qualityCertificates: s.quality_certificates || [],
+                    tdsMsdsCoa: s.tds_msds_coa || [],
+                    otherCertifications: s.other_certifications || [],
+                });
+                setImages(s.images?.length ? s.images : (s.image ? [s.image] : []));
+            } else {
+                setError(res?.message || "Couldn't load this listing.");
+            }
+            setLoading(false);
+        })();
+        return () => { cancelled = true; };
+    }, [token, submissionId]);
+
+    const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+    const removeImageAt = (i) => setImages((imgs) => imgs.filter((_, idx) => idx !== i));
+
+    const finalPrice = form ? Math.round(Number(form.basePrice || 0) * (1 + Number(form.gstPercent || 0) / 100) * 100) / 100 : 0;
 
     async function handleSave() {
         setError("");
-        if (!productName.trim() || !brandName.trim()) return setError("Product name and brand name are required.");
-        if (!(Number(price) > 0)) return setError("Price must be greater than 0.");
-        if (!(Number(moq) > 0)) return setError("MOQ must be greater than 0.");
-        if (!unit) return setError("Select a unit.");
-        if (!(Number(leadTime) >= 0)) return setError("Lead time must be a valid number of days.");
+        if (!form.productName.trim() || !form.brandName.trim()) return setError("Product name and brand name are required.");
+        if (!(Number(form.basePrice) > 0)) return setError("Base price must be greater than 0.");
+        if (!(Number(form.moq) > 0)) return setError("MOQ must be greater than 0.");
+        if (!form.unit) return setError("Select a unit.");
         if (!images.length) return setError("At least one image is required.");
 
         setSaving(true);
         try {
-            const res = await adminUpdateSellerSubmission(token, item.id, {
-                productName: productName.trim(),
-                brandName: brandName.trim(),
-                price: Number(price),
-                moq: Number(moq),
-                unit,
-                leadTime: Number(leadTime),
+            const res = await adminUpdateSellerSubmission(token, submissionId, {
+                productName: form.productName.trim(),
+                brandName: form.brandName.trim(),
                 images,
+                manufacturer: form.manufacturer,
+                modelNo: form.modelNo,
+                gradeVariant: form.gradeVariant,
+                specifications: form.specifications,
+                basePrice: form.basePrice,
+                gstPercent: form.gstPercent,
+                ratePerPack: form.ratePerPack,
+                ratePerMasterPack: form.ratePerMasterPack,
+                priceValidityTill: form.priceValidityTill,
+                moq: form.moq,
+                sampleAvailable: form.sampleAvailable,
+                samplePrice: form.samplePrice,
+                priceSlabs: form.priceSlabs,
+                quantityDiscounts: form.quantityDiscounts,
+                packSize: form.packSize,
+                unit: form.unit,
+                unitsPerMasterPack: form.unitsPerMasterPack,
+                masterPackSize: form.masterPackSize,
+                packagingType: form.packagingType,
+                stockQuantity: form.stockQuantity,
+                stockType: form.stockType,
+                dispatchTimeDays: form.dispatchTimeDays,
+                productionLeadTimeDays: form.productionLeadTimeDays,
+                sellerLocation: form.sellerLocation,
+                dispatchLocation: form.dispatchLocation,
+                deliveryTimeline: form.deliveryTimeline,
+                freightTerms: form.freightTerms,
+                hsnCode: form.hsnCode,
+                gstRegistrationStatus: form.gstRegistrationStatus,
+                taxInvoiceAvailable: form.taxInvoiceAvailable,
+                paymentTerms: form.paymentTerms,
+                returnPolicy: form.returnPolicy,
+                warranty: form.warranty,
+                qualityCertificates: form.qualityCertificates,
+                tdsMsdsCoa: form.tdsMsdsCoa,
+                otherCertifications: form.otherCertifications,
             });
             if (!res?.success) throw new Error(res?.message || "Couldn't save changes.");
             onSaved();
@@ -284,69 +447,173 @@ function EditSubmissionModal({ token, item, onClose, onSaved }) {
 
     return (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4" onClick={onClose}>
-            <div onClick={(e) => e.stopPropagation()} className="flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white sm:max-w-md sm:rounded-2xl">
+            <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white sm:max-w-2xl sm:rounded-2xl">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-                    <h3 className="text-[16px] font-extrabold text-slate-900">Edit listing</h3>
+                    <h3 className="text-[16px] font-extrabold text-slate-900">Edit listing — full commercial spec</h3>
                     <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"><X className="h-4.5 w-4.5" /></button>
                 </div>
 
-                <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
-                    <Field label="Product name *" value={productName} onChange={setProductName} />
-                    <Field label="Brand name *" value={brandName} onChange={setBrandName} />
+                {loading && (
+                    <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
+                )}
 
-                    <div>
-                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Images</label>
-                        <div className="flex flex-wrap gap-2">
-                            {images.map((src, i) => (
-                                <div key={src + i} className="relative h-20 w-20">
-                                    <img src={src} alt="" className="h-full w-full rounded-lg border border-slate-200 object-cover" />
-                                    <button type="button" onClick={() => removeImageAt(i)}
-                                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] leading-none text-white">×</button>
-                                    {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-black/60 py-0.5 text-center text-[8.5px] font-bold text-white">Cover</span>}
+                {!loading && form && (
+                    <div className="flex flex-1 flex-col gap-3.5 overflow-y-auto px-5 py-4">
+                        <Accordion icon={Package} title="Product" subtitle="Identity, specs & photos" defaultOpen>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field label="Product name" required><TextInput value={form.productName} onChange={(e) => set("productName", e.target.value)} /></Field>
+                                <Field label="Brand name" required><TextInput value={form.brandName} onChange={(e) => set("brandName", e.target.value)} /></Field>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field label="Manufacturer"><TextInput value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} /></Field>
+                                <Field label="Model / Part No. / SKU"><TextInput value={form.modelNo} onChange={(e) => set("modelNo", e.target.value)} /></Field>
+                            </div>
+                            <Field label="Grade / Variant"><TextInput value={form.gradeVariant} onChange={(e) => set("gradeVariant", e.target.value)} /></Field>
+                            <Field label="Specifications">
+                                <RowsEditor rows={form.specifications} onChange={(rows) => set("specifications", rows)} addLabel="Add specification"
+                                    columns={[{ key: "key", placeholder: "Attribute" }, { key: "value", placeholder: "Value" }]} />
+                            </Field>
+                            <Field label={`Images (${images.length})`} required>
+                                <div className="flex flex-wrap gap-2">
+                                    {images.map((src, i) => (
+                                        <div key={src + i} className="relative h-20 w-20">
+                                            <img src={src} alt="" className="h-full w-full rounded-lg border border-slate-200 object-cover" />
+                                            <button type="button" onClick={() => removeImageAt(i)}
+                                                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] leading-none text-white">×</button>
+                                            {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-black/60 py-0.5 text-center text-[8.5px] font-bold text-white">Cover</span>}
+                                        </div>
+                                    ))}
+                                    {images.length === 0 && <p className="text-[12px] font-medium text-slate-400">No images left — needs at least one.</p>}
                                 </div>
-                            ))}
-                            {images.length === 0 && <p className="text-[12px] font-medium text-slate-400">No images left — this listing needs at least one.</p>}
-                        </div>
+                                <p className="mt-1 text-[11px] font-medium text-slate-400">Adding a brand-new photo file isn't supported here yet — remove/reorder only. Upload new photos via the catalog brand-item editor.</p>
+                            </Field>
+                        </Accordion>
+
+                        <Accordion icon={IndianRupee} title="Pricing" subtitle="Base price, GST & validity" defaultOpen>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field label="Base price (₹, excl. GST)" required>
+                                    <TextInput inputMode="decimal" value={form.basePrice} onChange={(e) => set("basePrice", e.target.value.replace(/[^\d.]/g, ""))} />
+                                </Field>
+                                <Field label="GST %" required>
+                                    <SelectInput value={form.gstPercent} onChange={(e) => set("gstPercent", Number(e.target.value))}>
+                                        {GST_OPTIONS.map((g) => <option key={g} value={g}>{g}%</option>)}
+                                    </SelectInput>
+                                </Field>
+                            </div>
+                            <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-[12.5px] font-bold text-slate-700">
+                                Final price (incl. GST): <span className="text-[#047084]">₹{finalPrice.toLocaleString("en-IN")}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field label="Rate per pack (₹)"><TextInput inputMode="decimal" value={form.ratePerPack} onChange={(e) => set("ratePerPack", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
+                                <Field label="Rate per master pack (₹)"><TextInput inputMode="decimal" value={form.ratePerMasterPack} onChange={(e) => set("ratePerMasterPack", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
+                            </div>
+                            <Field label="Price validity till" required><TextInput type="date" value={form.priceValidityTill} onChange={(e) => set("priceValidityTill", e.target.value)} /></Field>
+                        </Accordion>
+
+                        <Accordion icon={Boxes} title="Quantity" subtitle="MOQ, samples & bulk pricing">
+                            <Field label="MOQ" required><TextInput inputMode="decimal" value={form.moq} onChange={(e) => set("moq", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
+                            <ToggleRow label="Sample available" checked={form.sampleAvailable} onChange={(v) => set("sampleAvailable", v)} />
+                            {form.sampleAvailable && <Field label="Sample price (₹)"><TextInput inputMode="decimal" value={form.samplePrice} onChange={(e) => set("samplePrice", e.target.value.replace(/[^\d.]/g, ""))} /></Field>}
+                            <Field label="Order quantity price slabs">
+                                <RowsEditor rows={form.priceSlabs} onChange={(rows) => set("priceSlabs", rows)} addLabel="Add price slab"
+                                    columns={[{ key: "minQty", placeholder: "Min qty" }, { key: "maxQty", placeholder: "Max qty" }, { key: "price", placeholder: "₹ price" }]} />
+                            </Field>
+                            <Field label="Quantity discounts">
+                                <RowsEditor rows={form.quantityDiscounts} onChange={(rows) => set("quantityDiscounts", rows)} addLabel="Add discount tier"
+                                    columns={[{ key: "minQty", placeholder: "Min qty" }, { key: "discountPercent", placeholder: "Discount %" }]} />
+                            </Field>
+                        </Accordion>
+
+                        <Accordion icon={Archive} title="Packaging" subtitle="Pack size & unit of measurement">
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field label="Pack size" required><TextInput inputMode="decimal" value={form.packSize} onChange={(e) => set("packSize", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
+                                <Field label="Unit of measurement" required>
+                                    <SelectInput value={form.unit} onChange={(e) => set("unit", e.target.value)}>
+                                        <option value="" disabled>Select…</option>
+                                        {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                                    </SelectInput>
+                                </Field>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field label="Units per master pack"><TextInput inputMode="decimal" value={form.unitsPerMasterPack} onChange={(e) => set("unitsPerMasterPack", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
+                                <Field label="Master pack size"><TextInput inputMode="decimal" value={form.masterPackSize} onChange={(e) => set("masterPackSize", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
+                            </div>
+                            <Field label="Packaging type"><TextInput value={form.packagingType} onChange={(e) => set("packagingType", e.target.value)} /></Field>
+                        </Accordion>
+
+                        <Accordion icon={Boxes} title="Availability" subtitle="Stock & dispatch readiness">
+                            <Field label="Stock available" required><TextInput inputMode="decimal" value={form.stockQuantity} onChange={(e) => set("stockQuantity", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
+                            <Field label="Fulfilment type" required>
+                                <SelectInput value={form.stockType} onChange={(e) => set("stockType", e.target.value)}>
+                                    <option value="ready_stock">Ready stock</option>
+                                    <option value="made_to_order">Made-to-order</option>
+                                </SelectInput>
+                            </Field>
+                            <Field label="Expected dispatch time (days)" required><TextInput inputMode="numeric" value={form.dispatchTimeDays} onChange={(e) => set("dispatchTimeDays", e.target.value.replace(/[^\d]/g, ""))} /></Field>
+                            {form.stockType === "made_to_order" && (
+                                <Field label="Production lead time (days)" required><TextInput inputMode="numeric" value={form.productionLeadTimeDays} onChange={(e) => set("productionLeadTimeDays", e.target.value.replace(/[^\d]/g, ""))} /></Field>
+                            )}
+                        </Accordion>
+
+                        <Accordion icon={Truck} title="Delivery" subtitle="Locations, timeline & freight">
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field label="Seller location" required><TextInput value={form.sellerLocation} onChange={(e) => set("sellerLocation", e.target.value)} /></Field>
+                                <Field label="Dispatch location" required><TextInput value={form.dispatchLocation} onChange={(e) => set("dispatchLocation", e.target.value)} /></Field>
+                            </div>
+                            <Field label="Delivery timeline" required><TextInput value={form.deliveryTimeline} onChange={(e) => set("deliveryTimeline", e.target.value)} /></Field>
+                            <Field label="Freight terms"><TextArea value={form.freightTerms} onChange={(e) => set("freightTerms", e.target.value)} rows={2} /></Field>
+                        </Accordion>
+
+                        <Accordion icon={FileText} title="Tax & Legal" subtitle="HSN, GST & invoicing">
+                            <div className="grid grid-cols-2 gap-3">
+                                <Field label="HSN Code" required><TextInput value={form.hsnCode} onChange={(e) => set("hsnCode", e.target.value)} /></Field>
+                                <Field label="GST registration status" required>
+                                    <SelectInput value={form.gstRegistrationStatus} onChange={(e) => set("gstRegistrationStatus", e.target.value)}>
+                                        <option value="regular">Regular</option>
+                                        <option value="composition">Composition</option>
+                                        <option value="unregistered">Unregistered</option>
+                                    </SelectInput>
+                                </Field>
+                            </div>
+                            <ToggleRow label="Tax invoice available" checked={form.taxInvoiceAvailable} onChange={(v) => set("taxInvoiceAvailable", v)} />
+                        </Accordion>
+
+                        <Accordion icon={Handshake} title="Commercial Terms" subtitle="Payment, returns & warranty">
+                            <Field label="Payment terms" required><TextArea value={form.paymentTerms} onChange={(e) => set("paymentTerms", e.target.value)} rows={2} /></Field>
+                            <Field label="Return / replacement policy" required><TextArea value={form.returnPolicy} onChange={(e) => set("returnPolicy", e.target.value)} rows={3} /></Field>
+                            <Field label="Warranty"><TextInput value={form.warranty} onChange={(e) => set("warranty", e.target.value)} /></Field>
+                        </Accordion>
+
+                        <Accordion icon={ShieldCheck} title="Quality & Certifications" subtitle="Optional — builds buyer trust">
+                            <Field label="Certificates">
+                                <RowsEditor rows={form.qualityCertificates} onChange={(rows) => set("qualityCertificates", rows)} addLabel="Add certificate"
+                                    columns={[{ key: "name", placeholder: "Certificate name" }, { key: "url", placeholder: "Link to file" }]} />
+                            </Field>
+                            <Field label="TDS / MSDS / COA">
+                                <RowsEditor rows={form.tdsMsdsCoa} onChange={(rows) => set("tdsMsdsCoa", rows)} addLabel="Add document"
+                                    columns={[{ key: "type", placeholder: "Document type" }, { key: "url", placeholder: "Link to file" }]} />
+                            </Field>
+                            <Field label="BIS / ISO / other certification">
+                                <RowsEditor rows={form.otherCertifications} onChange={(rows) => set("otherCertifications", rows)} addLabel="Add certification"
+                                    columns={[{ key: "name", placeholder: "Certification name" }, { key: "url", placeholder: "Link to file" }]} />
+                            </Field>
+                        </Accordion>
+
+                        {error && <p className="text-[12.5px] font-semibold text-[#c71f11]">{error}</p>}
                     </div>
+                )}
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <Field label="Price (₹) *" value={price} onChange={(v) => setPrice(v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
-                        <Field label="MOQ *" value={moq} onChange={(v) => setMoq(v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
+                {!loading && form && (
+                    <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3.5">
+                        <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[13px] font-bold text-slate-500">Cancel</button>
+                        <button onClick={handleSave} disabled={saving}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#047084] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50">
+                            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                            Save changes
+                        </button>
                     </div>
-
-                    <div>
-                        <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Unit *</label>
-                        <select value={unit} onChange={(e) => setUnit(e.target.value)}
-                            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25">
-                            <option value="" disabled>Select unit…</option>
-                            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-                        </select>
-                    </div>
-
-                    <Field label="Lead time (days) *" value={leadTime} type="number" min="0" onChange={(v) => setLeadTime(v.replace(/[^\d]/g, ""))} placeholder="e.g. 7" />
-
-                    {error && <p className="text-[12.5px] font-semibold text-[#c71f11]">{error}</p>}
-                </div>
-
-                <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3.5">
-                    <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[13px] font-bold text-slate-500">Cancel</button>
-                    <button onClick={handleSave} disabled={saving}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#047084] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50">
-                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                        Save changes
-                    </button>
-                </div>
+                )}
             </div>
-        </div>
-    );
-}
-
-function Field({ label, value, onChange, placeholder, inputMode, type = "text", min }) {
-    return (
-        <div>
-            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">{label}</label>
-            <input type={type} min={min} value={value} inputMode={inputMode} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
         </div>
     );
 }

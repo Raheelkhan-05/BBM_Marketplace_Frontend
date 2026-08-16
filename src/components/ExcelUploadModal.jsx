@@ -69,9 +69,18 @@ export default function ExcelUploadModal({ token, isOpen, onClose, level, label,
                         <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); }} />
                     </label>
                     {level === "brand_item" && (
-                        <p className="text-[11.5px] font-medium text-slate-400">
-                            For multiple photos, separate the links with a comma in the "Image Links" column. The first link becomes the cover photo.
-                        </p>
+                        <div className="flex flex-col gap-1">
+                            <p className="text-[11.5px] font-medium text-slate-400">
+                                Columns: Product Name, Brand Name, Manufacturer, Model/Part No/SKU (all required),
+                                Grade/Variant (optional), Specifications (optional), and Image Links.
+                            </p>
+                            <p className="text-[11.5px] font-medium text-slate-400">
+                                For multiple photos, separate the links with a comma in the "Image Links" column. The first link becomes the cover photo.
+                            </p>
+                            <p className="text-[11.5px] font-medium text-slate-400">
+                                For Specifications, use "Key: Value" pairs separated by a semicolon — e.g. "Material: Stainless Steel 304; Finish: Matte; Weight: 1.2kg".
+                            </p>
+                        </div>
                     )}
 
                     {error && <p className="text-[12.5px] font-semibold text-[#c71f11]">{error}</p>}

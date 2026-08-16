@@ -1,7 +1,7 @@
 // src/components/CreateSimpleCatalogModal.jsx
 import { useEffect, useState } from "react";
-import { X, Loader2, Plus, ImagePlus, Save } from "lucide-react";
-import { adminCreateCatalogEntry, adminUpdateCatalogEntry, adminUploadCatalogImage } from "../utils/api.js";
+import { X, Loader2, Plus, ImagePlus, Save, Trash2 } from "lucide-react";
+import { adminCreateCatalogEntry, adminUpdateCatalogEntry, adminUploadCatalogImage, adminGetCatalogEntry } from "../utils/api.js";
 
 const LEVEL_META = {
     category: { title: "category", folder: "categories" },
@@ -11,14 +11,25 @@ const LEVEL_META = {
 };
 
 // Handles create AND edit for every "simple" catalog level — category,
-// subcategory, generic_product, and brand_item. brand_item gets a
-// multi-image gallery (name + brand_name + images[]); every other level
-// keeps the original single-image shape (name + image).
+// subcategory, generic_product, and brand_item. brand_item is IDENTITY
+// ONLY (this is the catalog's canonical description of the product, not
+// a seller's commercial listing of it): name + brand_name + manufacturer
+// + model/part no./SKU + grade/variant + specifications + images[].
+// Commercial terms (price, MOQ, packaging, delivery, etc.) are entered
+// per-seller elsewhere (seller_product_submissions / SellerListingForm)
+// and never touched here. Every other level keeps the original
+// single-image shape (name + image).
 export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level, parentId, onCreated, onUpdated, editEntry }) {
     const isEdit = !!editEntry;
     const isBrandItem = level === "brand_item";
     const [name, setName] = useState("");
     const [brandName, setBrandName] = useState("");
+
+    // Brand-item-only identity fields
+    const [manufacturer, setManufacturer] = useState("");
+    const [modelNo, setModelNo] = useState("");
+    const [gradeVariant, setGradeVariant] = useState("");
+    const [specifications, setSpecifications] = useState([]); // [{ key, value }]
 
     // Multi-image state (brand_item only)
     const [imageFiles, setImageFiles] = useState([]);       // newly picked File objects, in order
@@ -30,30 +41,71 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    // Edit mode (brand_item only) re-fetches the full row via GET /:level/:id
+    // when the modal opens, rather than trusting whatever columns the LIST
+    // query happens to include — the list is intentionally lightweight and
+    // can lag behind full-record fields like `specifications` (a jsonb
+    // column that's easy to forget to add to a hand-maintained SELECT list).
+    // This makes the edit form correct regardless of that.
+    const [loadingFull, setLoadingFull] = useState(false);
 
     useEffect(() => {
         if (isOpen && editEntry) {
             setName(editEntry.name || "");
             setBrandName(editEntry.brand_name || "");
             if (isBrandItem) {
+                setManufacturer(editEntry.manufacturer || "");
+                setModelNo(editEntry.model_no || "");
+                setGradeVariant(editEntry.grade_variant || "");
+                setSpecifications(editEntry.specifications || []);
                 setImagePreviews(editEntry?.images?.length ? editEntry.images : editEntry?.image ? [editEntry.image] : []);
                 setImageFiles([]);
+
+                // Refresh from the full record so fields the list row
+                // might be missing (specifications, etc.) always show up.
+                if (token && editEntry.id) {
+                    setLoadingFull(true);
+                    adminGetCatalogEntry(token, "brand_item", editEntry.id).then((res) => {
+                        if (!res?.success) { setLoadingFull(false); return; }
+                        const full = res.entry;
+                        setName(full.name || "");
+                        setBrandName(full.brand_name || "");
+                        setManufacturer(full.manufacturer || "");
+                        setModelNo(full.model_no || "");
+                        setGradeVariant(full.grade_variant || "");
+                        setSpecifications(full.specifications || []);
+                        setImagePreviews(full?.images?.length ? full.images : full?.image ? [full.image] : []);
+                        setLoadingFull(false);
+                    });
+                }
             } else {
                 setImagePreview(editEntry.image || null);
                 setImageFile(null);
             }
         } else if (isOpen) {
             setName(""); setBrandName("");
+            setManufacturer(""); setModelNo(""); setGradeVariant(""); setSpecifications([]);
             setImagePreviews([]); setImageFiles([]);
             setImagePreview(null); setImageFile(null);
         }
         setError("");
-    }, [isOpen, editEntry, isBrandItem]);
+    }, [isOpen, editEntry, isBrandItem, token]);
 
     if (!isOpen || !level) return null;
     const meta = LEVEL_META[level];
 
     function handleClose() { onClose(); }
+
+    // --- specifications editor (brand_item) ---
+    function updateSpec(i, field, val) {
+        setSpecifications((rows) => rows.map((r, idx) => (idx === i ? { ...r, [field]: val } : r)));
+    }
+    function removeSpec(i) {
+        setSpecifications((rows) => rows.filter((_, idx) => idx !== i));
+    }
+    function addSpec() {
+        setSpecifications((rows) => [...rows, { key: "", value: "" }]);
+    }
 
     // --- multi-image handlers (brand_item) ---
     function handleFiles(e) {
@@ -89,6 +141,8 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
         const trimmed = name.trim();
         if (trimmed.length < 2) return setError("Name must be at least 2 characters.");
         if (isBrandItem && !brandName.trim()) return setError("Brand name is required.");
+        if (isBrandItem && !manufacturer.trim()) return setError("Manufacturer is required.");
+        if (isBrandItem && !modelNo.trim()) return setError("Model / Part No. / SKU is required.");
         if (!isEdit && level !== "category" && !parentId) return setError("Missing parent — please reopen this from inside the list.");
 
         setSaving(true);
@@ -102,9 +156,14 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
                     if (!up?.success) throw new Error(up?.message || "Image upload failed.");
                     finalUrls.push(up.url);
                 }
+                if (!finalUrls.length) throw new Error("At least one product image is required.");
                 payload.images = finalUrls;
                 payload.image = finalUrls[0] || null;
                 payload.brand_name = brandName.trim();
+                payload.manufacturer = manufacturer.trim();
+                payload.model_no = modelNo.trim();
+                payload.grade_variant = gradeVariant.trim() || null;
+                payload.specifications = specifications.filter((s) => s?.key?.trim());
             } else {
                 let imageUrl = imagePreview && !imageFile ? editEntry?.image : null;
                 if (imageFile) {
@@ -135,12 +194,12 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
 
     return (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4" onClick={handleClose}>
-            <div onClick={(e) => e.stopPropagation()} className="flex w-full flex-col rounded-t-2xl bg-white sm:max-w-sm sm:rounded-2xl">
+            <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white sm:max-w-sm sm:rounded-2xl">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                     <h3 className="text-[16px] font-extrabold text-slate-900">{isEdit ? `Edit ${meta.title}` : `Add ${meta.title}`}</h3>
                     <button onClick={handleClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"><X className="h-4.5 w-4.5" /></button>
                 </div>
-                <div className="flex flex-col gap-4 px-5 py-4">
+                <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
                     <div>
                         <label className="mb-1.5 block text-[12px] font-bold text-slate-500">{isBrandItem ? "Product name *" : "Name *"}</label>
                         <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
@@ -148,15 +207,67 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
                     </div>
                     {isBrandItem && (
                         <div>
-                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Brand name *</label>
+                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Brand *</label>
                             <input value={brandName} onChange={(e) => setBrandName(e.target.value)}
                                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                        </div>
+                    )}
+                    {isBrandItem && (
+                        <div>
+                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Manufacturer *</label>
+                            <input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                        </div>
+                    )}
+                    {isBrandItem && (
+                        <div>
+                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Model / Part No. / SKU *</label>
+                            <input value={modelNo} onChange={(e) => setModelNo(e.target.value)}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                        </div>
+                    )}
+                    {isBrandItem && (
+                        <div>
+                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Product Grade / Variant</label>
+                            <input value={gradeVariant} onChange={(e) => setGradeVariant(e.target.value)} placeholder="Where applicable"
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                        </div>
+                    )}
+                    {isBrandItem && (
+                        <div>
+                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">
+                                Specifications / Technical Data Sheet {loadingFull && <span className="font-normal text-slate-400">(loading…)</span>}
+                            </label>
+                            <div className="flex flex-col gap-2">
+                                {specifications.map((row, i) => (
+                                    <div key={i} className="flex items-center gap-1.5">
+                                        <input
+                                            value={row.key || ""}
+                                            placeholder="Attribute (e.g. Material)"
+                                            onChange={(e) => updateSpec(i, "key", e.target.value)}
+                                            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25"
+                                        />
+                                        <input
+                                            value={row.value || ""}
+                                            placeholder="Value (e.g. SS304)"
+                                            onChange={(e) => updateSpec(i, "value", e.target.value)}
+                                            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25"
+                                        />
+                                        <button type="button" onClick={() => removeSpec(i)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-red-50">
+                                            <Trash2 className="h-3.5 w-3.5 text-[#c71f11]" />
+                                        </button>
+                                    </div>
+                                ))}
+                                <button type="button" onClick={addSpec} className="flex w-fit items-center gap-1 text-[12px] font-bold text-[#047084]">
+                                    <Plus className="h-3.5 w-3.5" /> Add specification
+                                </button>
+                            </div>
                         </div>
                     )}
 
                     {isBrandItem ? (
                         <div>
-                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Images {imagePreviews.length > 0 && `(${imagePreviews.length})`}</label>
+                            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Images {imagePreviews.length > 0 && `(${imagePreviews.length})`} *</label>
                             <div className="flex flex-wrap gap-2">
                                 {imagePreviews.map((src, i) => (
                                     <div key={src + i} className="relative h-20 w-20">

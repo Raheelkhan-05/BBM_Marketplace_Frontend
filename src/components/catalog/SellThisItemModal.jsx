@@ -1,48 +1,18 @@
-// components/catalog/SellThisItemModal.jsx
-//
-// Extracted out of BrandItemSellersPage.jsx (v2) so it can be reused
-// from anywhere a "brand item" is known — originally only reachable
-// after drilling into the sellers page, now also opened directly from
-// BrowsePage via BuySellChoiceSheet. Logic, copy, gating states and
-// API calls are unchanged from the original inline version; only the
-// file location changed.
-
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { X, Loader2, CheckCircle2, Lock, Package, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Package, X, Loader2, CheckCircle2, Lock, Clock, IndianRupee } from "lucide-react";
-import { fetchSellerAccessStatus, createSellerListingForBrand, uploadSellerFile } from "../../utils/api";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { C, EASE } from "./tokens";
-
-const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
-
-function TextField({ label, value, onChange, placeholder, inputMode, type = "text" }) {
-    return (
-        <div className="flex flex-col gap-1">
-            <label className="text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{label}</label>
-            <input
-                type={type}
-                value={value}
-                inputMode={inputMode}
-                placeholder={placeholder}
-                onChange={(e) => onChange(e.target.value)}
-                className="w-full rounded-lg border-2 px-3.5 py-2.5 text-[14px] font-semibold focus:outline-none focus:ring-4"
-                style={{ borderColor: C.hairSoft, color: C.ink, "--tw-ring-color": `${C.secondary}20` }}
-            />
-        </div>
-    );
-}
+import { fetchSellerAccessStatus, createSellerListingForBrand } from "../../utils/api.js";
+import SellerListingForm from "../seller/listingForm/SellerListingForm.jsx";
+import { C, EASE } from "../catalog/tokens.js";
 
 export default function SellThisItemModal({ brand, onClose }) {
     const { token } = useAuth();
     const navigate = useNavigate();
 
-    const [access, setAccess] = useState(undefined); // undefined = loading
-    const [form, setForm] = useState({ price: "", moq: "", unit: "", leadTime: "", image: brand?.image || "" });
-    const [uploadingImage, setUploadingImage] = useState(false);
+    const [access, setAccess] = useState(undefined);
     const [submitting, setSubmitting] = useState(false);
-    const [error, setError] = useState(null);
     const [done, setDone] = useState(null);
 
     useEffect(() => {
@@ -55,50 +25,30 @@ export default function SellThisItemModal({ brand, onClose }) {
         return () => { cancelled = true; };
     }, [token]);
 
-    const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
-
-    const handleImageFile = async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setUploadingImage(true);
-        setError(null);
-        try {
-            const res = await uploadSellerFile(token, file, "listings");
-            if (!res?.success) throw new Error("Image upload failed.");
-            setField("image", res.url);
-        } catch (err) {
-            setError(err.message || "Image upload failed.");
-        } finally {
-            setUploadingImage(false);
-            e.target.value = "";
-        }
+    // Prefill the Product section straight from the already-approved
+    // brand record — this is display-only; the server re-derives and
+    // enforces the same values on submit, so this can't be tampered with.
+    const initialValues = {
+        productName: brand?.name || "",
+        brandName: brand?.brand_name || "",
+        manufacturer: brand?.manufacturer || "",
+        modelNo: brand?.model_no || "",
+        gradeVariant: brand?.grade_variant || "",
+        specifications: Array.isArray(brand?.specifications) ? brand.specifications : [],
+        images: brand?.images?.length ? brand.images : (brand?.image ? [brand.image] : []),
     };
 
-    const handleSubmit = async () => {
-        const missing = [];
-        if (!(Number(form.price) > 0)) missing.push("Price");
-        if (!(Number(form.moq) > 0)) missing.push("MOQ");
-        if (!form.unit) missing.push("Unit");
-        if (!(Number(form.leadTime) >= 0)) missing.push("Lead time");
-        if (missing.length) return setError(`Please fill: ${missing.join(", ")}`);
-
+    const handleSubmit = async (form) => {
         setSubmitting(true);
-        setError(null);
         try {
-            const res = await createSellerListingForBrand(token, {
-                genericProductBrandId: brand.id,
-                price: form.price,
-                moq: form.moq,
-                unit: form.unit,
-                leadTime: Number(form.leadTime),
-                image: form.image || undefined,
-            });
+            const res = await createSellerListingForBrand(token, { genericProductBrandId: brand.id, ...form });
             if (!res?.success) {
                 if (["NOT_AUTHENTICATED", "SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"].includes(res?.code)) {
                     setAccess({ canPublish: false, reason: res.code, sellerStatus: res.sellerStatus });
                     return;
                 }
-                return setError(res?.message || "Couldn't submit. Please check the required fields.");
+                window.alert(res?.message || "Couldn't submit. Please check the required fields.");
+                return;
             }
             setDone(res);
         } finally {
@@ -125,7 +75,7 @@ export default function SellThisItemModal({ brand, onClose }) {
             onClick={onClose}
         >
             <motion.div
-                className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-white p-5 sm:rounded-[24px] sm:p-6"
+                className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-[28px] bg-white p-5 sm:rounded-[24px] sm:p-6"
                 initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }}
                 onClick={(e) => e.stopPropagation()}
             >
@@ -164,45 +114,22 @@ export default function SellThisItemModal({ brand, onClose }) {
                                 <X className="h-4 w-4" style={{ color: C.muted }} />
                             </button>
                         </div>
-
                         <p className="mt-3 text-[12.5px] font-medium" style={{ color: C.muted }}>
-                            Just add your price and terms — the product listing itself is already approved.
+                            The product identity is already approved — just add your commercial terms below.
                         </p>
-
-                        <div className="mt-5 flex flex-col gap-4">
-                            <TextField label="Price (₹)" value={form.price} onChange={(v) => setField("price", v.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="e.g. 450" />
-                            <TextField label="MOQ (minimum order quantity)" value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="e.g. 100" />
-                            <div className="flex flex-col gap-1">
-                                <label className="text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Unit</label>
-                                <select
-                                    value={form.unit}
-                                    onChange={(e) => setField("unit", e.target.value)}
-                                    className="w-full rounded-lg border-2 px-3.5 py-2.5 text-[14px] font-semibold focus:outline-none focus:ring-4"
-                                    style={{ borderColor: C.hairSoft, color: C.ink }}
-                                >
-                                    <option value="" disabled>Select unit…</option>
-                                    {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-                                </select>
-                            </div>
-                            <TextField
-                                label="Lead time (days)"
-                                value={form.leadTime}
-                                onChange={(v) => setField("leadTime", v.replace(/[^\d]/g, ""))}
-                                type="number"
-                                placeholder="e.g. 7"
+                        <div className="mt-5">
+                            <SellerListingForm
+                                mode="claim"
+                                identityReadOnly
+                                productReadOnly
+                                initialValues={initialValues}
+                                stickyFooter={false}
+                                brandDisplay={{ name: brand?.name, brandName: brand?.brand_name, image: brand?.image }}
+                                onSubmit={handleSubmit}
+                                submitting={submitting}
+                                submitLabel="Submit for review"
                             />
                         </div>
-
-                        {error && <p className="mt-4 text-[12px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
-
-                        <button
-                            onClick={handleSubmit}
-                            disabled={submitting}
-                            className="mt-6 flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white"
-                            style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}
-                        >
-                            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit for review <IndianRupee className="h-4 w-4" /></>}
-                        </button>
                     </>
                 )}
             </motion.div>

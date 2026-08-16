@@ -532,7 +532,7 @@ export async function adminGetSellerSubmission(token, id) {
 }
 
 export async function adminUpdateSellerSubmission(token, id, payload) {
-  const res = await fetch(`${API_BASE}/api/admin/seller-submissions/${id}`, {
+  const res = await fetch(`${API_BASE}/admin/seller-submissions/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
@@ -754,6 +754,13 @@ export async function setSellerSubmissionActive(token, id, isActive) {
     method: "PATCH",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ isActive }),
+  });
+  return res.json();
+}
+
+export async function adminListBrandItemSubmissions(token, brandItemId) {
+  const res = await fetch(`${API_BASE}/admin/seller-submissions/by-brand-item/${brandItemId}`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
   return res.json();
 }

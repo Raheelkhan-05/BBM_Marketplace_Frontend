@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { Loader2, ArrowLeft, Check, X, Save, ImageIcon, ChevronDown } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { AnimatePresence } from "framer-motion";
 import {
     adminGetCatalogEntry, adminUpdateCatalogEntry, adminApproveCatalogEntry,
     adminRejectCatalogEntry, adminGetCatalogOptions, adminCreateCatalogOption,
+    adminListBrandItemSubmissions,
 } from "../../utils/api.js";
 import CascadingHierarchyPicker from "../../components/CascadingHierarchyPicker.jsx";
 import ImageLightbox from "../../components/ImageLightbox";
@@ -14,8 +15,17 @@ const PARENT_FIELD = { subcategory: "category_id", product: "subcategory_id", br
 const PARENT_LEVEL = { subcategory: "category", product: "subcategory", brand: "product", generic_product: "subcategory" };
 const LEVEL_TO_PARENT_ID_FIELD = { subcategory: "category", product: "subcategory", brand: "product", generic_product: "subcategory" };
 const LEVEL_LABEL = { category: "Category", subcategory: "Subcategory", product: "Product", brand: "Brand Item", generic_product: "Generic Product" };
-const JSON_FIELDS = new Set(["variants", "attributes"]);
+// specifications is stored as jsonb key/value pairs — same free-form
+// editor treatment as variants/attributes.
+const JSON_FIELDS = new Set(["variants", "attributes", "specifications"]);
 const MULTILINE_FIELDS = new Set(["description", "overview", "tagline"]);
+// Nicer labels for the new brand_item identity fields than the default
+// title-cased-from-snake-case fallback would produce.
+const FIELD_LABEL_OVERRIDES = {
+    model_no: "Model / Part No. / SKU",
+    grade_variant: "Product Grade / Variant",
+    hsn_code: "HSN Code",
+};
 
 const STATUS_STYLE = {
     approved: { bg: "rgba(22,163,74,0.1)", fg: "#15803d", dot: "#22c55e" },
@@ -24,6 +34,7 @@ const STATUS_STYLE = {
 };
 
 function fieldLabel(key) {
+    if (FIELD_LABEL_OVERRIDES[key]) return FIELD_LABEL_OVERRIDES[key];
     return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -55,6 +66,14 @@ export default function AdminCatalogDetailPage() {
     const [parentRejected, setParentRejected] = useState(false);
     const [error, setError] = useState("");
 
+    // Linked seller listings — only relevant for level === "brand_item",
+    // since commercial terms (price/MOQ/packaging/delivery/etc.) live on
+    // seller_product_submissions, not on the brand item itself. Lets an
+    // admin editing a brand item's identity see who's actually selling
+    // it and jump straight to their full commercial-spec edit.
+    const [linkedSubmissions, setLinkedSubmissions] = useState([]);
+    const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+
     const load = useCallback(() => {
         setLoading(true);
         adminGetCatalogEntry(token, level, id).then((res) => {
@@ -64,7 +83,7 @@ export default function AdminCatalogDetailPage() {
                 setParentRejected(!!res.parentRejected);
                 const initial = {};
                 for (const key of res.editableFields) {
-                    initial[key] = JSON_FIELDS.has(key) ? JSON.stringify(res.entry[key] ?? (key === "variants" ? [] : {}), null, 2) : res.entry[key];
+                    initial[key] = JSON_FIELDS.has(key) ? JSON.stringify(res.entry[key] ?? (key === "specifications" ? [] : key === "variants" ? [] : {}), null, 2) : res.entry[key];
                 }
                 setForm(initial);
                 setChain({
@@ -79,6 +98,15 @@ export default function AdminCatalogDetailPage() {
 
     useEffect(() => { if (token) load(); }, [token, load]);
 
+    useEffect(() => {
+        if (level !== "brand_item" || !entry?.id || !token) { setLinkedSubmissions([]); return; }
+        setLoadingSubmissions(true);
+        adminListBrandItemSubmissions(token, entry.id).then((res) => {
+            setLinkedSubmissions(res?.success ? res.items : []);
+            setLoadingSubmissions(false);
+        });
+    }, [level, entry?.id, token]);
+
     function buildPayload() {
         const payload = {};
         for (const key of editableFields) {
@@ -89,9 +117,15 @@ export default function AdminCatalogDetailPage() {
                 payload[key] = form[key];
             }
         }
-        // hs_product_brands.brand_name is NOT NULL — block a save that would null it out
+        // hs_product_brands.brand_name / hs_generic_product_brands fields
+        // that are NOT NULL in the DB — block a save that would null them out.
         if (level === "brand" && !(payload.brand_name || "").trim()) {
             throw new Error("Brand name can't be empty.");
+        }
+        if (level === "brand_item") {
+            if (!(payload.brand_name || "").trim()) throw new Error("Brand name can't be empty.");
+            if (!(payload.manufacturer || "").trim()) throw new Error("Manufacturer can't be empty.");
+            if (!(payload.model_no || "").trim()) throw new Error("Model / Part No. / SKU can't be empty.");
         }
         const rung = LEVEL_TO_PARENT_ID_FIELD[level];
         if (rung) {
@@ -170,6 +204,11 @@ export default function AdminCatalogDetailPage() {
                 <div className="min-w-0 flex-1">
                     <p className="text-[11.5px] font-bold uppercase tracking-wide text-slate-400">{LEVEL_LABEL[level]}</p>
                     <h1 className="mt-0.5 truncate text-[19px] font-extrabold text-slate-900">{entry.name}</h1>
+                    {level === "brand_item" && (entry.manufacturer || entry.model_no) && (
+                        <p className="mt-0.5 truncate text-[12px] font-semibold text-slate-500">
+                            {entry.manufacturer}{entry.manufacturer && entry.model_no ? " · " : ""}{entry.model_no}
+                        </p>
+                    )}
                     <div className="mt-2 flex items-center gap-1.5">
                         <span className="h-1.5 w-1.5 rounded-full" style={{ background: tone.dot }} />
                         <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background: tone.bg, color: tone.fg }}>
@@ -205,16 +244,61 @@ export default function AdminCatalogDetailPage() {
                 </div>
             )}
 
+            {/* Seller listings — brand_item only. Identity lives here;
+                commercial terms live on seller_product_submissions. */}
+            {level === "brand_item" && (
+                <div className="mt-5 rounded-xl border border-slate-100 bg-white p-5">
+                    <p className="mb-1 text-[13px] font-bold text-slate-700">
+                        Seller listings {linkedSubmissions.length > 0 && `(${linkedSubmissions.length})`}
+                    </p>
+                    <p className="mb-3 text-[11.5px] font-medium text-slate-400">
+                        Commercial terms (price, MOQ, packaging, delivery, tax &amp; legal, quality) are set
+                        per-seller, not on this brand item — edit them from a specific listing below.
+                    </p>
+                    {loadingSubmissions && <div className="h-16 animate-pulse rounded-lg bg-slate-50" />}
+                    {!loadingSubmissions && linkedSubmissions.length === 0 && (
+                        <p className="rounded-lg bg-slate-50 px-3.5 py-3 text-[12.5px] font-medium text-slate-400">
+                            No seller has listed this item yet.
+                        </p>
+                    )}
+                    {!loadingSubmissions && linkedSubmissions.length > 0 && (
+                        <div className="divide-y divide-slate-100 rounded-lg border border-slate-100">
+                            {linkedSubmissions.map((s) => {
+                                const stone = STATUS_STYLE[s.review_status] || STATUS_STYLE.pending_review;
+                                return (
+                                    <Link
+                                        key={s.id}
+                                        to={`/admin/seller-submissions?highlight=${s.id}`}
+                                        className="flex items-center justify-between gap-3 px-3.5 py-2.5 hover:bg-slate-50"
+                                    >
+                                        <div className="min-w-0">
+                                            <p className="truncate text-[12.5px] font-bold text-slate-800">{s.seller?.display_name || "Unknown seller"}</p>
+                                            <p className="text-[11px] font-medium text-slate-400">
+                                                ₹{s.price} · MOQ {s.moq} {s.unit} · {s.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"}
+                                            </p>
+                                        </div>
+                                        <span className="shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: stone.bg, color: stone.fg }}>
+                                            {s.review_status.replace("_", " ")}
+                                        </span>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Fields */}
             <div className="mt-5 rounded-xl border border-slate-100 bg-white p-5">
                 <p className="mb-3 text-[13px] font-bold text-slate-700">Details</p>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {visibleFields.map((key) => {
                         const isWide = JSON_FIELDS.has(key) || MULTILINE_FIELDS.has(key);
+                        const isRequiredIdentityField = level === "brand_item" && ["brand_name", "manufacturer", "model_no"].includes(key);
                         return (
                             <div key={key} className={isWide ? "sm:col-span-2" : ""}>
                                 <label className="mb-1.5 block text-[12px] font-bold text-slate-500">
-                                    {fieldLabel(key)}{key === "brand_name" ? " *" : ""}
+                                    {fieldLabel(key)}{isRequiredIdentityField ? " *" : ""}
                                 </label>
                                 {JSON_FIELDS.has(key) ? (
                                     <textarea rows={4} value={form[key] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
@@ -225,6 +309,9 @@ export default function AdminCatalogDetailPage() {
                                 ) : (
                                     <input value={form[key] ?? ""} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                                )}
+                                {key === "specifications" && (
+                                    <p className="mt-1 text-[11px] font-medium text-slate-400">JSON array of {"{ key, value }"} pairs, e.g. [{"{"}"key":"Material","value":"SS304"{"}"}]</p>
                                 )}
                             </div>
                         );
