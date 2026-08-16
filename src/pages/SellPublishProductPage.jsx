@@ -90,7 +90,8 @@ export default function SellPublishProductPage() {
             if (isEdit) {
                 res = await updateSellerProductSubmission(token, submissionId, form);
             } else {
-                res = await createSellerSubmission(token, { genericProductId: path.genericProduct.id, ...form });
+                res = await createSellerSubmission(token, form); // form already has genericProductId
+                // res = await createSellerSubmission(token, { genericProductId: path.genericProduct.id, ...form });
             }
             if (!res?.success) {
                 if (["NOT_AUTHENTICATED", "SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"].includes(res?.code)) {
@@ -132,22 +133,8 @@ export default function SellPublishProductPage() {
                     : "Everything on one page. Save your Delivery, Tax & Legal, and Commercial Terms as groups once, and every future listing prefills from them."}
             </p>
 
-            {!isEdit && !path && (
-                <div className="mt-6 rounded-2xl border p-5 sm:p-7" style={{ borderColor: "rgba(11,17,22,0.09)" }}>
-                    <ProductPathPicker onSelect={setPath} />
-                </div>
-            )}
-
-            {(isEdit || path) && (
+            {(access?.canPublish) && (isEdit ? editRecord : true) && (
                 <div className="mt-6">
-                    {!isEdit && (
-                        <div className="mb-4 flex items-center justify-between rounded-xl border px-3.5 py-2.5" style={{ borderColor: "rgba(11,17,22,0.09)" }}>
-                            <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>
-                                {path.category.name} <span style={{ color: C.muted }}>›</span> {path.subcategory.name} <span style={{ color: C.muted }}>›</span> {path.genericProduct.name}
-                            </p>
-                            <button type="button" onClick={() => setPath(null)} className="text-[11.5px] font-bold underline" style={{ color: C.muted }}>Change</button>
-                        </div>
-                    )}
                     <SellerListingForm
                         mode={isEdit ? "edit" : "create"}
                         identityReadOnly={isEdit}

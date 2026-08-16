@@ -59,3 +59,25 @@ export async function updateListingTemplate(token, id, payload) {
 export async function deleteListingTemplate(token, id) {
     return authedJson(`/seller/catalog/templates/${id}`, token, { method: "DELETE" });
 }
+
+export async function fetchApprovedCategories(token, q = "") {
+    const params = new URLSearchParams({ q });
+    return authedJson(`/seller/catalog/categories?${params}`, token);
+}
+export async function fetchApprovedSubcategories(token, categoryId, q = "") {
+    const params = new URLSearchParams({ categoryId, q });
+    return authedJson(`/seller/catalog/subcategories?${params}`, token);
+}
+export async function fetchApprovedGenericProducts(token, subcategoryId, q = "") {
+    const params = new URLSearchParams({ subcategoryId, q });
+    return authedJson(`/seller/catalog/generic-products?${params}`, token);
+}
+export async function createSellerCategoryEntry(token, name) {
+    return authedJson(`/seller/catalog/categories`, token, { method: "POST", body: JSON.stringify({ name }) });
+}
+export async function createSellerSubcategoryEntry(token, name, categoryId) {
+    return authedJson(`/seller/catalog/subcategories`, token, { method: "POST", body: JSON.stringify({ name, categoryId }) });
+}
+export async function createSellerGenericProductEntry(token, name, subcategoryId) {
+    return authedJson(`/seller/catalog/generic-products`, token, { method: "POST", body: JSON.stringify({ name, subcategoryId }) });
+}

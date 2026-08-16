@@ -177,47 +177,34 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
     );
 }
 
-// Collapsible section card. The header is split into a clickable
-// title area (toggles open/closed) and a separate `headerRight` slot
-// so interactive content there (e.g. GroupTemplateBar's dropdown
-// trigger) is never nested inside another <button>.
-export function SectionCard({ icon: Icon, title, subtitle, badge, defaultOpen = false, children, headerRight }) {
-    const [open, setOpen] = useState(defaultOpen);
+// SectionCard — now accepts an optional controlled `open` + `onOpenChange`.
+// Falls back to fully uncontrolled behavior (internal state seeded by
+// defaultOpen) when those aren't passed, so every other call site that
+// doesn't care about forced-open still works unchanged.
+export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, children, open, onOpenChange, id }) {
+    const [internalOpen, setInternalOpen] = useState(!!defaultOpen);
+    const isControlled = open !== undefined;
+    const isOpen = isControlled ? open : internalOpen;
+    const toggle = () => {
+        if (isControlled) onOpenChange?.(!isOpen);
+        else setInternalOpen((o) => !o);
+    };
     return (
-        <div className="overflow-hidden rounded-2xl border bg-white" style={{ borderColor: C.hair }}>
-            <div className="flex items-center gap-2 px-4 py-3.5 sm:px-5">
-                <button type="button" onClick={() => setOpen((o) => !o)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: `${C.secondary}12`, color: C.secondary }}>
-                        <Icon className="h-4 w-4" />
-                    </span>
+        <div id={id} className="overflow-hidden rounded-2xl border" style={{ borderColor: C.hair }}>
+            <div className="flex w-full items-center gap-2.5 px-4 py-3.5">
+                <button type="button" onClick={toggle} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+                    <Icon className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
                     <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                            <span className="text-[14.5px] font-extrabold" style={{ color: C.ink }}>{title}</span>
-                            {badge}
-                        </span>
-                        {subtitle && <span className="mt-0.5 block truncate text-[11.5px] font-medium" style={{ color: C.muted }}>{subtitle}</span>}
+                        <span className="block text-[14px] font-extrabold" style={{ color: C.ink }}>{title}</span>
+                        {subtitle && <span className="block text-[11px] font-medium" style={{ color: C.muted }}>{subtitle}</span>}
                     </span>
                 </button>
                 {headerRight}
-                <button type="button" onClick={() => setOpen((o) => !o)} className="shrink-0 p-1" aria-label={open ? "Collapse section" : "Expand section"}>
-                    <ChevronDown className="h-4 w-4 transition-transform duration-200" style={{ color: C.muted, transform: open ? "rotate(180deg)" : "none" }} />
+                <button type="button" onClick={toggle} className="shrink-0 p-1">
+                    <ChevronDown className="h-4 w-4 transition-transform" style={{ color: C.muted, transform: isOpen ? "rotate(180deg)" : "none" }} />
                 </button>
             </div>
-            <AnimatePresence initial={false}>
-                {open && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.22, ease: EASE }}
-                        className="overflow-hidden"
-                    >
-                        <div className="flex flex-col gap-4 border-t px-4 py-4 sm:px-5" style={{ borderColor: C.hairSoft }}>
-                            {children}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+            {isOpen && <div className="flex flex-col gap-3.5 border-t px-4 py-4" style={{ borderColor: C.hair }}>{children}</div>}
         </div>
     );
 }
