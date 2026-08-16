@@ -410,15 +410,6 @@ export async function adminCreatePickerOption(token, pickerLevel, name, parentId
   return res.json();
 }
 
-export async function adminCreateCatalogEntry(token, level, payload) {
-  const res = await fetch(`${API_BASE}/admin/catalog/${level}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(payload),
-  });
-  return res.json();
-}
-
 export async function adminUpdateCatalogEntry(token, level, id, payload) {
   const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}`, {
     method: "PATCH",
@@ -557,13 +548,30 @@ export async function adminRejectSellerSubmission(token, id, reason) {
   return res.json();
 }
 
-// adminListCatalog now also accepts parentId, for drill-down browsing:
-export async function adminListCatalog(token, { level = "all", status = "pending_review", q = "", parentId = "" } = {}) {
-  const params = new URLSearchParams({ level, status, ...(q ? { q } : {}), ...(parentId ? { parentId } : {}) });
-  const res = await fetch(`${API_BASE}/admin/catalog?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+// Now accepts a free-text q for the search box, and returns BOTH
+// approved and pending_review entries — admin needs to see items a
+// seller already proposed so they select the existing one instead of
+// creating a near-duplicate.
+export async function adminListCatalog(token, { level, parentId, q = "" }) {
+  const params = new URLSearchParams({ level, ...(parentId ? { parentId } : {}), ...(q ? { q } : {}) });
+  const res = await fetch(`${API_BASE}/admin/catalog?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return res.json();
 }
 
+// Dedupe-aware create — mirrors the seller-side create endpoints.
+// If a matching name already exists (approved or pending) under the
+// same parent, the backend returns that entry instead of making a new
+// one, exactly like HierarchyCombobox expects: {success, duplicate, entry, message}.
+export async function adminCreateCatalogEntry(token, level, { name, parentId }) {
+  const res = await fetch(`${API_BASE}/admin/catalog`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ level, name, parentId }),
+  });
+  return res.json();
+}
 export async function adminDeleteCatalogEntry(token, level, id) {
   const res = await fetch(`${API_BASE}/admin/catalog/${level}/${id}`, {
     method: "DELETE",

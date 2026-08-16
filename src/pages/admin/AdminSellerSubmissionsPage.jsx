@@ -11,6 +11,7 @@ import {
     adminListSellerSubmissions, adminApproveSellerSubmission,
     adminRejectSellerSubmission, adminUpdateSellerSubmission,
 } from "../../utils/api.js";
+import HierarchyCombobox from "../../components/seller/listingForm/HierarchyCombobox.jsx";
 import ImageLightbox from "../../components/ImageLightbox.jsx";
 
 const STATUS_TABS = [
@@ -382,129 +383,19 @@ function SectionBlock({ icon: Icon, title, children }) {
 // adminListCatalog (already used by AdminCatalogReviewPage) to browse,
 // and the existing PATCH /admin/catalog/brand_item/:id endpoint (which
 // already accepts parentId) to save — no backend changes needed.
-function CreatableSelect({ label, value, onChange, options, disabled, onCreate, placeholder }) {
-    const [creating, setCreating] = useState(false);
-    const [newName, setNewName] = useState("");
-    const [saving, setSaving] = useState(false);
-    const [err, setErr] = useState("");
-
-    async function submitNew() {
-        if (!newName.trim()) return;
-        setSaving(true); setErr("");
-        const result = await onCreate(newName.trim());
-        setSaving(false);
-        if (result?.success) {
-            setCreating(false);
-            setNewName("");
-        } else {
-            setErr(result?.message || "Couldn't create that.");
-        }
-    }
-
-    if (creating) {
-        return (
-            <div className="flex flex-col gap-1">
-                <div className="flex gap-1">
-                    <input
-                        autoFocus
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && submitNew()}
-                        placeholder={`New ${label.toLowerCase()} name…`}
-                        className={inputClass}
-                    />
-                    <button type="button" onClick={submitNew} disabled={saving || !newName.trim()}
-                        className="shrink-0 rounded-lg bg-[#047084] px-3 py-2 text-[12px] font-bold text-white disabled:opacity-50">
-                        {saving ? "…" : "Add"}
-                    </button>
-                    <button type="button" onClick={() => { setCreating(false); setErr(""); }}
-                        className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-2 text-[12px] font-bold text-slate-500">
-                        ×
-                    </button>
-                </div>
-                {err && <p className="text-[10.5px] font-semibold text-[#c71f11]">{err}</p>}
-            </div>
-        );
-    }
-
-    return (
-        <div className="flex gap-1">
-            <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} className={inputClass}>
-                <option value="">{placeholder}</option>
-                {options.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <button type="button" onClick={() => setCreating(true)} disabled={disabled}
-                className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-2 text-[12px] font-bold text-slate-600 hover:bg-white disabled:opacity-40">
-                + New
-            </button>
-        </div>
-    );
-}
 
 function FixMappingPicker({ token, brandItemId, current, onDone, onCancel }) {
-    const [categoryId, setCategoryId] = useState("");
-    const [subcategoryId, setSubcategoryId] = useState("");
-    const [genericProductId, setGenericProductId] = useState("");
-    const [categories, setCategories] = useState([]);
-    const [subcategories, setSubcategories] = useState([]);
-    const [genericProducts, setGenericProducts] = useState([]);
+    const [categoryEntry, setCategoryEntry] = useState(null);
+    const [subcategoryEntry, setSubcategoryEntry] = useState(null);
+    const [genericProductEntry, setGenericProductEntry] = useState(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
-    function loadCategories() {
-        import("../../utils/api.js").then(({ adminListCatalog }) =>
-            adminListCatalog(token, { level: "category", status: "approved" }).then((res) => res?.success && setCategories(res.entries))
-        );
-    }
-    function loadSubcategories(parentId) {
-        import("../../utils/api.js").then(({ adminListCatalog }) =>
-            adminListCatalog(token, { level: "subcategory", status: "approved", parentId }).then((res) => res?.success && setSubcategories(res.entries))
-        );
-    }
-    function loadGenericProducts(parentId) {
-        import("../../utils/api.js").then(({ adminListCatalog }) =>
-            adminListCatalog(token, { level: "generic_product", status: "approved", parentId }).then((res) => res?.success && setGenericProducts(res.entries))
-        );
-    }
-
-    useEffect(() => { loadCategories(); /* eslint-disable-next-line */ }, [token]);
-    useEffect(() => {
-        setSubcategoryId(""); setGenericProductId(""); setGenericProducts([]);
-        if (!categoryId) return setSubcategories([]);
-        loadSubcategories(categoryId);
-        // eslint-disable-next-line
-    }, [categoryId, token]);
-    useEffect(() => {
-        setGenericProductId("");
-        if (!subcategoryId) return setGenericProducts([]);
-        loadGenericProducts(subcategoryId);
-        // eslint-disable-next-line
-    }, [subcategoryId, token]);
-
-    async function createCategory(name) {
-        const { adminCreateCatalogEntry } = await import("../../utils/api.js");
-        const res = await adminCreateCatalogEntry(token, "category", { name });
-        if (res?.success) { loadCategories(); setCategoryId(res.entry.id); }
-        return res;
-    }
-    async function createSubcategory(name) {
-        const { adminCreateCatalogEntry } = await import("../../utils/api.js");
-        const res = await adminCreateCatalogEntry(token, "subcategory", { name, parentId: categoryId });
-        if (res?.success) { loadSubcategories(categoryId); setSubcategoryId(res.entry.id); }
-        return res;
-    }
-    async function createGenericProduct(name) {
-        const { adminCreateCatalogEntry } = await import("../../utils/api.js");
-        const res = await adminCreateCatalogEntry(token, "generic_product", { name, parentId: subcategoryId });
-        if (res?.success) { loadGenericProducts(subcategoryId); setGenericProductId(res.entry.id); }
-        return res;
-    }
-
     async function save() {
-        if (!genericProductId) return setError("Pick or create a generic product to map this item under.");
+        if (!genericProductEntry) return setError("Pick or create a generic product to map this item under.");
         setSaving(true); setError("");
         const { adminUpdateCatalogEntry } = await import("../../utils/api.js");
-        const res = await adminUpdateCatalogEntry(token, "brand_item", brandItemId, { parentId: genericProductId });
+        const res = await adminUpdateCatalogEntry(token, "brand_item", brandItemId, { parentId: genericProductEntry.id });
         setSaving(false);
         if (!res?.success) return setError(res?.message || "Couldn't update the mapping.");
         onDone();
@@ -516,14 +407,36 @@ function FixMappingPicker({ token, brandItemId, current, onDone, onCancel }) {
                 Currently under: <span className="font-bold text-slate-700">{current || "—"}</span>
             </p>
             <div className="grid grid-cols-1 gap-2">
-                <CreatableSelect label="Category" value={categoryId} onChange={setCategoryId} options={categories} placeholder="Category…" onCreate={createCategory} />
-                <CreatableSelect label="Subcategory" value={subcategoryId} onChange={setSubcategoryId} options={subcategories} disabled={!categoryId} placeholder="Subcategory…" onCreate={createSubcategory} />
-                <CreatableSelect label="Generic product" value={genericProductId} onChange={setGenericProductId} options={genericProducts} disabled={!subcategoryId} placeholder="Generic product…" onCreate={createGenericProduct} />
+                <HierarchyCombobox
+                    label="Category" required value={categoryEntry}
+                    fetcher={(q) => import("../../utils/api.js").then(({ adminListCatalog }) => adminListCatalog(token, { level: "category", q }))}
+                    onCreate={(name) => import("../../utils/api.js").then(({ adminCreateCatalogEntry }) => adminCreateCatalogEntry(token, "category", { name }))}
+                    onSelect={(entry) => { setCategoryEntry(entry); setSubcategoryEntry(null); setGenericProductEntry(null); }}
+                    placeholder="Search or create a category…"
+                />
+                {categoryEntry && (
+                    <HierarchyCombobox
+                        label="Subcategory" required value={subcategoryEntry}
+                        fetcher={(q) => import("../../utils/api.js").then(({ adminListCatalog }) => adminListCatalog(token, { level: "subcategory", parentId: categoryEntry.id, q }))}
+                        onCreate={(name) => import("../../utils/api.js").then(({ adminCreateCatalogEntry }) => adminCreateCatalogEntry(token, "subcategory", { name, parentId: categoryEntry.id }))}
+                        onSelect={(entry) => { setSubcategoryEntry(entry); setGenericProductEntry(null); }}
+                        placeholder="Search or create a subcategory…"
+                    />
+                )}
+                {subcategoryEntry && (
+                    <HierarchyCombobox
+                        label="Generic product" required value={genericProductEntry}
+                        fetcher={(q) => import("../../utils/api.js").then(({ adminListCatalog }) => adminListCatalog(token, { level: "generic_product", parentId: subcategoryEntry.id, q }))}
+                        onCreate={(name) => import("../../utils/api.js").then(({ adminCreateCatalogEntry }) => adminCreateCatalogEntry(token, "generic_product", { name, parentId: subcategoryEntry.id }))}
+                        onSelect={setGenericProductEntry}
+                        placeholder="Search or create a generic product…"
+                    />
+                )}
             </div>
             {error && <p className="text-[11.5px] font-semibold text-[#c71f11]">{error}</p>}
             <div className="flex justify-end gap-2">
                 <button onClick={onCancel} className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-slate-500">Cancel</button>
-                <button onClick={save} disabled={saving || !genericProductId} className="rounded-lg bg-[#047084] px-3.5 py-1.5 text-[12px] font-bold text-white disabled:opacity-50">
+                <button onClick={save} disabled={saving || !genericProductEntry} className="rounded-lg bg-[#047084] px-3.5 py-1.5 text-[12px] font-bold text-white disabled:opacity-50">
                     {saving ? "Saving…" : "Save mapping"}
                 </button>
             </div>
