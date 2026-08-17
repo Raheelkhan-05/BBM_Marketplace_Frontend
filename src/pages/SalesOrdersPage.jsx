@@ -95,7 +95,6 @@ export default function SalesOrdersPage() {
     const navigate = useNavigate();
     const { token, profile } = useAuth();
     const [activeStatus, setActiveStatus] = useState("");
-    const sellerProfileId = profile?.businessProfile?.id; // ← confirm this is your seller_profiles.id, see notes below
 
     const fetcher = useCallback(async () => {
         const res = await fetchSellerOrders(token, activeStatus || undefined);
@@ -103,7 +102,16 @@ export default function SalesOrdersPage() {
         return res.orders;
     }, [token, activeStatus]);
 
-    const { orders, loading, reload } = useRealtimeOrders({ role: "seller", ownerId: sellerProfileId, fetcher });
+    // FIX: useRealtimeOrders only accepts { channelToken, fetcher } — it
+    // has no notion of "role"/"ownerId". The old call here passed those
+    // and they were silently dropped, so this page never subscribed to
+    // realtime updates (new orders only appeared after a manual refresh).
+    // notifyUser(sellerProfile.user_id, ...) + notifyUserOrdersChanged
+    // broadcast on the `user-${sellerProfile.user_id}` channel (see
+    // orders.controller.js / sellerOrders.controller.js), so this needs
+    // the seller's own user id — same `profile.notificationChannel` the
+    // buyer-side PurchaseOrdersPage already uses correctly.
+    const { orders, loading, reload } = useRealtimeOrders({ channelToken: profile?.notificationChannel, fetcher });
     const handleAction = async (orderId, fn, reason) => { const res = await fn(token, orderId, reason); if (res?.success) reload(); else window.alert(res?.message || "Couldn't update the order."); };
 
     return (

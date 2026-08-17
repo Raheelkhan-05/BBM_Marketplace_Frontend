@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee, Minus } from "lucide-react";
+import { Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee, Minus, Layers, FileText } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder } from "../utils/api.js";
@@ -21,23 +21,62 @@ function Field({ label, value, onChange }) {
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 
+// ---- Slab / quantity-discount pricing -------------------------------
+// Mirrors the same resolution the backend applies in getOrderQuote (see
+// orders.controller.js) so the instant local estimate never disagrees
+// with the server-confirmed quote in a way that surprises the buyer.
+//
+// price_slabs: [{ minQty, maxQty, price }] — price is the final
+// (GST-inclusive) per-unit price for that quantity band. The slab with
+// the highest minQty that the requested quantity satisfies wins.
+//
+// quantity_discounts: [{ minQty, discountPercent }] — applied on top of
+// whichever unit price was resolved above (slab or the seller's base
+// listed price).
+function resolveSlabUnitPrice(priceSlabs, quantity, fallbackPrice) {
+    if (!Array.isArray(priceSlabs) || !priceSlabs.length) return { price: fallbackPrice, slab: null };
+    const applicable = priceSlabs
+        .filter((s) => Number(s.minQty) > 0 && quantity >= Number(s.minQty) && (!s.maxQty || quantity <= Number(s.maxQty)))
+        .sort((a, b) => Number(b.minQty) - Number(a.minQty));
+    if (!applicable.length) return { price: fallbackPrice, slab: null };
+    return { price: Number(applicable[0].price), slab: applicable[0] };
+}
+
+function resolveDiscountPercent(quantityDiscounts, quantity) {
+    if (!Array.isArray(quantityDiscounts) || !quantityDiscounts.length) return { percent: 0, tier: null };
+    const applicable = quantityDiscounts
+        .filter((d) => Number(d.minQty) > 0 && quantity >= Number(d.minQty))
+        .sort((a, b) => Number(b.minQty) - Number(a.minQty));
+    if (!applicable.length) return { percent: 0, tier: null };
+    return { percent: Number(applicable[0].discountPercent) || 0, tier: applicable[0] };
+}
+
 // Instant, client-side price computation off the seller data we already
-// have in hand (price/moq/unit/stock). This is what renders the moment the
-// user types a quantity — no network round-trip. The debounced backend
-// call in the effect below still runs afterwards and, once it resolves,
-// silently overwrites these numbers with the authoritative server figures
-// (covers things like tiered pricing, tax, or stock that changed after the
-// page loaded). The backend contract/route is untouched.
+// have in hand (price/moq/unit/stock/slabs/discounts). This is what
+// renders the moment the user types a quantity — no network round-trip.
+// The debounced backend call in the effect below still runs afterwards
+// and, once it resolves, silently overwrites these numbers with the
+// authoritative server figures (covers things like tax rule changes or
+// stock that changed after the page loaded). The backend contract/route
+// is untouched — only the math inside getOrderQuote needs to match this.
 function computeLocalQuote(seller, quantity) {
     const qty = Number(quantity);
     if (!seller || !(qty > 0) || !(Number(seller.price) > 0)) return null;
-    const unitPrice = Number(seller.price);
+
+    const { price: slabPrice, slab: appliedSlab } = resolveSlabUnitPrice(seller.priceSlabs, qty, Number(seller.price));
+    const { percent: discountPercent, tier: discountTier } = resolveDiscountPercent(seller.quantityDiscounts, qty);
+    const unitPrice = Math.round(slabPrice * (1 - discountPercent / 100) * 100) / 100;
+
     const moq = Number(seller.moq) || 0;
     const availableStock = seller.availableStock != null ? Number(seller.availableStock) : null;
     return {
         quantity: qty,
         unit: seller.unit,
         unitPrice,
+        basePriceApplied: slabPrice,
+        appliedSlab,
+        discountPercent,
+        discountTier,
         subtotal: Math.round(unitPrice * qty * 100) / 100,
         moq,
         meetsMoq: moq ? qty >= moq : true,
@@ -101,7 +140,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
     }, [access, token]);
 
     // 1) INSTANT: recompute the local estimate synchronously on every
-    // quantity keystroke, so the total on screen never lags behind typing.
+    // quantity keystroke, so the total (and the slab that applies) on
+    // screen never lags behind typing.
     useEffect(() => {
         if (!(Number(quantity) > 0)) { setQuote(null); return; }
         setQuote((prev) => {
@@ -114,11 +154,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
     }, [seller, quantity]);
 
     // 2) CONFIRM: debounced call to the backend to fetch the authoritative
-    // quote for the current quantity. Same endpoint/payload as before.
-    // Runs entirely silently — no spinner or text tied to this — but
-    // handleSubmit awaits `pendingQuoteRef` before placing the order, so
-    // the click always goes through with a server-confirmed quote even
-    // though nothing in the UI shows it working.
+    // quote for the current quantity (same slab/discount math, computed
+    // server-side). Same endpoint/payload as before. Runs entirely
+    // silently — no spinner or text tied to this — but handleSubmit
+    // awaits `pendingQuoteRef` before placing the order, so the click
+    // always goes through with a server-confirmed quote even though
+    // nothing in the UI shows it working.
     useEffect(() => {
         if (!seller?.offerId || !(Number(quantity) > 0)) return;
         clearTimeout(quoteTimer.current);
@@ -191,6 +232,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
         NOT_VERIFIED: { title: "Verify your contact details", body: "We need a verified email or phone so sellers know you're a genuine buyer.", cta: "Verify now", action: () => navigate("/account") },
     }[access?.reason] || { title: "Can't place an order right now", body: "Please try again in a moment.", cta: "Close", action: onClose };
 
+    const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.hsnCode);
+
     return (
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
@@ -240,6 +283,28 @@ export default function BuyNowModal({ seller, product, onClose }) {
                             </div>
                             {quote && !quote.meetsMoq && <p className="mt-1 text-[11px] font-semibold" style={{ color: C.primary }}>Below the seller's MOQ of {quote.moq} {quote.unit}.</p>}
                             {quote && !quote.hasEnoughStock && <p className="mt-1 text-[11px] font-semibold" style={{ color: C.primary }}>Only {quote.availableStock} {quote.unit} in stock.</p>}
+
+                            {Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
+                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    <Layers className="h-3 w-3 shrink-0" style={{ color: C.secondary }} />
+                                    {seller.priceSlabs.map((slab, i) => {
+                                        const active = quote?.appliedSlab && Number(quote.appliedSlab.minQty) === Number(slab.minQty);
+                                        return (
+                                            <span key={i} className="rounded-full border px-2 py-0.5 text-[10.5px] font-bold"
+                                                style={active
+                                                    ? { borderColor: C.secondary, background: `${C.secondary}12`, color: C.secondary }
+                                                    : { borderColor: C.hairSoft, color: C.muted }}>
+                                                {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} {seller.unit}: ₹{slab.price}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            {quote?.discountPercent > 0 && (
+                                <p className="mt-1.5 text-[11px] font-bold" style={{ color: C.secondary }}>
+                                    {quote.discountPercent}% quantity discount applied
+                                </p>
+                            )}
                         </div>
 
                         <div className="mt-5">
@@ -299,6 +364,21 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </>
                             ) : <p className="text-[12px] font-semibold" style={{ color: C.muted }}>Enter a quantity to see the total.</p>}
                         </div>
+
+                        {hasTerms && (
+                            <div className="mt-3 rounded-xl border p-3" style={{ borderColor: C.hairSoft }}>
+                                <p className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
+                                    <FileText className="h-3 w-3" /> Seller terms
+                                </p>
+                                <div className="mt-1.5 flex flex-col gap-1 text-[11.5px] font-medium">
+                                    {seller.deliveryTimeline && <p><span style={{ color: C.muted }}>Delivery: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.deliveryTimeline}</span></p>}
+                                    {seller.paymentTerms && <p><span style={{ color: C.muted }}>Payment: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.paymentTerms}</span></p>}
+                                    {seller.returnPolicy && <p><span style={{ color: C.muted }}>Returns: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.returnPolicy}</span></p>}
+                                    {seller.warranty && <p><span style={{ color: C.muted }}>Warranty: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.warranty}</span></p>}
+                                    {seller.hsnCode && <p><span style={{ color: C.muted }}>HSN: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.hsnCode}</span></p>}
+                                </div>
+                            </div>
+                        )}
 
                         <div className="mt-3 flex items-center gap-2 rounded-xl border p-2.5" style={{ borderColor: C.hairSoft }}>
                             <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />

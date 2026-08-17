@@ -1,7 +1,7 @@
 // components/seller/listingForm/FormPrimitives.jsx
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Plus, Trash2, Info } from "lucide-react";
+import { ChevronDown, Plus, Trash2, Info, Check } from "lucide-react";
 
 export const C = {
     ink: "#0B1116",
@@ -10,12 +10,57 @@ export const C = {
     secondary: "#006F83",
     hair: "rgba(11,17,22,0.09)",
     hairSoft: "rgba(11,17,22,0.05)",
+    danger: "#c71f11",
 };
 
-export function TextField({ label, value, onChange, placeholder, inputMode, type = "text", hint, required, disabled }) {
+function Label({ children, hint }) {
+    const [showHint, setShowHint] = useState(false);
+    return (
+        <span className="flex items-center gap-1">
+            <span className="text-[12px] font-bold" style={{ color: C.ink }}>{children}</span>
+            {hint && (
+                <span className="relative inline-flex">
+                    <button
+                        type="button"
+                        onMouseEnter={() => setShowHint(true)}
+                        onMouseLeave={() => setShowHint(false)}
+                        onClick={() => setShowHint((s) => !s)}
+                        className="flex h-3.5 w-3.5 items-center justify-center rounded-full"
+                        aria-label="More info"
+                    >
+                        <Info className="h-3 w-3" style={{ color: C.muted }} />
+                    </button>
+                    <AnimatePresence>
+                        {showHint && (
+                            <motion.span
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 4 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute bottom-full left-1/2 z-20 mb-1.5 w-48 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-white shadow-lg"
+                                style={{ background: C.ink }}
+                            >
+                                {hint}
+                            </motion.span>
+                        )}
+                    </AnimatePresence>
+                </span>
+            )}
+        </span>
+    );
+}
+
+// Shared border/ring style so every field control looks the same whether
+// it's untouched, valid, or (after blur) missing.
+function fieldTone(error) {
+    if (error) return { borderColor: "#f2b3ab", ["--tw-ring-color"]: `${C.danger}1a`, background: "#fff8f7" };
+    return { borderColor: C.hairSoft, ["--tw-ring-color"]: `${C.secondary}20` };
+}
+
+export function TextField({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense }) {
     return (
         <div className="flex flex-col gap-1">
-            <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>
+            {label && <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>}
             <input
                 type={type}
                 value={value ?? ""}
@@ -23,14 +68,15 @@ export function TextField({ label, value, onChange, placeholder, inputMode, type
                 placeholder={placeholder}
                 disabled={disabled}
                 onChange={(e) => onChange(e.target.value)}
-                className="w-full rounded-lg border-2 bg-white px-3.5 py-2.5 text-[14px] font-semibold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-4 disabled:bg-slate-50 disabled:opacity-60"
-                style={{ borderColor: C.hairSoft, color: C.ink, ["--tw-ring-color"]: `${C.secondary}20` }}
+                onBlur={onBlur}
+                className={`w-full rounded-lg border-2 bg-white ${dense ? "px-2.5 py-1.5 text-[12.5px]" : "px-3 py-2 text-[13.5px]"} font-semibold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-4 disabled:bg-slate-50 disabled:opacity-60`}
+                style={{ color: C.ink, ...fieldTone(error) }}
             />
         </div>
     );
 }
 
-export function TextAreaField({ label, value, onChange, placeholder, hint, required, rows = 3 }) {
+export function TextAreaField({ label, value, onChange, onBlur, placeholder, hint, required, rows = 3, error }) {
     return (
         <div className="flex flex-col gap-1">
             <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>
@@ -39,22 +85,24 @@ export function TextAreaField({ label, value, onChange, placeholder, hint, requi
                 placeholder={placeholder}
                 rows={rows}
                 onChange={(e) => onChange(e.target.value)}
-                className="w-full resize-none rounded-lg border-2 bg-white px-3.5 py-2.5 text-[13.5px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-4"
-                style={{ borderColor: C.hairSoft, color: C.ink, ["--tw-ring-color"]: `${C.secondary}20` }}
+                onBlur={onBlur}
+                className="w-full resize-none rounded-lg border-2 bg-white px-3 py-2 text-[13px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-4"
+                style={{ color: C.ink, ...fieldTone(error) }}
             />
         </div>
     );
 }
 
-export function SelectField({ label, value, onChange, options, hint, required, placeholder = "Select…" }) {
+export function SelectField({ label, value, onChange, onBlur, options, hint, required, placeholder = "Select…", error, dense }) {
     return (
         <div className="flex flex-col gap-1">
-            <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>
+            {label && <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>}
             <select
                 value={value ?? ""}
                 onChange={(e) => onChange(e.target.value)}
-                className="w-full rounded-lg border-2 bg-white px-3.5 py-2.5 text-[14px] font-semibold focus:outline-none focus:ring-4"
-                style={{ borderColor: C.hairSoft, color: C.ink }}
+                onBlur={onBlur}
+                className={`w-full rounded-lg border-2 bg-white ${dense ? "px-2.5 py-1.5 text-[12.5px]" : "px-3 py-2 text-[13.5px]"} font-semibold focus:outline-none focus:ring-4`}
+                style={{ color: C.ink, ...fieldTone(error) }}
             >
                 <option value="" disabled>{placeholder}</option>
                 {options.map((o) => (
@@ -86,10 +134,10 @@ export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", off
     );
 }
 
-export function ChipToggleGroup({ label, value, onChange, options, hint }) {
+export function ChipToggleGroup({ label, value, onChange, options, hint, dense }) {
     return (
         <div className="flex flex-col gap-1.5">
-            <Label hint={hint}>{label}</Label>
+            {label && <Label hint={hint}>{label}</Label>}
             <div className="flex flex-wrap gap-1.5">
                 {options.map((o) => {
                     const optValue = o.value ?? o;
@@ -99,7 +147,7 @@ export function ChipToggleGroup({ label, value, onChange, options, hint }) {
                             key={optValue}
                             type="button"
                             onClick={() => onChange(optValue)}
-                            className="rounded-full border-2 px-3 py-1.5 text-[12px] font-bold transition-colors duration-150"
+                            className={`rounded-full border-2 ${dense ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-[12px]"} font-bold transition-colors duration-150`}
                             style={active
                                 ? { borderColor: C.secondary, background: `${C.secondary}12`, color: C.secondary }
                                 : { borderColor: C.hairSoft, color: C.muted }}
@@ -113,8 +161,6 @@ export function ChipToggleGroup({ label, value, onChange, options, hint }) {
     );
 }
 
-// Repeatable rows — used for Specifications, Price Slabs, Quantity
-// Discounts, and Quality certification links.
 export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel = "Add row" }) {
     const update = (idx, key, val) => {
         const next = rows.map((r, i) => (i === idx ? { ...r, [key]: val } : r));
@@ -124,10 +170,10 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
     const add = () => onChange([...rows, Object.fromEntries(columns.map((c) => [c.key, ""]))]);
 
     return (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
             <Label hint={hint}>{label}</Label>
             {rows.length > 0 && (
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5">
                     {rows.map((row, idx) => (
                         <div key={idx} className="flex items-center gap-2">
                             {columns.map((c) => (
@@ -137,12 +183,12 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
                                     placeholder={c.placeholder}
                                     inputMode={c.inputMode}
                                     onChange={(e) => update(idx, c.key, e.target.value)}
-                                    className="min-w-0 flex-1 rounded-lg border-2 px-3 py-2 text-[13px] font-semibold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-4"
+                                    className="min-w-0 flex-1 rounded-lg border-2 px-2.5 py-1.5 text-[12.5px] font-semibold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-4"
                                     style={{ borderColor: C.hairSoft, color: C.ink, ["--tw-ring-color"]: `${C.secondary}20` }}
                                 />
                             ))}
-                            <button type="button" onClick={() => remove(idx)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-red-50">
-                                <Trash2 className="h-3.5 w-3.5" style={{ color: "#c71f11" }} />
+                            <button type="button" onClick={() => remove(idx)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-red-50">
+                                <Trash2 className="h-3.5 w-3.5" style={{ color: C.danger }} />
                             </button>
                         </div>
                     ))}
@@ -160,34 +206,74 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
     );
 }
 
-// SectionCard — now accepts an optional controlled `open` + `onOpenChange`.
-// Falls back to fully uncontrolled behavior (internal state seeded by
-// defaultOpen) when those aren't passed, so every other call site that
-// doesn't care about forced-open still works unchanged.
-export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, children, open, onOpenChange, id }) {
+// SectionCard — pass `alwaysOpen` for a card that's never collapsible
+// (no chevron, no click target, content always rendered). Used for the
+// one card of truly-required fields, so the person never has to click
+// to reveal what they must fill in.
+export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, children, open, onOpenChange, id, alwaysOpen }) {
     const [internalOpen, setInternalOpen] = useState(!!defaultOpen);
     const isControlled = open !== undefined;
-    const isOpen = isControlled ? open : internalOpen;
+    const isOpen = alwaysOpen ? true : (isControlled ? open : internalOpen);
     const toggle = () => {
+        if (alwaysOpen) return;
         if (isControlled) onOpenChange?.(!isOpen);
         else setInternalOpen((o) => !o);
     };
     return (
         <div id={id} className="overflow-hidden rounded-2xl border" style={{ borderColor: C.hair }}>
-            <div className="flex w-full items-center gap-2.5 px-4 py-3.5">
-                <button type="button" onClick={toggle} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+            <div className="flex w-full items-center gap-2.5 px-3.5 py-3">
+                <button type="button" onClick={toggle} disabled={alwaysOpen} className="flex min-w-0 flex-1 items-center gap-2.5 text-left disabled:cursor-default">
                     <Icon className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
                     <span className="min-w-0 flex-1">
-                        <span className="block text-[14px] font-extrabold" style={{ color: C.ink }}>{title}</span>
-                        {subtitle && <span className="block text-[11px] font-medium" style={{ color: C.muted }}>{subtitle}</span>}
+                        <span className="block text-[13.5px] font-extrabold" style={{ color: C.ink }}>{title}</span>
+                        {subtitle && <span className="block text-[10.5px] font-medium" style={{ color: C.muted }}>{subtitle}</span>}
                     </span>
                 </button>
                 {headerRight}
-                <button type="button" onClick={toggle} className="shrink-0 p-1">
-                    <ChevronDown className="h-4 w-4 transition-transform" style={{ color: C.muted, transform: isOpen ? "rotate(180deg)" : "none" }} />
-                </button>
+                {!alwaysOpen && (
+                    <button type="button" onClick={toggle} className="shrink-0 p-1">
+                        <ChevronDown className="h-4 w-4 transition-transform" style={{ color: C.muted, transform: isOpen ? "rotate(180deg)" : "none" }} />
+                    </button>
+                )}
             </div>
-            {isOpen && <div className="flex flex-col gap-3.5 border-t px-4 py-4" style={{ borderColor: C.hair }}>{children}</div>}
+            {isOpen && <div className="flex flex-col gap-3 border-t px-3.5 py-3.5" style={{ borderColor: C.hair }}>{children}</div>}
         </div>
+    );
+}
+
+// Small status pill for section headers — "Auto-filled", "Optional", etc.
+export function Pill({ children, tone = "muted" }) {
+    const tones = {
+        muted: { background: C.hairSoft, color: C.muted },
+        good: { background: `${C.secondary}14`, color: C.secondary },
+        warn: { background: "#fef3c7", color: "#a16207" },
+    };
+    return (
+        <span className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold" style={tones[tone] || tones.muted}>
+            {children}
+        </span>
+    );
+}
+
+// Thin, animated completion bar for the sticky footer.
+export function Progress({ percent }) {
+    return (
+        <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: C.hairSoft }}>
+            <motion.div
+                className="h-full rounded-full"
+                style={{ background: percent >= 100 ? C.secondary : C.primary }}
+                initial={false}
+                animate={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                transition={{ duration: 0.25 }}
+            />
+        </div>
+    );
+}
+
+export function CompletedBadge() {
+    return (
+        <span className="flex h-4 w-4 items-center justify-center rounded-full" style={{ background: C.secondary }}>
+            <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+        </span>
     );
 }

@@ -26,7 +26,7 @@ export default function Layout() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [rfqOpen, setRfqOpen] = useState(false);
 
-  const showBottomNav = !isLandingPage && !isAdminPage && !lightboxOpen;
+  const showBottomNav = !isLandingPage && !lightboxOpen;
 
   return (
     <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>

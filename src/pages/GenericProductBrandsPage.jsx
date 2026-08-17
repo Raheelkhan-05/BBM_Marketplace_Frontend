@@ -1,16 +1,20 @@
 // pages/GenericProductBrandsPage.jsx
 //
 // Step 2 of the drill-down: the hs_generic_product_brands under one
-// hs_generic_products row. Tapping a row goes straight to that brand
-// item's sellers; tapping the (i) opens BrandItemDetailModal without
-// leaving the list (so comparing two brands doesn't cost a page nav).
+// hs_generic_products row. Tapping a row now opens BuySellChoiceSheet
+// (same pattern as BrowsePage) so Buy/Sell are equally-weighted actions;
+// Buy goes to the existing sellers page, Sell opens SellThisItemModal.
+// Tapping the (i) still opens BrandItemDetailModal without leaving the
+// list (so comparing two brands doesn't cost a page nav).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Search, Info, ChevronRight, Package } from "lucide-react";
 import { fetchGenericProductBrands } from "../utils/api";
 import BrandItemDetailModal from "../components/catalog/BrandItemDetailModal";
+import BuySellChoiceSheet from "../components/catalog/BuySellChoiceSheet";
+import SellThisItemModal from "../components/catalog/SellThisItemModal";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 // accent: "#ffffff",
 //     accentTint: "#D2462B",   // flat, pre-mixed tint — not an alpha overlay
@@ -89,6 +93,12 @@ export default function GenericProductBrandsPage() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [infoItemId, setInfoItemId] = useState(null);
+
+    // Buy/Sell choice flow — same pattern as BrowsePage: tapping a row
+    // opens the choice sheet; Buy goes to the sellers page (unchanged
+    // navigation), Sell opens SellThisItemModal right here.
+    const [choiceItem, setChoiceItem] = useState(null);
+    const [sellItem, setSellItem] = useState(null);
 
     const abortRef = useRef(null);
     const debounceRef = useRef(null);
@@ -197,7 +207,7 @@ export default function GenericProductBrandsPage() {
                                     key={item.id}
                                     item={item}
                                     idx={i}
-                                    onOpen={() => goToSellers(item)}
+                                    onOpen={() => setChoiceItem(item)}
                                     onInfo={() => setInfoItemId(item.id)}
                                 />
                             ))}
@@ -214,6 +224,27 @@ export default function GenericProductBrandsPage() {
                     onViewSellers={(item) => { setInfoItemId(null); goToSellers(item); }}
                 />
             )}
+
+            <AnimatePresence>
+                {choiceItem && (
+                    <BuySellChoiceSheet
+                        item={choiceItem}
+                        onClose={() => setChoiceItem(null)}
+                        onBuy={() => {
+                            const it = choiceItem;
+                            setChoiceItem(null);
+                            goToSellers(it);
+                        }}
+                        onSell={() => {
+                            setSellItem(choiceItem);
+                            setChoiceItem(null);
+                        }}
+                    />
+                )}
+                {sellItem && (
+                    <SellThisItemModal brand={sellItem} onClose={() => setSellItem(null)} />
+                )}
+            </AnimatePresence>
         </div>
     );
 }

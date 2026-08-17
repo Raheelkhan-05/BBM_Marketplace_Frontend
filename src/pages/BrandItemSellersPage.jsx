@@ -2,20 +2,30 @@
 //
 // Step 3 of the drill-down: sellers listing THIS exact brand item
 // (seller_product_submissions, via catalog_brand_item_sellers so it can
-// never leak a different variant's sellers in). Browsing/discovery is
-// fully wired below; the "Order" button intentionally routes to the
-// seller's shop rather than opening a checkout flow inline — you already
-// have place_order + an address/quantity flow somewhere (most likely
-// inside your existing GenericProductSellersPage). Point me at that
-// component and I'll wire the same flow into this row instead of
-// guessing at your checkout UI and duplicating it.
+// never leak a different variant's sellers in).
+//
+// CHANGE: rows now open BuyNowModal directly (the same checkout flow
+// used elsewhere) instead of routing to the seller's shop. "View shop"
+// is still available as a secondary action for browsing.
+//
+// IMPORTANT: this file assumes `fetchBrandItemSellers` returns the
+// richer commercial fields added to seller_product_submissions
+// (price_slabs, quantity_discounts, stock_quantity, stock_type,
+// dispatch_time_days, production_lead_time_days, gst_percent, hsn_code,
+// payment_terms, return_policy, warranty, delivery_timeline). If your
+// backend controller for this endpoint only selects the old flat
+// columns (price, moq, unit, lead_time), everything below still works
+// but silently falls back to "no slabs / no extra terms" since those
+// fields will just be undefined. Update that controller's SELECT to
+// include the columns above to get the full experience.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft, MapPin, Truck, Boxes, ChevronRight, Store } from "lucide-react";
+import { ArrowLeft, MapPin, Truck, Boxes, ChevronRight, Store, Layers } from "lucide-react";
 import { fetchBrandItemSellers } from "../utils/api";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
+import BuyNowModal from "../components/BuyNowModal"; // adjust path if BuyNowModal lives elsewhere in your tree
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
@@ -30,21 +40,42 @@ const SORTS = [
     { id: "price_desc", label: "Highest price" },
 ];
 
-function SellerRow({ s, idx, onClick }) {
+// Effective lead time given fulfilment type — same rule the backend
+// applies when it computes `lead_time` for the buyer-facing column.
+function effectiveLeadTime(s) {
+    return s.stock_type === "made_to_order" ? s.production_lead_time_days : s.dispatch_time_days;
+}
+
+function SlabBadges({ slabs, unit }) {
+    if (!Array.isArray(slabs) || !slabs.length) return null;
     return (
-        <motion.button
-            onClick={onClick}
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            <Layers className="h-3 w-3 shrink-0" style={{ color: C.secondary }} />
+            {slabs.slice(0, 3).map((s, i) => (
+                <span key={i} className="rounded-full px-1.5 py-0.5 text-[9.5px] font-bold" style={{ background: `${C.secondary}10`, color: C.secondary }}>
+                    {s.minQty}{s.maxQty ? `–${s.maxQty}` : "+"} {unit}: ₹{s.price}
+                </span>
+            ))}
+            {slabs.length > 3 && <span className="text-[9.5px] font-bold" style={{ color: C.muted }}>+{slabs.length - 3} more</span>}
+        </div>
+    );
+}
+
+function SellerRow({ s, idx, onBuy, onViewShop }) {
+    const lead = effectiveLeadTime(s);
+    return (
+        <motion.div
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.22, delay: Math.min(idx * 0.02, 0.2), ease: EASE }}
-            className="flex w-full items-start gap-3 border-b px-3 py-3.5 text-left transition-colors duration-150 hover:bg-black/[0.02] sm:px-4"
+            className="flex w-full items-start gap-3 border-b px-3 py-3.5 sm:px-4"
             style={{ borderColor: C.hairSoft }}
         >
             <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border" style={{ borderColor: C.hair, background: "#F4F5F6" }}>
                 {s.logo_url ? <img src={s.logo_url} alt="" className="h-full w-full object-cover" /> : <Store className="h-4.5 w-4.5" style={{ color: C.muted }} />}
             </span>
 
-            <div className="min-w-0 flex-1">
+            <button onClick={onBuy} className="min-w-0 flex-1 text-left">
                 <p className="truncate text-[13.5px] font-bold leading-tight" style={{ color: C.ink }}>{s.display_name}</p>
                 {(s.city || s.state) && (
                     <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] font-medium" style={{ color: C.muted }}>
@@ -57,19 +88,40 @@ function SellerRow({ s, idx, onClick }) {
                     </span>
                     <span className="flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: C.muted }}>
                         <Truck className="h-3 w-3" /> {s.stock_type === "made_to_order" ? "Made to order" : "Ready stock"}
-                        {s.dispatch_time_days != null ? ` · ${s.dispatch_time_days}d dispatch` : ""}
+                        {lead != null ? ` · ${lead}d` : ""}
                     </span>
+                    {s.stock_quantity != null && (
+                        <span className="text-[10.5px] font-semibold" style={{ color: C.muted }}>{s.stock_quantity} {s.unit} in stock</span>
+                    )}
                 </div>
-            </div>
+                <SlabBadges slabs={s.price_slabs} unit={s.unit} />
+                {(s.payment_terms || s.delivery_timeline) && (
+                    <p className="mt-1.5 truncate text-[10.5px] font-medium" style={{ color: C.muted }}>
+                        {s.delivery_timeline ? `Delivery: ${s.delivery_timeline}` : ""}
+                        {s.delivery_timeline && s.payment_terms ? " · " : ""}
+                        {s.payment_terms ? `Payment: ${s.payment_terms}` : ""}
+                    </p>
+                )}
+            </button>
 
-            <div className="flex shrink-0 flex-col items-end text-right">
-                <p className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                    <span style={{ color: C.primary }}>₹</span>{s.price}
-                    <span className="ml-0.5 text-[10px] font-semibold" style={{ color: C.muted }}>/{s.unit}</span>
-                </p>
-                <ChevronRight className="mt-1 h-4 w-4" style={{ color: C.hair }} />
+            <div className="flex shrink-0 flex-col items-end gap-1.5 text-right">
+                <div>
+                    <p className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                        <span style={{ color: C.primary }}>₹</span>{s.price}
+                        <span className="ml-0.5 text-[10px] font-semibold" style={{ color: C.muted }}>/{s.unit}</span>
+                    </p>
+                    <p className="text-[9.5px] font-semibold" style={{ color: C.muted }}>
+                        incl. GST{s.gst_percent != null ? ` (${s.gst_percent}%)` : ""}
+                    </p>
+                </div>
+                <button onClick={onBuy} className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}>
+                    Buy now
+                </button>
+                <button onClick={onViewShop} className="flex items-center gap-0.5 text-[10px] font-bold" style={{ color: C.secondary }}>
+                    View shop <ChevronRight className="h-3 w-3" />
+                </button>
             </div>
-        </motion.button>
+        </motion.div>
     );
 }
 
@@ -98,6 +150,7 @@ export default function BrandItemSellersPage() {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
+    const [buySeller, setBuySeller] = useState(null);
 
     const abortRef = useRef(null);
 
@@ -124,6 +177,27 @@ export default function BrandItemSellersPage() {
         () => !loadingMore && hasMore && runQuery(items.length, { append: true }),
         { lookahead: 600, disabled: loading || loadingMore || !hasMore }
     );
+
+    // Maps a sellers-list row onto what BuyNowModal expects. Falls back
+    // gracefully (undefined -> no slabs/terms shown) if the backend
+    // hasn't been updated to select the richer columns yet.
+    const buyerSellerPayload = buySeller && {
+        offerId: buySeller.submission_id,
+        display_name: buySeller.display_name,
+        unit: buySeller.unit,
+        moq: buySeller.moq,
+        price: buySeller.price,
+        gstPercent: buySeller.gst_percent,
+        availableStock: buySeller.stock_quantity ?? null,
+        leadTime: effectiveLeadTime(buySeller),
+        priceSlabs: buySeller.price_slabs || [],
+        quantityDiscounts: buySeller.quantity_discounts || [],
+        hsnCode: buySeller.hsn_code,
+        paymentTerms: buySeller.payment_terms,
+        returnPolicy: buySeller.return_policy,
+        warranty: buySeller.warranty,
+        deliveryTimeline: buySeller.delivery_timeline,
+    };
 
     return (
         <div className="min-h-screen bg-[#FCFBF9]">
@@ -169,13 +243,27 @@ export default function BrandItemSellersPage() {
                     ) : (
                         <>
                             {items.map((s, i) => (
-                                <SellerRow key={s.submission_id} s={s} idx={i} onClick={() => navigate(`/shop/${s.shop_slug}`)} />
+                                <SellerRow
+                                    key={s.submission_id}
+                                    s={s}
+                                    idx={i}
+                                    onBuy={() => setBuySeller(s)}
+                                    onViewShop={() => navigate(`/shop/${s.shop_slug}`)}
+                                />
                             ))}
                             {loadingMore && <RowSkeleton />}
                         </>
                     )}
                 {hasMore && !loading && <div ref={sentinelRef} className="h-1" />}
             </div>
+
+            {buyerSellerPayload && (
+                <BuyNowModal
+                    seller={buyerSellerPayload}
+                    product={{ name: brandItemHint?.name, brand_name: brandItemHint?.brand_name }}
+                    onClose={() => setBuySeller(null)}
+                />
+            )}
         </div>
     );
 }
