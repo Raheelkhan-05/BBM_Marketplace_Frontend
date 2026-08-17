@@ -3,7 +3,7 @@ import { createContext, useContext, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Header from "./Header.jsx";
 import Footer from "./Footer.jsx";
-import BottomSearchBar from "./BottomSearchBar.jsx";
+import BottomNavStrip from "./BottomNavStrip.jsx";
 import BackgroundAmbience from "./landing/BackgroundAmbience.jsx";
 
 const LightboxVisibilityContext = createContext(null);
@@ -20,12 +20,13 @@ export default function Layout() {
   const { pathname } = useLocation();
   const isLandingPage = pathname === "/";
   // Admin pages have their own bottom-fixed bars (save/reject/approve bar,
-  // mobile add-new FAB) — stacking the marketplace search bar on top of
-  // those covered their buttons and blocked taps, so it's hidden here.
+  // mobile add-new FAB) — stacking the bottom nav strip on top of those
+  // covered their buttons and blocked taps, so it's hidden here.
   const isAdminPage = pathname.startsWith("/admin");
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [rfqOpen, setRfqOpen] = useState(false);
 
-  const showBottomSearchBar = !isLandingPage && !isAdminPage && !lightboxOpen;
+  const showBottomNav = !isLandingPage && !isAdminPage && !lightboxOpen;
 
   return (
     <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>
@@ -33,9 +34,9 @@ export default function Layout() {
         <BackgroundAmbience />
 
         <div className="relative z-1">
-          <Header />
+          <Header onOpenRfq={() => setRfqOpen(true)} />
 
-          <main className={showBottomSearchBar ? "pb-24 md:pb-0" : ""}>
+          <main className={showBottomNav ? "pb-10 md:pb-0" : ""}>
             <Outlet />
           </main>
 
@@ -43,7 +44,7 @@ export default function Layout() {
             <Footer />
           </div>
 
-          {showBottomSearchBar && <BottomSearchBar />}
+          {showBottomNav && <BottomNavStrip onOpenRfq={() => setRfqOpen(true)} />}
         </div>
       </div>
     </LightboxVisibilityContext.Provider>

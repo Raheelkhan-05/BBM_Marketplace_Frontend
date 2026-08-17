@@ -823,3 +823,70 @@ export async function fetchHomeFeed(cursor = 0, limit = 3) {
   const res = await fetch(`${API_BASE}/catalog-search/home-feed?${params}`);
   return res.json();
 }
+
+export async function fetchCategoryGenericProducts(categoryId, { q = "", sort = "relevance", limit = 30, offset = 0, subcategoryIds, signal } = {}) {
+  const params = new URLSearchParams({ q, sort, limit, offset });
+  if (subcategoryIds?.length) params.set("subcategoryIds", subcategoryIds.join(","));
+
+  const res = await fetch(
+    `${API_BASE}/catalog/categories/${categoryId}/generic-products?${params}`,
+    { signal }
+  );
+
+  if (!res.ok) {
+    throw new Error(`Request failed with status ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchGenericProductBrands(genericProductId, { q = "", sort = "relevance", limit = 30, offset = 0, signal } = {}) {
+  const params = new URLSearchParams({ q, sort, limit, offset });
+
+  const res = await fetch(`${API_BASE}/catalog/generic-products/${genericProductId}/brands?${params}`, { signal });
+
+  if (!res.ok) {
+    throw new Error(`Request failed with status ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchBrandItemDetail(brandItemId, { signal } = {}) {
+  const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}`, { signal });
+
+  if (res.status === 404) {
+    return { success: false, message: "Product not found." };
+  }
+  if (!res.ok) {
+    throw new Error(`Request failed with status ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchBrandItemSellers(brandItemId, { sort = "relevance", limit = 24, offset = 0, signal } = {}) {
+  const params = new URLSearchParams({ sort, limit, offset });
+
+  const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}/sellers?${params}`, { signal });
+
+  if (!res.ok) {
+    throw new Error(`Request failed with status ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchGenericProductsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, subcategoryIds, signal } = {}) {
+  const params = new URLSearchParams({ q, sort, limit, offset });
+  if (categoryId) params.set("categoryId", categoryId);
+  if (subcategoryIds?.length) params.set("subcategoryIds", subcategoryIds.join(","));
+
+  const res = await fetch(`${API_BASE}/catalog/generic-products?${params}`, { signal });
+
+  if (!res.ok) {
+    throw new Error(`Request failed with status ${res.status}`);
+  }
+
+  return res.json();
+}

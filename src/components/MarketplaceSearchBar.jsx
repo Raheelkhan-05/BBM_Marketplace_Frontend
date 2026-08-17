@@ -1,16 +1,46 @@
 // components/MarketplaceSearchBar.jsx
 
 import { useRef, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Camera, FileText, Loader2, Layers, Tag, Package, BadgeCheck, Image as ImageIcon, Aperture } from "lucide-react";
-import { searchByImage, fetchAutocomplete } from "../utils/api";
-import { resizeImageForSearch } from "../utils/resizeImageForSearch";
-import { Link } from "react-router-dom";
+import { Search, Loader2, Layers, Tag, Package, BadgeCheck } from "lucide-react";
+import { fetchAutocomplete } from "../utils/api";
 
 const AUTOCOMPLETE_MIN_CHARS = 2;
 const DEBOUNCE_MS = 100;
 
+// Static resting-state border — your original 3 stops, untouched.
+const BAR_GRADIENT = "linear-gradient(90deg, #0B8A93 0%, #3B82F6 50%, #FF6A00 100%)";
+
+// Running-border gradient, a CONIC gradient rotated via the --bbm-angle
+// custom property.
+//
+// These stops are NOT copied from BAR_GRADIENT's own 0%/50%/100% order —
+// they're derived from what BAR_GRADIENT actually looks like at each of
+// the four cardinal points (top/right/bottom/left) of a wide pill:
+//   - top-center and bottom-center sit at the same horizontal position
+//     (the middle of the bar) on a left-to-right linear gradient, so
+//     both must be BLUE (the 50% stop), not different colors.
+//   - right-center is the far-right edge  -> ORANGE (100% stop)
+//   - left-center  is the far-left edge   -> TEAL   (0% stop)
+// Laying the conic stops out this way (blue, orange, blue, teal, blue)
+// means every quarter-arc of the ring sweeps colors in the same
+// direction the linear bar actually sweeps them (e.g. left-center to
+// top-center goes teal->blue, same as sliding from x=0% to x=50% on
+// BAR_GRADIENT). Since the spin is a clean 0deg->360deg loop, this is
+// also exactly the frame the animation starts on and lands back on —
+// so crossfading in/out of BAR_GRADIENT reads as a continuation, not a
+// jump to an unrelated color arrangement.
+const RUNNING_BORDER_GRADIENT_STOPS =
+    "#3B82F6 0%, #FF6A00 25%, #3B82F6 50%, #0B8A93 75%, #3B82F6 100%";
+
+const BORDER_WIDTH_PX = 2;
+const SPIN_CYCLE_MS = 3000;
+const INTRO_ANIMATION_MS = SPIN_CYCLE_MS;
+
+// Symmetric ease-in-out — the spin gently accelerates away from each
+// checkpoint and gently decelerates into the next one.
+const SPIN_EASING = "cubic-bezier(0.45, 0, 0.55, 1)";
 
 const LEVEL_META = {
     category: { icon: Layers, label: "Category", color: "#047084", bg: "rgba(4,112,132,0.08)" },
@@ -20,8 +50,6 @@ const LEVEL_META = {
     brandFamily: { icon: BadgeCheck, label: "Brand", color: "#F15A24", bg: "rgba(241,90,36,0.08)" },
 };
 
-// Bolds the portion of `name` that matches `term`, so the dropdown visually
-// shows *why* each row matched — same trick Google/Amazon use.
 function HighlightedName({ name, term }) {
     if (!term.trim()) return <>{name}</>;
     const idx = name.toLowerCase().indexOf(term.trim().toLowerCase());
@@ -38,37 +66,13 @@ function HighlightedName({ name, term }) {
     );
 }
 
-// Detects whether this device can plausibly offer a *distinct* camera-capture
-// option worth showing as its own menu item. Desktops/laptops (fine pointer,
-// no touch) never get the menu — clicking the Image button behaves exactly
-// like before (opens the OS file picker straight away). Phones/tablets
-// (coarse pointer / touch capable) get a tiny popover to choose between
-// "Take Photo" and "Choose from Gallery", since relying on Android's default
-// intent chooser to surface the camera option is unreliable across devices.
-function isLikelyMobileDevice() {
-    if (typeof window === "undefined") return false;
-    const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
-    const touch = "ontouchstart" in window || (navigator.maxTouchPoints || 0) > 0;
-    return Boolean(coarse || touch);
-}
-
 export default function MarketplaceSearchBar({
-    value, onChange, onSubmit, onImageResolved, onFileImport,
+    value, onChange, onSubmit,
     placeholder = "Search any product, brand, category...",
     suggestionsDirection = "down",
     clearOnSubmit = true,
 }) {
-    const [imageSearching, setImageSearching] = useState(false);
-    const [imageError, setImageError] = useState(null);
-    const [showImageMenu, setShowImageMenu] = useState(false);
-    const fileInputRef = useRef(null);     // gallery / regular file picker
-    const cameraInputRef = useRef(null);   // forces rear camera capture on mobile
-    const imageMenuRef = useRef(null);
-    const isMobile = useRef(isLikelyMobileDevice());
-    const pdfInputRef = useRef(null);
-
     const navigate = useNavigate();
-
 
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -78,10 +82,12 @@ export default function MarketplaceSearchBar({
     const abortRef = useRef(null);
     const containerRef = useRef(null);
 
-    // Debounced + truly cancellable (AbortController, not just a stale-flag)
-    // fetch — old requests are killed outright the moment a new keystroke
-    // comes in, so the network never has more than one suggestion request
-    // in flight. That's what makes this feel real-time.
+    const [introActive, setIntroActive] = useState(true);
+    useEffect(() => {
+        const t = setTimeout(() => setIntroActive(false), INTRO_ANIMATION_MS);
+        return () => clearTimeout(t);
+    }, []);
+
     useEffect(() => {
         clearTimeout(debounceRef.current);
         abortRef.current?.abort();
@@ -122,53 +128,29 @@ export default function MarketplaceSearchBar({
             if (containerRef.current && !containerRef.current.contains(e.target)) {
                 setShowSuggestions(false);
             }
-            if (imageMenuRef.current && !imageMenuRef.current.contains(e.target)) {
-                setShowImageMenu(false);
-            }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-
-    const handlePdfFileChange = (e) => {
-        const file = e.target.files?.[0];
-        e.target.value = "";
-        if (!file) return;
-        if (file.type !== "application/pdf") {
-            setImageError("Please upload a PDF file.");
-            return;
-        }
-        if (file.size > 25 * 1024 * 1024) {
-            setImageError("File is too large (max 25MB).");
-            return;
-        }
-        onFileImport(file);
-    };
-
     const commitSearch = (term) => {
         const trimmed = term.trim();
         if (!trimmed) return;
-        setImageError(null);
         setShowSuggestions(false);
         if (clearOnSubmit) onChange("");
         onSubmit(trimmed);
     };
 
-
     const handleSubmit = (e) => {
         e.preventDefault();
         if (highlightIndex >= 0 && suggestions[highlightIndex]) {
-            handleSuggestionClick(suggestions[highlightIndex]); // reuse the same logic instead of duplicating it
+            handleSuggestionClick(suggestions[highlightIndex]);
         } else {
             commitSearch(value);
         }
     };
 
     const handleSuggestionClick = (s) => {
-        // Brand-family suggestions aren't a search term — they're a direct
-        // link to that brand's family page, so skip commitSearch/onSubmit
-        // entirely and navigate straight there.
         if (s.level === "brandFamily") {
             setShowSuggestions(false);
             onChange("");
@@ -193,69 +175,101 @@ export default function MarketplaceSearchBar({
         }
     };
 
-    // Desktop: behave exactly as before — one click straight into the file
-    // picker, no camera option, no menu.
-    // Mobile/touch: open a tiny popover so the user can explicitly choose
-    // "Take Photo" (forces rear camera) vs "Choose from Gallery", instead of
-    // depending on the OS's own (inconsistent) intent chooser.
-    const handleImageButtonClick = () => {
-        if (imageSearching) return;
-        setImageError(null);
-        if (isMobile.current) {
-            setShowImageMenu((prev) => !prev);
-        } else {
-            fileInputRef.current?.click();
-        }
-    };
-
-    const openGalleryPicker = () => {
-        setShowImageMenu(false);
-        fileInputRef.current?.click();
-    };
-
-    const openCameraCapture = () => {
-        setShowImageMenu(false);
-        cameraInputRef.current?.click();
-    };
-
-    const handleImageFileChange = async (e) => {
-        const file = e.target.files?.[0];
-        e.target.value = "";
-        if (!file) return;
-
-        setImageSearching(true);
-        setImageError(null);
-        try {
-            const { base64, mimeType } = await resizeImageForSearch(file);
-            const result = await searchByImage(base64, mimeType);
-            if (result?.success && result.resolved && result.stack) {
-                onImageResolved(result);
-            } else {
-                setImageError(result?.reason || "We couldn't identify a product in that photo.");
-            }
-        } catch {
-            setImageError("Something went wrong reading that photo. Please try again.");
-        } finally {
-            setImageSearching(false);
-        }
-    };
-
     return (
         <div className="w-full relative" ref={containerRef}>
-            <form
-                onSubmit={handleSubmit}
-                className="w-full rounded-full p-[2px] bg-gradient-to-r from-[#0B8A93] via-[#3B82F6] to-[#FF6A00] shadow-lg"
-            >
-                <div className="flex h-[60px] lg:h-[62px] xl:h-[64px] items-center rounded-full bg-white px-3 pl-5 lg:px-5 lg:pl-7">
-                    <div className="flex shrink-0 items-center pr-3 lg:pr-4">
+            <style>{`
+                /* Registering the angle as a real animatable type is what
+                   makes the conic-gradient rotation interpolate smoothly
+                   frame-by-frame instead of jumping in steps. Without
+                   this, browsers treat --bbm-angle as an opaque string
+                   and can't tween between 0deg and 360deg. */
+                @property --bbm-angle {
+                    syntax: '<angle>';
+                    inherits: false;
+                    initial-value: 0deg;
+                }
+
+                @keyframes bbm-border-spin {
+                    from { --bbm-angle: 0deg; }
+                    to   { --bbm-angle: 360deg; }
+                }
+
+                .bbm-border-static {
+                    border: ${BORDER_WIDTH_PX}px solid transparent;
+                    border-radius: 9999px;
+                    background-image: ${BAR_GRADIENT};
+                    background-origin: border-box;
+                    background-clip: border-box;
+                }
+
+                /* Sits directly on top of the static border (same box,
+                   offset out by the border width so its own border ring
+                   overlays exactly). Starts transparent and crossfades
+                   in on mount / out at the end of the intro via the CSS
+                   transition, instead of hard-mounting/unmounting.
+
+                   Increasing --bbm-angle from 0deg to 360deg rotates the
+                   conic pattern CLOCKWISE (conic-gradient angles run
+                   clockwise from "from"). Because the stop layout is
+                   built to match BAR_GRADIENT at rest (see the stops
+                   comment above), and 0deg/360deg are the same frame,
+                   the very first frame shown and the frame it lands
+                   back on before crossfading out are both a close match
+                   to BAR_GRADIENT — no unrelated colors popping in, no
+                   abrupt jump when it hands off to the static border. */
+                .bbm-border-dynamic {
+                    position: absolute;
+                    border: ${BORDER_WIDTH_PX}px solid transparent;
+                    border-radius: 9999px;
+                    --bbm-angle: 0deg;
+                    background-image: conic-gradient(from var(--bbm-angle), ${RUNNING_BORDER_GRADIENT_STOPS});
+                    background-origin: border-box;
+                    background-clip: border-box;
+                    opacity: 0;
+                    transition: opacity 700ms ease;
+                }
+                .bbm-border-dynamic-on {
+                    opacity: 1;
+                    animation: bbm-border-spin ${SPIN_CYCLE_MS}ms ${SPIN_EASING} infinite;
+                }
+
+                /* Static glass-style sheen along the top — a small,
+                   permanent highlight (not tied to the color cycle) that
+                   reads as a glossy premium finish on the pill regardless
+                   of animation state. */
+                .bbm-glass-sheen {
+                    background: linear-gradient(to bottom, rgba(255,255,255,.65) 0%, rgba(255,255,255,0) 55%);
+                    opacity: .55;
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .bbm-border-dynamic-on { animation: none; opacity: 0; }
+                }
+            `}</style>
+
+            {/* Static border always renders underneath; the animated
+                border overlays it exactly (inset outward by the border
+                width so its own border ring lines up) and crossfades its
+                opacity out at the end of the intro, revealing the static
+                one beneath with no jump. */}
+            <div className="relative rounded-full shadow-lg bbm-border-static">
+                <div
+                    aria-hidden="true"
+                    className={`absolute rounded-full bbm-border-dynamic ${introActive ? "bbm-border-dynamic-on" : ""}`}
+                    style={{ inset: `-${BORDER_WIDTH_PX}px` }}
+                />
+
+                <form onSubmit={handleSubmit} className="relative flex h-[55px] items-center overflow-hidden rounded-full bg-white px-3 pl-5 lg:h-[62px] lg:px-5 lg:pl-7 xl:h-[64px]">
+                    <div aria-hidden="true" className="bbm-glass-sheen pointer-events-none absolute inset-0 rounded-full" />
+
+                    <div className="relative flex shrink-0 items-center pr-3 lg:pr-4">
                         <Link to="/home">
                             <img src="/Logo.png" alt="BBM" className="h-6 w-6 lg:h-8 lg:w-8 object-contain" />
                         </Link>
                     </div>
 
-                    <div className="mr-3 lg:mr-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
+                    <div className="relative mr-3 lg:mr-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
 
-                    <div className="flex min-w-0 flex-1 items-center">
+                    <div className="relative flex min-w-0 flex-1 items-center">
                         {suggestionsLoading ? (
                             <Loader2 size={16} className="mr-2 lg:mr-3 shrink-0 animate-spin text-[#0B8A93] lg:!w-4 lg:!h-4" />
                         ) : (
@@ -268,111 +282,19 @@ export default function MarketplaceSearchBar({
                             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                             placeholder={placeholder}
                             autoComplete="off"
-                            className="w-full min-w-0 bg-transparent text-[10px] lg:text-base text-slate-700 placeholder:text-slate-400 outline-none"
+                            className="w-full min-w-0 bg-transparent text-[11px] lg:text-base text-slate-700 placeholder:text-slate-400 outline-none"
                         />
                     </div>
 
-                    <div className="mx-3 lg:mx-4 h-8 lg:h-10 w-px shrink-0 bg-gray-200" />
-
-                    {/* Gallery / regular file picker input — no capture attr, so on
-                        desktop this opens the normal OS file dialog, and on mobile
-                        it opens the gallery/photos picker. */}
-                    <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
-                    {/* Dedicated camera-capture input. The `capture` attribute is what
-                        forces mobile browsers to open the camera directly instead of
-                        leaving the choice up to the device's default app settings —
-                        this is what fixes the inconsistent Android behavior. Desktop
-                        browsers ignore `capture` entirely, which is fine since this
-                        input is never triggered on desktop. */}
-                    <input
-                        ref={cameraInputRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden disabled"
-                        onChange={handleImageFileChange}
-                    />
-                    <div className="relative" ref={imageMenuRef}>
-                        <button
-                            type="button"
-                            // onClick={handleImageButtonClick}
-                            disabled={imageSearching}
-                            className="flex disabled shrink-0 flex-col items-center justify-center gap-1 px-0 lg:px-2 disabled:opacity-60"
-                        >
-                            <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#E7F7F7]">
-                                {imageSearching ? (
-                                    <Loader2 size={15} className="animate-spin text-[#00838F] lg:!w-[15px] lg:!h-[15px]" />
-                                ) : (
-                                    <Camera size={15} className="text-[#00838F] lg:!w-[15px] lg:!h-[15px]" />
-                                )}
-                            </div>
-                            <span className="text-[9px] lg:text-[11px] font-medium leading-none text-[#00838F]">
-                                {imageSearching ? "Scanning" : "Image"}
-                            </span>
-                        </button>
-
-                        {/* Mobile-only popover: choose camera vs gallery. Desktop never
-                            renders this since handleImageButtonClick skips straight to
-                            the file picker there. */}
-                        <AnimatePresence>
-                            {showImageMenu && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: suggestionsDirection === "up" ? 6 : -6, scale: 0.97 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: suggestionsDirection === "up" ? 6 : -6, scale: 0.97 }}
-                                    transition={{ duration: 0.14 }}
-                                    className={`absolute right-0 z-40 w-44 overflow-hidden rounded-xl border border-slate-100 bg-white shadow-[0_10px_28px_-8px_rgba(4,112,132,0.35)] ring-1 ring-black/5 ${suggestionsDirection === "up"
-                                        ? "bottom-[calc(100%+10px)]"
-                                        : "top-[calc(100%+10px)]"
-                                        }`}
-                                >
-                                    <button
-                                        type="button"
-                                        onClick={openCameraCapture}
-                                        className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition hover:bg-[#F4FBFB]"
-                                    >
-                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E7F7F7] text-[#00838F]">
-                                            <Aperture className="h-3.5 w-3.5" />
-                                        </span>
-                                        <span className="text-[12.5px] font-semibold text-slate-700">Take Photo</span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={openGalleryPicker}
-                                        className="flex w-full items-center gap-2.5 border-t border-slate-50 px-3.5 py-3 text-left transition hover:bg-[#F4FBFB]"
-                                    >
-                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E7F7F7] text-[#00838F]">
-                                            <ImageIcon className="h-3.5 w-3.5" />
-                                        </span>
-                                        <span className="text-[12.5px] font-semibold text-slate-700">Choose from Gallery</span>
-                                    </button>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-
-                    <input ref={pdfInputRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfFileChange} />
-                    <button
-                        type="button"
-                        // onClick={() => pdfInputRef.current?.click()}
-                        className="flex shrink-0 flex-col items-center justify-center gap-1 px-2 pr-0 lg:px-2 lg:pr-1"
-                    >
-                        <div className="flex h-7 w-7 lg:h-6 lg:w-6 items-center justify-center rounded-full bg-[#F1EEFF]">
-                            <FileText size={15} className="text-[#6655D8] lg:!w-[15px] lg:!h-[15px]" />
-                        </div>
-                        <span className="text-[9px] lg:text-[11px] font-medium leading-none text-[#6655D8]">PDF</span>
-                    </button>
-
                     <button
                         type="submit"
-                        className="ml-2 lg:ml-3 flex h-9 w-9 lg:h-9 lg:w-9 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
+                        className="relative ml-2 lg:ml-3 flex h-9 w-9 lg:h-9 lg:w-9 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
                     >
                         <Search size={14} className="lg:!w-[16px] lg:!h-[16px]" />
                     </button>
-                </div>
-            </form>
+                </form>
+            </div>
 
-            {/* Autocomplete dropdown — restyled to match brand: teal/orange accents, motion, matched-text bolding */}
             <AnimatePresence>
                 {showSuggestions && suggestions.length > 0 && (
                     <motion.div
@@ -431,8 +353,6 @@ export default function MarketplaceSearchBar({
                     </motion.div>
                 )}
             </AnimatePresence>
-
-            {imageError && <p className="mt-2 px-4 text-[11.5px] font-medium text-amber-600">{imageError}</p>}
         </div>
     );
 }

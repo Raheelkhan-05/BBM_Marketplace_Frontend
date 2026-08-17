@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import BrowseFilterBar from "../components/catalog/BrowseFilterBar";
 import SimpleFacetFilterBar from "../components/catalog/SimpleFacetFilterBar";
 import BrandItemCard from "../components/catalog/BrandItemCard";
-import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
+import MarketplaceSearchBar from "../components/MarketplaceSearchBar_OLD.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { TileGridSkeleton, CatalogLoadError } from "../components/catalog/CatalogUI";
 import BuySellChoiceSheet from "../components/catalog/BuySellChoiceSheet";

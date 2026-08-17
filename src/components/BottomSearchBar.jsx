@@ -1,7 +1,7 @@
 // src/components/BottomSearchBar.jsx
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import MarketplaceSearchBar from "./MarketplaceSearchBar.jsx";
+import MarketplaceSearchBar from "./MarketplaceSearchBar_OLD.jsx";
 import { performSearchNavigation } from "../utils/searchResolve.js";
 
 export default function BottomSearchBar() {

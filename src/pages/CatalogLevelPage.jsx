@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { CatalogHeader, FilterSortChips, IconTile, TileGrid, TileGridSkeleton, CatalogLoadError } from "../components/catalog/CatalogUI";
 import { C } from "../components/catalog/tokens";
 import { CATALOG_LEVEL_CONFIGS } from "./catalogLevelConfigs";
-import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
+import MarketplaceSearchBar from "../components/MarketplaceSearchBar_OLD.jsx";
 import { resolveSearchRoute } from "../utils/searchResolve.js";
 import useInfiniteCatalogData from "../hooks/useInfiniteCatalogData";
 
