@@ -82,24 +82,25 @@ function SellerRow({ s, idx, onBuy, onViewShop }) {
                         <MapPin className="h-3 w-3 shrink-0" /> {[s.city, s.state].filter(Boolean).join(", ")}
                     </p>
                 )}
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-1 sm:gap-x-2 gap-y-1">
                     <span className="flex items-center gap-1 text-[10.5px] font-bold" style={{ color: C.secondary }}>
                         <Boxes className="h-3 w-3" /> MOQ {s.moq} {s.unit}
                     </span>
+                    {s.stock_quantity != null && (
+                        <span className="text-[10.5px] font-semibold" style={{ color: C.muted }}>{'· '}&nbsp;{s.stock_quantity} {s.unit} in stock</span>
+                    )}
                     <span className="flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: C.muted }}>
                         <Truck className="h-3 w-3" /> {s.stock_type === "made_to_order" ? "Made to order" : "Ready stock"}
                         {lead != null ? ` · ${lead}d` : ""}
                     </span>
-                    {s.stock_quantity != null && (
-                        <span className="text-[10.5px] font-semibold" style={{ color: C.muted }}>{s.stock_quantity} {s.unit} in stock</span>
-                    )}
+
                 </div>
                 <SlabBadges slabs={s.price_slabs} unit={s.unit} />
                 {(s.payment_terms || s.delivery_timeline) && (
                     <p className="mt-1.5 truncate text-[10.5px] font-medium" style={{ color: C.muted }}>
                         {s.delivery_timeline ? `Delivery: ${s.delivery_timeline}` : ""}
                         {s.delivery_timeline && s.payment_terms ? " · " : ""}
-                        {s.payment_terms ? `Payment: ${s.payment_terms}` : ""}
+                        {/* {s.payment_terms ? `Payment: ${s.payment_terms}` : ""} */}
                     </p>
                 )}
             </button>
@@ -116,9 +117,6 @@ function SellerRow({ s, idx, onBuy, onViewShop }) {
                 </div>
                 <button onClick={onBuy} className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}>
                     Buy now
-                </button>
-                <button onClick={onViewShop} className="flex items-center gap-0.5 text-[10px] font-bold" style={{ color: C.secondary }}>
-                    View shop <ChevronRight className="h-3 w-3" />
                 </button>
             </div>
         </motion.div>
