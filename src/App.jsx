@@ -36,6 +36,7 @@ import GenericProductSellersPage from "./pages/GenericProductSellersPage.jsx";
 import CategoryProductsPage from "./pages/CategoryProductsPage.jsx";
 import GenericProductBrandsPage from "./pages/GenericProductBrandsPage.jsx";
 import BrandItemSellersPage from "./pages/BrandItemSellersPage.jsx";
+import SellerManageListingsPage from "./pages/SellerManageListingsPage.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -73,6 +74,7 @@ function App() {
             <Route path="/seller/orders" element={<SalesOrdersPage />} />
             <Route path="/orders/:id" element={<OrderDetailPage />} />
             <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
+            <Route path="/seller/listings" element={<SellerManageListingsPage />} />
 
             <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
             <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />

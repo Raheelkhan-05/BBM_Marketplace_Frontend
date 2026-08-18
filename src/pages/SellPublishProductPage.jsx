@@ -125,7 +125,7 @@ export default function SellPublishProductPage() {
         : null;
 
     return (
-        <div className="mx-auto max-w-3xl min-h-screen px-4 pt-6 sm:px-6">
+        <div className="mx-auto max-w-3xl min-h-screen px-4 pt-6 sm:px-6 bg-[#FCFBF9]">
             <h1 className="text-[clamp(1.5rem,3.5vw,1.9rem)] font-bold text-slate-900">{isEdit ? "Edit listing" : "List a product"}</h1>
             <p className="mt-1.5 text-[13.5px] font-medium text-slate-500">
                 {isEdit

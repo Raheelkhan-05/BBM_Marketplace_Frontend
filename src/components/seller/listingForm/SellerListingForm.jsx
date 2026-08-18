@@ -1,4 +1,16 @@
-// components/seller/listingForm/SellerListingForm.jsx — REWRITTEN
+// components/seller/listingForm/SellerListingForm.jsx — RESTYLED
+//
+// Visual pass to match the Home / SellerManageListingsPage language:
+// same C tokens, compact caption labels, rounded-2xl section cards,
+// responsive grids that reflow at every breakpoint instead of just
+// desktop, tighter vertical rhythm, and a sticky footer that mirrors
+// the "Sync" pill + progress affordance used elsewhere.
+//
+// Also fixes a prop-name mismatch with the caller (SellPublishProductPage):
+// this component previously only accepted `identityLocked` / `lockedIdentity`
+// and never read `initialValues`, so the edit route never prefilled the
+// form. Now accepts `mode`, `identityReadOnly`, `brandDisplay`, and
+// `initialValues` (aliases kept for back-compat).
 import { useEffect, useMemo, useState } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
@@ -14,6 +26,8 @@ import {
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
 import PolicySelect from "./PolicySelect.jsx";
+
+const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
@@ -78,16 +92,29 @@ function computeMissing(form) {
 }
 
 function FieldAnchor({ fieldKey, children }) {
-    return <div id={`field-${fieldKey}`} className="rounded-xl transition-shadow">{children}</div>;
+    return <div id={`field-${fieldKey}`} className="min-w-0 rounded-xl transition-shadow">{children}</div>;
 }
 
-export default function SellerListingForm({ onSubmit, submitting, submitLabel = "Submit for review", identityLocked = false, lockedIdentity }) {
+export default function SellerListingForm({
+    onSubmit, submitting, submitLabel = "Submit for review",
+    // current API
+    mode = "create", identityReadOnly, brandDisplay, initialValues,
+    // back-compat aliases
+    identityLocked, lockedIdentity,
+}) {
+    const locked = identityReadOnly ?? identityLocked ?? mode === "edit";
+    const identity = brandDisplay ?? lockedIdentity;
 
     const { token } = useAuth();
-    const [form, setForm] = useState({
+    const [form, setForm] = useState(() => ({
         ...DEFAULT_LISTING_FORM,
-        ...(identityLocked ? { productName: lockedIdentity?.productName || "", brandName: lockedIdentity?.brandName || "", images: lockedIdentity?.image ? [lockedIdentity.image] : [] } : {}),
-    });
+        ...(initialValues || {}),
+        ...(locked ? {
+            productName: initialValues?.productName ?? identity?.name ?? identity?.productName ?? "",
+            brandName: initialValues?.brandName ?? identity?.brandName ?? "",
+            images: initialValues?.images?.length ? initialValues.images : (identity?.image ? [identity.image] : []),
+        } : {}),
+    }));
     const [uploadingImage, setUploadingImage] = useState(false);
     const [commissionPercent, setCommissionPercent] = useState(5);
     const [error, setError] = useState(null);
@@ -113,10 +140,10 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
     useEffect(() => { fetchCommissionInfo().then((res) => { if (res?.success) setCommissionPercent(res.commissionPercent); }); }, []);
 
     // Prefill dispatch defaults (pincode + locations + freight toggle)
-    // from the seller's saved "delivery" group — this is what makes the
-    // second-and-later listing nearly one-click on delivery.
+    // from the seller's saved "delivery" group — only on create; an edit
+    // should show what's actually saved on the listing, not overwrite it.
     useEffect(() => {
-        if (!token) return;
+        if (!token || mode === "edit") return;
         fetchDefaultListingTemplates(token).then((res) => {
             if (!res?.success) return;
             const tpl = res.defaults?.delivery?.data;
@@ -128,7 +155,8 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
                 freightIncluded: tpl.freightIncluded ?? f.freightIncluded,
             }));
         });
-    }, [token]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [token, mode]);
 
     // Live price preview — mirrors normalizeEnteredPrice on the backend.
     const pricePreview = useMemo(() => {
@@ -204,21 +232,21 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
     };
 
     return (
-        <div className="flex flex-col gap-4 pb-28">
+        <div className="flex flex-col gap-3 pb-24 sm:gap-3.5" style={{ fontFamily: FONT_BODY }}>
             {error && (
-                <div className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12.5px] font-semibold" style={{ background: "rgba(199,31,17,0.08)", color: C.danger }}>
+                <div className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12px] font-semibold leading-snug" style={{ background: "rgba(199,31,17,0.08)", color: C.danger }}>
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
                 </div>
             )}
 
             {/* ---------------- Product ---------------- */}
-            <SectionCard icon={Package} title="Product" subtitle={identityLocked ? "Already approved" : "Name, brand, images & documents"} alwaysOpen>
-                {identityLocked ? (
-                    <div className="flex items-center gap-3 rounded-xl p-3" style={{ background: C.hairSoft }}>
-                        {form.images?.[0] && <img src={form.images[0]} alt="" className="h-14 w-14 rounded-lg border object-cover" style={{ borderColor: C.hair }} />}
-                        <div>
-                            <p className="text-[14px] font-extrabold" style={{ color: C.ink }}>{form.productName}</p>
-                            {form.brandName && <p className="text-[11.5px] font-bold" style={{ color: C.primary }}>{form.brandName}</p>}
+            <SectionCard icon={Package} title="Product" subtitle={locked ? "Already approved · locked" : "Name, brand, images & documents"} alwaysOpen>
+                {locked ? (
+                    <div className="flex items-center gap-3 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
+                        {form.images?.[0] && <img src={form.images[0]} alt="" className="h-12 w-12 shrink-0 rounded-lg border object-cover" style={{ borderColor: C.hair }} />}
+                        <div className="min-w-0">
+                            <p className="truncate text-[13.5px] font-extrabold" style={{ color: C.ink }}>{form.productName}</p>
+                            {form.brandName && <p className="truncate text-[11px] font-bold" style={{ color: C.primary }}>{form.brandName}</p>}
                         </div>
                     </div>
                 ) : (
@@ -235,21 +263,21 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
                         </FieldAnchor>
 
                         <FieldAnchor fieldKey="images">
-                            <div className="flex flex-col gap-1">
-                                <span className="text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
+                            <div className="flex flex-col gap-1.5">
+                                <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.12em]" style={{ color: C.muted }}>
                                     Product images {form.images.length > 0 && `(${form.images.length})`} <span style={{ color: C.primary }}>*</span>
                                 </span>
                                 <div className="flex flex-wrap gap-2">
                                     {form.images.map((src, i) => (
-                                        <div key={src + i} className="relative h-20 w-20">
+                                        <div key={src + i} className="relative h-16 w-16 sm:h-[72px] sm:w-[72px]">
                                             <img src={src} alt="" className="h-full w-full rounded-xl border object-cover" style={{ borderColor: C.hair }} />
-                                            <button type="button" onClick={() => removeImageAt(i)} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[11px] leading-none text-white">×</button>
-                                            {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-xl bg-black/60 py-0.5 text-center text-[9px] font-bold text-white">Cover</span>}
+                                            <button type="button" onClick={() => removeImageAt(i)} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[10px] leading-none text-white">×</button>
+                                            {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-xl bg-black/60 py-0.5 text-center text-[8px] font-bold text-white">Cover</span>}
                                         </div>
                                     ))}
-                                    <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed" style={{ borderColor: C.hairSoft, color: C.muted }}>
+                                    <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed sm:h-[72px] sm:w-[72px]" style={{ borderColor: C.hair, color: C.muted }}>
                                         {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                                        <span className="text-[9.5px] font-bold">{uploadingImage ? "Uploading…" : "Add"}</span>
+                                        <span className="text-[9px] font-bold">{uploadingImage ? "Uploading…" : "Add"}</span>
                                         <input type="file" accept="image/*" multiple onChange={handleImageFiles} className="hidden" disabled={uploadingImage} />
                                     </label>
                                 </div>
@@ -264,13 +292,13 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
 
                         <TextAreaField label="Note to admin" value={form.noteToAdmin} onChange={(v) => setField("noteToAdmin", v)} rows={2}
                             hint="Anything that'll help us approve this faster — e.g. context on the product, sourcing, or images." placeholder="Optional" />
-
-                    </>)}
+                    </>
+                )}
             </SectionCard>
 
             {/* ---------------- Packaging & Tax ---------------- */}
             <SectionCard icon={Boxes} title="Packaging & tax" alwaysOpen>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                     <FieldAnchor fieldKey="unit">
                         <SelectField required dense label="Unit" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
                     </FieldAnchor>
@@ -285,7 +313,7 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
                             onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="hsnCode">
                         <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => setField("hsnCode", v)} onBlur={() => touch("hsnCode")} error={isErr("hsnCode")} />
                     </FieldAnchor>
@@ -295,24 +323,24 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
 
             {/* ---------------- Pricing ---------------- */}
             <SectionCard icon={IndianRupee} title="Pricing" alwaysOpen>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="basePrice">
                         <TextField required dense label="Base price (₹)" value={form.basePrice} onChange={(v) => setField("basePrice", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal" />
                     </FieldAnchor>
                     <ChipToggleGroup dense label="This price is" value={form.priceBasis} onChange={(v) => setField("priceBasis", v)} options={PRICE_BASIS_OPTIONS} />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2.5">
                     <ToggleField label="Price includes GST?" value={form.gstInclusive} onChange={(v) => setField("gstInclusive", v)} />
                     <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />
                 </div>
                 <div className="flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${C.secondary}0c` }}>
-                    <span className="text-[12px] font-bold" style={{ color: C.muted }}>Base price / unit (excl. GST)</span>
-                    <span className="text-[15px] font-extrabold" style={{ color: C.secondary }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</span>
+                    <span className="text-[11px] font-bold" style={{ color: C.muted }}>Base price / unit (excl. GST)</span>
+                    <span className="text-[14.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</span>
                 </div>
 
                 <ToggleField label="Sample available?" value={form.sampleAvailable} onChange={(v) => setField("sampleAvailable", v)} />
                 {form.sampleAvailable && (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                         <FieldAnchor fieldKey="sampleQuantity">
                             <TextField required dense label="Sample quantity" value={form.sampleQuantity} onChange={(v) => setField("sampleQuantity", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("sampleQuantity")} error={isErr("sampleQuantity")} inputMode="decimal" />
                         </FieldAnchor>
@@ -328,7 +356,7 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
                 {form.priceSlabs.some((s) => s.discountPercent) && (
                     <div className="flex flex-col gap-1 rounded-xl border px-3 py-2" style={{ borderColor: C.hairSoft }}>
                         {form.priceSlabs.filter((s) => s.minQty && s.discountPercent).map((s, i) => (
-                            <p key={i} className="text-[11px] font-semibold" style={{ color: C.muted }}>
+                            <p key={i} className="text-[10.5px] font-semibold tabular-nums" style={{ color: C.muted }}>
                                 Above {s.minQty} {form.unit}: ₹{discountedPreview(s)} / {form.unit}
                             </p>
                         ))}
@@ -356,9 +384,9 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
                             onChange={(v) => { setField("dispatchPincode", v.replace(/[^\d]/g, "")); setPincodeStatus(null); }}
                             onBlur={() => { touch("dispatchPincode"); confirmPincode(); }}
                             error={isErr("dispatchPincode")} inputMode="numeric" />
-                        {pincodeStatus === "checking" && <p className="text-[11px] font-medium" style={{ color: C.muted }}>Checking…</p>}
-                        {pincodeStatus === "ok" && <p className="text-[11px] font-bold" style={{ color: C.secondary }}>Dispatching from {form.dispatchDistrict}, {form.dispatchState}</p>}
-                        {pincodeStatus === "error" && <p className="text-[11px] font-medium" style={{ color: C.primary }}>Couldn't verify this pincode — you can still continue.</p>}
+                        {pincodeStatus === "checking" && <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>Checking…</p>}
+                        {pincodeStatus === "ok" && <p className="text-[10.5px] font-bold" style={{ color: C.secondary }}>Dispatching from {form.dispatchDistrict}, {form.dispatchState}</p>}
+                        {pincodeStatus === "error" && <p className="text-[10.5px] font-medium" style={{ color: C.primary }}>Couldn't verify this pincode — you can still continue.</p>}
                     </div>
                 </FieldAnchor>
 
@@ -369,38 +397,40 @@ export default function SellerListingForm({ onSubmit, submitting, submitLabel = 
 
             {/* ---------------- Terms ---------------- */}
             <SectionCard icon={FileText} title="Terms" alwaysOpen>
-                <FieldAnchor fieldKey="returnPolicyKey">
-                    <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => setField("returnPolicyKey", v)} error={isErr("returnPolicyKey")} />
-                </FieldAnchor>
-                <FieldAnchor fieldKey="warrantyKey">
-                    <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => setField("warrantyKey", v)} error={isErr("warrantyKey")} />
-                </FieldAnchor>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <FieldAnchor fieldKey="returnPolicyKey">
+                        <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => setField("returnPolicyKey", v)} error={isErr("returnPolicyKey")} />
+                    </FieldAnchor>
+                    <FieldAnchor fieldKey="warrantyKey">
+                        <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => setField("warrantyKey", v)} error={isErr("warrantyKey")} />
+                    </FieldAnchor>
+                </div>
             </SectionCard>
 
             {/* ---------------- Summary ---------------- */}
-            <div className="grid grid-cols-4 gap-2 text-center">
-                <div className="rounded-xl p-2.5" style={{ background: C.hairSoft }}>
-                    <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Base price</p>
-                    <p className="mt-0.5 text-[13px] font-extrabold" style={{ color: C.ink }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
+                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>Base price</p>
+                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</p>
                 </div>
-                <div className="rounded-xl p-2.5" style={{ background: C.hairSoft }}>
-                    <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>+ GST</p>
-                    <p className="mt-0.5 text-[13px] font-extrabold" style={{ color: C.ink }}>{form.gstPercent}%</p>
+                <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
+                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>+ GST</p>
+                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>{form.gstPercent}%</p>
                 </div>
-                <div className="rounded-xl p-2.5" style={{ background: C.hairSoft }}>
-                    <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>BBM commission</p>
-                    <p className="mt-0.5 text-[13px] font-extrabold" style={{ color: C.primary }}>₹{pricePreview.commissionAmount.toLocaleString("en-IN")}</p>
+                <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
+                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>Commission</p>
+                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.primary }}>₹{pricePreview.commissionAmount.toLocaleString("en-IN")}</p>
                 </div>
-                <div className="rounded-xl p-2.5" style={{ background: `${C.secondary}14` }}>
-                    <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.secondary }}>Final price</p>
-                    <p className="mt-0.5 text-[13px] font-extrabold" style={{ color: C.secondary }}>₹{pricePreview.finalPricePerUnit.toLocaleString("en-IN")}</p>
+                <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.secondary, background: `${C.secondary}0c` }}>
+                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.secondary }}>Final price</p>
+                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.secondary }}>₹{pricePreview.finalPricePerUnit.toLocaleString("en-IN")}</p>
                 </div>
             </div>
 
-            <div className="sticky -bottom-5 z-10 mt-1 border-t bg-white px-1 py-3" style={{ borderColor: C.hair }}>
+            <div className="sticky bottom-12 md:bottom-0 z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4" style={{ borderColor: C.hair }}>
                 <Progress percent={percentComplete} />
                 <button type="button" onClick={handleSubmit} disabled={submitting}
-                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white disabled:opacity-60"
+                    className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
                     style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} <CheckCircle2 className="h-4 w-4" /></>}
                 </button>

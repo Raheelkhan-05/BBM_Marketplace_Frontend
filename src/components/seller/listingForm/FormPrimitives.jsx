@@ -1,4 +1,7 @@
-// components/seller/listingForm/FormPrimitives.jsx
+// components/seller/listingForm/FormPrimitives.jsx — RESTYLED to match
+// the Home / SellerManageListingsPage visual language: same C tokens,
+// compact uppercase-caption labels (like QuickField), rounded-xl inputs,
+// rounded-2xl cards, hairline borders, tabular-nums, framer-motion entrance.
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Plus, Trash2, Info, Check } from "lucide-react";
@@ -13,11 +16,15 @@ export const C = {
     danger: "#c71f11",
 };
 
+export const EASE = [0.16, 1, 0.3, 1];
+
+// Compact uppercase caption label — same idiom as QuickField in
+// SellerManageListingsPage, so every field in the app reads the same way.
 function Label({ children, hint }) {
     const [showHint, setShowHint] = useState(false);
     return (
         <span className="flex items-center gap-1">
-            <span className="text-[12px] font-bold" style={{ color: C.ink }}>{children}</span>
+            <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.12em]" style={{ color: C.muted }}>{children}</span>
             {hint && (
                 <span className="relative inline-flex">
                     <button
@@ -37,7 +44,7 @@ function Label({ children, hint }) {
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 4 }}
                                 transition={{ duration: 0.15 }}
-                                className="absolute bottom-full left-1/2 z-20 mb-1.5 w-48 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-white shadow-lg"
+                                className="absolute bottom-full left-1/2 z-20 mb-1.5 w-44 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-[10.5px] font-medium leading-snug text-white shadow-lg"
                                 style={{ background: C.ink }}
                             >
                                 {hint}
@@ -54,12 +61,12 @@ function Label({ children, hint }) {
 // it's untouched, valid, or (after blur) missing.
 function fieldTone(error) {
     if (error) return { borderColor: "#f2b3ab", ["--tw-ring-color"]: `${C.danger}1a`, background: "#fff8f7" };
-    return { borderColor: C.hairSoft, ["--tw-ring-color"]: `${C.secondary}20` };
+    return { borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` };
 }
 
 export function TextField({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense }) {
     return (
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
             {label && <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>}
             <input
                 type={type}
@@ -69,14 +76,14 @@ export function TextField({ label, value, onChange, onBlur, placeholder, inputMo
                 disabled={disabled}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
-                className={`w-full rounded-lg border-2 bg-white ${dense ? "px-2.5 py-1.5 text-[12.5px]" : "px-3 py-2 text-[13.5px]"} font-semibold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-4 disabled:bg-slate-50 disabled:opacity-60`}
+                className={`w-full rounded-lg border bg-white ${dense ? "px-2.5 py-2 text-[13px]" : "px-3 py-2.5 text-[13.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
                 style={{ color: C.ink, ...fieldTone(error) }}
             />
         </div>
     );
 }
 
-export function TextAreaField({ label, value, onChange, onBlur, placeholder, hint, required, rows = 3, error }) {
+export function TextAreaField({ label, value, onChange, onBlur, placeholder, hint, required, rows = 2, error }) {
     return (
         <div className="flex flex-col gap-1">
             <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>
@@ -86,7 +93,7 @@ export function TextAreaField({ label, value, onChange, onBlur, placeholder, hin
                 rows={rows}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
-                className="w-full resize-none rounded-lg border-2 bg-white px-3 py-2 text-[13px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-4"
+                className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[13px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2"
                 style={{ color: C.ink, ...fieldTone(error) }}
             />
         </div>
@@ -95,13 +102,13 @@ export function TextAreaField({ label, value, onChange, onBlur, placeholder, hin
 
 export function SelectField({ label, value, onChange, onBlur, options, hint, required, placeholder = "Select…", error, dense }) {
     return (
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
             {label && <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>}
             <select
                 value={value ?? ""}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
-                className={`w-full rounded-lg border-2 bg-white ${dense ? "px-2.5 py-1.5 text-[12.5px]" : "px-3 py-2 text-[13.5px]"} font-semibold focus:outline-none focus:ring-4`}
+                className={`w-full rounded-lg border bg-white ${dense ? "px-2.5 py-2 text-[13px]" : "px-3 py-2.5 text-[13.5px]"} font-bold focus:outline-none focus:ring-2`}
                 style={{ color: C.ink, ...fieldTone(error) }}
             >
                 <option value="" disabled>{placeholder}</option>
@@ -117,13 +124,13 @@ export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", off
     return (
         <div className="flex flex-col gap-1">
             <Label hint={hint}>{label}</Label>
-            <div className="flex gap-1.5 rounded-lg p-1" style={{ background: C.hairSoft, width: "fit-content" }}>
+            <div className="flex gap-1 rounded-lg p-1" style={{ background: C.hairSoft, width: "fit-content" }}>
                 {[{ v: true, t: onLabel }, { v: false, t: offLabel }].map(({ v, t }) => (
                     <button
                         key={t}
                         type="button"
                         onClick={() => onChange(v)}
-                        className="rounded-md px-3.5 py-1.5 text-[12.5px] font-bold transition-colors duration-150"
+                        className="rounded-md px-3 py-1.5 text-[12px] font-bold transition-colors duration-150"
                         style={value === v ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
                     >
                         {t}
@@ -136,7 +143,7 @@ export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", off
 
 export function ChipToggleGroup({ label, value, onChange, options, hint, dense }) {
     return (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1.5">
             {label && <Label hint={hint}>{label}</Label>}
             <div className="flex flex-wrap gap-1.5">
                 {options.map((o) => {
@@ -147,10 +154,10 @@ export function ChipToggleGroup({ label, value, onChange, options, hint, dense }
                             key={optValue}
                             type="button"
                             onClick={() => onChange(optValue)}
-                            className={`rounded-full border-2 ${dense ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-[12px]"} font-bold transition-colors duration-150`}
+                            className={`rounded-full border ${dense ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-[12px]"} font-bold transition-colors duration-150`}
                             style={active
-                                ? { borderColor: C.secondary, background: `${C.secondary}12`, color: C.secondary }
-                                : { borderColor: C.hairSoft, color: C.muted }}
+                                ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary }
+                                : { borderColor: C.hair, color: C.muted, background: "#fff" }}
                         >
                             {o.label ?? o}
                         </button>
@@ -175,7 +182,7 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
             {rows.length > 0 && (
                 <div className="flex flex-col gap-1.5">
                     {rows.map((row, idx) => (
-                        <div key={idx} className="flex items-center gap-2">
+                        <div key={idx} className="flex items-center gap-1.5">
                             {columns.map((c) => (
                                 <input
                                     key={c.key}
@@ -183,11 +190,11 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
                                     placeholder={c.placeholder}
                                     inputMode={c.inputMode}
                                     onChange={(e) => update(idx, c.key, e.target.value)}
-                                    className="min-w-0 flex-1 rounded-lg border-2 px-2.5 py-1.5 text-[12.5px] font-semibold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-4"
-                                    style={{ borderColor: C.hairSoft, color: C.ink, ["--tw-ring-color"]: `${C.secondary}20` }}
+                                    className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2"
+                                    style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }}
                                 />
                             ))}
-                            <button type="button" onClick={() => remove(idx)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-red-50">
+                            <button type="button" onClick={() => remove(idx)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50">
                                 <Trash2 className="h-3.5 w-3.5" style={{ color: C.danger }} />
                             </button>
                         </div>
@@ -197,8 +204,8 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
             <button
                 type="button"
                 onClick={add}
-                className="flex w-fit items-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-1.5 text-[12px] font-bold"
-                style={{ borderColor: C.hairSoft, color: C.secondary }}
+                className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-[11.5px] font-bold transition-colors duration-150 hover:bg-black/[0.02]"
+                style={{ borderColor: C.hair, color: C.secondary }}
             >
                 <Plus className="h-3.5 w-3.5" /> {addLabel}
             </button>
@@ -207,9 +214,7 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
 }
 
 // SectionCard — pass `alwaysOpen` for a card that's never collapsible
-// (no chevron, no click target, content always rendered). Used for the
-// one card of truly-required fields, so the person never has to click
-// to reveal what they must fill in.
+// (no chevron, no click target, content always rendered).
 export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, children, open, onOpenChange, id, alwaysOpen }) {
     const [internalOpen, setInternalOpen] = useState(!!defaultOpen);
     const isControlled = open !== undefined;
@@ -220,24 +225,45 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
         else setInternalOpen((o) => !o);
     };
     return (
-        <div id={id} className="overflow-hidden rounded-2xl border" style={{ borderColor: C.hair }}>
-            <div className="flex w-full items-center gap-2.5 px-3.5 py-3">
+        <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.24, ease: EASE }}
+            id={id}
+            className="overflow-hidden rounded-2xl border bg-white"
+            style={{ borderColor: C.hair }}
+        >
+            <div className="flex w-full items-center gap-2.5 px-3.5 py-3 sm:px-4">
                 <button type="button" onClick={toggle} disabled={alwaysOpen} className="flex min-w-0 flex-1 items-center gap-2.5 text-left disabled:cursor-default">
-                    <Icon className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                        <Icon className="h-4 w-4" />
+                    </span>
                     <span className="min-w-0 flex-1">
-                        <span className="block text-[13.5px] font-extrabold" style={{ color: C.ink }}>{title}</span>
-                        {subtitle && <span className="block text-[10.5px] font-medium" style={{ color: C.muted }}>{subtitle}</span>}
+                        <span className="block text-[13.5px] font-extrabold leading-tight" style={{ color: C.ink }}>{title}</span>
+                        {subtitle && <span className="mt-0.5 block truncate text-[10.5px] font-semibold" style={{ color: C.muted }}>{subtitle}</span>}
                     </span>
                 </button>
                 {headerRight}
                 {!alwaysOpen && (
-                    <button type="button" onClick={toggle} className="shrink-0 p-1">
-                        <ChevronDown className="h-4 w-4 transition-transform" style={{ color: C.muted, transform: isOpen ? "rotate(180deg)" : "none" }} />
+                    <button type="button" onClick={toggle} className="shrink-0 rounded-full p-1.5 transition-colors duration-150 hover:bg-black/[0.05]">
+                        <ChevronDown className="h-4 w-4 transition-transform duration-200" style={{ color: C.muted, transform: isOpen ? "rotate(180deg)" : "none" }} />
                     </button>
                 )}
             </div>
-            {isOpen && <div className="flex flex-col gap-3 border-t px-3.5 py-3.5" style={{ borderColor: C.hair }}>{children}</div>}
-        </div>
+            <AnimatePresence initial={false}>
+                {isOpen && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: EASE }}
+                        style={{ overflow: "hidden" }}
+                    >
+                        <div className="flex flex-col gap-3 border-t px-3.5 py-3.5 sm:px-4" style={{ borderColor: C.hairSoft }}>{children}</div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </motion.div>
     );
 }
 
@@ -249,7 +275,7 @@ export function Pill({ children, tone = "muted" }) {
         warn: { background: "#fef3c7", color: "#a16207" },
     };
     return (
-        <span className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold" style={tones[tone] || tones.muted}>
+        <span className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[9.5px] font-bold uppercase tracking-wide" style={tones[tone] || tones.muted}>
             {children}
         </span>
     );
@@ -264,7 +290,7 @@ export function Progress({ percent }) {
                 style={{ background: percent >= 100 ? C.secondary : C.primary }}
                 initial={false}
                 animate={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
-                transition={{ duration: 0.25 }}
+                transition={{ duration: 0.25, ease: EASE }}
             />
         </div>
     );
