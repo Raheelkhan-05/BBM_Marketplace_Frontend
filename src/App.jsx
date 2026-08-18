@@ -37,6 +37,7 @@ import CategoryProductsPage from "./pages/CategoryProductsPage.jsx";
 import GenericProductBrandsPage from "./pages/GenericProductBrandsPage.jsx";
 import BrandItemSellersPage from "./pages/BrandItemSellersPage.jsx";
 import SellerManageListingsPage from "./pages/SellerManageListingsPage.jsx";
+import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -49,7 +50,7 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <ScrollToTop />
-
+        <InstallAppPrompt />
         <Routes>
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<AuthPage />} />
