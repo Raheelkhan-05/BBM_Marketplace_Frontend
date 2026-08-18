@@ -97,10 +97,9 @@ function FieldAnchor({ fieldKey, children }) {
 
 export default function SellerListingForm({
     onSubmit, submitting, submitLabel = "Submit for review",
-    // current API
     mode = "create", identityReadOnly, brandDisplay, initialValues,
-    // back-compat aliases
     identityLocked, lockedIdentity,
+    stickyBottomClassName = "-bottom-1 md:bottom-0", // default (page/edit route)
 }) {
     const locked = identityReadOnly ?? identityLocked ?? mode === "edit";
     const identity = brandDisplay ?? lockedIdentity;
@@ -443,7 +442,7 @@ export default function SellerListingForm({
                 </div>
             </div>
 
-            <div className="sticky -bottom-1 md:bottom-0 z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4" style={{ borderColor: C.hair }}>
+            <div className={`sticky ${stickyBottomClassName} z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4`} style={{ borderColor: C.hair }}>
                 <Progress percent={percentComplete} />
                 <button type="button" onClick={handleSubmit} disabled={submitting}
                     className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"

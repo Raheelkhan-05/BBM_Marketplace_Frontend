@@ -115,6 +115,7 @@ export default function SellThisItemModal({ brand, onClose }) {
                             onSubmit={handleSubmit}
                             submitting={submitting}
                             submitLabel="Submit for review"
+                            stickyBottomClassName="-bottom-6"
                         />
                     </>
                 )}

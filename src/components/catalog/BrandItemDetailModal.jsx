@@ -496,19 +496,10 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                                     {gradeVariant}
                                                 </span>
                                             )}
-                                            {isAiGenerated ? (
-                                                <span className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] font-bold" style={{ background: "#FEF3C7", color: "#92400E" }}>
-                                                    <Sparkles className="h-3 w-3" /> AI-assisted listing
-                                                </span>
-                                            ) : (
-                                                <span className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] font-bold" style={{ background: `${C.secondary}14`, color: C.secondary }}>
-                                                    <ShieldCheck className="h-3 w-3" /> Verified listing
-                                                </span>
-                                            )}
                                         </div>
 
                                         {(manufacturer || modelNo || gradeVariant) && (
-                                            <div className="mt-4 rounded-xl border px-3.5" style={{ borderColor: C.hair }}>
+                                            <div className="mt-1 rounded-xl border px-3.5" style={{ borderColor: C.hair }}>
                                                 <FactRow label="Manufacturer" value={manufacturer} />
                                                 <FactRow label="Model / Part No." value={modelNo} />
                                                 <FactRow label="Grade / Variant" value={gradeVariant} />
