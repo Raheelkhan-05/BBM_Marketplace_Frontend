@@ -97,6 +97,10 @@ export async function searchGeoLocations(q) {
     const res = await fetch(`${API_BASE}/geo/search?q=${encodeURIComponent(q)}`);
     return res.json();
 }
+export async function fetchGeoCities(stateId, q = "") {
+    const res = await fetch(`${API_BASE}/geo/cities?stateId=${stateId}&q=${encodeURIComponent(q)}`);
+    return res.json();
+}
 export async function fetchGeoCountries() {
     const res = await fetch(`${API_BASE}/geo/countries`);
     return res.json();

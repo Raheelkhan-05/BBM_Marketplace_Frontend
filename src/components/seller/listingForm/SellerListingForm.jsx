@@ -242,13 +242,13 @@ export default function SellerListingForm({
                     { type: "country", name: dl.country.name, code: dl.country.code, includeOnly: true },
                     ...(dl.includedStates || []).map((state) => {
                         const cities = dl.includedCitiesByState?.[state];
-                        return cities?.length ? { type: "state", name: state, includedCities: cities } : { type: "state", name: state };
+                        return cities !== undefined ? { type: "state", name: state, includedCities: cities } : { type: "state", name: state };
                     }),
                 ];
             } else {
                 dispatchingLocations = [
                     { type: "country", name: dl.country.name, code: dl.country.code, excludedStates: dl.excludedStates || [] },
-                    ...Object.entries(dl.citiesByState || {}).filter(([, cities]) => cities.length).map(([state, cities]) => ({ type: "state", name: state, excludedCities: cities })),
+                    ...Object.entries(dl.citiesByState || {}).filter(([, cities]) => cities?.length).map(([state, cities]) => ({ type: "state", name: state, excludedCities: cities })),
                 ];
             }
         }
