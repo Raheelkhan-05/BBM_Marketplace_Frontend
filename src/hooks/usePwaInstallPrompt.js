@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const DISMISS_KEY = "pwa_install_dismissed_at";
 const DISMISS_COOLDOWN_DAYS = 1;
-const DELAY_MS = 15 * 1000;
+const DELAY_MS = 60 * 1000;
 
 function isStandalone() {
     return window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
