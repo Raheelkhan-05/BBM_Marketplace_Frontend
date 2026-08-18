@@ -68,7 +68,7 @@ export default function InstallAppPrompt() {
                                     Get the app
                                 </p>
                                 <h3 className="mt-0.5 text-[14.5px] font-extrabold leading-tight" style={{ color: C.ink }}>
-                                    Install BBM Business
+                                    Install BBM Marketplace
                                 </h3>
                             </div>
                         </div>

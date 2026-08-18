@@ -20,33 +20,23 @@ export const EASE = [0.16, 1, 0.3, 1];
 
 // Compact uppercase caption label — same idiom as QuickField in
 // SellerManageListingsPage, so every field in the app reads the same way.
-function Label({ children, hint }) {
+export function Label({ children, hint }) {
     const [showHint, setShowHint] = useState(false);
     return (
-        <span className="flex items-center gap-1">
-            <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.12em]" style={{ color: C.muted }}>{children}</span>
+        <span className="flex items-center gap-1.5">
+            <span className="text-[11px] font-extrabold uppercase" style={{ color: "#4A535B", letterSpacing: "0.045em" }}>
+                {children}
+            </span>
             {hint && (
                 <span className="relative inline-flex">
-                    <button
-                        type="button"
-                        onMouseEnter={() => setShowHint(true)}
-                        onMouseLeave={() => setShowHint(false)}
-                        onClick={() => setShowHint((s) => !s)}
-                        className="flex h-3.5 w-3.5 items-center justify-center rounded-full"
-                        aria-label="More info"
-                    >
+                    <button type="button" onMouseEnter={() => setShowHint(true)} onMouseLeave={() => setShowHint(false)}
+                        onClick={() => setShowHint((s) => !s)} className="flex h-3.5 w-3.5 items-center justify-center rounded-full" aria-label="More info">
                         <Info className="h-3 w-3" style={{ color: C.muted }} />
                     </button>
                     <AnimatePresence>
                         {showHint && (
-                            <motion.span
-                                initial={{ opacity: 0, y: 4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 4 }}
-                                transition={{ duration: 0.15 }}
-                                className="absolute bottom-full left-1/2 z-20 mb-1.5 w-44 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-[10.5px] font-medium leading-snug text-white shadow-lg"
-                                style={{ background: C.ink }}
-                            >
+                            <motion.span initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.15 }}
+                                className="absolute bottom-full left-1/2 z-20 mb-1.5 w-44 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-[10.5px] font-medium leading-snug text-white shadow-lg" style={{ background: C.ink }}>
                                 {hint}
                             </motion.span>
                         )}
@@ -56,7 +46,6 @@ function Label({ children, hint }) {
         </span>
     );
 }
-
 // Shared border/ring style so every field control looks the same whether
 // it's untouched, valid, or (after blur) missing.
 function fieldTone(error) {

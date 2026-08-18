@@ -1,19 +1,22 @@
-// components/seller/listingForm/BrandCombobox.jsx — RESTYLED (border weight,
-// radius, and caption-label consistency to match the rest of the form)
+// components/seller/listingForm/BrandCombobox.jsx
 import { useEffect, useRef, useState } from "react";
-import { Search, ImagePlus, Loader2, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Search, ImagePlus, Loader2, X, Plus } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { searchBrandNames } from "../../../utils/sellerListingApi.js";
 import { uploadSellerFile } from "../../../utils/api.js";
-import { C } from "./FormPrimitives.jsx";
+import { C, Label } from "./FormPrimitives.jsx";
 
 export default function BrandCombobox({ value, notApplicable, image, onChange }) {
     const { token } = useAuth();
-    const [q, setQ] = useState(value || "");
+    const [query, setQuery] = useState("");
     const [open, setOpen] = useState(false);
     const [items, setItems] = useState([]);
     const [uploading, setUploading] = useState(false);
+    const [justCreated, setJustCreated] = useState(false);
     const boxRef = useRef(null);
+
+    const hasSelection = !notApplicable && !!value;
 
     useEffect(() => {
         function onOutside(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); }
@@ -22,17 +25,30 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
     }, []);
 
     useEffect(() => {
-        if (!open || notApplicable) return;
+        if (!open || notApplicable || hasSelection) return;
         const t = setTimeout(() => {
-            searchBrandNames(token, q).then((res) => setItems(res?.success ? res.items : []));
-        }, q ? 250 : 0);
+            searchBrandNames(token, query).then((res) => setItems(res?.success ? res.items : []));
+        }, query ? 250 : 0);
         return () => clearTimeout(t);
-    }, [q, open, notApplicable, token]);
+    }, [query, open, notApplicable, hasSelection, token]);
 
-    const pick = (name, img) => {
-        onChange({ brandName: name, brandImage: img || null, brandNotApplicable: false });
-        setQ(name); setOpen(false);
+    const exactMatch = items.some((it) => it.name.toLowerCase() === query.trim().toLowerCase());
+
+    const pickExisting = (it) => {
+        onChange({ brandName: it.name, brandImage: it.image || null, brandNotApplicable: false });
+        setJustCreated(false); setQuery(""); setOpen(false);
     };
+    const addNew = () => {
+        const name = query.trim();
+        if (!name) return;
+        onChange({ brandName: name, brandImage: null, brandNotApplicable: false });
+        setJustCreated(true); setQuery(""); setOpen(false);
+    };
+    const clearSelection = () => {
+        onChange({ brandName: "", brandImage: null, brandNotApplicable: false });
+        setJustCreated(false); setQuery("");
+    };
+    const markNotApplicable = () => onChange({ brandName: "", brandImage: null, brandNotApplicable: true });
 
     const handleImage = async (e) => {
         const file = e.target.files?.[0];
@@ -40,62 +56,104 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
         setUploading(true);
         try {
             const res = await uploadSellerFile(token, file, "brands");
-            if (res?.success) onChange({ brandName: q, brandImage: res.url, brandNotApplicable: false });
-        } finally {
-            setUploading(false); e.target.value = "";
-        }
+            if (res?.success) onChange({ brandName: value, brandImage: res.url, brandNotApplicable: false });
+        } finally { setUploading(false); e.target.value = ""; setJustCreated(false); }
     };
 
     if (notApplicable) {
         return (
-            <div className="flex items-center justify-between rounded-lg border px-3.5 py-2.5" style={{ borderColor: C.hair, background: C.hairSoft }}>
-                <span className="text-[12.5px] font-bold" style={{ color: C.muted }}>Brand: Not Applicable</span>
-                <button type="button" onClick={() => onChange({ brandName: "", brandImage: null, brandNotApplicable: false })} className="text-[11px] font-bold underline" style={{ color: C.secondary }}>Change</button>
+            <div className="flex flex-col gap-1">
+                <Label>Brand <span style={{ color: C.primary }}> *</span></Label>
+                <div className="flex items-center justify-between rounded-xl border px-3.5 py-2.5" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                    <span className="text-[12.5px] font-bold" style={{ color: C.muted }}>No brand for this product</span>
+                    <button type="button" onClick={clearSelection} className="text-[11px] font-bold" style={{ color: C.secondary }}>Change</button>
+                </div>
+            </div>
+        );
+    }
+
+    if (hasSelection) {
+        const initials = value.trim().slice(0, 2).toUpperCase();
+        return (
+            <div className="flex flex-col gap-1.5">
+                <Label>Brand <span style={{ color: C.primary }}> *</span></Label>
+                <div className="flex items-center gap-3 rounded-xl border p-2.5" style={{ borderColor: C.hair }}>
+                    {image ? (
+                        <img src={image} alt="" className="h-10 w-10 shrink-0 rounded-lg border object-cover" style={{ borderColor: C.hair }} />
+                    ) : (
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[12px] font-extrabold" style={{ background: `${C.secondary}14`, color: C.secondary }}>{initials}</span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-extrabold" style={{ color: C.ink }}>{value}</p>
+                        {justCreated && !image && <p className="text-[10.5px] font-semibold" style={{ color: C.muted }}>New brand</p>}
+                    </div>
+                    <button type="button" onClick={clearSelection} className="shrink-0 rounded-full p-1.5 transition-colors duration-150 hover:bg-black/[0.05]">
+                        <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
+                    </button>
+                </div>
+
+                {justCreated && !image && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                        className="flex items-center justify-between gap-2 rounded-lg px-3 py-2" style={{ background: `${C.secondary}0a` }}>
+                        <span className="text-[11px] font-semibold" style={{ color: C.muted }}>Add a logo for {value}? <span className="font-medium">(optional)</span></span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                            <label className="flex cursor-pointer items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10.5px] font-bold" style={{ borderColor: C.hair, color: C.secondary }}>
+                                {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />} Upload
+                                <input type="file" accept="image/*" onChange={handleImage} className="hidden" disabled={uploading} />
+                            </label>
+                            <button type="button" onClick={() => setJustCreated(false)} className="text-[10.5px] font-bold" style={{ color: C.muted }}>Skip</button>
+                        </div>
+                    </motion.div>
+                )}
+                <button type="button" onClick={clearSelection} className="w-fit text-[10.5px] font-bold underline" style={{ color: C.muted }}>This product has no brand</button>
             </div>
         );
     }
 
     return (
-        <div ref={boxRef} className="relative flex min-w-0 flex-col gap-1">
-            <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.12em]" style={{ color: C.muted }}>Brand <span style={{ color: C.primary }}>*</span></span>
+        <div ref={boxRef} className="relative flex min-w-0 flex-col gap-1.5">
+            <Label>Brand <span style={{ color: C.primary }}> *</span></Label>
             <div className="flex items-center gap-2">
                 <div className="relative min-w-0 flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: C.muted }} />
-                    <input
-                        value={q}
-                        onFocus={() => setOpen(true)}
-                        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+                    <input value={query} onFocus={() => setOpen(true)} onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
                         placeholder="Search or type a new brand…"
-                        className="w-full rounded-lg border py-2.5 pl-9 pr-3 text-[13px] font-bold focus:outline-none focus:ring-2"
-                        style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }}
-                    />
+                        className="w-full rounded-xl border py-2.5 pl-9 pr-3 text-[13px] font-bold focus:outline-none focus:ring-2"
+                        style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
                 </div>
-                {image ? (
-                    <div className="relative h-10 w-10 shrink-0">
-                        <img src={image} alt="" className="h-full w-full rounded-lg border object-cover" style={{ borderColor: C.hair }} />
-                        <button type="button" onClick={() => onChange({ brandName: q, brandImage: null, brandNotApplicable: false })} className="absolute -right-1 -top-1 rounded-full bg-black/60 p-0.5"><X className="h-2.5 w-2.5 text-white" /></button>
-                    </div>
-                ) : (
-                    <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-dashed" style={{ borderColor: C.hair, color: C.muted }} title="Optional brand logo">
-                        {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}
-                        <input type="file" accept="image/*" onChange={handleImage} className="hidden" disabled={uploading} />
-                    </label>
-                )}
+                <button type="button" onClick={markNotApplicable}
+                    className="shrink-0 rounded-xl border px-3 py-2.5 text-[11.5px] font-bold transition-colors duration-150 hover:bg-black/[0.02]"
+                    style={{ borderColor: C.hair, color: C.muted }}>
+                    No brand
+                </button>
             </div>
-            <button type="button" onClick={() => onChange({ brandName: "", brandImage: null, brandNotApplicable: true })} className="w-fit text-[10.5px] font-bold underline" style={{ color: C.muted }}>
-                This product has no brand
-            </button>
-            {open && (
-                <div className="absolute left-0 right-0 top-[64px] z-30 max-h-56 overflow-y-auto rounded-xl border bg-white shadow-lg" style={{ borderColor: C.hair }}>
-                    {items.map((it) => (
-                        <button key={it.name} type="button" onClick={() => pick(it.name, it.image)} className="flex w-full items-center gap-2.5 border-b px-3.5 py-2.5 text-left last:border-b-0 transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hairSoft }}>
-                            {it.image ? <img src={it.image} alt="" className="h-6 w-6 rounded object-cover" /> : <span className="h-6 w-6 rounded" style={{ background: C.hairSoft }} />}
-                            <span className="text-[12.5px] font-semibold" style={{ color: C.ink }}>{it.name}</span>
-                        </button>
-                    ))}
-                    {items.length === 0 && <p className="px-3.5 py-3 text-center text-[11.5px] font-medium" style={{ color: C.muted }}>{q ? `No matches — "${q}" will be created as a new brand.` : "Start typing…"}</p>}
-                </div>
-            )}
+
+            <AnimatePresence>
+                {open && (
+                    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }}
+                        className="absolute left-0 right-0 top-[68px] z-30 max-h-64 overflow-y-auto rounded-xl border bg-white shadow-lg" style={{ borderColor: C.hair }}>
+                        {items.map((it) => (
+                            <button key={it.name} type="button" onClick={() => pickExisting(it)}
+                                className="flex w-full items-center gap-2.5 border-b px-3.5 py-2.5 text-left last:border-b-0 transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hairSoft }}>
+                                {it.image ? <img src={it.image} alt="" className="h-7 w-7 rounded object-cover" /> : (
+                                    <span className="flex h-7 w-7 items-center justify-center rounded text-[10px] font-extrabold" style={{ background: C.hairSoft, color: C.muted }}>{it.name.slice(0, 2).toUpperCase()}</span>
+                                )}
+                                <span className="text-[12.5px] font-semibold" style={{ color: C.ink }}>{it.name}</span>
+                            </button>
+                        ))}
+                        {query.trim() && !exactMatch && (
+                            <button type="button" onClick={addNew}
+                                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03]" style={{ background: `${C.secondary}08` }}>
+                                <span className="flex h-7 w-7 items-center justify-center rounded-full" style={{ background: `${C.secondary}18`, color: C.secondary }}><Plus className="h-3.5 w-3.5" /></span>
+                                <span className="text-[12.5px] font-bold" style={{ color: C.secondary }}>Add "{query.trim()}" as a new brand</span>
+                            </button>
+                        )}
+                        {items.length === 0 && !query.trim() && (
+                            <p className="px-3.5 py-3 text-center text-[11.5px] font-medium" style={{ color: C.muted }}>Start typing to search brands…</p>
+                        )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

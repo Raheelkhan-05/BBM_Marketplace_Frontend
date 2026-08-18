@@ -235,11 +235,23 @@ export default function SellerListingForm({
         // Flatten dispatchingLocations into the jsonb array shape the
         // backend/migration expects.
         const dl = form.dispatchingLocations;
-        const dispatchingLocations = dl?.country ? [
-            { type: "country", name: dl.country.name, code: dl.country.code, excludedStates: dl.excludedStates || [] },
-            ...Object.entries(dl.citiesByState || {}).filter(([, cities]) => cities.length).map(([state, cities]) => ({ type: "state", name: state, excludedCities: cities })),
-        ] : [];
-
+        let dispatchingLocations = [];
+        if (dl?.country) {
+            if (dl.mode === "include") {
+                dispatchingLocations = [
+                    { type: "country", name: dl.country.name, code: dl.country.code, includeOnly: true },
+                    ...(dl.includedStates || []).map((state) => {
+                        const cities = dl.includedCitiesByState?.[state];
+                        return cities?.length ? { type: "state", name: state, includedCities: cities } : { type: "state", name: state };
+                    }),
+                ];
+            } else {
+                dispatchingLocations = [
+                    { type: "country", name: dl.country.name, code: dl.country.code, excludedStates: dl.excludedStates || [] },
+                    ...Object.entries(dl.citiesByState || {}).filter(([, cities]) => cities.length).map(([state, cities]) => ({ type: "state", name: state, excludedCities: cities })),
+                ];
+            }
+        }
         onSubmit({ ...form, dispatchingLocations });
     };
 
