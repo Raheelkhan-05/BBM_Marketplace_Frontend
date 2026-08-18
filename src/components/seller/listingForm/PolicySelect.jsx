@@ -1,5 +1,6 @@
 // components/seller/listingForm/PolicySelect.jsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Check } from "lucide-react";
 import { fetchListingPolicyOptions } from "../../../utils/sellerListingApi.js";
@@ -9,7 +10,9 @@ export default function PolicySelect({ kind, label, value, onChange, error, requ
     const [options, setOptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [open, setOpen] = useState(false);
+    const [menuRect, setMenuRect] = useState(null); // { top, left, width } in viewport coords
     const boxRef = useRef(null);
+    const menuRef = useRef(null);
 
     useEffect(() => {
         setLoading(true);
@@ -17,10 +20,45 @@ export default function PolicySelect({ kind, label, value, onChange, error, requ
     }, [kind]);
 
     useEffect(() => {
-        function onOutside(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); }
+        function onOutside(e) {
+            if (boxRef.current && boxRef.current.contains(e.target)) return;
+            if (menuRef.current && menuRef.current.contains(e.target)) return;
+            setOpen(false);
+        }
         document.addEventListener("mousedown", onOutside);
         return () => document.removeEventListener("mousedown", onOutside);
     }, []);
+
+    // Compute (and keep in sync) the trigger's position so the portaled menu
+    // can be pinned right under it regardless of any clipping/overflow on
+    // ancestor elements.
+    useLayoutEffect(() => {
+        if (!open) return;
+
+        const updateRect = () => {
+            const el = boxRef.current;
+            if (!el) return;
+            const r = el.getBoundingClientRect();
+            const menuHeight = menuRef.current?.offsetHeight || 256; // matches max-h-64 fallback
+            const spaceBelow = window.innerHeight - r.bottom;
+            const openUpward = spaceBelow < menuHeight && r.top > spaceBelow;
+
+            setMenuRect({
+                left: r.left,
+                width: r.width,
+                top: openUpward ? undefined : r.bottom + 4,
+                bottom: openUpward ? window.innerHeight - r.top + 4 : undefined,
+            });
+        };
+
+        updateRect();
+        window.addEventListener("scroll", updateRect, true);
+        window.addEventListener("resize", updateRect);
+        return () => {
+            window.removeEventListener("scroll", updateRect, true);
+            window.removeEventListener("resize", updateRect);
+        };
+    }, [open, options.length]);
 
     const selected = options.find((o) => o.key === value);
 
@@ -45,10 +83,17 @@ export default function PolicySelect({ kind, label, value, onChange, error, requ
             {selected?.description && (
                 <p className="text-[10.5px] font-medium leading-snug" style={{ color: C.muted }}>{selected.description}</p>
             )}
-            <AnimatePresence>
-                {open && (
-                    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }}
-                        className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-xl border bg-white shadow-lg" style={{ borderColor: C.hair }}>
+            {open && menuRect && createPortal(
+                <AnimatePresence>
+                    <motion.div
+                        ref={menuRef}
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.15 }}
+                        className="fixed z-[1000] max-h-64 overflow-y-auto rounded-xl border bg-white shadow-lg"
+                        style={{ borderColor: C.hair, left: menuRect.left, width: menuRect.width, top: menuRect.top, bottom: menuRect.bottom }}
+                    >
                         {options.map((o) => (
                             <button key={o.key} type="button" onClick={() => { onChange(o.key); setOpen(false); }}
                                 className="flex w-full items-start gap-2.5 border-b px-3.5 py-2.5 text-left last:border-b-0 transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hairSoft }}>
@@ -63,8 +108,9 @@ export default function PolicySelect({ kind, label, value, onChange, error, requ
                         ))}
                         {options.length === 0 && <p className="px-3.5 py-3 text-center text-[11.5px] font-medium" style={{ color: C.muted }}>No options available.</p>}
                     </motion.div>
-                )}
-            </AnimatePresence>
+                </AnimatePresence>,
+                document.body
+            )}
         </div>
     );
 }
