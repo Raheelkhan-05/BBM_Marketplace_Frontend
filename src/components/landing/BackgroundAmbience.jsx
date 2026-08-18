@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 // restrained enough to stay well behind content.
 export default function BackgroundAmbience() {
   return (
-    <div className="pointer-events-none fixed inset-0 overflow-hidden bg-[#fafbfb]">
+    <div className="pointer-events-none fixed inset-0 overflow-hidden bg-[#FCFBF9]">
       {/* Single faint dot grid */}
       <div
         className="absolute inset-0 opacity-[0.35]"
