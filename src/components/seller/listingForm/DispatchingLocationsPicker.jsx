@@ -4,6 +4,69 @@ import { Search, ChevronDown, ChevronRight, X, Plus, Loader2 } from "lucide-reac
 import { fetchGeoCountries, fetchGeoStates, fetchGeoCities } from "../../../utils/sellerListingApi.js";
 import { C, Label } from "./FormPrimitives.jsx";
 
+// Pauses the global Lenis smooth-scroll instance while the pointer is over an
+// inner scrollable area, so native wheel scrolling works there instead of the
+// page hijacking it. Resumes Lenis on mouse leave / unmount.
+//
+// Lenis attaches its own wheel listener on the window and calls
+// preventDefault/stopPropagation from there, so just toggling lenis.stop()/
+// start() on hover isn't always enough — the wheel event can still get
+// swallowed before it reaches this element. To be safe we also manually
+// scroll the container ourselves and stop the event from propagating up to
+// Lenis's listener whenever the pointer is over it.
+function useLenisHijack() {
+    const ref = useRef(null);
+    const hoveringRef = useRef(false);
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+
+        const getLenis = () => (typeof window !== "undefined" ? window.lenis : null);
+
+        const handleMouseEnter = () => {
+            hoveringRef.current = true;
+            getLenis()?.stop();
+        };
+        const handleMouseLeave = () => {
+            hoveringRef.current = false;
+            getLenis()?.start();
+        };
+
+        const handleWheel = (e) => {
+            if (!hoveringRef.current) return;
+
+            const atTop = el.scrollTop <= 0;
+            const atBottom = Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight;
+
+            // Only let the page take over if we're already at the edge in the
+            // direction being scrolled (so overscroll still bubbles up nicely).
+            const scrollingUp = e.deltaY < 0;
+            const scrollingDown = e.deltaY > 0;
+            if ((scrollingUp && atTop) || (scrollingDown && atBottom)) return;
+
+            // Manually move the container and keep the event from reaching
+            // Lenis's window-level listener.
+            e.preventDefault();
+            e.stopPropagation();
+            el.scrollTop += e.deltaY;
+        };
+
+        el.addEventListener("mouseenter", handleMouseEnter);
+        el.addEventListener("mouseleave", handleMouseLeave);
+        el.addEventListener("wheel", handleWheel, { passive: false });
+
+        return () => {
+            el.removeEventListener("mouseenter", handleMouseEnter);
+            el.removeEventListener("mouseleave", handleMouseLeave);
+            el.removeEventListener("wheel", handleWheel);
+            getLenis()?.start(); // safety: never leave Lenis stuck paused
+        };
+    }, []);
+
+    return ref;
+}
+
 function HeaderCheckbox({ checked, indeterminate, onChange }) {
     const ref = useRef(null);
     useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate; }, [indeterminate]);
@@ -14,6 +77,7 @@ function CityPanel({ state, mode, restriction, onSetRestriction }) {
     const [allCities, setAllCities] = useState(null); // null = loading
     const [filter, setFilter] = useState("");
     const [customInput, setCustomInput] = useState("");
+    const cityScrollRef = useLenisHijack();
 
     useEffect(() => {
         setAllCities(null);
@@ -81,7 +145,7 @@ function CityPanel({ state, mode, restriction, onSetRestriction }) {
             {allCities.length === 0 ? (
                 <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>No cities on file for {state.name} yet — add one manually below.</p>
             ) : (
-                <div className="grid max-h-40 grid-cols-2 gap-x-3 gap-y-1 overflow-y-auto pr-1 sm:grid-cols-3">
+                <div ref={cityScrollRef} className="grid max-h-40 grid-cols-2 gap-x-3 gap-y-1 overflow-y-auto pr-1 sm:grid-cols-3">
                     {visible.map((city) => (
                         <label key={city} className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.ink }}>
                             <input type="checkbox" checked={isChecked(city)} onChange={() => toggleCity(city)} className="h-3 w-3 shrink-0" />
@@ -134,6 +198,7 @@ export default function DispatchingLocationsPicker({ value, onChange }) {
     // Country is locked to India — no country picker is shown to the seller.
     const [states, setStates] = useState([]);
     const [q, setQ] = useState("");
+    const statesScrollRef = useLenisHijack();
 
     const mode = value?.mode || "exclude";
     const excludedStates = value?.excludedStates || [];
@@ -212,7 +277,7 @@ export default function DispatchingLocationsPicker({ value, onChange }) {
                         </div>
                     </div>
 
-                    <div className="max-h-64 overflow-y-auto">
+                    <div ref={statesScrollRef} className="max-h-64 overflow-y-auto">
                         {states.map((s) => mode === "exclude" ? (
                             <StateRow key={s.id} state={s} checked={!excludedStates.includes(s.name)} onToggleState={toggleExcludeState}
                                 mode="exclude" restriction={citiesByState[s.name]} onSetRestriction={setExcludeCities} />
