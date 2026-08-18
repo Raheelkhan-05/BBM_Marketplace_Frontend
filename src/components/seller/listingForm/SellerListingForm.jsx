@@ -159,7 +159,12 @@ export default function SellerListingForm({
     }, [token, mode]);
 
     // Live price preview — mirrors normalizeEnteredPrice on the backend.
+    // Final price = base price + GST amount + commission amount, all
+    // stacked on top of the base price (not commission carved back out
+    // of a GST-inclusive figure, as before) — matches the fee model
+    // buyers ultimately see broken down at checkout.
     const pricePreview = useMemo(() => {
+        const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
         const price = Number(form.basePrice) || 0;
         const gst = Number(form.gstPercent) || 0;
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
@@ -168,10 +173,18 @@ export default function SellerListingForm({
         let perUnitExGst = exGst;
         if (form.priceBasis === "per_pack") perUnitExGst = exGst / pack;
         if (form.priceBasis === "per_master_pack") perUnitExGst = exGst / (pack * master);
-        const basePricePerUnit = Math.round((perUnitExGst + Number.EPSILON) * 100) / 100;
-        const finalPricePerUnit = Math.round((perUnitExGst * (1 + gst / 100) + Number.EPSILON) * 100) / 100;
-        const commissionAmount = Math.round((finalPricePerUnit * (commissionPercent / 100) + Number.EPSILON) * 100) / 100;
-        return { basePricePerUnit, finalPricePerUnit, commissionAmount, sellerPayout: Math.round((finalPricePerUnit - commissionAmount) * 100) / 100 };
+
+        const basePricePerUnit = round2(perUnitExGst);
+        const gstAmount = round2(basePricePerUnit * (gst / 100));
+        const commissionAmount = round2(basePricePerUnit * (commissionPercent / 100));
+        const finalPricePerUnit = round2(basePricePerUnit + gstAmount + commissionAmount);
+
+        return {
+            basePricePerUnit,
+            gstPercent: gst, gstAmount,
+            commissionPercent, commissionAmount,
+            finalPricePerUnit,
+        };
     }, [form.basePrice, form.gstPercent, form.packSize, form.masterPackSize, form.gstInclusive, form.priceBasis, commissionPercent]);
 
     const discountedPreview = (slab) => {
@@ -408,17 +421,20 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Summary ---------------- */}
+            {/* Final price = base + GST + commission, all stacked on top of
+                base price. GST and commission each show their % and their
+                ₹ amount so it's clear exactly what's being added and why. */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
                     <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>Base price</p>
                     <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</p>
                 </div>
                 <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
-                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>+ GST</p>
-                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>{form.gstPercent}%</p>
+                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>+ GST ({form.gstPercent}%)</p>
+                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{pricePreview.gstAmount.toLocaleString("en-IN")}</p>
                 </div>
                 <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
-                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>Commission</p>
+                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>+ Commission ({commissionPercent}%)</p>
                     <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.primary }}>₹{pricePreview.commissionAmount.toLocaleString("en-IN")}</p>
                 </div>
                 <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.secondary, background: `${C.secondary}0c` }}>
@@ -427,7 +443,7 @@ export default function SellerListingForm({
                 </div>
             </div>
 
-            <div className="sticky bottom-12 md:bottom-0 z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4" style={{ borderColor: C.hair }}>
+            <div className="sticky -bottom-1 md:bottom-0 z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4" style={{ borderColor: C.hair }}>
                 <Progress percent={percentComplete} />
                 <button type="button" onClick={handleSubmit} disabled={submitting}
                     className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
