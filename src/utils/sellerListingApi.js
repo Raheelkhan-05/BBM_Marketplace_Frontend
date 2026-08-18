@@ -81,3 +81,36 @@ export async function createSellerSubcategoryEntry(token, name, categoryId) {
 export async function createSellerGenericProductEntry(token, name, subcategoryId) {
     return authedJson(`/seller/catalog/generic-products`, token, { method: "POST", body: JSON.stringify({ name, subcategoryId }) });
 }
+
+export async function fetchListingPolicyOptions(kind) {
+    const res = await fetch(`${API_BASE}/listing-policy-options?kind=${kind}`);
+    // console.log(res);
+
+    return res.json();
+}
+
+export async function searchBrandNames(token, q = "") {
+    return authedJson(`/seller/catalog/brands?q=${encodeURIComponent(q)}`, token);
+}
+
+export async function searchGeoLocations(q) {
+    const res = await fetch(`${API_BASE}/geo/search?q=${encodeURIComponent(q)}`);
+    return res.json();
+}
+export async function fetchGeoCountries() {
+    const res = await fetch(`${API_BASE}/geo/countries`);
+    return res.json();
+}
+export async function fetchGeoStates(countryId, q = "") {
+    const res = await fetch(`${API_BASE}/geo/states?countryId=${countryId}&q=${encodeURIComponent(q)}`);
+    return res.json();
+}
+export async function lookupPincode(pincode) {
+    const res = await fetch(`${API_BASE}/geo/pincode/${pincode}`);
+    return res.json();
+}
+export async function searchGeoLocationsByType(q, type) {
+    const params = new URLSearchParams({ q, ...(type ? { type } : {}) });
+    const res = await fetch(`${API_BASE}/geo/search?${params}`);
+    return res.json();
+}

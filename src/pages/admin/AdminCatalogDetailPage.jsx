@@ -13,19 +13,21 @@ import ImageLightbox from "../../components/ImageLightbox";
 
 const PARENT_FIELD = { subcategory: "category_id", product: "subcategory_id", brand: "product_id", generic_product: "subcategory_id" };
 const PARENT_LEVEL = { subcategory: "category", product: "subcategory", brand: "product", generic_product: "subcategory" };
-const LEVEL_TO_PARENT_ID_FIELD = { subcategory: "category", product: "subcategory", brand: "product", generic_product: "subcategory" };
+const LEVEL_TO_PARENT_ID_FIELD = { subcategory: "category", product: "subcategory", brand: "product", generic_product: "subcategory", brand_item: "product" };
 const LEVEL_LABEL = { category: "Category", subcategory: "Subcategory", product: "Product", brand: "Brand Item", generic_product: "Generic Product" };
 // specifications is stored as jsonb key/value pairs — same free-form
 // editor treatment as variants/attributes.
 const JSON_FIELDS = new Set(["variants", "attributes", "specifications"]);
-const MULTILINE_FIELDS = new Set(["description", "overview", "tagline"]);
 // Nicer labels for the new brand_item identity fields than the default
 // title-cased-from-snake-case fallback would produce.
 const FIELD_LABEL_OVERRIDES = {
     model_no: "Model / Part No. / SKU",
     grade_variant: "Product Grade / Variant",
     hsn_code: "HSN Code",
+    manufacturing_details: "Manufacturing Details",
 };
+const MULTILINE_FIELDS = new Set(["description", "overview", "tagline", "manufacturing_details"]);
+
 
 const STATUS_STYLE = {
     approved: { bg: "rgba(22,163,74,0.1)", fg: "#15803d", dot: "#22c55e" },
@@ -154,6 +156,10 @@ export default function AdminCatalogDetailPage() {
         setError("");
         try {
             setSaving(true);
+            // NEW: brand_item can't approve without a mapped generic product
+            if (level === "brand_item" && !chain.product?.id) {
+                throw new Error("Map this item's Category / Subcategory / Generic Product before approving.");
+            }
             const payload = buildPayload();
             const res = await adminApproveCatalogEntry(token, level, id, payload);
             if (!res?.success) throw new Error(res?.message || "Approve failed.");
@@ -201,6 +207,7 @@ export default function AdminCatalogDetailPage() {
                         <ImageIcon className="h-6 w-6 text-slate-300" />
                     )}
                 </button>
+
                 <div className="min-w-0 flex-1">
                     <p className="text-[11.5px] font-bold uppercase tracking-wide text-slate-400">{LEVEL_LABEL[level]}</p>
                     <h1 className="mt-0.5 truncate text-[19px] font-extrabold text-slate-900">{entry.name}</h1>
@@ -242,6 +249,12 @@ export default function AdminCatalogDetailPage() {
                         onChange={setChain}
                     />
                 </div>
+            )}
+
+            {level === "brand_item" && !chain.product?.id && (
+                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-[12.5px] font-medium text-amber-700">
+                    <span className="font-bold">Needs mapping:</span> this item was submitted without a category. Select Category → Subcategory → Generic Product below before approving.
+                </p>
             )}
 
             {/* Seller listings — brand_item only. Identity lives here;

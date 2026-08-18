@@ -392,6 +392,10 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
     const images = item ? (item.images?.length ? item.images : (item.image ? [item.image] : [])) : [];
     const lowestPrice = item ? get(item, "lowest_price", "lowestPrice") : null;
     const highestPrice = item ? get(item, "highest_price", "highestPrice") : null;
+    const description = item ? get(item, "description") : null;
+    const manufacturingDetails = item ? get(item, "manufacturing_details", "manufacturingDetails") : null;
+    const brandImage = item ? get(item, "brand_image", "brandImage") : null;
+    const brandNotApplicable = item ? get(item, "brand_not_applicable", "brandNotApplicable") : null;
     const sellerCount = item ? (get(item, "seller_count", "sellerCount") ?? 0) : 0;
     imagesRef.current = images;
 
@@ -477,7 +481,12 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                         <div className="mt-4 flex items-start justify-between gap-2">
                                             <div className="min-w-0">
                                                 <p className="text-[16px] font-extrabold leading-tight" style={{ color: C.ink }}>{name}</p>
-                                                <p className="mt-0.5 text-[12.5px] font-bold" style={{ color: C.primary }}>{brandName}</p>
+                                                {!brandNotApplicable && brandName && (
+                                                    <div className="mt-0.5 flex items-center gap-1.5">
+                                                        {brandImage && <img src={brandImage} alt="" className="h-4 w-4 rounded object-cover" />}
+                                                        <p className="text-[12.5px] font-bold" style={{ color: C.primary }}>{brandName}</p>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
@@ -503,6 +512,19 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                                 <FactRow label="Manufacturer" value={manufacturer} />
                                                 <FactRow label="Model / Part No." value={modelNo} />
                                                 <FactRow label="Grade / Variant" value={gradeVariant} />
+                                            </div>
+                                        )}
+                                        {description && (
+                                            <div className="mt-4">
+                                                <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Description</p>
+                                                <p className="text-[12.5px] font-medium leading-relaxed" style={{ color: C.ink }}>{description}</p>
+                                            </div>
+                                        )}
+
+                                        {manufacturingDetails && (
+                                            <div className="mt-4">
+                                                <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Manufacturing</p>
+                                                <p className="text-[12.5px] font-medium leading-relaxed" style={{ color: C.ink }}>{manufacturingDetails}</p>
                                             </div>
                                         )}
 

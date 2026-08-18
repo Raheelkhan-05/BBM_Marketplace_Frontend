@@ -10,6 +10,7 @@ import { Home, LayoutGrid, ShoppingBag, Store, FileText, Package, ListChecks } f
 export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate }) {
     return [
         { id: "home", label: "Home", icon: Home, onClick: () => navigate("/home"), match: (p) => p === "/home" },
+        { id: "sellprod", label: "Sell Product", icon: Home, onClick: () => navigate("/seller/sell"), match: (p) => p === "/seller/sell" },
         { id: "listings", label: "Listings", icon: ListChecks, onClick: () => navigate("/admin/listings"), match: (p) => p.startsWith("/admin/listings") },
         { id: "categories", label: "Categories", icon: LayoutGrid, onClick: () => navigate("/categories"), match: (p) => p.startsWith("/categor") },
         { id: "orders", label: "My Orders", icon: ShoppingBag, onClick: () => navigate(isLoggedIn ? "/orders" : "/login", { state: { from: "/orders" } }), match: (p) => p.startsWith("/orders") },

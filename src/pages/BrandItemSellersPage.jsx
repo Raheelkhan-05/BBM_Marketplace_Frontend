@@ -46,6 +46,22 @@ function effectiveLeadTime(s) {
     return s.stock_type === "made_to_order" ? s.production_lead_time_days : s.dispatch_time_days;
 }
 
+// New component, alongside SlabBadges
+function DiscountBadges({ discounts, unit }) {
+    if (!Array.isArray(discounts) || !discounts.length) return null;
+    return (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            <Layers className="h-3 w-3 shrink-0" style={{ color: C.primary }} />
+            {discounts.slice(0, 3).map((d, i) => (
+                <span key={i} className="rounded-full px-1.5 py-0.5 text-[9.5px] font-bold" style={{ background: `${C.primary}10`, color: C.primary }}>
+                    {d.minQty}+ {unit}: {d.discountPercent}% off
+                </span>
+            ))}
+            {discounts.length > 3 && <span className="text-[9.5px] font-bold" style={{ color: C.muted }}>+{discounts.length - 3} more</span>}
+        </div>
+    );
+}
+
 function SlabBadges({ slabs, unit }) {
     if (!Array.isArray(slabs) || !slabs.length) return null;
     return (
@@ -93,9 +109,15 @@ function SellerRow({ s, idx, onBuy, onViewShop }) {
                         <Truck className="h-3 w-3" /> {s.stock_type === "made_to_order" ? "Made to order" : "Ready stock"}
                         {lead != null ? ` · ${lead}d` : ""}
                     </span>
+                    {s.freight_included != null && (
+                        <span className="text-[10.5px] font-semibold" style={{ color: s.freight_included ? "#059669" : C.muted }}>
+                            {'· '}{s.freight_included ? "Freight included" : "+ freight"}
+                        </span>
+                    )}
 
                 </div>
                 <SlabBadges slabs={s.price_slabs} unit={s.unit} />
+                <DiscountBadges discounts={s.quantityDiscounts} unit={s.unit} />
                 {(s.payment_terms || s.delivery_timeline) && (
                     <p className="mt-1.5 truncate text-[10.5px] font-medium" style={{ color: C.muted }}>
                         {s.delivery_timeline ? `Delivery: ${s.delivery_timeline}` : ""}
@@ -195,6 +217,9 @@ export default function BrandItemSellersPage() {
         returnPolicy: buySeller.return_policy,
         warranty: buySeller.warranty,
         deliveryTimeline: buySeller.delivery_timeline,
+        freightIncluded: buySeller.freight_included,
+        priceBasis: buySeller.price_basis,
+        dispatchOrigin: [buySeller.dispatch_district, buySeller.dispatch_state].filter(Boolean).join(", ") || null,
     };
 
     return (

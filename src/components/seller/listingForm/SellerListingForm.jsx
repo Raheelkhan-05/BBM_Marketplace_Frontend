@@ -1,273 +1,166 @@
+// components/seller/listingForm/SellerListingForm.jsx — REWRITTEN
 import { useEffect, useMemo, useState } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
-    Loader2, CheckCircle2, AlertTriangle, Lock, ImagePlus, Copy, ChevronDown,
+    Loader2, CheckCircle2, AlertTriangle, ImagePlus,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { uploadSellerFile } from "../../../utils/api.js";
-import {
-    fetchCommissionInfo, fetchDefaultListingTemplates,
-    fetchApprovedCategories, fetchApprovedSubcategories, fetchApprovedGenericProducts,
-    createSellerCategoryEntry, createSellerSubcategoryEntry, createSellerGenericProductEntry,
-} from "../../../utils/sellerListingApi.js";
+import { fetchCommissionInfo, fetchDefaultListingTemplates, lookupPincode } from "../../../utils/sellerListingApi.js";
 import {
     C, TextField, TextAreaField, SelectField, ToggleField, ChipToggleGroup, RepeatableRows,
-    SectionCard, Pill, Progress,
+    SectionCard, Progress,
 } from "./FormPrimitives.jsx";
-import HierarchyCombobox from "./HierarchyCombobox.jsx";
+import BrandCombobox from "./BrandCombobox.jsx";
+import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
+import PolicySelect from "./PolicySelect.jsx";
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
-
-const todayPlus = (days) => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
-};
+const PRICE_BASIS_OPTIONS = [
+    { value: "per_unit", label: "Per unit" },
+    { value: "per_pack", label: "Per pack" },
+    { value: "per_master_pack", label: "Per master pack" },
+];
 
 export const DEFAULT_LISTING_FORM = {
-    categoryEntry: null, subcategoryEntry: null, genericProductEntry: null, genericProductId: "",
-
-    productName: "", brandName: "",
-    manufacturer: "", modelNo: "", gradeVariant: "",
-    specifications: [],
+    productName: "",
+    brandName: "", brandImage: null, brandNotApplicable: false,
     images: [],
+    qualityCertificates: [],
+    noteToAdmin: "",
 
-    basePrice: "", gstPercent: 18, ratePerPack: "", ratePerMasterPack: "", priceValidityTill: todayPlus(30),
+    unit: "", packSize: "", masterPackSize: "",
+    hsnCode: "", gstPercent: 18,
 
-    moq: "", sampleAvailable: false, samplePrice: "",
-    priceSlabs: [], quantityDiscounts: [],
+    basePrice: "", priceBasis: "per_unit", gstInclusive: false,
+    freightIncluded: false,
 
-    packSize: "", unit: "", unitsPerMasterPack: "", masterPackSize: "", packagingType: "",
+    sampleAvailable: false, sampleQuantity: "", sampleUnitBasis: "per_unit",
 
-    stockQuantity: "", stockType: "ready_stock", dispatchTimeDays: "3", productionLeadTimeDays: "",
+    priceSlabs: [],
 
-    sellerLocation: "", dispatchLocation: "", deliveryTimeline: "3-7 business days",
-    freightTerms: "Freight charges are extra, borne by the buyer unless otherwise agreed.",
+    stockType: "ready_stock", stockQuantity: "", productionLeadTimeDays: "",
+    moq: "",
+    dispatchDistrict: "", dispatchState: "",
 
-    hsnCode: "", gstRegistrationStatus: "regular", taxInvoiceAvailable: true,
+    dispatchPincode: "",
+    dispatchingLocations: null, // { country, excludedStates, citiesByState }
 
-    paymentTerms: "100% advance payment before dispatch",
-    returnPolicy: "7-day replacement for manufacturing defects only. Raise a return ticket from your order within 48 hours of delivery.",
-    warranty: "",
-
-    qualityCertificates: [], tdsMsdsCoa: [], otherCertifications: [],
+    returnPolicyKey: "", warrantyKey: "",
 };
 
-// Auto-saved-default groups — unchanged contract with the backend.
-const GROUP_FIELDS = {
-    packaging: ["packSize", "unit", "unitsPerMasterPack", "masterPackSize", "packagingType"],
-    delivery: ["sellerLocation", "dispatchLocation", "deliveryTimeline", "freightTerms"],
-    tax_legal: ["hsnCode", "gstRegistrationStatus", "taxInvoiceAvailable"],
-    commercial_terms: ["paymentTerms", "returnPolicy", "warranty"],
-    quality: ["qualityCertificates", "tdsMsdsCoa", "otherCertifications"],
-};
-
-// Two real sections only: the handful of fields that truly need a
-// decision ("essentials", always visible, never collapsed), and
-// everything else, which already has a sane default and only needs
-// attention if the seller wants to change it ("more").
-const SECTIONS = {
-    product: { id: "section-product" },
-    essentials: { id: "section-essentials" },
-    more: { id: "section-more" },
-};
-
-// Every field that can actually be *missing* lives in one of these two
-// buckets — used to auto-expand "more" and scroll to the right spot.
-const FIELD_SECTION = {
-    genericProductId: "product", productName: "product", brandName: "product",
-    manufacturer: "product", modelNo: "product", images: "product",
-    basePrice: "essentials", moq: "essentials", packSize: "essentials", unit: "essentials",
-    ratePerPack: "essentials", stockQuantity: "essentials", stockType: "essentials",
-    productionLeadTimeDays: "essentials", sellerLocation: "essentials", dispatchLocation: "essentials",
-    hsnCode: "essentials",
-    gstPercent: "more", priceValidityTill: "more", dispatchTimeDays: "more",
-    deliveryTimeline: "more", gstRegistrationStatus: "more", paymentTerms: "more", returnPolicy: "more",
-};
-
-function computeMissing(form, { requireIdentity, requireProductDetails = true }) {
+function computeMissing(form) {
     const missing = [];
     const add = (cond, key, label) => { if (cond) missing.push({ key, label }); };
 
-    add(requireIdentity && !form.genericProductId, "genericProductId", "Category / subcategory / product type");
-    if (requireIdentity) {
-        add(!form.productName?.trim(), "productName", "Product name");
-        add(!form.brandName?.trim(), "brandName", "Brand name");
-    }
-    if (requireProductDetails) {
-        add(!form.manufacturer?.trim(), "manufacturer", "Manufacturer");
-        add(!form.modelNo?.trim(), "modelNo", "Model / Part No. / SKU");
-        add(!form.images?.length, "images", "Product image");
-    }
-
-    add(!(Number(form.basePrice) > 0), "basePrice", "Base price");
-    add(form.gstPercent === "" || form.gstPercent == null, "gstPercent", "GST %");
-    add(!form.priceValidityTill, "priceValidityTill", "Price validity");
-    add(!(Number(form.moq) > 0), "moq", "MOQ");
+    add(!form.productName?.trim(), "productName", "Product name");
+    add(!form.brandNotApplicable && !form.brandName?.trim(), "brandName", "Brand");
+    add(!form.images?.length, "images", "Product image");
+    add(!form.unit, "unit", "Unit");
     add(!(Number(form.packSize) > 0), "packSize", "Pack size");
-    add(!form.unit, "unit", "Unit of measurement");
-    add(Number(form.packSize) > 1 && !(Number(form.ratePerPack) > 0), "ratePerPack", "Rate per pack");
-    add(form.stockQuantity === "" || form.stockQuantity == null, "stockQuantity", "Stock available");
-    add(!form.stockType, "stockType", "Ready stock / Made-to-order");
-    add(form.dispatchTimeDays === "" || form.dispatchTimeDays == null, "dispatchTimeDays", "Expected dispatch time");
-    add(form.stockType === "made_to_order" && !(form.productionLeadTimeDays !== "" && form.productionLeadTimeDays != null), "productionLeadTimeDays", "Production lead time");
-    add(!form.sellerLocation?.trim(), "sellerLocation", "Seller location");
-    add(!form.dispatchLocation?.trim(), "dispatchLocation", "Dispatch location");
-    add(!form.deliveryTimeline?.trim(), "deliveryTimeline", "Delivery timeline");
+    add(!(Number(form.masterPackSize) > 0), "masterPackSize", "Master pack size");
     add(!form.hsnCode?.trim(), "hsnCode", "HSN Code");
-    add(!form.gstRegistrationStatus, "gstRegistrationStatus", "GST registration status");
-    add(!form.paymentTerms?.trim(), "paymentTerms", "Payment terms");
-    add(!form.returnPolicy?.trim(), "returnPolicy", "Return / replacement policy");
+
+    add(!(Number(form.moq) > 0), "moq", "MOQ");
+
+    add(form.gstPercent === "" || form.gstPercent == null, "gstPercent", "GST %");
+    add(!(Number(form.basePrice) > 0), "basePrice", "Base price");
+    add(form.sampleAvailable && !(Number(form.sampleQuantity) > 0), "sampleQuantity", "Sample quantity");
+    add(form.stockType === "ready_stock" && (form.stockQuantity === "" || form.stockQuantity == null), "stockQuantity", "Available stock");
+    add(form.stockType === "made_to_order" && (form.productionLeadTimeDays === "" || form.productionLeadTimeDays == null), "productionLeadTimeDays", "Lead time");
+    add(!form.dispatchPincode?.trim(), "dispatchPincode", "Dispatch pincode");
+    add(!form.dispatchingLocations?.country, "dispatchingLocations", "Dispatching locations");
+    add(!form.returnPolicyKey, "returnPolicyKey", "Return / replacement policy");
+    add(!form.warrantyKey, "warrantyKey", "Warranty");
 
     return missing;
-}
-
-function SpecRow({ label, value }) {
-    if (!value) return null;
-    return (
-        <div className="flex justify-between gap-3 border-b py-1.5 text-[12.5px]" style={{ borderColor: C.hairSoft }}>
-            <span className="font-semibold" style={{ color: C.muted }}>{label}</span>
-            <span className="font-bold text-right" style={{ color: C.ink }}>{value}</span>
-        </div>
-    );
-}
-
-// The whole point of this block: the moment the "I want to sell" flow
-// opens, every fact the platform already knows about the product is
-// visible up front — nothing buried behind a click.
-function ReadOnlyProductSummary({ brandDisplay, form }) {
-    const facts = [form.manufacturer, form.modelNo, form.gradeVariant].filter(Boolean);
-    return (
-        <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3 rounded-xl p-3" style={{ background: C.hairSoft }}>
-                {(form.images?.[0] || brandDisplay?.image) && (
-                    <img src={form.images?.[0] || brandDisplay.image} alt="" className="h-14 w-14 shrink-0 rounded-lg border object-cover" style={{ borderColor: C.hair }} />
-                )}
-                <div className="min-w-0">
-                    <p className="truncate text-[14px] font-extrabold" style={{ color: C.ink }}>{brandDisplay?.name || form.productName}</p>
-                    {(brandDisplay?.brandName || form.brandName) && <p className="text-[11.5px] font-bold" style={{ color: C.primary }}>{brandDisplay?.brandName || form.brandName}</p>}
-                </div>
-            </div>
-            {facts.length > 0 && (
-                <div className="rounded-xl border px-3.5" style={{ borderColor: C.hairSoft }}>
-                    <SpecRow label="Manufacturer" value={form.manufacturer} />
-                    <SpecRow label="Model / Part No. / SKU" value={form.modelNo} />
-                    <SpecRow label="Grade / Variant" value={form.gradeVariant} />
-                </div>
-            )}
-            {form.specifications?.length > 0 && (
-                <div className="flex flex-col gap-1">
-                    <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Specifications</span>
-                    <div className="rounded-xl border px-3.5" style={{ borderColor: C.hairSoft }}>
-                        {form.specifications.map((s, i) => <SpecRow key={i} label={s.key} value={s.value} />)}
-                    </div>
-                </div>
-            )}
-            {form.images?.length > 1 && (
-                <div className="flex flex-wrap gap-2">
-                    {form.images.map((src, i) => (
-                        <img key={src + i} src={src} alt="" className="h-14 w-14 rounded-lg border object-cover" style={{ borderColor: C.hair }} />
-                    ))}
-                </div>
-            )}
-            <p className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: C.muted }}>
-                <Lock className="h-3 w-3 shrink-0" /> Product identity is already approved — you're only adding your commercial terms below.
-            </p>
-        </div>
-    );
 }
 
 function FieldAnchor({ fieldKey, children }) {
     return <div id={`field-${fieldKey}`} className="rounded-xl transition-shadow">{children}</div>;
 }
 
-export default function SellerListingForm({
-    mode = "create",
-    initialValues,
-    identityReadOnly = false,
-    productReadOnly = false,
-    brandDisplay,
-    onSubmit,
-    submitting,
-    submitLabel = "Submit for review",
-    stickyFooter = true,
-}) {
+export default function SellerListingForm({ onSubmit, submitting, submitLabel = "Submit for review", identityLocked = false, lockedIdentity }) {
+
     const { token } = useAuth();
-    const [form, setForm] = useState({ ...DEFAULT_LISTING_FORM, ...(initialValues || {}) });
+    const [form, setForm] = useState({
+        ...DEFAULT_LISTING_FORM,
+        ...(identityLocked ? { productName: lockedIdentity?.productName || "", brandName: lockedIdentity?.brandName || "", images: lockedIdentity?.image ? [lockedIdentity.image] : [] } : {}),
+    });
     const [uploadingImage, setUploadingImage] = useState(false);
     const [commissionPercent, setCommissionPercent] = useState(5);
     const [error, setError] = useState(null);
     const [touched, setTouched] = useState({});
-    const [hasSavedDefaults, setHasSavedDefaults] = useState(false);
 
-    const [moreOpen, setMoreOpen] = useState(false);
-    const [productOpen, setProductOpen] = useState(true);
+    const [pincodeStatus, setPincodeStatus] = useState(null); // 'checking' | 'ok' | 'error' | null
+
+    const confirmPincode = async () => {
+        if (!/^\d{6}$/.test(form.dispatchPincode)) return;
+        setPincodeStatus("checking");
+        const res = await lookupPincode(form.dispatchPincode);
+        if (res?.success) {
+            setForm((f) => ({ ...f, dispatchDistrict: res.district, dispatchState: res.state }));
+            setPincodeStatus("ok");
+        } else {
+            setPincodeStatus("error");
+        }
+    };
 
     const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
     const touch = (key) => setTouched((t) => (t[key] ? t : { ...t, [key]: true }));
 
-    useEffect(() => {
-        fetchCommissionInfo().then((res) => { if (res?.success) setCommissionPercent(res.commissionPercent); });
-    }, []);
+    useEffect(() => { fetchCommissionInfo().then((res) => { if (res?.success) setCommissionPercent(res.commissionPercent); }); }, []);
 
-    // Prefill from the seller's auto-saved defaults on a brand new listing
-    // — this is what makes every listing after the first one nearly
-    // one-click for delivery/tax/terms/packaging.
+    // Prefill dispatch defaults (pincode + locations + freight toggle)
+    // from the seller's saved "delivery" group — this is what makes the
+    // second-and-later listing nearly one-click on delivery.
     useEffect(() => {
-        if (mode !== "create" && mode !== "claim") return;
         if (!token) return;
         fetchDefaultListingTemplates(token).then((res) => {
             if (!res?.success) return;
-            const anyDefaults = Object.keys(res.defaults || {}).length > 0;
-            setHasSavedDefaults(anyDefaults);
-            setForm((f) => {
-                const next = { ...f };
-                Object.entries(res.defaults).forEach(([groupType, tpl]) => {
-                    (GROUP_FIELDS[groupType] || []).forEach((key) => {
-                        if (tpl.data?.[key] !== undefined && tpl.data[key] !== "") next[key] = tpl.data[key];
-                    });
-                });
-                return next;
-            });
+            const tpl = res.defaults?.delivery?.data;
+            if (!tpl) return;
+            setForm((f) => ({
+                ...f,
+                dispatchPincode: tpl.dispatchPincode ?? f.dispatchPincode,
+                dispatchingLocations: tpl.dispatchingLocations ?? f.dispatchingLocations,
+                freightIncluded: tpl.freightIncluded ?? f.freightIncluded,
+            }));
         });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, token]);
+    }, [token]);
 
-    const finalPrice = useMemo(() => {
-        const base = Number(form.basePrice);
-        const gst = Number(form.gstPercent);
-        if (!(base > 0)) return 0;
-        return Math.round(base * (1 + (gst || 0) / 100) * 100) / 100;
-    }, [form.basePrice, form.gstPercent]);
+    // Live price preview — mirrors normalizeEnteredPrice on the backend.
+    const pricePreview = useMemo(() => {
+        const price = Number(form.basePrice) || 0;
+        const gst = Number(form.gstPercent) || 0;
+        const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
+        const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
+        const exGst = form.gstInclusive ? price / (1 + gst / 100) : price;
+        let perUnitExGst = exGst;
+        if (form.priceBasis === "per_pack") perUnitExGst = exGst / pack;
+        if (form.priceBasis === "per_master_pack") perUnitExGst = exGst / (pack * master);
+        const basePricePerUnit = Math.round((perUnitExGst + Number.EPSILON) * 100) / 100;
+        const finalPricePerUnit = Math.round((perUnitExGst * (1 + gst / 100) + Number.EPSILON) * 100) / 100;
+        const commissionAmount = Math.round((finalPricePerUnit * (commissionPercent / 100) + Number.EPSILON) * 100) / 100;
+        return { basePricePerUnit, finalPricePerUnit, commissionAmount, sellerPayout: Math.round((finalPricePerUnit - commissionAmount) * 100) / 100 };
+    }, [form.basePrice, form.gstPercent, form.packSize, form.masterPackSize, form.gstInclusive, form.priceBasis, commissionPercent]);
 
-    const payout = useMemo(() => {
-        const commissionAmount = Math.round(finalPrice * (commissionPercent / 100) * 100) / 100;
-        return { commissionAmount, sellerPayout: Math.round((finalPrice - commissionAmount) * 100) / 100 };
-    }, [finalPrice, commissionPercent]);
+    const discountedPreview = (slab) => {
+        if (!slab?.discountPercent) return null;
+        return Math.round((pricePreview.basePricePerUnit * (1 - Number(slab.discountPercent) / 100) + Number.EPSILON) * 100) / 100;
+    };
 
-    const missing = useMemo(
-        () => computeMissing(form, { requireIdentity: mode === "create", requireProductDetails: !productReadOnly }),
-        [form, mode, productReadOnly]
-    );
+    const missing = useMemo(() => computeMissing(form), [form]);
     const missingKeys = useMemo(() => new Set(missing.map((m) => m.key)), [missing]);
     const isErr = (key) => touched[key] && missingKeys.has(key);
-
-    // Total required-field count is fixed per mode; percent complete
-    // drives the sticky footer's progress bar for a real "almost there"
-    // feeling instead of a flat error count.
-    const totalRequired = useMemo(
-        () => computeMissing(DEFAULT_LISTING_FORM, { requireIdentity: mode === "create", requireProductDetails: !productReadOnly }).length
-            + (mode === "create" ? 1 : 0), // rough baseline; percent is clamped below anyway
-        [mode, productReadOnly]
-    );
+    const totalRequired = useMemo(() => computeMissing(DEFAULT_LISTING_FORM).length, []);
     const percentComplete = totalRequired > 0 ? Math.round(((totalRequired - missing.length) / totalRequired) * 100) : 100;
 
     const handleImageFiles = async (e) => {
         const files = Array.from(e.target.files || []);
         if (!files.length) return;
-        setUploadingImage(true);
-        setError(null);
+        setUploadingImage(true); setError(null);
         try {
             const urls = [];
             for (const file of files) {
@@ -276,28 +169,17 @@ export default function SellerListingForm({
                 urls.push(res.url);
             }
             setForm((f) => ({ ...f, images: [...f.images, ...urls] }));
-        } catch (err) {
-            setError(err.message || "Image upload failed.");
-        } finally {
-            setUploadingImage(false);
-            e.target.value = "";
-        }
+        } catch (err) { setError(err.message); } finally { setUploadingImage(false); e.target.value = ""; }
     };
     const removeImageAt = (i) => setForm((f) => ({ ...f, images: f.images.filter((_, idx) => idx !== i) }));
 
     function jumpToError(firstMissing) {
-        const sectionKey = FIELD_SECTION[firstMissing.key];
-        if (sectionKey === "more") setMoreOpen(true);
-        if (sectionKey === "product") setProductOpen(true);
         requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const target = document.getElementById(`field-${firstMissing.key}`)
-                    || document.getElementById(SECTIONS[sectionKey]?.id);
-                if (!target) return;
-                target.scrollIntoView({ behavior: "smooth", block: "center" });
-                target.style.boxShadow = "0 0 0 3px rgba(199,31,17,0.35)";
-                setTimeout(() => { target.style.boxShadow = ""; }, 1600);
-            });
+            const target = document.getElementById(`field-${firstMissing.key}`);
+            if (!target) return;
+            target.scrollIntoView({ behavior: "smooth", block: "center" });
+            target.style.boxShadow = "0 0 0 3px rgba(199,31,17,0.35)";
+            setTimeout(() => { target.style.boxShadow = ""; }, 1600);
         });
     }
 
@@ -309,43 +191,20 @@ export default function SellerListingForm({
             return;
         }
         setError(null);
-        onSubmit(form);
+
+        // Flatten dispatchingLocations into the jsonb array shape the
+        // backend/migration expects.
+        const dl = form.dispatchingLocations;
+        const dispatchingLocations = dl?.country ? [
+            { type: "country", name: dl.country.name, code: dl.country.code, excludedStates: dl.excludedStates || [] },
+            ...Object.entries(dl.citiesByState || {}).filter(([, cities]) => cities.length).map(([state, cities]) => ({ type: "state", name: state, excludedCities: cities })),
+        ] : [];
+
+        onSubmit({ ...form, dispatchingLocations });
     };
 
-    const copySellerToDispatch = () => setForm((f) => ({ ...f, dispatchLocation: f.sellerLocation }));
-
-    const footer = (
-        <div
-            className={stickyFooter ? "fixed inset-x-0 bottom-0 z-40 border-t bg-white/95 px-4 py-3 backdrop-blur sm:px-6" : "sticky -bottom-5 z-10 mt-1 border-t bg-white px-1 py-3"}
-            style={{ borderColor: C.hair }}
-        >
-            <div className={stickyFooter ? "mx-auto flex max-w-3xl flex-col gap-2" : "flex flex-col gap-2"}>
-                <Progress percent={percentComplete} />
-                <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                        <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
-                            {missing.length === 0 ? "Ready to submit" : `${missing.length} field${missing.length === 1 ? "" : "s"} left`}
-                        </p>
-                        <p className="truncate text-[15px] font-extrabold" style={{ color: C.ink }}>
-                            ₹{finalPrice.toLocaleString("en-IN")} <span className="text-[11px] font-semibold" style={{ color: C.muted }}>incl. GST</span>
-                        </p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={handleSubmit}
-                        disabled={submitting}
-                        className="flex shrink-0 items-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white shadow-[0_12px_24px_-10px_rgba(199,31,17,0.55)] disabled:opacity-60"
-                        style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
-                    >
-                        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} <CheckCircle2 className="h-4 w-4" /></>}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-
     return (
-        <div className={stickyFooter ? "flex flex-col gap-4 pb-28" : "flex flex-col gap-4"}>
+        <div className="flex flex-col gap-4 pb-28">
             {error && (
                 <div className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12.5px] font-semibold" style={{ background: "rgba(199,31,17,0.08)", color: C.danger }}>
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
@@ -353,94 +212,32 @@ export default function SellerListingForm({
             )}
 
             {/* ---------------- Product ---------------- */}
-            <SectionCard id={SECTIONS.product.id} icon={Package} title="Product"
-                subtitle={productReadOnly ? "Already approved" : "Category, identity, specs & photos"}
-                open={productOpen} onOpenChange={setProductOpen}
-                headerRight={productReadOnly ? <Pill tone="good">Verified</Pill> : undefined}>
-                {productReadOnly ? (
-                    <ReadOnlyProductSummary brandDisplay={brandDisplay} form={form} />
+            <SectionCard icon={Package} title="Product" subtitle={identityLocked ? "Already approved" : "Name, brand, images & documents"} alwaysOpen>
+                {identityLocked ? (
+                    <div className="flex items-center gap-3 rounded-xl p-3" style={{ background: C.hairSoft }}>
+                        {form.images?.[0] && <img src={form.images[0]} alt="" className="h-14 w-14 rounded-lg border object-cover" style={{ borderColor: C.hair }} />}
+                        <div>
+                            <p className="text-[14px] font-extrabold" style={{ color: C.ink }}>{form.productName}</p>
+                            {form.brandName && <p className="text-[11.5px] font-bold" style={{ color: C.primary }}>{form.brandName}</p>}
+                        </div>
+                    </div>
                 ) : (
                     <>
-                        {mode === "create" && !brandDisplay && (
-                            <FieldAnchor fieldKey="genericProductId">
-                                <div className="flex flex-col gap-3 rounded-xl border p-3.5" style={{ borderColor: C.hairSoft }}>
-                                    <p className="text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Where does this belong?</p>
-                                    <HierarchyCombobox
-                                        label="Category" required value={form.categoryEntry}
-                                        fetcher={(q) => fetchApprovedCategories(token, q)}
-                                        onCreate={(name) => createSellerCategoryEntry(token, name)}
-                                        onSelect={(entry) => setForm((f) => ({ ...f, categoryEntry: entry, subcategoryEntry: null, genericProductEntry: null, genericProductId: "" }))}
-                                        placeholder="Search or create a category…"
-                                    />
-                                    {form.categoryEntry && (
-                                        <HierarchyCombobox
-                                            label="Subcategory" required value={form.subcategoryEntry}
-                                            fetcher={(q) => fetchApprovedSubcategories(token, form.categoryEntry.id, q)}
-                                            onCreate={(name) => createSellerSubcategoryEntry(token, name, form.categoryEntry.id)}
-                                            onSelect={(entry) => setForm((f) => ({ ...f, subcategoryEntry: entry, genericProductEntry: null, genericProductId: "" }))}
-                                            placeholder="Search or create a subcategory…"
-                                        />
-                                    )}
-                                    {form.subcategoryEntry && (
-                                        <HierarchyCombobox
-                                            label="Product type" required value={form.genericProductEntry}
-                                            fetcher={(q) => fetchApprovedGenericProducts(token, form.subcategoryEntry.id, q)}
-                                            onCreate={(name) => createSellerGenericProductEntry(token, name, form.subcategoryEntry.id)}
-                                            onSelect={(entry) => setForm((f) => ({ ...f, genericProductEntry: entry, genericProductId: entry.id }))}
-                                            placeholder="Search or create a product type…"
-                                        />
-                                    )}
-                                    {(form.categoryEntry?.review_status === "pending_review" || form.subcategoryEntry?.review_status === "pending_review" || form.genericProductEntry?.review_status === "pending_review") && (
-                                        <p className="text-[11px] font-medium" style={{ color: C.muted }}>
-                                            New entries go live for buyers once this listing is approved — you can carry on and submit right away.
-                                        </p>
-                                    )}
-                                </div>
-                            </FieldAnchor>
-                        )}
+                        <FieldAnchor fieldKey="productName">
+                            <TextField required label="Product name" value={form.productName} onChange={(v) => setField("productName", v)} onBlur={() => touch("productName")} error={isErr("productName")} placeholder="e.g. Premium Stainless Steel Hinges" />
+                        </FieldAnchor>
 
-                        {brandDisplay ? (
-                            <div className="flex items-center gap-3 rounded-xl p-3" style={{ background: C.hairSoft }}>
-                                {brandDisplay.image && <img src={brandDisplay.image} alt="" className="h-12 w-12 rounded-lg object-cover" />}
-                                <div>
-                                    <p className="text-[13.5px] font-extrabold" style={{ color: C.ink }}>{brandDisplay.name}</p>
-                                    {brandDisplay.brandName && <p className="text-[11.5px] font-semibold" style={{ color: C.muted }}>{brandDisplay.brandName}</p>}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                <FieldAnchor fieldKey="productName">
-                                    <TextField required label="Product name" value={form.productName} onChange={(v) => setField("productName", v)} onBlur={() => touch("productName")} error={isErr("productName")} disabled={identityReadOnly} placeholder="e.g. Premium Stainless Steel Hinges" />
-                                </FieldAnchor>
-                                <FieldAnchor fieldKey="brandName">
-                                    <TextField required label="Brand" value={form.brandName} onChange={(v) => setField("brandName", v)} onBlur={() => touch("brandName")} error={isErr("brandName")} disabled={identityReadOnly} />
-                                </FieldAnchor>
-                            </div>
-                        )}
-
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <FieldAnchor fieldKey="manufacturer">
-                                <TextField required label="Manufacturer" value={form.manufacturer} onChange={(v) => setField("manufacturer", v)} onBlur={() => touch("manufacturer")} error={isErr("manufacturer")} />
-                            </FieldAnchor>
-                            <FieldAnchor fieldKey="modelNo">
-                                <TextField required label="Model / Part No. / SKU" value={form.modelNo} onChange={(v) => setField("modelNo", v)} onBlur={() => touch("modelNo")} error={isErr("modelNo")} />
-                            </FieldAnchor>
-                        </div>
-                        <TextField label="Grade / Variant" value={form.gradeVariant} onChange={(v) => setField("gradeVariant", v)} hint="If this product comes in grades or variants (e.g. Grade A, Size M)" placeholder="Optional" />
-
-                        <RepeatableRows
-                            label="Specifications / technical data sheet"
-                            hint="Key-value pairs buyers see on the product page, e.g. Material: Stainless Steel 304"
-                            rows={form.specifications}
-                            onChange={(rows) => setField("specifications", rows)}
-                            addLabel="Add specification"
-                            columns={[{ key: "key", placeholder: "Attribute (e.g. Material)" }, { key: "value", placeholder: "Value (e.g. SS304)" }]}
-                        />
+                        <FieldAnchor fieldKey="brandName">
+                            <BrandCombobox
+                                value={form.brandName} notApplicable={form.brandNotApplicable} image={form.brandImage}
+                                onChange={({ brandName, brandImage, brandNotApplicable }) => setForm((f) => ({ ...f, brandName, brandImage, brandNotApplicable }))}
+                            />
+                        </FieldAnchor>
 
                         <FieldAnchor fieldKey="images">
                             <div className="flex flex-col gap-1">
                                 <span className="text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
-                                    Product images {form.images.length > 0 && `(${form.images.length})`} {!identityReadOnly && <span style={{ color: C.primary }}>*</span>}
+                                    Product images {form.images.length > 0 && `(${form.images.length})`} <span style={{ color: C.primary }}>*</span>
                                 </span>
                                 <div className="flex flex-wrap gap-2">
                                     {form.images.map((src, i) => (
@@ -458,187 +255,156 @@ export default function SellerListingForm({
                                 </div>
                             </div>
                         </FieldAnchor>
-                    </>
-                )}
+
+                        <RepeatableRows
+                            label="Quality & certifications" hint="Link any current certificates you have for this item"
+                            rows={form.qualityCertificates} onChange={(rows) => setField("qualityCertificates", rows)} addLabel="Add certificate"
+                            columns={[{ key: "name", placeholder: "Certificate name" }, { key: "url", placeholder: "Link to file" }]}
+                        />
+
+                        <TextAreaField label="Note to admin" value={form.noteToAdmin} onChange={(v) => setField("noteToAdmin", v)} rows={2}
+                            hint="Anything that'll help us approve this faster — e.g. context on the product, sourcing, or images." placeholder="Optional" />
+
+                    </>)}
             </SectionCard>
 
-            {/* ---------------- Essentials — everything without a default, always visible ---------------- */}
-            <SectionCard id={SECTIONS.essentials.id} icon={IndianRupee} alwaysOpen
-                title="List it" subtitle="Price, quantity & where it ships from">
-                <div className="grid grid-cols-2 gap-3">
-                    <FieldAnchor fieldKey="basePrice">
-                        <TextField required dense label="Base price / unit (₹ excl. GST)" value={form.basePrice} onChange={(v) => setField("basePrice", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal" />
-                    </FieldAnchor>
-                    <FieldAnchor fieldKey="moq">
-                        <TextField required dense label="MOQ" value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
-                    </FieldAnchor>
-                </div>
-                <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
-                <div className="flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${C.secondary}0c` }}>
-                    <span className="text-[12px] font-bold" style={{ color: C.muted }}>Final price incl. GST</span>
-                    <span className="text-[16px] font-extrabold" style={{ color: C.secondary }}>₹{finalPrice.toLocaleString("en-IN")}</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                    <FieldAnchor fieldKey="packSize">
-                        <TextField required dense label="Pack size" value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" hint="Units per pack, e.g. 10" />
-                    </FieldAnchor>
+            {/* ---------------- Packaging & Tax ---------------- */}
+            <SectionCard icon={Boxes} title="Packaging & tax" alwaysOpen>
+                <div className="grid grid-cols-3 gap-3">
                     <FieldAnchor fieldKey="unit">
                         <SelectField required dense label="Unit" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
                     </FieldAnchor>
-                </div>
-                {Number(form.packSize) > 1 && (
-                    <FieldAnchor fieldKey="ratePerPack">
-                        <TextField required dense label="Rate per pack (₹)" value={form.ratePerPack} onChange={(v) => setField("ratePerPack", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("ratePerPack")} error={isErr("ratePerPack")} inputMode="decimal" />
+                    <FieldAnchor fieldKey="packSize">
+                        <TextField required dense label="Pack size" hint="Individual units per pack" value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
                     </FieldAnchor>
-                )}
-
+                    <FieldAnchor fieldKey="masterPackSize">
+                        <TextField required dense label="Master pack size" hint="Packs per master pack" value={form.masterPackSize} onChange={(v) => setField("masterPackSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("masterPackSize")} error={isErr("masterPackSize")} inputMode="decimal" />
+                    </FieldAnchor>
+                    <FieldAnchor fieldKey="moq">
+                        <TextField required dense label="MOQ" hint="Minimum order quantity, in units" value={form.moq}
+                            onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
+                    </FieldAnchor>
+                </div>
                 <div className="grid grid-cols-2 gap-3">
-                    <FieldAnchor fieldKey="stockQuantity">
-                        <TextField required dense label="Available Stock (Quantity)" value={form.stockQuantity} onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("stockQuantity")} error={isErr("stockQuantity")} inputMode="decimal" />
+                    <FieldAnchor fieldKey="hsnCode">
+                        <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => setField("hsnCode", v)} onBlur={() => touch("hsnCode")} error={isErr("hsnCode")} />
                     </FieldAnchor>
-                    <FieldAnchor fieldKey="stockType">
-                        <ChipToggleGroup dense label="Fulfilment" value={form.stockType} onChange={(v) => setField("stockType", v)}
-                            options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
-                    </FieldAnchor>
+                    <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
                 </div>
-                {form.stockType === "made_to_order" && (
-                    <FieldAnchor fieldKey="productionLeadTimeDays">
-                        <TextField required dense label="Production lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" />
-                    </FieldAnchor>
-                )}
-
-                <div className="grid grid-cols-2 gap-3">
-                    <FieldAnchor fieldKey="sellerLocation">
-                        <TextField required dense label="Seller location" value={form.sellerLocation} onChange={(v) => setField("sellerLocation", v)} onBlur={() => touch("sellerLocation")} error={isErr("sellerLocation")} placeholder="City, State" />
-                    </FieldAnchor>
-                    <FieldAnchor fieldKey="dispatchLocation">
-                        <div className="flex flex-col gap-1">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[12px] font-bold" style={{ color: C.ink }}>Dispatch location <span style={{ color: C.primary }}>*</span></span>
-                                {form.sellerLocation && (
-                                    <button type="button" onClick={copySellerToDispatch} className="flex items-center gap-1 text-[10px] font-bold" style={{ color: C.secondary }}>
-                                        <Copy className="h-2.5 w-2.5" /> Same
-                                    </button>
-                                )}
-                            </div>
-                            <TextField dense value={form.dispatchLocation} onChange={(v) => setField("dispatchLocation", v)} onBlur={() => touch("dispatchLocation")} error={isErr("dispatchLocation")} placeholder="City, State" />
-                        </div>
-                    </FieldAnchor>
-                </div>
-
-                <FieldAnchor fieldKey="hsnCode">
-                    <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => setField("hsnCode", v)} onBlur={() => touch("hsnCode")} error={isErr("hsnCode")} />
-                </FieldAnchor>
             </SectionCard>
 
-            {/* ---------------- More details — pre-filled with sensible defaults ---------------- */}
-            <SectionCard id={SECTIONS.more.id} icon={FileText} title="More details"
-                subtitle="Delivery, tax, terms & certifications"
-                open={moreOpen} onOpenChange={setMoreOpen}
-                headerRight={<Pill tone={hasSavedDefaults ? "good" : "muted"}>{hasSavedDefaults ? "Auto-filled" : "Defaults applied"}</Pill>}>
-
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Pricing & quantity extras</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <FieldAnchor fieldKey="priceValidityTill">
-                        <TextField dense type="date" label="Price validity" value={form.priceValidityTill} onChange={(v) => setField("priceValidityTill", v)} onBlur={() => touch("priceValidityTill")} error={isErr("priceValidityTill")} />
+            {/* ---------------- Pricing ---------------- */}
+            <SectionCard icon={IndianRupee} title="Pricing" alwaysOpen>
+                <div className="grid grid-cols-2 gap-3">
+                    <FieldAnchor fieldKey="basePrice">
+                        <TextField required dense label="Base price (₹)" value={form.basePrice} onChange={(v) => setField("basePrice", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal" />
                     </FieldAnchor>
-                    <TextField dense label="Rate per master pack (₹)" value={form.ratePerMasterPack} onChange={(v) => setField("ratePerMasterPack", v.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="Optional" />
+                    <ChipToggleGroup dense label="This price is" value={form.priceBasis} onChange={(v) => setField("priceBasis", v)} options={PRICE_BASIS_OPTIONS} />
                 </div>
-                <ToggleField label="Sample available" value={form.sampleAvailable} onChange={(v) => setField("sampleAvailable", v)} />
+                <div className="grid grid-cols-2 gap-3">
+                    <ToggleField label="Price includes GST?" value={form.gstInclusive} onChange={(v) => setField("gstInclusive", v)} />
+                    <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />
+                </div>
+                <div className="flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${C.secondary}0c` }}>
+                    <span className="text-[12px] font-bold" style={{ color: C.muted }}>Base price / unit (excl. GST)</span>
+                    <span className="text-[15px] font-extrabold" style={{ color: C.secondary }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</span>
+                </div>
+
+                <ToggleField label="Sample available?" value={form.sampleAvailable} onChange={(v) => setField("sampleAvailable", v)} />
                 {form.sampleAvailable && (
-                    <TextField dense label="Sample price (₹)" value={form.samplePrice} onChange={(v) => setField("samplePrice", v.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="Leave blank if free" />
+                    <div className="grid grid-cols-2 gap-3">
+                        <FieldAnchor fieldKey="sampleQuantity">
+                            <TextField required dense label="Sample quantity" value={form.sampleQuantity} onChange={(v) => setField("sampleQuantity", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("sampleQuantity")} error={isErr("sampleQuantity")} inputMode="decimal" />
+                        </FieldAnchor>
+                        <ChipToggleGroup dense label="Basis" value={form.sampleUnitBasis} onChange={(v) => setField("sampleUnitBasis", v)} options={PRICE_BASIS_OPTIONS} />
+                    </div>
                 )}
+
                 <RepeatableRows
-                    label="Order quantity price slabs" hint="Optional — different pricing at different order volumes"
-                    rows={form.priceSlabs} onChange={(rows) => setField("priceSlabs", rows)} addLabel="Add price slab"
-                    columns={[{ key: "minQty", placeholder: "Min qty", inputMode: "decimal" }, { key: "maxQty", placeholder: "Max qty (optional)", inputMode: "decimal" }, { key: "price", placeholder: "₹ price", inputMode: "decimal" }]}
+                    label="Discount slabs" hint="Extra % off above a quantity threshold"
+                    rows={form.priceSlabs} onChange={(rows) => setField("priceSlabs", rows)} addLabel="Add slab"
+                    columns={[{ key: "minQty", placeholder: `Min qty (${form.unit || "units"})`, inputMode: "decimal" }, { key: "discountPercent", placeholder: "Discount %", inputMode: "decimal" }]}
                 />
-                <RepeatableRows
-                    label="Quantity discounts" hint="Optional — e.g. 5% off above 500 units"
-                    rows={form.quantityDiscounts} onChange={(rows) => setField("quantityDiscounts", rows)} addLabel="Add discount tier"
-                    columns={[{ key: "minQty", placeholder: "Min qty", inputMode: "decimal" }, { key: "discountPercent", placeholder: "Discount %", inputMode: "decimal" }]}
-                />
-
-                <div className="my-1 h-px" style={{ background: C.hairSoft }} />
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Packaging</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <TextField dense label="Units per master pack" value={form.unitsPerMasterPack} onChange={(v) => setField("unitsPerMasterPack", v.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="Optional" />
-                    <TextField dense label="Master pack size" value={form.masterPackSize} onChange={(v) => setField("masterPackSize", v.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="Optional" />
-                </div>
-                <TextField dense label="Packaging type" value={form.packagingType} onChange={(v) => setField("packagingType", v)} placeholder="e.g. Carton box, Poly bag, Wooden crate" />
-
-                <div className="my-1 h-px" style={{ background: C.hairSoft }} />
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Delivery</p>
-                <FieldAnchor fieldKey="dispatchTimeDays">
-                    <TextField required dense label="Expected dispatch time (days)" value={form.dispatchTimeDays} onChange={(v) => setField("dispatchTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("dispatchTimeDays")} error={isErr("dispatchTimeDays")} inputMode="numeric" />
-                </FieldAnchor>
-                <FieldAnchor fieldKey="deliveryTimeline">
-                    <TextField required dense label="Delivery timeline" value={form.deliveryTimeline} onChange={(v) => setField("deliveryTimeline", v)} onBlur={() => touch("deliveryTimeline")} error={isErr("deliveryTimeline")} placeholder="e.g. 3-7 business days" />
-                </FieldAnchor>
-                <div className="flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: C.hairSoft }}>
-                    <span className="text-[12px] font-bold" style={{ color: C.ink }}>Freight</span>
-                    <span className="rounded-full px-2.5 py-1 text-[10.5px] font-bold" style={{ background: `${C.primary}12`, color: C.primary }}>Always extra — buyer pays</span>
-                </div>
-                <TextAreaField label="Freight terms" value={form.freightTerms} onChange={(v) => setField("freightTerms", v)} rows={2} />
-
-                <div className="my-1 h-px" style={{ background: C.hairSoft }} />
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Tax & legal</p>
-                <FieldAnchor fieldKey="gstRegistrationStatus">
-                    <SelectField required dense label="GST registration status" value={form.gstRegistrationStatus} onChange={(v) => setField("gstRegistrationStatus", v)} onBlur={() => touch("gstRegistrationStatus")} error={isErr("gstRegistrationStatus")}
-                        options={[{ value: "regular", label: "Regular" }, { value: "composition", label: "Composition" }, { value: "unregistered", label: "Unregistered" }]} />
-                </FieldAnchor>
-                <ToggleField label="Tax invoice available" value={form.taxInvoiceAvailable} onChange={(v) => setField("taxInvoiceAvailable", v)} />
-
-                <div className="my-1 h-px" style={{ background: C.hairSoft }} />
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Commercial terms</p>
-                <FieldAnchor fieldKey="paymentTerms">
-                    <TextAreaField required label="Payment terms" value={form.paymentTerms} onChange={(v) => setField("paymentTerms", v)} onBlur={() => touch("paymentTerms")} error={isErr("paymentTerms")} rows={2} />
-                </FieldAnchor>
-                <FieldAnchor fieldKey="returnPolicy">
-                    <TextAreaField required label="Return / replacement policy" value={form.returnPolicy} onChange={(v) => setField("returnPolicy", v)} onBlur={() => touch("returnPolicy")} error={isErr("returnPolicy")} rows={3}
-                        hint="Buyers raise a ticket against their order if something goes wrong — this text is shown to them as your policy." />
-                </FieldAnchor>
-                <TextField dense label="Warranty" value={form.warranty} onChange={(v) => setField("warranty", v)} placeholder="Optional — e.g. 1 year manufacturer warranty" />
-
-                <div className="my-1 h-px" style={{ background: C.hairSoft }} />
-                <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Quality & certifications (optional)</p>
-                <RepeatableRows label="Certificates" rows={form.qualityCertificates} onChange={(rows) => setField("qualityCertificates", rows)} addLabel="Add certificate"
-                    columns={[{ key: "name", placeholder: "Certificate name" }, { key: "url", placeholder: "Link to file" }]} />
-                <RepeatableRows label="TDS / MSDS / COA" rows={form.tdsMsdsCoa} onChange={(rows) => setField("tdsMsdsCoa", rows)} addLabel="Add document"
-                    columns={[{ key: "type", placeholder: "Document type" }, { key: "url", placeholder: "Link to file" }]} />
-                <RepeatableRows label="BIS / ISO / other certification" rows={form.otherCertifications} onChange={(rows) => setField("otherCertifications", rows)} addLabel="Add certification"
-                    columns={[{ key: "name", placeholder: "Certification name" }, { key: "url", placeholder: "Link to file" }]} />
-
-                <div className="my-1 h-px" style={{ background: C.hairSoft }} />
-                <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-xl p-2.5" style={{ background: C.hairSoft }}>
-                        <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Commission</p>
-                        <p className="mt-0.5 text-[14px] font-extrabold" style={{ color: C.ink }}>{commissionPercent}%</p>
+                {form.priceSlabs.some((s) => s.discountPercent) && (
+                    <div className="flex flex-col gap-1 rounded-xl border px-3 py-2" style={{ borderColor: C.hairSoft }}>
+                        {form.priceSlabs.filter((s) => s.minQty && s.discountPercent).map((s, i) => (
+                            <p key={i} className="text-[11px] font-semibold" style={{ color: C.muted }}>
+                                Above {s.minQty} {form.unit}: ₹{discountedPreview(s)} / {form.unit}
+                            </p>
+                        ))}
                     </div>
-                    <div className="rounded-xl p-2.5" style={{ background: C.hairSoft }}>
-                        <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Your payout</p>
-                        <p className="mt-0.5 text-[14px] font-extrabold" style={{ color: C.secondary }}>₹{payout.sellerPayout.toLocaleString("en-IN")}</p>
-                    </div>
-                    <div className="rounded-xl p-2.5" style={{ background: C.hairSoft }}>
-                        <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Selling price</p>
-                        <p className="mt-0.5 text-[14px] font-extrabold" style={{ color: C.ink }}>₹{finalPrice.toLocaleString("en-IN")}</p>
-                    </div>
-                </div>
+                )}
             </SectionCard>
 
-            {!moreOpen && (
-                <button
-                    type="button"
-                    onClick={() => setMoreOpen(true)}
-                    className="flex items-center justify-center gap-1.5 py-1 text-[11.5px] font-bold"
-                    style={{ color: C.secondary }}
-                >
-                    Review delivery, tax & terms defaults <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-            )}
+            {/* ---------------- Fulfilment ---------------- */}
+            <SectionCard icon={Truck} title="Fulfilment & delivery" alwaysOpen>
+                <ChipToggleGroup label="Fulfilment" value={form.stockType} onChange={(v) => setField("stockType", v)}
+                    options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
+                {form.stockType === "ready_stock" ? (
+                    <FieldAnchor fieldKey="stockQuantity">
+                        <TextField required dense label={`Available stock (${form.unit || "units"})`} value={form.stockQuantity} onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("stockQuantity")} error={isErr("stockQuantity")} inputMode="decimal" />
+                    </FieldAnchor>
+                ) : (
+                    <FieldAnchor fieldKey="productionLeadTimeDays">
+                        <TextField required dense label="Lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" />
+                    </FieldAnchor>
+                )}
 
-            {footer}
+                <FieldAnchor fieldKey="dispatchPincode">
+                    <div className="flex flex-col gap-1">
+                        <TextField required dense label="Dispatch pincode" value={form.dispatchPincode}
+                            onChange={(v) => { setField("dispatchPincode", v.replace(/[^\d]/g, "")); setPincodeStatus(null); }}
+                            onBlur={() => { touch("dispatchPincode"); confirmPincode(); }}
+                            error={isErr("dispatchPincode")} inputMode="numeric" />
+                        {pincodeStatus === "checking" && <p className="text-[11px] font-medium" style={{ color: C.muted }}>Checking…</p>}
+                        {pincodeStatus === "ok" && <p className="text-[11px] font-bold" style={{ color: C.secondary }}>Dispatching from {form.dispatchDistrict}, {form.dispatchState}</p>}
+                        {pincodeStatus === "error" && <p className="text-[11px] font-medium" style={{ color: C.primary }}>Couldn't verify this pincode — you can still continue.</p>}
+                    </div>
+                </FieldAnchor>
+
+                <FieldAnchor fieldKey="dispatchingLocations">
+                    <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
+                </FieldAnchor>
+            </SectionCard>
+
+            {/* ---------------- Terms ---------------- */}
+            <SectionCard icon={FileText} title="Terms" alwaysOpen>
+                <FieldAnchor fieldKey="returnPolicyKey">
+                    <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => setField("returnPolicyKey", v)} error={isErr("returnPolicyKey")} />
+                </FieldAnchor>
+                <FieldAnchor fieldKey="warrantyKey">
+                    <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => setField("warrantyKey", v)} error={isErr("warrantyKey")} />
+                </FieldAnchor>
+            </SectionCard>
+
+            {/* ---------------- Summary ---------------- */}
+            <div className="grid grid-cols-4 gap-2 text-center">
+                <div className="rounded-xl p-2.5" style={{ background: C.hairSoft }}>
+                    <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Base price</p>
+                    <p className="mt-0.5 text-[13px] font-extrabold" style={{ color: C.ink }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</p>
+                </div>
+                <div className="rounded-xl p-2.5" style={{ background: C.hairSoft }}>
+                    <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>+ GST</p>
+                    <p className="mt-0.5 text-[13px] font-extrabold" style={{ color: C.ink }}>{form.gstPercent}%</p>
+                </div>
+                <div className="rounded-xl p-2.5" style={{ background: C.hairSoft }}>
+                    <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>BBM commission</p>
+                    <p className="mt-0.5 text-[13px] font-extrabold" style={{ color: C.primary }}>₹{pricePreview.commissionAmount.toLocaleString("en-IN")}</p>
+                </div>
+                <div className="rounded-xl p-2.5" style={{ background: `${C.secondary}14` }}>
+                    <p className="text-[9.5px] font-bold uppercase tracking-wide" style={{ color: C.secondary }}>Final price</p>
+                    <p className="mt-0.5 text-[13px] font-extrabold" style={{ color: C.secondary }}>₹{pricePreview.finalPricePerUnit.toLocaleString("en-IN")}</p>
+                </div>
+            </div>
+
+            <div className="sticky -bottom-5 z-10 mt-1 border-t bg-white px-1 py-3" style={{ borderColor: C.hair }}>
+                <Progress percent={percentComplete} />
+                <button type="button" onClick={handleSubmit} disabled={submitting}
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white disabled:opacity-60"
+                    style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} <CheckCircle2 className="h-4 w-4" /></>}
+                </button>
+            </div>
         </div>
     );
 }

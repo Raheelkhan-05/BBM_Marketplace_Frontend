@@ -232,7 +232,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
         NOT_VERIFIED: { title: "Verify your contact details", body: "We need a verified email or phone so sellers know you're a genuine buyer.", cta: "Verify now", action: () => navigate("/account") },
     }[access?.reason] || { title: "Can't place an order right now", body: "Please try again in a moment.", cta: "Close", action: onClose };
 
-    const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.hsnCode);
+    // hasTerms — extend to include the new fields so the terms panel shows
+    // up even if delivery/payment/return/warranty/hsn are all missing but
+    // freight/dispatch info is present.
+    const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.hsnCode || seller.freightIncluded != null || seller.dispatchOrigin);
 
     return (
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-4"
@@ -295,6 +298,23 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                                     ? { borderColor: C.secondary, background: `${C.secondary}12`, color: C.secondary }
                                                     : { borderColor: C.hairSoft, color: C.muted }}>
                                                 {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} {seller.unit}: ₹{slab.price}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
+                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                    <Layers className="h-3 w-3 shrink-0" style={{ color: C.primary }} />
+                                    {seller.quantityDiscounts.map((tier, i) => {
+                                        const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
+                                        return (
+                                            <span key={i} className="rounded-full border px-2 py-0.5 text-[10.5px] font-bold"
+                                                style={active
+                                                    ? { borderColor: C.primary, background: `${C.primary}12`, color: C.primary }
+                                                    : { borderColor: C.hairSoft, color: C.muted }}>
+                                                {tier.minQty}+ {seller.unit}: {tier.discountPercent}% off
                                             </span>
                                         );
                                     })}
@@ -376,6 +396,15 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                     {seller.returnPolicy && <p><span style={{ color: C.muted }}>Returns: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.returnPolicy}</span></p>}
                                     {seller.warranty && <p><span style={{ color: C.muted }}>Warranty: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.warranty}</span></p>}
                                     {seller.hsnCode && <p><span style={{ color: C.muted }}>HSN: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.hsnCode}</span></p>}
+                                    {seller.dispatchOrigin && <p><span style={{ color: C.muted }}>Ships from: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.dispatchOrigin}</span></p>}
+                                    {seller.freightIncluded != null && (
+                                        <p>
+                                            <span style={{ color: C.muted }}>Freight: </span>
+                                            <span style={{ color: seller.freightIncluded ? "#059669" : C.ink, fontWeight: 700 }}>
+                                                {seller.freightIncluded ? "Included in price" : "Extra, paid by buyer"}
+                                            </span>
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         )}

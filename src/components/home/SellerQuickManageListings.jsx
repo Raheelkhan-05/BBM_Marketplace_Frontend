@@ -61,6 +61,16 @@ function FieldInput({ label, ...props }) {
     );
 }
 
+// Add a helper to summarize dispatching_locations jsonb into one line —
+// place near the other small helpers at the top of the file.
+function summarizeDispatchLocations(locations) {
+    if (!Array.isArray(locations) || !locations.length) return null;
+    const country = locations.find((l) => l.type === "country");
+    if (!country) return null;
+    const excludedStates = country.excludedStates?.length ? ` (excl. ${country.excludedStates.length} state${country.excludedStates.length === 1 ? "" : "s"})` : "";
+    return `${country.name}${excludedStates}`;
+}
+
 function SectionHeader({ title, subtitle }) {
     const navigate = useNavigate();
     return (
@@ -323,7 +333,9 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                 <div className="flex shrink-0 items-center justify-between border-b px-5 py-3.5" style={{ borderColor: C.hairSoft }}>
                     <div className="min-w-0">
                         <h3 className="truncate text-[15px] font-extrabold" style={{ color: C.ink }}>{name}</h3>
-                        {brandName && <p className="text-[11.5px] font-semibold" style={{ color: C.muted }}>{brandName}</p>}
+                        {!s?.brand?.brand_not_applicable && brandName && (
+                            <p className="text-[11.5px] font-semibold" style={{ color: C.muted }}>{brandName}</p>
+                        )}
                     </div>
                     <button
                         onClick={onClose}
@@ -415,14 +427,22 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                                 <ReadRow label="Base price" value={s.base_price != null ? `₹${s.base_price}` : null} />
                                 <ReadRow label="GST %" value={s.gst_percent != null ? `${s.gst_percent}%` : null} />
                                 <ReadRow label="Final price" value={`₹${finalPrice.toLocaleString("en-IN")}`} />
+                                <ReadRow label="Priced as" value={s.price_basis ? { per_unit: "Per unit", per_pack: "Per pack", per_master_pack: "Per master pack" }[s.price_basis] : null} />
+                                <ReadRow label="GST" value={s.gst_inclusive_input != null ? (s.gst_inclusive_input ? "Included in entered price" : "Added on top") : null} />
+                                <ReadRow label="Freight" value={s.freight_included != null ? (s.freight_included ? "Included" : "Extra, buyer pays") : null} />
                                 <ReadRow label="Valid till" value={s.price_validity_till} />
-                                <ReadRow label="Rate/pack" value={s.rate_per_pack != null ? `₹${s.rate_per_pack}` : null} />
-                                <ReadRow label="Rate/master pack" value={s.rate_per_master_pack != null ? `₹${s.rate_per_master_pack}` : null} />
                             </SectionBlock>
 
                             <SectionBlock icon={Boxes} title="Quantity">
                                 <ReadRow label="MOQ" value={s.moq != null ? `${s.moq} ${s.unit || ""}` : null} />
-                                <ReadRow label="Sample" value={s.sample_available ? (s.sample_price ? `₹${s.sample_price}` : "Free") : "Not available"} />
+                                <ReadRow
+                                    label="Sample"
+                                    value={
+                                        s.sample_available
+                                            ? `${s.sample_quantity || ""} ${s.sample_unit_basis ? { per_unit: "unit(s)", per_pack: "pack(s)", per_master_pack: "master pack(s)" }[s.sample_unit_basis] : ""}`.trim() || "Available"
+                                            : "Not available"
+                                    }
+                                />
                             </SectionBlock>
                             {(s.price_slabs?.length > 0 || s.quantity_discounts?.length > 0) && (
                                 <div className="-mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -441,27 +461,38 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                             <SectionBlock icon={Boxes} title="Availability">
                                 <ReadRow label="Stock" value={s.stock_quantity} />
                                 <ReadRow label="Fulfilment" value={s.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"} />
-                                <ReadRow label="Dispatch time" value={s.dispatch_time_days != null ? `${s.dispatch_time_days}d` : null} />
-                                <ReadRow label="Production lead" value={s.production_lead_time_days != null ? `${s.production_lead_time_days}d` : null} />
                             </SectionBlock>
 
                             <SectionBlock icon={Truck} title="Delivery">
-                                <ReadRow label="Seller location" value={s.seller_location} />
-                                <ReadRow label="Dispatch location" value={s.dispatch_location} />
-                                <ReadRow label="Timeline" value={s.delivery_timeline} />
+                                <ReadRow label="Dispatch pincode" value={s.dispatch_pincode} />
+                                <ReadRow label="Dispatch district" value={s.dispatch_district} />
+                                <ReadRow label="Dispatch state" value={s.dispatch_state} />
+                                <ReadRow label="Fulfilment" value={s.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"} />
+                                <ReadRow label="Lead time" value={s.stock_type === "made_to_order" ? (s.production_lead_time_days != null ? `${s.production_lead_time_days}d` : null) : (s.dispatch_time_days != null ? `${s.dispatch_time_days}d` : null)} />
                             </SectionBlock>
-                            <ReadRow label="Freight terms" value={s.freight_terms} />
+                            {summarizeDispatchLocations(s.dispatching_locations) && (
+                                <ReadRow label="Delivers to" value={summarizeDispatchLocations(s.dispatching_locations)} />
+                            )}
+                            {/* legacy fields — only render if an older submission still has them, so pre-migration listings keep showing what they had */}
+                            <ReadRow label="Seller location" value={s.seller_location} />
+                            <ReadRow label="Freight terms " value={s.freight_terms} />
 
                             <SectionBlock icon={FileText} title="Tax & Legal">
                                 <ReadRow label="HSN Code" value={s.hsn_code} />
-                                <ReadRow label="GST status" value={s.gst_registration_status} />
-                                <ReadRow label="Tax invoice" value={s.tax_invoice_available ? "Yes" : "No"} />
+                                <ReadRow label="GST status " value={s.gst_registration_status} />
+                                <ReadRow label="Tax invoice " value={s.tax_invoice_available != null ? (s.tax_invoice_available ? "Yes" : "No") : null} />
                             </SectionBlock>
 
                             <SectionBlock icon={Handshake} title="Commercial Terms" />
                             <ReadRow label="Warranty" value={s.warranty} />
                             <ReadRow label="Payment terms" value={s.payment_terms} />
                             <ReadRow label="Return policy" value={s.return_policy} />
+                            {s.note_to_admin && (
+                                <div className="border-t pt-3" style={{ borderColor: C.hairSoft }}>
+                                    <p className="mb-1 text-[11.5px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Your note to admin</p>
+                                    <p className="text-[12px] font-medium leading-relaxed" style={{ color: C.ink }}>{s.note_to_admin}</p>
+                                </div>
+                            )}
 
                             {(s.quality_certificates?.length > 0 || s.tds_msds_coa?.length > 0 || s.other_certifications?.length > 0) && (
                                 <SectionBlock icon={ShieldCheck} title="Quality & Certifications">
