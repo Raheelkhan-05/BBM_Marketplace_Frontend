@@ -131,7 +131,7 @@ function StateRow({ state, checked, onToggleState, mode, restriction, onSetRestr
 
 export default function DispatchingLocationsPicker({ value, onChange }) {
     // value: { country, mode: 'exclude'|'include', excludedStates, citiesByState, includedStates, includedCitiesByState }
-    const [countries, setCountries] = useState([]);
+    // Country is locked to India — no country picker is shown to the seller.
     const [states, setStates] = useState([]);
     const [q, setQ] = useState("");
 
@@ -141,17 +141,16 @@ export default function DispatchingLocationsPicker({ value, onChange }) {
     const includedStates = value?.includedStates || [];
     const includedCitiesByState = value?.includedCitiesByState || {};
 
+    // Auto-select India as soon as we know its id, if it isn't set yet.
     useEffect(() => {
+        if (value?.country) return;
         fetchGeoCountries().then((r) => {
             if (!r?.success) return;
-            setCountries(r.items);
-            // Only one country supported today — skip the extra click.
-            if (r.items.length === 1 && !value?.country) {
-                onChange({ country: r.items[0], mode: "exclude", excludedStates: [], citiesByState: {}, includedStates: [], includedCitiesByState: {} });
-            }
+            const india = r.items.find((c) => c.name?.toLowerCase() === "india");
+            if (india) pickCountry(india);
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [value?.country]);
 
     useEffect(() => {
         if (!value?.country?.id) { setStates([]); return; }
@@ -188,22 +187,13 @@ export default function DispatchingLocationsPicker({ value, onChange }) {
         <div className="flex flex-col gap-1.5">
             <Label>Dispatching locations <span style={{ color: C.primary }}> *</span></Label>
             {!value?.country ? (
-                <div className="flex flex-col gap-1.5 rounded-xl border p-3" style={{ borderColor: C.hair }}>
-                    <p className="text-[11px] font-medium leading-relaxed" style={{ color: C.muted }}>Pick the country you ship to.</p>
-                    <div className="flex flex-wrap gap-1.5">
-                        {countries.map((c) => (
-                            <button key={c.id} type="button" onClick={() => pickCountry(c)} className="rounded-full border px-3 py-1.5 text-[11.5px] font-bold transition-colors duration-150 hover:bg-black/[0.02]" style={{ borderColor: C.hair, color: C.ink }}>{c.name}</button>
-                        ))}
-                    </div>
+                <div className="flex items-center gap-2 rounded-xl border p-3 text-[11px] font-medium" style={{ borderColor: C.hair, color: C.muted }}>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading India…
                 </div>
             ) : (
                 <div className="rounded-xl border p-3" style={{ borderColor: C.hair }}>
                     <div className="mb-2 flex items-center justify-between gap-2">
                         <span className="truncate text-[12px] font-extrabold" style={{ color: C.ink }}>{value.country.name}</span>
-                        {countries.length > 1 && (
-                            <button type="button" onClick={() => onChange({ country: null, mode: "exclude", excludedStates: [], citiesByState: {}, includedStates: [], includedCitiesByState: {} })}
-                                className="shrink-0 text-[10.5px] font-bold underline" style={{ color: C.muted }}>Change</button>
-                        )}
                     </div>
 
                     <div className="mb-2 flex w-fit gap-1 rounded-lg p-1" style={{ background: C.hairSoft }}>
@@ -220,11 +210,6 @@ export default function DispatchingLocationsPicker({ value, onChange }) {
                             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: C.muted }} />
                             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search states…" className="w-full rounded-lg border px-8 py-1.5 text-[11.5px] font-medium focus:outline-none focus:ring-2" style={{ borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` }} />
                         </div>
-                        {mode === "exclude" ? (
-                            <button type="button" onClick={selectAllStates} className="shrink-0 text-[10.5px] font-bold" style={{ color: C.secondary }}>Select all</button>
-                        ) : (
-                            <button type="button" onClick={clearAllStates} className="shrink-0 text-[10.5px] font-bold" style={{ color: C.muted }}>Deselect all</button>
-                        )}
                     </div>
 
                     <div className="max-h-64 overflow-y-auto">
