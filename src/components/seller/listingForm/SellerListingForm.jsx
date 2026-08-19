@@ -158,25 +158,41 @@ export default function SellerListingForm({
     }, [token, mode]);
 
     // Live price preview — mirrors normalizeEnteredPrice on the backend.
-    // Final price = base price + GST amount + commission amount, all
-    // stacked on top of the base price (not commission carved back out
-    // of a GST-inclusive figure, as before) — matches the fee model
-    // buyers ultimately see broken down at checkout.
+    //
+    // Two modes, driven by "Price includes GST?":
+    // - Inclusive: the price the seller types is the ceiling — exactly what the
+    //   buyer should pay. GST% and commission% are both reverse-calculated OUT
+    //   of it together (as a combined % of the base), instead of commission
+    //   being stacked on top afterward. So finalPricePerUnit === entered price.
+    // - Exclusive: entered price is the base as-is, GST + commission are both
+    //   added on top for the buyer (unchanged).
     const pricePreview = useMemo(() => {
         const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
         const price = Number(form.basePrice) || 0;
         const gst = Number(form.gstPercent) || 0;
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
-        const exGst = form.gstInclusive ? price / (1 + gst / 100) : price;
-        let perUnitExGst = exGst;
-        if (form.priceBasis === "per_pack") perUnitExGst = exGst / pack;
-        if (form.priceBasis === "per_master_pack") perUnitExGst = exGst / (pack * master);
 
-        const basePricePerUnit = round2(perUnitExGst);
-        const gstAmount = round2(basePricePerUnit * (gst / 100));
-        const commissionAmount = round2(basePricePerUnit * (commissionPercent / 100));
-        const finalPricePerUnit = round2(basePricePerUnit + gstAmount + commissionAmount);
+        let perUnitPrice = price;
+        if (form.priceBasis === "per_pack") perUnitPrice = price / pack;
+        if (form.priceBasis === "per_master_pack") perUnitPrice = price / (pack * master);
+
+        let basePricePerUnit, gstAmount, commissionAmount, finalPricePerUnit;
+
+        if (form.gstInclusive) {
+            // Reverse out GST% + commission% together, as one combined divisor,
+            // so both come off the exact figure the seller typed.
+            const divisor = 1 + (gst + commissionPercent) / 100;
+            basePricePerUnit = round2(perUnitPrice / divisor);
+            gstAmount = round2(basePricePerUnit * (gst / 100));
+            commissionAmount = round2(basePricePerUnit * (commissionPercent / 100));
+            finalPricePerUnit = round2(basePricePerUnit + gstAmount + commissionAmount);
+        } else {
+            basePricePerUnit = round2(perUnitPrice);
+            gstAmount = round2(basePricePerUnit * (gst / 100));
+            commissionAmount = round2(basePricePerUnit * (commissionPercent / 100));
+            finalPricePerUnit = round2(basePricePerUnit + gstAmount + commissionAmount);
+        }
 
         return {
             basePricePerUnit,
