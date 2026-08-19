@@ -209,7 +209,10 @@ export default function BrandItemSellersPage() {
         price: buySeller.price,
         gstPercent: buySeller.gst_percent,
         availableStock: buySeller.stock_quantity ?? null,
+        stockType: buySeller.stock_type,
         leadTime: effectiveLeadTime(buySeller),
+        dispatchTimeDays: buySeller.dispatch_time_days,
+        productionLeadTimeDays: buySeller.production_lead_time_days,
         priceSlabs: buySeller.price_slabs || [],
         quantityDiscounts: buySeller.quantity_discounts || [],
         hsnCode: buySeller.hsn_code,
@@ -220,6 +223,16 @@ export default function BrandItemSellersPage() {
         freightIncluded: buySeller.freight_included,
         priceBasis: buySeller.price_basis,
         dispatchOrigin: [buySeller.dispatch_district, buySeller.dispatch_state].filter(Boolean).join(", ") || null,
+        dispatchPincode: buySeller.dispatch_pincode,
+        dispatchState: buySeller.dispatch_state,
+        // Pack/master-pack purchasing — falls back to per-unit if these are
+        // 0/undefined (toBaseUnits() in BuyNowModal treats <=0 as 1).
+        packSize: buySeller.pack_size,
+        masterPackSize: buySeller.units_per_master_pack,
+        // Sample cycle
+        sampleAvailable: buySeller.sample_available || false,
+        sampleQuantity: buySeller.sample_quantity ?? null,
+        samplePrice: buySeller.sample_price ?? null,
     };
 
     return (

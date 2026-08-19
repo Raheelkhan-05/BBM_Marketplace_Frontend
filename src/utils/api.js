@@ -688,8 +688,15 @@ export async function fetchCheckoutStatus(token) {
   const res = await fetch(`${API_BASE}/orders/checkout-status`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
   return res.json();
 }
-export async function fetchOrderQuote(submissionId, quantity) {
-  const params = new URLSearchParams({ submissionId, quantity });
+export async function fetchOrderQuote(submissionId, quantity, opts = {}) {
+  const { purchaseBasis = "per_unit", orderType = "standard", addressId } = opts;
+  const params = new URLSearchParams({
+    submissionId,
+    quantity,
+    purchaseBasis,
+    orderType,
+    ...(addressId ? { addressId } : {}),
+  });
   const res = await fetch(`${API_BASE}/orders/quote?${params}`);
   return res.json();
 }
@@ -699,8 +706,10 @@ export async function placeOrder(token, payload) {
   });
   return res.json();
 }
-export async function fetchMyOrders(token, status) {
-  const params = new URLSearchParams(status ? { status } : {});
+export async function fetchMyOrders(token, status, orderType) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (orderType) params.set("orderType", orderType);
   const res = await fetch(`${API_BASE}/orders?${params}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();
 }
@@ -712,8 +721,10 @@ export async function cancelMyOrder(token, id, reason) {
 }
 
 // ---- Seller order management ----
-export async function fetchSellerOrders(token, status) {
-  const params = new URLSearchParams(status ? { status } : {});
+export async function fetchSellerOrders(token, status, orderType) {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (orderType) params.set("orderType", orderType);
   const res = await fetch(`${API_BASE}/seller/orders?${params}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();
 }
