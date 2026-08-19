@@ -101,7 +101,14 @@ export default function SellPublishProductPage() {
     const [draftSaved, setDraftSaved] = useState(false);
 
     useEffect(() => {
-        if (!token) return;
+        if (!token) {
+            // Guest / logged-out: don't block on an access check that needs a token.
+            // Let them see and fill the form as normal; handleSubmit already
+            // catches NOT_AUTHENTICATED at submit time, saves their draft, and
+            // routes them to the AccessGate to sign in.
+            setAccess({ canPublish: true, guest: true });
+            return;
+        }
         (async () => {
             const res = await fetchSellerAccessStatus(token);
             setAccess(res?.success ? res : { canPublish: false, reason: "NOT_AUTHENTICATED" });

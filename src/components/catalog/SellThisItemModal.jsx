@@ -78,7 +78,7 @@ export default function SellThisItemModal({ brand, onClose }) {
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
             <motion.div data-lenis-prevent
-                className="max-h-[92vh] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-t-[28px] bg-white p-5 sm:rounded-[24px] sm:p-6"
+                className="max-h-[92vh] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-t-[28px] bg-white p-5 sm:rounded-[24px] sm:p-6"
                 initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }}
                 onClick={(e) => e.stopPropagation()}>
                 {done ? (

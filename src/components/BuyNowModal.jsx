@@ -1,23 +1,21 @@
+// components/BuyNowModal.jsx — RESTYLED
+//
+// Visual + information-architecture pass to match the seller listing
+// form language (FormPrimitives: C tokens, uppercase caption Labels,
+// rounded-2xl SectionCards, tabular-nums, compact chip toggles) instead
+// of the previous ad-hoc styling. The quote block is rebuilt as a clear
+// step-down breakdown — Subtotal → Discount → Payable → Delivery —
+// instead of everything competing for attention in one dense strip.
 import { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee, Minus, Layers, FileText, Calendar, Beaker } from "lucide-react";
+import {
+    Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee,
+    Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder } from "../utils/api.js";
-import { C, EASE } from "./catalog/tokens";
-
-function Field({ label, value, onChange }) {
-    return (
-        <div className="flex flex-col gap-1">
-            <label className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{label}</label>
-            <input
-                value={value} onChange={(e) => onChange(e.target.value)}
-                className="w-full rounded-lg border-2 px-3 py-2 text-[13.5px] font-semibold focus:outline-none focus:ring-4"
-                style={{ borderColor: C.hairSoft, color: C.ink, "--tw-ring-color": `${C.secondary}20` }}
-            />
-        </div>
-    );
-}
+import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./seller/listingForm/FormPrimitives.jsx";
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 
@@ -26,6 +24,12 @@ const BASIS_OPTIONS = [
     { value: "per_pack", label: "Packs" },
     { value: "per_master_pack", label: "Master packs" },
 ];
+// B2B buyers essentially never transact in single units — the "Units"
+// pill is dropped from what's shown, but per_unit stays fully wired up
+// underneath (toBaseUnits, defaultBasis, computeLocalQuote all still
+// handle it) since it's still used as the implicit basis whenever a
+// listing has no meaningful packSize.
+const VISIBLE_BASIS_OPTIONS = BASIS_OPTIONS.filter((o) => o.value !== "per_unit");
 
 // ---- Slab / quantity-discount pricing -------------------------------
 // Mirrors the place_order RPC exactly. Discounts/slabs are always resolved
@@ -39,6 +43,10 @@ function resolveSlabUnitPrice(priceSlabs, quantity, fallbackPrice) {
         .sort((a, b) => Number(b.minQty) - Number(a.minQty));
     if (!applicable.length) return { price: fallbackPrice, slab: null };
     return { price: Number(applicable[0].price), slab: applicable[0] };
+}
+function inr(n) {
+    const val = Number(n) || 0;
+    return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 function resolveDiscountPercent(quantityDiscounts, quantity) {
     if (!Array.isArray(quantityDiscounts) || !quantityDiscounts.length) return { percent: 0, tier: null };
@@ -60,6 +68,45 @@ function toBaseUnits(seller, quantity, basis) {
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function formatDDMon(date) {
     return `${String(date.getDate()).padStart(2, "0")} ${MONTH_SHORT[date.getMonth()]}`;
+}
+function round2(n) {
+    return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+// Server-confirmed quotes (from fetchOrderQuote) and the local instant
+// estimate (computeLocalQuote) don't necessarily share the exact same
+// field shape — the server may not send back grossSubtotal/discountAmount
+// at all. Relying on `quote.grossSubtotal ?? quote.subtotal` at render
+// time silently collapses Subtotal down to the already-discounted total
+// the moment a server quote lands, which makes the discount row read as
+// ₹0 even when a discount genuinely applied. This normalizer guarantees
+// grossSubtotal/discountAmount/discountPercent are always present and
+// mutually consistent, deriving them from whatever the source did give us.
+function normalizeQuote(raw) {
+    if (!raw) return raw;
+
+    const baseQuantity = Number(raw.baseQuantity ?? raw.quantity) || 0;
+    const subtotal = Number(raw.subtotal) || 0;
+    const discountPercent = Number(raw.discountPercent) || 0;
+
+    // Prefer the pre-discount per-unit rate if the source gave us one
+    // (basePriceApplied = slab price before the quantity-discount %).
+    // Otherwise reconstruct it from unitPrice + discountPercent, and as a
+    // last resort fall back to unitPrice itself (i.e. assume no discount).
+    let basePriceApplied = raw.basePriceApplied != null ? Number(raw.basePriceApplied) : null;
+    if (basePriceApplied == null) {
+        const unitPrice = Number(raw.unitPrice) || 0;
+        basePriceApplied = discountPercent > 0 ? round2(unitPrice / (1 - discountPercent / 100)) : unitPrice;
+    }
+
+    let grossSubtotal = raw.grossSubtotal != null ? Number(raw.grossSubtotal) : round2(basePriceApplied * baseQuantity);
+    // Never let the reconstructed gross fall below the actual payable total
+    // — guards against any rounding edge case making "discount" negative.
+    if (grossSubtotal < subtotal) grossSubtotal = subtotal;
+
+    const discountAmount = raw.discountAmount != null ? Number(raw.discountAmount) : round2(grossSubtotal - subtotal);
+
+    return { ...raw, baseQuantity, grossSubtotal, discountAmount, discountPercent };
 }
 
 // Client-side instant estimate — same zone heuristic as the backend
@@ -95,6 +142,8 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
             orderType: "sample",
             quantity: qty, baseQuantity: baseQty, basis,
             unit: seller.unit, unitPrice,
+            grossSubtotal: Math.round(unitPrice * baseQty * 100) / 100,
+            discountAmount: 0,
             subtotal: Math.round(unitPrice * baseQty * 100) / 100,
             exceedsSampleQuantity: seller.sampleQuantity != null && baseQty > Number(seller.sampleQuantity),
             sampleQuantity: seller.sampleQuantity,
@@ -113,6 +162,10 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
     const availableStock = seller.availableStock != null ? Number(seller.availableStock) : null;
     const stockShortfall = seller.stockType !== "made_to_order" && availableStock != null && baseQty > availableStock;
 
+    const grossSubtotal = Math.round(slabPrice * baseQty * 100) / 100;
+    const subtotal = Math.round(unitPrice * baseQty * 100) / 100;
+    const discountAmount = Math.round((grossSubtotal - subtotal) * 100) / 100;
+
     return {
         orderType: "standard",
         quantity: qty, baseQuantity: baseQty, basis,
@@ -122,7 +175,9 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
         appliedSlab,
         discountPercent,
         discountTier,
-        subtotal: Math.round(unitPrice * baseQty * 100) / 100,
+        grossSubtotal,
+        discountAmount,
+        subtotal,
         moq,
         meetsMoq: moq ? baseQty >= moq : true,
         availableStock,
@@ -130,6 +185,51 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
         estimatedDeliveryDate: deliveryLabel,
         isEstimate: true,
     };
+}
+
+// ---------------------------------------------------------------------
+// Small presentational helpers, styled to match FormPrimitives idiom.
+// ---------------------------------------------------------------------
+
+function Stepper({ value, onChange, min = 1 }) {
+    return (
+        <div className="flex items-center gap-2">
+            <button type="button" onClick={() => onChange(Math.max(min, Number(value) - 1))}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hair }}>
+                <Minus className="h-3.5 w-3.5" style={{ color: C.ink }} />
+            </button>
+            <input type="text" inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
+                className="w-full rounded-lg border px-3 py-2 text-center text-[15px] font-extrabold tabular-nums tracking-wide focus:outline-none focus:ring-2"
+                style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
+            <button type="button" onClick={() => onChange(Number(value) + 1)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hair }}>
+                <Plus className="h-3.5 w-3.5" style={{ color: C.ink }} />
+            </button>
+        </div>
+    );
+}
+
+function Notice({ tone = "warn", children }) {
+    const tones = {
+        warn: { background: "#fef3c7", color: "#a16207" },
+        danger: { background: "rgba(199,31,17,0.08)", color: C.danger },
+        info: { background: `${C.secondary}0f`, color: C.secondary },
+    };
+    return (
+        <p className="rounded-lg px-2.5 py-2 text-[12px] font-semibold leading-snug tracking-wide" style={tones[tone] || tones.warn}>
+            {children}
+        </p>
+    );
+}
+
+// One line of the quote breakdown: label on the left, value on the right.
+function QuoteRow({ label, value, tone, strong, small }) {
+    return (
+        <div className="flex items-center justify-between">
+            <span className={`font-semibold tracking-wide ${small ? "text-[11.5px]" : "text-[12.5px]"}`} style={{ color: tone || C.muted }}>{label}</span>
+            <span className={`tabular-nums font-extrabold tracking-wide ${strong ? "text-[16px]" : "text-[13px]"}`} style={{ color: tone || C.ink }}>{value}</span>
+        </div>
+    );
 }
 
 export default function BuyNowModal({ seller, product, onClose }) {
@@ -142,11 +242,17 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [showNewAddress, setShowNewAddress] = useState(false);
     const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
 
-    // Purchase basis + quantity. Defaults to packs when the listing has a
-    // meaningful pack size, otherwise falls back to plain units.
-    const defaultBasis = Number(seller?.packSize) > 1 ? "per_pack" : "per_unit";
+    // Purchase basis + quantity. Reactively defaults to packs when the
+    // listing has a meaningful pack size, otherwise falls back to plain
+    // units — recomputed via useMemo (not frozen at mount) so a
+    // late-arriving `seller.packSize` is still picked up correctly.
+    const defaultBasis = useMemo(() => (Number(seller?.packSize) > 1 ? "per_pack" : "per_unit"), [seller?.packSize]);
     const [basis, setBasis] = useState(defaultBasis);
     const [quantity, setQuantity] = useState(1);
+    const userPickedBasis = useRef(false);
+    useEffect(() => {
+        if (!userPickedBasis.current) setBasis(defaultBasis);
+    }, [defaultBasis]);
 
     // Sample vs standard — ALWAYS starts as standard. Never preselected.
     const [isSample, setIsSample] = useState(false);
@@ -154,7 +260,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [notes, setNotes] = useState("");
 
     const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
-    const [quote, setQuote] = useState(() => computeLocalQuote(seller, 1, defaultBasis, false, null, null));
+    // Don't pre-seed with a possibly-stale seller/basis — let the instant
+    // local-estimate effect below fill this in once seller & basis have
+    // settled, so we never briefly show a unit-based quote for a pack item.
+    const [quote, setQuote] = useState(null);
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
@@ -162,6 +271,22 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const quoteTimer = useRef(null);
     const requestIdRef = useRef(0);
     const pendingQuoteRef = useRef(Promise.resolve());
+
+    // Lenis attaches its own wheel/touch listeners at the document level
+    // and calls preventDefault on them — so merely calling lenis.stop()
+    // (or locking body scroll ourselves) can end up swallowing scroll
+    // events everywhere, including inside this modal's own scrollable
+    // container, which is what caused foreground scrolling to freeze too.
+    // The correct fix is Lenis's own opt-out: stop the background smooth
+    // scroll, but let the modal's scroll container be marked with
+    // data-lenis-prevent (set directly on the JSX below) so Lenis leaves
+    // events inside it alone. We don't touch document.body's own overflow/
+    // position here — that was the second thing double-locking scroll.
+    useEffect(() => {
+        const lenis = window.lenis;
+        lenis?.stop?.();
+        return () => { lenis?.start?.(); };
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -185,19 +310,26 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return () => { cancelled = true; };
     }, [access, token]);
 
-    // Switching into sample mode resets quantity to a sensible default
-    // (min of MOQ-in-basis or 1) since the sample quantity ceiling is
-    // usually much smaller than a standard order.
+    // Sample mode is fixed-quantity by design: no field for the buyer to
+    // mistype. Quantity locks to exactly what the seller allows
+    // (seller.sampleQuantity), and basis resets to per_unit since the
+    // sample cap is expressed in base units and the pack/master-pack
+    // toggle is hidden in sample mode anyway.
     useEffect(() => {
-        if (isSample) setQuantity(1);
-    }, [isSample]);
+        if (isSample) {
+            const sampleQty = Number(seller?.sampleQuantity) > 0 ? Number(seller.sampleQuantity) : 1;
+            setQuantity(sampleQty);
+            userPickedBasis.current = false;
+            setBasis("per_unit");
+        }
+    }, [isSample, seller?.sampleQuantity]);
 
     // 1) INSTANT local estimate — recomputed on every keystroke / toggle.
     useEffect(() => {
         if (!(Number(quantity) > 0)) { setQuote(null); return; }
         setQuote((prev) => {
             const local = computeLocalQuote(seller, quantity, basis, isSample, selectedAddress?.pincode, selectedAddress?.state);
-            return local || prev;
+            return local ? normalizeQuote(local) : prev;
         });
     }, [seller, quantity, basis, isSample, selectedAddress?.pincode, selectedAddress?.state]);
 
@@ -219,7 +351,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                     addressId: addressAtSchedule || undefined,
                 });
                 if (myRequestId === requestIdRef.current && res?.success) {
-                    const confirmed = { ...res, isEstimate: false };
+                    const confirmed = normalizeQuote({ ...res, isEstimate: false });
                     setQuote(confirmed);
                     resolve(confirmed);
                 } else {
@@ -260,9 +392,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
         const finalQuote = confirmed || quote;
 
         // Only real, hard-blocking validations remain: MOQ (standard only)
-        // and sample-quantity ceiling (sample only). Stock is never a
-        // blocker — a shortfall just gets surfaced as a message below and
-        // the order still goes through.
+        // and sample-quantity ceiling (sample only, kept as a defensive
+        // backstop even though the UI no longer lets buyers edit sample
+        // quantity). Stock is never a blocker — a shortfall just gets
+        // surfaced as a message below and the order still goes through.
         if (finalQuote) {
             if (isSample && finalQuote.exceedsSampleQuantity) {
                 setSubmitting(false);
@@ -295,248 +428,285 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.hsnCode || seller.freightIncluded != null || seller.dispatchOrigin);
     const canSample = seller?.sampleAvailable;
     const basisLabel = basis === "per_pack" ? "pack(s)" : basis === "per_master_pack" ? "master pack(s)" : (seller?.unit || "units");
+    const deliveryDateLabel = (val) => (typeof val === "string" && val.includes("-") ? formatDDMon(new Date(val)) : val);
 
     return (
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-            <motion.div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-white p-5 sm:rounded-[24px] sm:p-6"
+            <motion.div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-[28px] bg-white sm:rounded-[24px]"
+                data-lenis-prevent
                 initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }}
                 onClick={(e) => e.stopPropagation()}>
                 {done ? (
-                    <div className="flex flex-col items-center py-6 text-center">
+                    <div className="flex flex-col items-center px-5 py-8 text-center sm:px-6">
                         <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
                             <CheckCircle2 className="h-7 w-7" />
                         </span>
-                        <h2 className="mt-4 text-[18px] font-extrabold" style={{ color: C.ink }}>{done.orderType === "sample" ? "Sample requested" : "Order placed"}</h2>
-                        <p className="mt-1 font-mono text-[11px] font-bold" style={{ color: C.secondary }}>{done.orderNumber}</p>
-                        <p className="mt-2 text-[13px] font-medium" style={{ color: C.muted }}>{done.message}</p>
+                        <h2 className="mt-4 text-[17px] font-extrabold tracking-wide" style={{ color: C.ink }}>{done.orderType === "sample" ? "Sample requested" : "Order placed"}</h2>
+                        <p className="mt-1 font-mono text-[11.5px] font-bold tracking-wide" style={{ color: C.secondary }}>{done.orderNumber}</p>
+                        <p className="mt-2 text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>{done.message}</p>
                         {done.estimatedDeliveryDate && (
-                            <p className="mt-1.5 flex items-center gap-1 text-[12px] font-bold" style={{ color: C.secondary }}>
-                                <Calendar className="h-3.5 w-3.5" /> Estimated delivery: {typeof done.estimatedDeliveryDate === "string" && done.estimatedDeliveryDate.includes("-")
-                                    ? formatDDMon(new Date(done.estimatedDeliveryDate)) : done.estimatedDeliveryDate}
+                            <p className="mt-2 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-extrabold tracking-wide" style={{ background: `${C.secondary}0f`, color: C.secondary }}>
+                                <Calendar className="h-3.5 w-3.5" /> Est. delivery {deliveryDateLabel(done.estimatedDeliveryDate)}
                             </p>
                         )}
                         {done.stockShortfall && (
-                            <p className="mt-2 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ background: "#fef3c7", color: "#a16207" }}>
-                                This item is short on stock right now — fulfilment may take a little longer than usual.
-                            </p>
+                            <div className="mt-3 w-full">
+                                <Notice tone="warn">This item is short on stock right now — fulfilment may take a little longer than usual.</Notice>
+                            </div>
                         )}
                         <div className="mt-6 flex w-full gap-2">
-                            <button onClick={onClose} className="flex-1 rounded-xl border px-5 py-2.5 text-[13px] font-bold" style={{ borderColor: C.hair, color: C.ink }}>Keep browsing</button>
-                            <button onClick={() => navigate("/orders")} className="flex-1 rounded-xl px-5 py-2.5 text-[13px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}>View orders</button>
+                            <button onClick={onClose} className="flex-1 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.ink }}>Keep browsing</button>
+                            <button onClick={() => navigate("/orders")} className="flex-1 rounded-xl px-5 py-2.5 text-[13px] font-bold tracking-wide text-white" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>View orders</button>
                         </div>
                     </div>
                 ) : access === undefined ? (
                     <div className="flex items-center justify-center py-14"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>
                 ) : !access.canCheckout ? (
-                    <div className="flex flex-col items-center py-4 text-center">
+                    <div className="flex flex-col items-center px-5 py-8 text-center sm:px-6">
                         <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}><Lock className="h-6 w-6" /></span>
-                        <h2 className="mt-4 text-[18px] font-extrabold" style={{ color: C.ink }}>{gateContent.title}</h2>
-                        <p className="mt-2 text-[13px] font-medium" style={{ color: C.muted }}>{gateContent.body}</p>
-                        <button onClick={gateContent.action} className="mt-6 rounded-xl px-5 py-2.5 text-[13.5px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}>{gateContent.cta}</button>
+                        <h2 className="mt-4 text-[17px] font-extrabold tracking-wide" style={{ color: C.ink }}>{gateContent.title}</h2>
+                        <p className="mt-2 text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>{gateContent.body}</p>
+                        <button onClick={gateContent.action} className="mt-6 rounded-xl px-5 py-2.5 text-[13px] font-bold tracking-wide text-white" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>{gateContent.cta}</button>
                     </div>
                 ) : (
                     <>
-                        <div className="flex items-start justify-between gap-3">
+                        {/* ---------------- Header ---------------- */}
+                        <div className="flex items-start justify-between gap-3 border-b px-5 py-4 sm:px-6" style={{ borderColor: C.hairSoft }}>
                             <div className="min-w-0">
-                                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: C.secondary }}>Place order</p>
-                                <h2 className="mt-0.5 truncate text-[16px] font-extrabold" style={{ color: C.ink }}>{product?.name}</h2>
-                                <p className="truncate text-[11.5px] font-semibold" style={{ color: C.muted }}>from {seller?.display_name}</p>
+                                <p className="font-mono text-[10.5px] font-bold uppercase tracking-[0.16em]" style={{ color: C.secondary }}>Place order</p>
+                                <h2 className="mt-0.5 truncate text-[16.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{product?.name}</h2>
+                                <p className="truncate text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>from {seller?.display_name}</p>
                             </div>
-                            <button onClick={onClose} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-black/[0.04]"><X className="h-4 w-4" style={{ color: C.muted }} /></button>
+                            <button onClick={onClose} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.04]"><X className="h-4 w-4" style={{ color: C.muted }} /></button>
                         </div>
 
-                        {canSample && (
-                            <div className="mt-4 flex gap-1 rounded-xl p-1" style={{ background: C.hairSoft }}>
-                                {[{ v: false, t: "Standard order" }, { v: true, t: "Order a sample" }].map(({ v, t }) => (
-                                    <button key={t} type="button" onClick={() => setIsSample(v)}
-                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-bold transition-colors duration-150"
-                                        style={isSample === v ? { background: v ? C.primary : C.secondary, color: "#fff" } : { color: C.muted }}>
-                                        {v && <Beaker className="h-3.5 w-3.5" />} {t}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        {isSample && (
-                            <p className="mt-1.5 text-[11px] font-medium" style={{ color: C.muted }}>
-                                {seller.samplePrice ? `Sample price: ₹${seller.samplePrice}/${seller.unit}` : "This sample is free."}
-                                {seller.sampleQuantity ? ` · Up to ${seller.sampleQuantity} ${seller.unit}` : ""}
-                            </p>
-                        )}
-
-                        <div className="mt-4">
-                            <div className="flex items-center justify-between">
-                                <label className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
-                                    Quantity {!isSample && `· MOQ ${seller?.moq} ${seller?.unit}`}
-                                </label>
-                                {!isSample && (
-                                    <div className="flex gap-1 rounded-lg p-0.5" style={{ background: C.hairSoft }}>
-                                        {BASIS_OPTIONS.map((o) => (
-                                            <button key={o.value} type="button" onClick={() => setBasis(o.value)}
-                                                className="rounded-md px-2 py-1 text-[10.5px] font-bold transition-colors duration-150"
-                                                style={basis === o.value ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>
-                                                {o.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="mt-1.5 flex items-center gap-2">
-                                <button onClick={() => setQuantity((q) => Math.max(1, Number(q) - 1))} className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{ borderColor: C.hairSoft }}><Minus className="h-3.5 w-3.5" /></button>
-                                <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/[^\d.]/g, ""))}
-                                    className="w-full rounded-lg border-2 px-3 py-2 text-center text-[14px] font-bold focus:outline-none" style={{ borderColor: C.hairSoft, color: C.ink }} />
-                                <button onClick={() => setQuantity((q) => Number(q) + 1)} className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{ borderColor: C.hairSoft }}><Plus className="h-3.5 w-3.5" /></button>
-                            </div>
-                            <p className="mt-1 text-[10.5px] font-semibold" style={{ color: C.muted }}>
-                                {quantity} {basisLabel}{basis !== "per_unit" && quote?.baseQuantity ? ` = ${quote.baseQuantity} ${seller?.unit}` : ""}
-                            </p>
-
-                            {!isSample && quote && quote.meetsMoq === false && <p className="mt-1 text-[11px] font-semibold" style={{ color: C.primary }}>Below the seller's MOQ of {quote.moq} {quote.unit}.</p>}
-                            {isSample && quote?.exceedsSampleQuantity && <p className="mt-1 text-[11px] font-semibold" style={{ color: C.primary }}>Sample is capped at {quote.sampleQuantity} {quote.unit}.</p>}
-                            {!isSample && quote?.stockShortfall && (
-                                <p className="mt-1.5 rounded-lg px-2.5 py-1.5 text-[10.5px] font-semibold" style={{ background: "#fef3c7", color: "#a16207" }}>
-                                    Only {quote.availableStock} {quote.unit} currently in stock — this order will still be placed, but fulfilment may take a little longer.
-                                </p>
-                            )}
-
-                            {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
-                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                    <Layers className="h-3 w-3 shrink-0" style={{ color: C.secondary }} />
-                                    {seller.priceSlabs.map((slab, i) => {
-                                        const active = quote?.appliedSlab && Number(quote.appliedSlab.minQty) === Number(slab.minQty);
-                                        return (
-                                            <span key={i} className="rounded-full border px-2 py-0.5 text-[10.5px] font-bold"
-                                                style={active
-                                                    ? { borderColor: C.secondary, background: `${C.secondary}12`, color: C.secondary }
-                                                    : { borderColor: C.hairSoft, color: C.muted }}>
-                                                {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} {seller.unit}: ₹{slab.price}
-                                            </span>
-                                        );
-                                    })}
-                                </div>
-                            )}
-
-                            {!isSample && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
-                                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                    <Layers className="h-3 w-3 shrink-0" style={{ color: C.primary }} />
-                                    {seller.quantityDiscounts.map((tier, i) => {
-                                        const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
-                                        return (
-                                            <span key={i} className="rounded-full border px-2 py-0.5 text-[10.5px] font-bold"
-                                                style={active
-                                                    ? { borderColor: C.primary, background: `${C.primary}12`, color: C.primary }
-                                                    : { borderColor: C.hairSoft, color: C.muted }}>
-                                                {tier.minQty}+ {seller.unit}: {tier.discountPercent}% off
-                                            </span>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                            {!isSample && quote?.discountPercent > 0 && (
-                                <p className="mt-1.5 text-[11px] font-bold" style={{ color: C.secondary }}>
-                                    {quote.discountPercent}% quantity discount applied (based on {quote.baseQuantity} {seller?.unit})
-                                </p>
-                            )}
-                        </div>
-
-                        <div className="mt-5">
-                            <label className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Shipping address</label>
-                            {!showNewAddress && addresses.length > 0 && (
-                                <div className="mt-1.5 flex flex-col gap-2">
-                                    {addresses.map((a) => (
-                                        <button key={a.id} onClick={() => setSelectedAddressId(a.id)} className="flex items-start gap-2 rounded-xl border-2 p-2.5 text-left"
-                                            style={{ borderColor: selectedAddressId === a.id ? C.secondary : C.hairSoft, background: selectedAddressId === a.id ? `${C.secondary}08` : "#fff" }}>
-                                            <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                                            <div className="min-w-0">
-                                                <p className="text-[12px] font-bold" style={{ color: C.ink }}>{a.label} — {a.contact_name}</p>
-                                                <p className="text-[11px] font-medium" style={{ color: C.muted }}>{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p>
-                                            </div>
+                        <div className="flex flex-col gap-3 px-5 py-4 sm:px-6 sm:py-4.5">
+                            {canSample && (
+                                <div className="flex gap-1 rounded-xl p-1" style={{ background: C.hairSoft }}>
+                                    {[{ v: false, t: "Standard order" }, { v: true, t: "Order a sample" }].map(({ v, t }) => (
+                                        <button key={t} type="button" onClick={() => setIsSample(v)}
+                                            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors duration-150"
+                                            style={isSample === v ? { background: v ? "#D2462B" : C.secondary, color: "#fff" } : { color: C.muted }}>
+                                            {v && <Beaker className="h-3.5 w-3.5" />} {t}
                                         </button>
                                     ))}
-                                    <button onClick={() => setShowNewAddress(true)} className="flex items-center gap-1 text-[11.5px] font-bold" style={{ color: C.secondary }}><Plus className="h-3 w-3" /> Add a new address</button>
                                 </div>
                             )}
-                            {showNewAddress && (
-                                <div className="mt-1.5 flex flex-col gap-2.5 rounded-xl border p-3" style={{ borderColor: C.hairSoft }}>
-                                    <div className="grid grid-cols-2 gap-2.5">
-                                        <Field label="Contact name" value={newAddress.contact_name} onChange={(v) => setAddrField("contact_name", v)} />
-                                        <Field label="Phone" value={newAddress.contact_phone} onChange={(v) => setAddrField("contact_phone", v)} />
-                                    </div>
-                                    <Field label="Address line 1" value={newAddress.address_line1} onChange={(v) => setAddrField("address_line1", v)} />
-                                    <Field label="Address line 2 (optional)" value={newAddress.address_line2} onChange={(v) => setAddrField("address_line2", v)} />
-                                    <div className="grid grid-cols-3 gap-2.5">
-                                        <Field label="City" value={newAddress.city} onChange={(v) => setAddrField("city", v)} />
-                                        <Field label="State" value={newAddress.state} onChange={(v) => setAddrField("state", v)} />
-                                        <Field label="Pincode" value={newAddress.pincode} onChange={(v) => setAddrField("pincode", v)} />
-                                    </div>
-                                    {addresses.length > 0 && <button onClick={() => setShowNewAddress(false)} className="text-left text-[11.5px] font-bold" style={{ color: C.muted }}>Use a saved address instead</button>}
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="mt-4">
-                            <label className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Note to seller (optional)</label>
-                            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any special instructions…"
-                                className="mt-1.5 w-full rounded-lg border-2 px-3 py-2 text-[13px] font-medium focus:outline-none" style={{ borderColor: C.hairSoft, color: C.ink }} />
-                        </div>
-
-                        <div className="mt-4 rounded-xl p-3" style={{ background: `${C.secondary}08` }}>
-                            {quote ? (
-                                <>
-                                    <div className="flex items-center justify-between text-[12px] font-semibold" style={{ color: C.muted }}>
-                                        <span>{quote.baseQuantity ?? quote.quantity} {quote.unit} × ₹{quote.unitPrice}</span><span>₹{quote.subtotal}</span>
-                                    </div>
-                                    <div className="mt-1.5 flex items-center justify-between text-[14px] font-extrabold" style={{ color: C.ink }}>
-                                        <span>{isSample ? "You pay (sample)" : "You pay"}</span>
-                                        <span className="flex items-center">
-                                            <IndianRupee className="h-3.5 w-3.5" />{quote.subtotal}
-                                        </span>
-                                    </div>
-                                    {quote.estimatedDeliveryDate && (
-                                        <p className="mt-1.5 flex items-center gap-1 text-[10.5px] font-bold" style={{ color: C.secondary }}>
-                                            <Calendar className="h-3 w-3" /> Estimated delivery by {quote.estimatedDeliveryDate}
-                                        </p>
-                                    )}
-                                </>
-                            ) : <p className="text-[12px] font-semibold" style={{ color: C.muted }}>Enter a quantity to see the total.</p>}
-                        </div>
-
-                        {hasTerms && (
-                            <div className="mt-3 rounded-xl border p-3" style={{ borderColor: C.hairSoft }}>
-                                <p className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
-                                    <FileText className="h-3 w-3" /> Seller terms
+                            {isSample && (
+                                <p className="-mt-1 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                    {seller.samplePrice ? `Sample price: ₹${inr(seller.samplePrice)}/${seller.unit}` : "This sample is free."}
                                 </p>
-                                <div className="mt-1.5 flex flex-col gap-1 text-[11.5px] font-medium">
-                                    {seller.deliveryTimeline && <p><span style={{ color: C.muted }}>Delivery: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.deliveryTimeline}</span></p>}
-                                    {seller.paymentTerms && <p><span style={{ color: C.muted }}>Payment: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.paymentTerms}</span></p>}
-                                    {seller.returnPolicy && <p><span style={{ color: C.muted }}>Returns: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.returnPolicy}</span></p>}
-                                    {seller.warranty && <p><span style={{ color: C.muted }}>Warranty: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.warranty}</span></p>}
-                                    {seller.hsnCode && <p><span style={{ color: C.muted }}>HSN: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.hsnCode}</span></p>}
-                                    {seller.dispatchOrigin && <p><span style={{ color: C.muted }}>Ships from: </span><span style={{ color: C.ink, fontWeight: 700 }}>{seller.dispatchOrigin}</span></p>}
-                                    {seller.freightIncluded != null && (
-                                        <p>
-                                            <span style={{ color: C.muted }}>Freight: </span>
-                                            <span style={{ color: seller.freightIncluded ? "#059669" : C.ink, fontWeight: 700 }}>
-                                                {seller.freightIncluded ? "Included in price" : "Extra, paid by buyer"}
-                                            </span>
-                                        </p>
+                            )}
+
+                            {/* ---------------- Quantity ---------------- */}
+                            <SectionCard icon={Package} title="Quantity" alwaysOpen>
+                                <div className="flex items-center justify-between">
+                                    <Label>{isSample ? "Sample quantity" : `Quantity · MOQ ${seller?.moq} ${seller?.unit}`}</Label>
+                                    {!isSample && (
+                                        <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={VISIBLE_BASIS_OPTIONS} />
                                     )}
                                 </div>
-                            </div>
-                        )}
 
-                        <div className="mt-3 flex items-center gap-2 rounded-xl border p-2.5" style={{ borderColor: C.hairSoft }}>
-                            <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
-                            <p className="text-[10.5px] font-medium leading-snug" style={{ color: C.muted }}>Test mode — payment is simulated for now. No real charge will occur.</p>
+                                {isSample ? (
+                                    <div className="flex items-center justify-between rounded-lg border px-3 py-2.5" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                                        <span className="text-[15px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>{quantity} {seller?.unit}</span>
+                                        <span className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>Fixed by seller</span>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <Stepper value={quantity} onChange={setQuantity} />
+                                        <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                            {quantity} {basisLabel}{basis !== "per_unit" && quote?.baseQuantity ? ` = ${quote.baseQuantity} ${seller?.unit}` : ""}
+                                        </p>
+                                    </>
+                                )}
+
+                                {!isSample && quote && quote.meetsMoq === false && <Notice tone="danger">Below the seller's MOQ of {quote.moq} {quote.unit}.</Notice>}
+                                {!isSample && quote?.stockShortfall && (
+                                    <Notice tone="warn">Only {quote.availableStock} {quote.unit} currently in stock — this order will still be placed, but fulfilment may take a little longer.</Notice>
+                                )}
+
+                                {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
+                                    <div className="flex flex-col gap-1.5">
+                                        <span className="flex items-center gap-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}><Layers className="h-3 w-3" /> Price slabs</span>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {seller.priceSlabs.map((slab, i) => {
+                                                const active = quote?.appliedSlab && Number(quote.appliedSlab.minQty) === Number(slab.minQty);
+                                                return (
+                                                    <span key={i} className="rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide"
+                                                        style={active ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
+                                                        {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} {seller.unit}: ₹{inr(slab.price)}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {!isSample && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
+                                    <div className="flex flex-col gap-1.5">
+                                        <span className="flex items-center gap-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}><Layers className="h-3 w-3" /> Quantity discounts</span>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {seller.quantityDiscounts.map((tier, i) => {
+                                                const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
+                                                return (
+                                                    <span key={i} className="rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide"
+                                                        style={active ? { borderColor: "#D2462B", background: "rgba(210,70,43,0.1)", color: "#D2462B" } : { borderColor: C.hair, color: C.muted }}>
+                                                        {tier.minQty}+ {seller.unit}: {tier.discountPercent}% off
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </SectionCard>
+
+                            {/* ---------------- Shipping address ---------------- */}
+                            <SectionCard icon={MapPin} title="Shipping address" alwaysOpen>
+                                {!showNewAddress && addresses.length > 0 && (
+                                    <div className="flex flex-col gap-2">
+                                        {addresses.map((a) => (
+                                            <button key={a.id} type="button" onClick={() => setSelectedAddressId(a.id)}
+                                                className="flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors duration-150"
+                                                style={{ borderColor: selectedAddressId === a.id ? C.secondary : C.hair, background: selectedAddressId === a.id ? `${C.secondary}08` : "#fff" }}>
+                                                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                                <div className="min-w-0">
+                                                    <p className="text-[12.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{a.label} — {a.contact_name}</p>
+                                                    <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p>
+                                                </div>
+                                            </button>
+                                        ))}
+                                        <button type="button" onClick={() => setShowNewAddress(true)} className="flex w-fit items-center gap-1.5 text-[12px] font-bold tracking-wide" style={{ color: C.secondary }}>
+                                            <Plus className="h-3.5 w-3.5" /> Add a new address
+                                        </button>
+                                    </div>
+                                )}
+                                {showNewAddress && (
+                                    <div className="flex flex-col gap-2.5">
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                            <TextField dense label="Contact name" value={newAddress.contact_name} onChange={(v) => setAddrField("contact_name", v)} />
+                                            <TextField dense label="Phone" value={newAddress.contact_phone} onChange={(v) => setAddrField("contact_phone", v)} />
+                                        </div>
+                                        <TextField dense label="Address line 1" value={newAddress.address_line1} onChange={(v) => setAddrField("address_line1", v)} />
+                                        <TextField dense label="Address line 2 (optional)" value={newAddress.address_line2} onChange={(v) => setAddrField("address_line2", v)} />
+                                        <div className="grid grid-cols-3 gap-2.5">
+                                            <TextField dense label="City" value={newAddress.city} onChange={(v) => setAddrField("city", v)} />
+                                            <TextField dense label="State" value={newAddress.state} onChange={(v) => setAddrField("state", v)} />
+                                            <TextField dense label="Pincode" value={newAddress.pincode} onChange={(v) => setAddrField("pincode", v)} />
+                                        </div>
+                                        {addresses.length > 0 && (
+                                            <button type="button" onClick={() => setShowNewAddress(false)} className="w-fit text-[12px] font-bold tracking-wide" style={{ color: C.muted }}>
+                                                Use a saved address instead
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col gap-1">
+                                    <Label>Note to seller (optional)</Label>
+                                    <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any special instructions…"
+                                        className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[13.5px] font-medium tracking-wide placeholder:text-slate-300 focus:outline-none focus:ring-2"
+                                        style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
+                                </div>
+                            </SectionCard>
+
+                            {/* ---------------- Quote breakdown ---------------- */}
+                            <SectionCard icon={ReceiptText} title="Price breakdown" alwaysOpen>
+                                {quote ? (
+                                    <div className="flex flex-col gap-3">
+                                        <div className="flex flex-col gap-2.5 rounded-xl p-3" style={{ background: C.hairSoft }}>
+                                            {/* Rate line — just the math reference, kept small/muted so it
+                                                doesn't compete with the actual amount rows below it. */}
+                                            <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                {quote.baseQuantity ?? quote.quantity} {quote.unit} × ₹{inr(quote.unitPrice)} / {quote.unit}
+                                            </p>
+
+                                            <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} />
+
+                                            {!isSample && quote.discountAmount > 0 ? (
+                                                <QuoteRow
+                                                    label={`Discount${quote.discountPercent ? ` (${quote.discountPercent}% off)` : ""}`}
+                                                    value={`− ₹${inr(quote.discountAmount)}`}
+                                                    tone={C.secondary}
+                                                />
+                                            ) : (
+                                                <QuoteRow label="Discount" value="₹0" />
+                                            )}
+
+                                            <div className="my-0.5 h-px" style={{ background: C.hair }} />
+
+                                            <QuoteRow strong label={isSample ? "Total payable (sample)" : "Total payable"} value={`₹${inr(quote.subtotal)}`} tone={C.ink} />
+                                        </div>
+
+                                        {quote.estimatedDeliveryDate && (
+                                            <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
+                                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                                                    <Truck className="h-3.5 w-3.5" />
+                                                </span>
+                                                <div className="min-w-0">
+                                                    <p className="text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Estimated delivery</p>
+                                                    <p className="flex items-center gap-1 text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                                                        <Calendar className="h-3 w-3" style={{ color: C.secondary }} /> {quote.estimatedDeliveryDate}
+                                                    </p>
+                                                </div>
+                                                {quote.isEstimate && (
+                                                    <span className="ml-auto shrink-0 rounded-full px-2 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wide" style={{ background: C.hairSoft, color: C.muted }}>Estimate</span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
+                                )}
+                            </SectionCard>
+
+                            {/* ---------------- Seller terms ---------------- */}
+                            {hasTerms && (
+                                <SectionCard icon={FileText} title="Seller terms" defaultOpen={false}>
+                                    <div className="flex flex-col gap-2 text-[12px] font-semibold tracking-wide">
+                                        {seller.deliveryTimeline && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Delivery</span><span style={{ color: C.ink, fontWeight: 800 }} className="text-right">{seller.deliveryTimeline}</span></div>}
+                                        {seller.paymentTerms && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Payment</span><span style={{ color: C.ink, fontWeight: 800 }} className="text-right">{seller.paymentTerms}</span></div>}
+                                        {seller.returnPolicy && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Returns</span><span style={{ color: C.ink, fontWeight: 800 }} className="text-right">{seller.returnPolicy}</span></div>}
+                                        {seller.warranty && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Warranty</span><span style={{ color: C.ink, fontWeight: 800 }} className="text-right">{seller.warranty}</span></div>}
+                                        {seller.hsnCode && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>HSN</span><span style={{ color: C.ink, fontWeight: 800 }} className="text-right">{seller.hsnCode}</span></div>}
+                                        {seller.dispatchOrigin && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Ships from</span><span style={{ color: C.ink, fontWeight: 800 }} className="text-right">{seller.dispatchOrigin}</span></div>}
+                                        {seller.freightIncluded != null && (
+                                            <div className="flex justify-between gap-3">
+                                                <span style={{ color: C.muted }}>Freight</span>
+                                                <span style={{ color: seller.freightIncluded ? C.secondary : C.ink, fontWeight: 800 }} className="text-right">
+                                                    {seller.freightIncluded ? "Included in price" : "Extra, paid by buyer"}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </SectionCard>
+                            )}
+
+                            <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
+                                <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
+                                <p className="text-[11px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>Test mode — payment is simulated for now. No real charge will occur.</p>
+                            </div>
+
+                            {error && <Notice tone="danger">{error}</Notice>}
                         </div>
 
-                        {error && <p className="mt-3 text-[12px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
-
-                        <button onClick={handleSubmit} disabled={submitting}
-                            className="mt-5 flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white disabled:opacity-50"
-                            style={{ background: isSample ? `linear-gradient(135deg, ${C.secondary} 0%, #047084 100%)` : `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}>
-                            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
-                        </button>
+                        {/* ---------------- Sticky submit ---------------- */}
+                        <div className="sticky bottom-0 z-10 border-t bg-white/95 px-5 py-3.5 backdrop-blur sm:px-6" style={{ borderColor: C.hairSoft }}>
+                            {quote && (
+                                <div className="mb-2.5 flex items-center justify-between">
+                                    <span className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Total payable</span>
+                                    <span className="flex items-center text-[17px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                        <IndianRupee className="h-4 w-4" />{inr(quote.subtotal)}
+                                    </span>
+                                </div>
+                            )}
+                            <button onClick={handleSubmit} disabled={submitting}
+                                className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
+                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
+                            </button>
+                        </div>
                     </>
                 )}
             </motion.div>
