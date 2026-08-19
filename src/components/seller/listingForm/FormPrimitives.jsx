@@ -55,7 +55,7 @@ export function Label({ children, hint }) {
         return (
             <span className="flex items-center gap-1.5">
                 <span
-                    className="text-[11.5px] font-extrabold uppercase"
+                    className="text-[12.5px] font-extrabold uppercase"
                     style={{
                         color: "#4A535B",
                         letterSpacing: "0.08em",
@@ -73,7 +73,7 @@ export function Label({ children, hint }) {
             className="relative flex w-fit items-center gap-1.5"
         >
             <span
-                className="text-[11.5px] font-extrabold uppercase"
+                className="text-[12.5px] font-extrabold uppercase"
                 style={{
                     color: "#4A535B",
                     letterSpacing: "0.08em",
@@ -116,7 +116,7 @@ export function Label({ children, hint }) {
                             rounded-lg
                             px-3
                             py-2
-                            text-[12.5px]
+                            text-[13.5px]
                             tracking-wide
                             font-medium
                             leading-snug
@@ -157,7 +157,7 @@ export function TextField({ label, value, onChange, onBlur, placeholder, inputMo
                 disabled={disabled}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
-                className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "px-2.5 py-1.5 text-[13.5px]" : "px-3 py-2 text-[13.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
+                className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "px-2.5 py-1.5 text-[14.5px]" : "px-3 py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
                 style={{ color: C.ink, ...fieldTone(error) }}
             />
         </div>
@@ -174,7 +174,7 @@ export function TextAreaField({ label, value, onChange, onBlur, placeholder, hin
                 rows={rows}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
-                className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[13.5px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2 tracking-wide"
+                className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[14.5px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2 tracking-wide"
                 style={{ color: C.ink, ...fieldTone(error) }}
             />
         </div>
@@ -189,7 +189,7 @@ export function SelectField({ label, value, onChange, onBlur, options, hint, req
                 value={value ?? ""}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
-                className={`w-full rounded-lg border bg-white ${dense ? "px-2.5 py-2 text-[13.5px]" : "px-3 py-2.5 text-[14px]"} font-bold focus:outline-none focus:ring-2 tracking-wide`}
+                className={`w-full rounded-lg border bg-white ${dense ? "px-2.5 py-2 text-[14.5px]" : "px-3 py-2.5 text-[15px]"} font-bold focus:outline-none focus:ring-2 tracking-wide`}
                 style={{ color: C.ink, ...fieldTone(error) }}
             >
                 <option value="" disabled>{placeholder}</option>
@@ -211,7 +211,7 @@ export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", off
                         key={t}
                         type="button"
                         onClick={() => onChange(v)}
-                        className="rounded-md px-3 py-0.5 text-[12.5px] tracking-wider font-bold transition-colors duration-150"
+                        className="rounded-md px-3 py-0.5 text-[13.5px] tracking-wider font-bold transition-colors duration-150"
                         style={value === v ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
                     >
                         {t}
@@ -235,7 +235,7 @@ export function ChipToggleGroup({ label, value, onChange, options, hint, dense }
                             key={optValue}
                             type="button"
                             onClick={() => onChange(optValue)}
-                            className={`rounded-full border tracking-wide ${dense ? "px-2.5 py-1 text-[11.5px]" : "px-3 py-1.5 text-[13px]"} font-bold transition-colors duration-150`}
+                            className={`rounded-full border tracking-wide ${dense ? "px-2.5 py-1 text-[12.5px]" : "px-3 py-1.5 text-[12px]"} font-bold transition-colors duration-150`}
                             style={active
                                 ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary }
                                 : { borderColor: C.hair, color: C.muted, background: "#fff" }}
@@ -271,7 +271,7 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
                                     placeholder={c.placeholder}
                                     inputMode={c.inputMode}
                                     onChange={(e) => update(idx, c.key, e.target.value)}
-                                    className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-[13px] font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 tracking-wide"
+                                    className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-[14px] font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 tracking-wide"
                                     style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }}
                                 />
                             ))}
@@ -285,7 +285,7 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
             <button
                 type="button"
                 onClick={add}
-                className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-[12px] font-bold transition-colors duration-150 hover:bg-black/[0.02] tracking-wide"
+                className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-[13px] font-bold transition-colors duration-150 hover:bg-black/[0.02] tracking-wide"
                 style={{ borderColor: C.hair, color: C.secondary }}
             >
                 <Plus className="h-3.5 w-3.5" /> {addLabel}
@@ -320,8 +320,8 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
                         <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
-                        <span className="block text-[14.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{title}</span>
-                        {subtitle && <span className="mt-0 block truncate text-[11.5px] tracking-wide font-semibold" style={{ color: C.muted }}>{subtitle}</span>}
+                        <span className="block text-[15.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{title}</span>
+                        {subtitle && <span className="mt-0 block truncate text-[12.5px] tracking-wide font-semibold" style={{ color: C.muted }}>{subtitle}</span>}
                     </span>
                 </button>
                 {headerRight}
@@ -356,7 +356,7 @@ export function Pill({ children, tone = "muted" }) {
         warn: { background: "#fef3c7", color: "#a16207" },
     };
     return (
-        <span className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide" style={tones[tone] || tones.muted}>
+        <span className="flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-wide" style={tones[tone] || tones.muted}>
             {children}
         </span>
     );
