@@ -26,11 +26,20 @@ function useLenisHijack() {
 
         const handleMouseEnter = () => {
             hoveringRef.current = true;
-            getLenis()?.stop();
+
+            const lenis = getLenis();
+            if (typeof lenis?.stop === "function") {
+                lenis.stop();
+            }
         };
+
         const handleMouseLeave = () => {
             hoveringRef.current = false;
-            getLenis()?.start();
+
+            const lenis = getLenis();
+            if (typeof lenis?.start === "function") {
+                lenis.start();
+            }
         };
 
         const handleWheel = (e) => {
@@ -60,7 +69,11 @@ function useLenisHijack() {
             el.removeEventListener("mouseenter", handleMouseEnter);
             el.removeEventListener("mouseleave", handleMouseLeave);
             el.removeEventListener("wheel", handleWheel);
-            getLenis()?.start(); // safety: never leave Lenis stuck paused
+
+            const lenis = getLenis();
+            if (typeof lenis?.start === "function") {
+                lenis.start();
+            }
         };
     }, []);
 
@@ -207,15 +220,37 @@ export default function DispatchingLocationsPicker({ value, onChange }) {
     const includedCitiesByState = value?.includedCitiesByState || {};
 
     // Auto-select India as soon as we know its id, if it isn't set yet.
+    // useEffect(() => {
+    //     if (value?.country) return;
+    //     fetchGeoCountries().then((r) => {
+    //         if (!r?.success) return;
+    //         const india = r.items.find((c) => c.name?.toLowerCase() === "india");
+    //         if (india) pickCountry(india);
+    //     });
+    //     // eslint-disable-next-line react-hooks/exhaustive-deps
+    // }, [value?.country]);
+
+    // Auto-select India as soon as we know its id, if it isn't set yet — and
+    // also repair a country loaded from a saved listing that has name/code
+    // but no id (unflattenDispatchingLocations in the admin page can't know
+    // the id, since the flattened storage format never persisted one).
     useEffect(() => {
-        if (value?.country) return;
+        if (value?.country?.id) return; // already fully resolved, nothing to do
         fetchGeoCountries().then((r) => {
             if (!r?.success) return;
+            if (value?.country?.name) {
+                // We have a name (and maybe code) but no id — resolve it by
+                // matching name, preserving everything else already set
+                // (mode, excludedStates, citiesByState, etc).
+                const match = r.items.find((c) => c.name?.toLowerCase() === value.country.name.toLowerCase());
+                if (match) onChange({ ...value, country: match });
+                return;
+            }
             const india = r.items.find((c) => c.name?.toLowerCase() === "india");
             if (india) pickCountry(india);
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [value?.country]);
+    }, [value?.country?.id, value?.country?.name]);
 
     useEffect(() => {
         if (!value?.country?.id) { setStates([]); return; }

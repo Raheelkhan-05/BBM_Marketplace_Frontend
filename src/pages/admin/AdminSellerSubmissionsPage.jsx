@@ -1,18 +1,41 @@
+// pages/admin/AdminSellerSubmissionsPage.jsx — REALIGNED
+//
+// Rebuilt on the same visual language as SellerListingForm (same C tokens,
+// SectionCard, PolicySelect, DispatchingLocationsPicker — reused directly,
+// not re-skinned) and the current seller_product_submissions schema, so
+// every field a seller actually submits (note to admin, dispatch pincode +
+// locations, price basis, GST-inclusive/freight flags, policy keys, etc.)
+// is visible and editable here — none of it was reaching this page before.
+//
+// Two bugs fixed:
+//  1. Approve failing silently when the brand item isn't category-mapped
+//     yet — now surfaces the reason and lets you map + approve in one place.
+//  2. The view modal closing on a failed approve, hiding the error.
 import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Loader2, CheckCircle2, X, ImageIcon, Pencil, Save, ChevronDown,
-    Package, IndianRupee, Boxes, Archive, Truck, FileText, Handshake, ShieldCheck, Plus, Trash2,
+    Loader2, CheckCircle2, X, ImageIcon, Pencil, ChevronDown,
+    Package, IndianRupee, Boxes, Truck, FileText, ShieldCheck, Plus, Trash2, AlertTriangle,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "../../utils/supabaseClient.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import {
     adminListSellerSubmissions, adminApproveSellerSubmission,
-    adminRejectSellerSubmission, adminUpdateSellerSubmission,
+    adminRejectSellerSubmission, adminUpdateSellerSubmission, adminGetSellerSubmission,
+    adminUpdateCatalogEntry, adminListCatalog, adminCreateCatalogEntry,
 } from "../../utils/api.js";
+import { lookupPincode } from "../../utils/sellerListingApi.js";
 import HierarchyCombobox from "../../components/seller/listingForm/HierarchyCombobox.jsx";
 import ImageLightbox from "../../components/ImageLightbox.jsx";
+import {
+    C, Label, TextField, TextAreaField, SelectField, ToggleField, ChipToggleGroup,
+    RepeatableRows, SectionCard,
+} from "../../components/seller/listingForm/FormPrimitives.jsx";
+import PolicySelect from "../../components/seller/listingForm/PolicySelect.jsx";
+import DispatchingLocationsPicker from "../../components/seller/listingForm/DispatchingLocationsPicker.jsx";
+import CompleteListingModal from "../../components/admin/CompleteListingModal.jsx";
+
 
 const STATUS_TABS = [
     { key: "pending_review", label: "Pending" },
@@ -23,13 +46,71 @@ const STATUS_TABS = [
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
+const PRICE_BASIS_OPTIONS = [
+    { value: "per_unit", label: "Per unit" },
+    { value: "per_pack", label: "Per pack" },
+    { value: "per_master_pack", label: "Per master pack" },
+];
+
+// ---- dispatching_locations: submission row stores the flattened jsonb
+// array shape; DispatchingLocationsPicker works with a nested UI shape.
+// Same conversion SellerListingForm does inline on submit — extracted
+// here (and duplicated there) since both need it going in different
+// directions. Worth hoisting into sellerListingApi.js if a third
+// consumer shows up.
+function unflattenDispatchingLocations(arr) {
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const countryEntry = arr.find((e) => e.type === "country");
+    if (!countryEntry) return null;
+    const country = { name: countryEntry.name, code: countryEntry.code };
+    if (countryEntry.includeOnly) {
+        const includedStates = [];
+        const includedCitiesByState = {};
+        arr.filter((e) => e.type === "state").forEach((e) => {
+            includedStates.push(e.name);
+            if (e.includedCities !== undefined) includedCitiesByState[e.name] = e.includedCities;
+        });
+        return { country, mode: "include", includedStates, includedCitiesByState, excludedStates: [], citiesByState: {} };
+    }
+    const excludedStates = countryEntry.excludedStates || [];
+    const citiesByState = {};
+    arr.filter((e) => e.type === "state").forEach((e) => {
+        if (e.excludedCities?.length) citiesByState[e.name] = e.excludedCities;
+    });
+    return { country, mode: "exclude", excludedStates, citiesByState, includedStates: [], includedCitiesByState: {} };
+}
+
+function flattenDispatchingLocations(dl) {
+    if (!dl?.country) return [];
+    if (dl.mode === "include") {
+        return [
+            { type: "country", name: dl.country.name, code: dl.country.code, includeOnly: true },
+            ...(dl.includedStates || []).map((state) => {
+                const cities = dl.includedCitiesByState?.[state];
+                return cities !== undefined ? { type: "state", name: state, includedCities: cities } : { type: "state", name: state };
+            }),
+        ];
+    }
+    return [
+        { type: "country", name: dl.country.name, code: dl.country.code, excludedStates: dl.excludedStates || [] },
+        ...Object.entries(dl.citiesByState || {}).filter(([, cities]) => cities?.length).map(([state, cities]) => ({ type: "state", name: state, excludedCities: cities })),
+    ];
+}
+
+function dispatchingLocationsSummary(arr) {
+    const dl = unflattenDispatchingLocations(arr);
+    if (!dl?.country) return "Not set";
+    if (dl.mode === "include") {
+        return dl.includedStates?.length ? `Only ${dl.includedStates.length} state${dl.includedStates.length === 1 ? "" : "s"} in ${dl.country.name}` : "No states selected";
+    }
+    const n = dl.excludedStates?.length || 0;
+    return n === 0 ? `All of ${dl.country.name}` : `${dl.country.name} except ${n} state${n === 1 ? "" : "s"}`;
+}
 
 export default function AdminSellerSubmissionsPage() {
     const { token } = useAuth();
     const [searchParams, setSearchParams] = useSearchParams();
-    const [status, setStatus] = useState(() =>
-        searchParams.get("highlight") ? "all" : "pending_review"
-    );
+    const [status, setStatus] = useState(() => (searchParams.get("highlight") ? "all" : "pending_review"));
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [busyId, setBusyId] = useState(null);
@@ -40,19 +121,15 @@ export default function AdminSellerSubmissionsPage() {
     const [viewing, setViewing] = useState(null);
     const [highlightId, setHighlightId] = useState(null);
     const itemRefs = useRef(new Map());
+    const [completing, setCompleting] = useState(null);
 
     useEffect(() => {
         const id = searchParams.get("highlight");
-        if (id) {
-            setHighlightId(id);
-            setStatus("all"); // the item may no longer be in "pending"
-        }
+        if (id) { setHighlightId(id); setStatus("all"); }
     }, [searchParams]);
 
     useEffect(() => {
-        function onVisible() {
-            if (document.visibilityState === "visible") load();
-        }
+        function onVisible() { if (document.visibilityState === "visible") load(); }
         document.addEventListener("visibilitychange", onVisible);
         window.addEventListener("focus", onVisible);
         return () => {
@@ -71,8 +148,6 @@ export default function AdminSellerSubmissionsPage() {
     }
     useEffect(() => { if (token) load(); }, [token, status]);
 
-    // Realtime: any submission created/approved/rejected/edited anywhere
-    // pings this channel — refetch whatever tab is open.
     useEffect(() => {
         if (!token) return;
         const channel = supabase
@@ -83,8 +158,6 @@ export default function AdminSellerSubmissionsPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token, status]);
 
-    // Poll for the row instead of assuming it's already rendered — items
-    // may still be loading when this fires.
     useEffect(() => {
         if (!highlightId) return;
         let cancelled = false;
@@ -111,18 +184,32 @@ export default function AdminSellerSubmissionsPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [highlightId]);
 
+    // Returns the full API result (not just a boolean) so callers can tell
+    // WHY an approve was blocked — usually code: "NOT_MAPPED", meaning the
+    // brand item hasn't been mapped to a category yet. Surfacing that
+    // instead of failing silently was the root of the "approve does
+    // nothing" problem.
     async function approve(id) {
         setBusyId(id);
         const res = await adminApproveSellerSubmission(token, id);
         setBusyId(null);
-        if (res?.success) load();
+        if (res?.success) { load(); return res; }
+        if (res?.code === "NOT_MAPPED") {
+            const it = items.find((i) => i.id === id);
+            setCompleting({ id, brandItemId: it?.brand?.id, productName: it?.product_name || it?.brand?.name || "Listing" });
+            return res;
+        }
+        window.alert(res?.message || "Couldn't approve this listing.");
+        return res || { success: false };
     }
+
     async function submitReject() {
         if (!reason.trim()) return;
         setBusyId(rejecting);
         const res = await adminRejectSellerSubmission(token, rejecting, reason.trim());
         setBusyId(null);
         if (res?.success) { setRejecting(null); setReason(""); load(); }
+        else window.alert(res?.message || "Couldn't reject this listing.");
     }
 
     function openLightbox(it) {
@@ -132,23 +219,23 @@ export default function AdminSellerSubmissionsPage() {
     }
 
     return (
-        <div className="mx-auto min-h-screen max-w-4xl px-4 pb-24 pt-6 sm:px-6">
-            <h1 className="text-[20px] font-extrabold text-slate-900 sm:text-[22px]">Product Review Requests</h1>
-            <p className="text-[12.5px] font-medium text-slate-400">Approve or reject what sellers have submitted</p>
+        <div className="mx-auto min-h-screen max-w-4xl px-4 pb-24 pt-6 sm:px-6" style={{ background: "#FCFBF9" }}>
+            <h1 className="text-[20px] font-extrabold sm:text-[22px]" style={{ color: C.ink }}>Product Review Requests</h1>
+            <p className="text-[12.5px] font-medium" style={{ color: C.muted }}>Approve or reject what sellers have submitted</p>
 
             <div className="mt-5 flex gap-1.5 overflow-x-auto pb-1">
                 {STATUS_TABS.map((t) => (
                     <button key={t.key} onClick={() => setStatus(t.key)}
                         className="shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors"
-                        style={{ background: status === t.key ? "#047084" : "#f1f5f9", color: status === t.key ? "white" : "#64748b" }}>
+                        style={{ background: status === t.key ? C.secondary : C.hairSoft, color: status === t.key ? "#fff" : C.muted }}>
                         {t.label}
                     </button>
                 ))}
             </div>
 
             <div className="mt-5 flex flex-col gap-3">
-                {loading && Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-100" />)}
-                {!loading && items.length === 0 && <p className="py-14 text-center text-[13px] font-medium text-slate-400">Nothing here.</p>}
+                {loading && Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-24 animate-pulse rounded-2xl" style={{ background: C.hairSoft }} />)}
+                {!loading && items.length === 0 && <p className="py-14 text-center text-[13px] font-medium" style={{ color: C.muted }}>Nothing here.</p>}
                 <AnimatePresence initial={false}>
                     {!loading && items.map((it) => (
                         <motion.div
@@ -156,56 +243,51 @@ export default function AdminSellerSubmissionsPage() {
                             ref={(el) => { if (el) itemRefs.current.set(it.id, el); }}
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                             onClick={() => setViewing(it.id)}
-                            role="button"
-                            tabIndex={0}
+                            role="button" tabIndex={0}
                             onKeyDown={(e) => { if (e.key === "Enter") setViewing(it.id); }}
-                            className="flex cursor-pointer gap-3.5 rounded-xl border bg-white p-4 transition-shadow duration-300 hover:border-[#047084]/30"
+                            className="flex cursor-pointer gap-3.5 rounded-2xl border bg-white p-4 transition-shadow duration-300"
                             style={{
-                                borderColor: highlightId === it.id ? "#047084" : "#f1f5f9",
-                                boxShadow: highlightId === it.id ? "0 0 0 3px rgba(4,112,132,0.18)" : undefined,
+                                borderColor: highlightId === it.id ? C.secondary : C.hair,
+                                boxShadow: highlightId === it.id ? `0 0 0 3px ${C.secondary}2e` : undefined,
                             }}
                         >
-                            <button
-                                onClick={(e) => { e.stopPropagation(); openLightbox(it); }}
-                                className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-slate-50 ring-1 ring-slate-100"
-                                aria-label="View image"
-                            >
-                                {it.image ? <img src={it.image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="m-auto h-6 w-6 text-slate-300" />}
+                            <button onClick={(e) => { e.stopPropagation(); openLightbox(it); }}
+                                className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl" style={{ background: C.hairSoft }}
+                                aria-label="View image">
+                                {it.image ? <img src={it.image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="m-auto h-6 w-6" style={{ color: C.hair }} />}
                                 {it.images?.length > 1 && (
-                                    <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 px-1 text-[8.5px] font-bold text-white">
-                                        +{it.images.length - 1}
-                                    </span>
+                                    <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 px-1 text-[8.5px] font-bold text-white">+{it.images.length - 1}</span>
                                 )}
                             </button>
                             <div className="min-w-0 flex-1">
-                                <p className="truncate text-[14px] font-bold text-slate-900">{it.product_name}</p>
-                                <p className="text-[12px] font-semibold text-slate-400">
-                                    {it.brand_name} · {it.generic_product?.subcategory?.category?.name} / {it.generic_product?.subcategory?.name} / {it.generic_product?.name}
+                                <p className="truncate text-[14px] font-bold" style={{ color: C.ink }}>{it.product_name}</p>
+                                <p className="text-[12px] font-semibold" style={{ color: C.muted }}>
+                                    {it.brand_name || "No brand"} · {it.generic_product?.subcategory?.category?.name || "Not mapped"} / {it.generic_product?.subcategory?.name || "—"} / {it.generic_product?.name || "—"}
                                 </p>
-                                <p className="mt-1 text-[12.5px] font-medium text-slate-600">
-                                    ₹{it.price} · MOQ {it.moq} {it.unit} · Lead time {it.lead_time} days
-                                    {it.stock_type && <span className="ml-1.5 text-slate-400">· {it.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"}</span>}
+                                <p className="mt-1 text-[12.5px] font-medium" style={{ color: C.ink }}>
+                                    ₹{it.price} · MOQ {it.moq} {it.unit} · {it.stock_type === "made_to_order" ? `Lead time ${it.lead_time}d` : "Ready stock"}
                                 </p>
-                                <p className="text-[11.5px] font-medium text-slate-400">
+                                <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
                                     Seller: {it.seller?.display_name || "—"}
                                     {it.hsn_code && <span> · HSN {it.hsn_code}</span>}
-                                    {it.is_active === false && <span className="ml-1.5 font-bold text-amber-600">· Hidden by seller</span>}
+                                    {it.note_to_admin && <span className="ml-1.5 font-bold" style={{ color: C.secondary }}>· Has a note to admin</span>}
+                                    {it.is_active === false && <span className="ml-1.5 font-bold" style={{ color: "#a16207" }}>· Hidden by seller</span>}
                                 </p>
-                                {it.rejection_reason && <p className="mt-1 text-[11.5px] font-semibold text-[#c71f11]">Rejected: {it.rejection_reason}</p>}
+                                {it.rejection_reason && <p className="mt-1 text-[11.5px] font-semibold" style={{ color: C.danger }}>Rejected: {it.rejection_reason}</p>}
                             </div>
                             <div className="flex shrink-0 flex-col gap-1.5">
                                 <button onClick={(e) => { e.stopPropagation(); setEditing(it.id); }}
-                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-[12px] font-bold text-slate-600">
+                                    className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[12px] font-bold" style={{ borderColor: C.hair, color: C.muted }}>
                                     <Pencil className="h-3.5 w-3.5" /> Edit
                                 </button>
                                 {it.review_status === "pending_review" && (
                                     <>
                                         <button onClick={(e) => { e.stopPropagation(); approve(it.id); }} disabled={busyId === it.id}
-                                            className="inline-flex items-center gap-1 rounded-lg bg-[#047084] px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-50">
+                                            className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-bold text-white disabled:opacity-50" style={{ background: C.secondary }}>
                                             {busyId === it.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Approve
                                         </button>
                                         <button onClick={(e) => { e.stopPropagation(); setRejecting(it.id); setReason(""); }}
-                                            className="inline-flex items-center gap-1 rounded-lg border border-[#c71f11]/25 px-3 py-1.5 text-[12px] font-bold text-[#c71f11]">
+                                            className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[12px] font-bold" style={{ borderColor: `${C.danger}40`, color: C.danger }}>
                                             <X className="h-3.5 w-3.5" /> Reject
                                         </button>
                                     </>
@@ -219,170 +301,88 @@ export default function AdminSellerSubmissionsPage() {
             {rejecting && (
                 <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 px-4 sm:items-center" onClick={() => setRejecting(null)}>
                     <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-t-2xl bg-white p-5 sm:rounded-2xl">
-                        <h3 className="text-[15px] font-bold text-slate-900">Reject this listing</h3>
-                        <p className="mt-1 text-[12.5px] text-slate-500">The seller will be notified with this reason.</p>
+                        <h3 className="text-[15px] font-bold" style={{ color: C.ink }}>Reject this listing</h3>
+                        <p className="mt-1 text-[12.5px]" style={{ color: C.muted }}>The seller will be notified with this reason.</p>
                         <textarea autoFocus rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason…"
-                            className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#c71f11]/20" />
+                            className="mt-3 w-full rounded-lg border px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2" style={{ borderColor: C.hair }} />
                         <div className="mt-3 flex justify-end gap-2">
-                            <button onClick={() => setRejecting(null)} className="rounded-lg px-3 py-1.5 text-[13px] font-bold text-slate-500">Cancel</button>
-                            <button onClick={submitReject} disabled={!reason.trim() || busyId === rejecting} className="rounded-lg bg-[#c71f11] px-3 py-1.5 text-[13px] font-bold text-white disabled:opacity-50">Reject</button>
+                            <button onClick={() => setRejecting(null)} className="rounded-lg px-3 py-1.5 text-[13px] font-bold" style={{ color: C.muted }}>Cancel</button>
+                            <button onClick={submitReject} disabled={!reason.trim() || busyId === rejecting} className="rounded-lg px-3 py-1.5 text-[13px] font-bold text-white disabled:opacity-50" style={{ background: C.danger }}>Reject</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {lightbox && (
-                <ImageLightbox images={lightbox.images} alt="" onClose={() => setLightbox(null)} />
-            )}
+            {lightbox && <ImageLightbox images={lightbox.images} alt="" onClose={() => setLightbox(null)} />}
 
             {editing && (
                 <EditSubmissionModal
-                    token={token}
-                    submissionId={editing}
+                    token={token} submissionId={editing}
                     onClose={() => setEditing(null)}
                     onSaved={() => { setEditing(null); load(); }}
-                    onApprove={async (id) => { await approve(id); setEditing(null); }}
+                    onApprove={approve}
                 />
             )}
 
             {viewing && (
                 <ViewSubmissionModal
-                    token={token}
-                    submissionId={viewing}
+                    token={token} submissionId={viewing}
                     onClose={() => setViewing(null)}
                     onEdit={() => { const id = viewing; setViewing(null); setEditing(id); }}
                     onImageClick={(images) => setLightbox({ images })}
-                    onApprove={async (id) => { await approve(id); setViewing(null); }}
+                    onApprove={approve}
+                />
+            )}
+            {completing && (
+                <CompleteListingModal
+                    token={token}
+                    submissionId={completing.id}
+                    brandItemId={completing.brandItemId}
+                    productName={completing.productName}
+                    onClose={() => setCompleting(null)}
+                    onApproved={approve}
                 />
             )}
         </div>
     );
 }
 
-/* =====================================================================
-   Full-spec edit modal — mirrors every section of the seller's own
-   SellerListingForm so admin can see and correct anything the seller
-   filled in. Fetches the full record on open (list rows only carry the
-   lighter "hot" columns), so an admin never has to guess a field's
-   current value before the record has loaded.
-   ===================================================================== */
-
-const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25";
-
-function Field({ label, children, required, hint }) {
-    return (
-        <div>
-            <label className="mb-1.5 block text-[12px] font-bold text-slate-500">
-                {label} {required && <span className="text-[#c71f11]">*</span>}
-            </label>
-            {children}
-            {hint && <p className="mt-1 text-[11px] font-medium text-slate-400">{hint}</p>}
-        </div>
-    );
-}
-function TextInput(props) { return <input {...props} className={inputClass} />; }
-function SelectInput({ children, ...props }) { return <select {...props} className={inputClass}>{children}</select>; }
-function TextArea(props) { return <textarea rows={props.rows || 3} {...props} className={`${inputClass} resize-none`} />; }
-function ToggleRow({ label, checked, onChange }) {
-    return (
-        <label className="flex items-center gap-2.5 text-[13px] font-bold text-slate-700">
-            <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded" />
-            {label}
-        </label>
-    );
-}
-
-function Accordion({ icon: Icon, title, subtitle, defaultOpen, children }) {
-    const [open, setOpen] = useState(!!defaultOpen);
-    return (
-        <div className="overflow-hidden rounded-xl border border-slate-100">
-            <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2.5 px-4 py-3 text-left hover:bg-slate-50">
-                <Icon className="h-4 w-4 shrink-0 text-[#047084]" />
-                <span className="min-w-0 flex-1">
-                    <span className="block text-[13.5px] font-extrabold text-slate-900">{title}</span>
-                    {subtitle && <span className="block text-[11px] font-medium text-slate-400">{subtitle}</span>}
-                </span>
-                <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition-transform" style={{ transform: open ? "rotate(180deg)" : "none" }} />
-            </button>
-            {open && <div className="flex flex-col gap-3.5 border-t border-slate-100 px-4 py-4">{children}</div>}
-        </div>
-    );
-}
-
-function RowsEditor({ rows, onChange, columns, addLabel }) {
-    const update = (i, key, val) => onChange(rows.map((r, idx) => (idx === i ? { ...r, [key]: val } : r)));
-    const remove = (i) => onChange(rows.filter((_, idx) => idx !== i));
-    const add = () => onChange([...rows, Object.fromEntries(columns.map((c) => [c.key, ""]))]);
-    return (
-        <div className="flex flex-col gap-2">
-            {rows.map((row, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                    {columns.map((c) => (
-                        <input key={c.key} value={row[c.key] ?? ""} placeholder={c.placeholder}
-                            onChange={(e) => update(i, c.key, e.target.value)}
-                            className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-[12.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
-                    ))}
-                    <button type="button" onClick={() => remove(i)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg hover:bg-red-50">
-                        <Trash2 className="h-3.5 w-3.5 text-[#c71f11]" />
-                    </button>
-                </div>
-            ))}
-            <button type="button" onClick={add} className="flex w-fit items-center gap-1 text-[12px] font-bold text-[#047084]">
-                <Plus className="h-3.5 w-3.5" /> {addLabel}
-            </button>
-        </div>
-    );
-}
-
-/* =====================================================================
-   Read-only "view details" modal — compact, single fixed-height panel
-   with its own internal scroll (no accordions — everything's visible
-   at a glance, no clicking required). Shows the category > subcategory
-   > generic product chain up top, with a "Fix mapping" action for when
-   a seller's item was mapped to the wrong generic product.
-   ===================================================================== */
+/* ===================== shared read-only bits ===================== */
 
 function ReadRow({ label, value }) {
     if (value === "" || value === null || value === undefined) return null;
     return (
         <div className="flex items-baseline justify-between gap-3 py-1 text-[12px]">
-            <span className="shrink-0 font-semibold text-slate-400">{label}</span>
-            <span className="text-right font-bold text-slate-800">{String(value)}</span>
+            <span className="shrink-0 font-semibold" style={{ color: C.muted }}>{label}</span>
+            <span className="text-right font-bold" style={{ color: C.ink }}>{String(value)}</span>
         </div>
     );
 }
-
 function ReadRowsList({ rows, columns }) {
     if (!rows?.length) return null;
     return (
         <div className="mt-1 flex flex-col gap-1">
             {rows.map((row, i) => (
-                <div key={i} className="rounded-md bg-slate-50 px-2.5 py-1.5 text-[11.5px] font-semibold text-slate-700">
+                <div key={i} className="rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ background: C.hairSoft, color: C.ink }}>
                     {columns.map((c) => row[c.key]).filter(Boolean).join(" — ")}
                 </div>
             ))}
         </div>
     );
 }
-
-
 function SectionBlock({ icon: Icon, title, children }) {
     return (
-        <div className="border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
+        <div className="border-t pt-3 first:border-t-0 first:pt-0" style={{ borderColor: C.hairSoft }}>
             <div className="mb-1.5 flex items-center gap-1.5">
-                <Icon className="h-3.5 w-3.5 text-[#047084]" />
-                <span className="text-[11.5px] font-extrabold uppercase tracking-wide text-slate-500">{title}</span>
+                <Icon className="h-3.5 w-3.5" style={{ color: C.secondary }} />
+                <span className="text-[11.5px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>{title}</span>
             </div>
             <div className="grid grid-cols-2 gap-x-4">{children}</div>
         </div>
     );
 }
 
-// Cascading picker used only to REASSIGN the category > subcategory >
-// generic product chain for an incorrectly-mapped brand item. Reuses
-// adminListCatalog (already used by AdminCatalogReviewPage) to browse,
-// and the existing PATCH /admin/catalog/brand_item/:id endpoint (which
-// already accepts parentId) to save — no backend changes needed.
+/* ===================== hierarchy mapping (shared) ===================== */
 
 function FixMappingPicker({ token, brandItemId, current, onDone, onCancel }) {
     const [categoryEntry, setCategoryEntry] = useState(null);
@@ -394,7 +394,6 @@ function FixMappingPicker({ token, brandItemId, current, onDone, onCancel }) {
     async function save() {
         if (!genericProductEntry) return setError("Pick or create a generic product to map this item under.");
         setSaving(true); setError("");
-        const { adminUpdateCatalogEntry } = await import("../../utils/api.js");
         const res = await adminUpdateCatalogEntry(token, "brand_item", brandItemId, { parentId: genericProductEntry.id });
         setSaving(false);
         if (!res?.success) return setError(res?.message || "Couldn't update the mapping.");
@@ -402,23 +401,23 @@ function FixMappingPicker({ token, brandItemId, current, onDone, onCancel }) {
     }
 
     return (
-        <div className="mt-2 flex flex-col gap-2 rounded-lg border border-[#047084]/20 bg-[#047084]/[0.04] p-3">
-            <p className="text-[11px] font-semibold text-slate-500 break-words">
-                Currently under: <span className="font-bold text-slate-700">{current || "—"}</span>
+        <div className="mt-2 flex flex-col gap-2 rounded-xl border p-3" style={{ borderColor: `${C.secondary}33`, background: `${C.secondary}0a` }}>
+            <p className="text-[11px] font-semibold break-words" style={{ color: C.muted }}>
+                Currently under: <span className="font-bold" style={{ color: C.ink }}>{current || "—"}</span>
             </p>
             <div className="grid grid-cols-1 gap-2">
                 <HierarchyCombobox
                     label="Category" required value={categoryEntry}
-                    fetcher={(q) => import("../../utils/api.js").then(({ adminListCatalog }) => adminListCatalog(token, { level: "category", q }))}
-                    onCreate={(name) => import("../../utils/api.js").then(({ adminCreateCatalogEntry }) => adminCreateCatalogEntry(token, "category", { name }))}
+                    fetcher={(q) => adminListCatalog(token, { level: "category", q })}
+                    onCreate={(name) => adminCreateCatalogEntry(token, "category", { name })}
                     onSelect={(entry) => { setCategoryEntry(entry); setSubcategoryEntry(null); setGenericProductEntry(null); }}
                     placeholder="Search or create a category…"
                 />
                 {categoryEntry && (
                     <HierarchyCombobox
                         label="Subcategory" required value={subcategoryEntry}
-                        fetcher={(q) => import("../../utils/api.js").then(({ adminListCatalog }) => adminListCatalog(token, { level: "subcategory", parentId: categoryEntry.id, q }))}
-                        onCreate={(name) => import("../../utils/api.js").then(({ adminCreateCatalogEntry }) => adminCreateCatalogEntry(token, "subcategory", { name, parentId: categoryEntry.id }))}
+                        fetcher={(q) => adminListCatalog(token, { level: "subcategory", parentId: categoryEntry.id, q })}
+                        onCreate={(name) => adminCreateCatalogEntry(token, "subcategory", { name, parentId: categoryEntry.id })}
                         onSelect={(entry) => { setSubcategoryEntry(entry); setGenericProductEntry(null); }}
                         placeholder="Search or create a subcategory…"
                     />
@@ -426,23 +425,25 @@ function FixMappingPicker({ token, brandItemId, current, onDone, onCancel }) {
                 {subcategoryEntry && (
                     <HierarchyCombobox
                         label="Generic product" required value={genericProductEntry}
-                        fetcher={(q) => import("../../utils/api.js").then(({ adminListCatalog }) => adminListCatalog(token, { level: "generic_product", parentId: subcategoryEntry.id, q }))}
-                        onCreate={(name) => import("../../utils/api.js").then(({ adminCreateCatalogEntry }) => adminCreateCatalogEntry(token, "generic_product", { name, parentId: subcategoryEntry.id }))}
+                        fetcher={(q) => adminListCatalog(token, { level: "generic_product", parentId: subcategoryEntry.id, q })}
+                        onCreate={(name) => adminCreateCatalogEntry(token, "generic_product", { name, parentId: subcategoryEntry.id })}
                         onSelect={setGenericProductEntry}
                         placeholder="Search or create a generic product…"
                     />
                 )}
             </div>
-            {error && <p className="text-[11.5px] font-semibold text-[#c71f11]">{error}</p>}
+            {error && <p className="text-[11.5px] font-semibold" style={{ color: C.danger }}>{error}</p>}
             <div className="flex justify-end gap-2">
-                <button onClick={onCancel} className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-slate-500">Cancel</button>
-                <button onClick={save} disabled={saving || !genericProductEntry} className="rounded-lg bg-[#047084] px-3.5 py-1.5 text-[12px] font-bold text-white disabled:opacity-50">
+                <button onClick={onCancel} className="rounded-lg px-3 py-1.5 text-[12px] font-bold" style={{ color: C.muted }}>Cancel</button>
+                <button onClick={save} disabled={saving || !genericProductEntry} className="rounded-lg px-3.5 py-1.5 text-[12px] font-bold text-white disabled:opacity-50" style={{ background: C.secondary }}>
                     {saving ? "Saving…" : "Save mapping"}
                 </button>
             </div>
         </div>
     );
 }
+
+/* ===================== view modal ===================== */
 
 function ViewSubmissionModal({ token, submissionId, onClose, onEdit, onImageClick, onApprove }) {
     const [loading, setLoading] = useState(true);
@@ -453,48 +454,42 @@ function ViewSubmissionModal({ token, submissionId, onClose, onEdit, onImageClic
 
     function reload() {
         setLoading(true);
-        import("../../utils/api.js").then(({ adminGetSellerSubmission }) =>
-            adminGetSellerSubmission(token, submissionId).then((res) => {
-                if (res?.success) setData(res.submission); else setError(res?.message || "Couldn't load this listing.");
-                setLoading(false);
-            })
-        );
+        adminGetSellerSubmission(token, submissionId).then((res) => {
+            if (res?.success) setData(res.submission); else setError(res?.message || "Couldn't load this listing.");
+            setLoading(false);
+        });
     }
     useEffect(() => { reload(); /* eslint-disable-next-line */ }, [token, submissionId]);
 
     async function handleApprove() {
         setApproving(true);
-        await onApprove(submissionId);
+        const ok = await onApprove(submissionId);
         setApproving(false);
+        if (ok) onClose(); // only close on success — a failed approve should stay visible with its error
+        else reload();
     }
 
     const s = data;
     const images = s?.images?.length ? s.images : (s?.image ? [s.image] : []);
-    const finalPrice = s ? Math.round(Number(s.base_price || 0) * (1 + Number(s.gst_percent || 0) / 100) * 100) / 100 : 0;
     const gp = s?.generic_product;
     const crumb = [gp?.subcategory?.category?.name, gp?.subcategory?.name, gp?.name].filter(Boolean).join(" › ");
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-            <div
-                onClick={(e) => e.stopPropagation()}
-                className="flex w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white"
-                style={{ height: "88vh" }}
-            >
-                <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3.5">
+            <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white" style={{ height: "88vh" }}>
+                <div className="flex shrink-0 items-center justify-between border-b px-5 py-3.5" style={{ borderColor: C.hairSoft }}>
                     <div className="min-w-0">
-                        <h3 className="truncate text-[15px] font-extrabold text-slate-900">{s?.product_name || "Listing details"}</h3>
-                        {s?.brand_name && <p className="text-[11.5px] font-semibold text-slate-400">{s.brand_name}</p>}
+                        <h3 className="truncate text-[15px] font-extrabold" style={{ color: C.ink }}>{s?.product_name || "Listing details"}</h3>
+                        {s?.brand_name && <p className="text-[11.5px] font-semibold" style={{ color: C.muted }}>{s.brand_name}</p>}
                     </div>
-                    <button onClick={onClose} className="shrink-0 rounded-full p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"><X className="h-4 w-4" /></button>
+                    <button onClick={onClose} className="shrink-0 rounded-full p-1.5" style={{ color: C.muted }}><X className="h-4 w-4" /></button>
                 </div>
 
-                {loading && <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>}
-                {!loading && error && <p className="flex-1 px-5 py-8 text-center text-[13px] font-semibold text-[#c71f11]">{error}</p>}
+                {loading && <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>}
+                {!loading && error && <p className="flex-1 px-5 py-8 text-center text-[13px] font-semibold" style={{ color: C.danger }}>{error}</p>}
 
                 {!loading && s && (
                     <div className="flex-1 overflow-y-auto px-5 py-3.5" style={{ minHeight: 0 }}>
-                        {/* status + hierarchy */}
                         <div className="flex flex-wrap items-center gap-1.5 pb-3">
                             <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold"
                                 style={{
@@ -503,31 +498,31 @@ function ViewSubmissionModal({ token, submissionId, onClose, onEdit, onImageClic
                                 }}>
                                 {s.review_status === "approved" ? "Approved" : s.review_status === "rejected" ? "Rejected" : "Pending review"}
                             </span>
-                            {s.is_active === false && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] font-bold text-slate-500">Hidden by seller</span>}
-                            <span className="text-[11px] font-medium text-slate-400">Seller: {s.seller?.display_name || "—"}</span>
+                            {s.is_active === false && <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: C.hairSoft, color: C.muted }}>Hidden by seller</span>}
+                            <span className="text-[11px] font-medium" style={{ color: C.muted }}>Seller: {s.seller?.display_name || "—"}</span>
                         </div>
                         {s.rejection_reason && (
-                            <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[11.5px] font-semibold text-[#c71f11]">Rejected: {s.rejection_reason}</p>
+                            <p className="mb-3 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ background: "#fee2e2", color: C.danger }}>Rejected: {s.rejection_reason}</p>
+                        )}
+                        {s.note_to_admin && (
+                            <div className="mb-3 rounded-lg px-3 py-2.5" style={{ background: `${C.secondary}0c` }}>
+                                <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.secondary }}>Note to admin</p>
+                                <p className="mt-0.5 text-[12.5px] font-medium" style={{ color: C.ink }}>{s.note_to_admin}</p>
+                            </div>
                         )}
 
-                        <div className="mb-3 flex items-start justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                        <div className="mb-3 flex items-start justify-between gap-2 rounded-lg px-3 py-2" style={{ background: C.hairSoft }}>
                             <div className="min-w-0">
-                                <p className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Catalog mapping</p>
-                                <p className="text-[12px] font-bold text-slate-700 break-words">{crumb || "Not mapped to a catalog hierarchy"}</p>
+                                <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Catalog mapping</p>
+                                <p className="text-[12px] font-bold break-words" style={{ color: C.ink }}>{crumb || "Not mapped to a catalog hierarchy"}</p>
                             </div>
-                            <button onClick={() => setFixingMapping((v) => !v)}
-                                className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-white">
+                            <button onClick={() => setFixingMapping((v) => !v)} className="shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-bold" style={{ borderColor: C.hair, color: C.ink }}>
                                 {fixingMapping ? "Cancel" : "Fix mapping"}
                             </button>
                         </div>
                         {fixingMapping && (
-                            <FixMappingPicker
-                                token={token}
-                                brandItemId={s.brand?.id || s.generic_product_brand_id}
-                                current={crumb}
-                                onCancel={() => setFixingMapping(false)}
-                                onDone={() => { setFixingMapping(false); reload(); }}
-                            />
+                            <FixMappingPicker token={token} brandItemId={s.brand?.id || s.generic_product_brand_id} current={crumb}
+                                onCancel={() => setFixingMapping(false)} onDone={() => { setFixingMapping(false); reload(); }} />
                         )}
 
                         <div className="flex flex-col gap-1 pt-1">
@@ -536,14 +531,15 @@ function ViewSubmissionModal({ token, submissionId, onClose, onEdit, onImageClic
                                 <ReadRow label="Model / Part No." value={s.model_no} />
                                 <ReadRow label="Grade / Variant" value={s.grade_variant} />
                             </SectionBlock>
-                            {(s.specifications?.length > 0 || images.length > 0) && (
+                            {(s.specifications?.length > 0 || s.description || images.length > 0) && (
                                 <div className="-mt-1">
+                                    {s.description && <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>{s.description}</p>}
                                     {s.specifications?.length > 0 && <ReadRowsList rows={s.specifications} columns={[{ key: "key" }, { key: "value" }]} />}
                                     {images.length > 0 && (
                                         <div className="mt-2 flex flex-wrap gap-1.5">
                                             {images.map((src, i) => (
                                                 <button key={src + i} onClick={() => onImageClick(images)} className="relative h-14 w-14">
-                                                    <img src={src} alt="" className="h-full w-full rounded-md border border-slate-200 object-cover" />
+                                                    <img src={src} alt="" className="h-full w-full rounded-md border object-cover" style={{ borderColor: C.hair }} />
                                                     {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-md bg-black/60 py-0.5 text-center text-[7.5px] font-bold text-white">Cover</span>}
                                                 </button>
                                             ))}
@@ -553,65 +549,49 @@ function ViewSubmissionModal({ token, submissionId, onClose, onEdit, onImageClic
                             )}
 
                             <SectionBlock icon={IndianRupee} title="Pricing">
-                                <ReadRow label="Base price" value={s.base_price != null ? `₹${s.base_price}` : null} />
+                                <ReadRow label="Base price (ex GST)" value={s.base_price != null ? `₹${s.base_price}` : null} />
                                 <ReadRow label="GST %" value={s.gst_percent != null ? `${s.gst_percent}%` : null} />
-                                <ReadRow label="Final price" value={`₹${finalPrice.toLocaleString("en-IN")}`} />
-                                <ReadRow label="Valid till" value={s.price_validity_till} />
-                                <ReadRow label="Rate/pack" value={s.rate_per_pack != null ? `₹${s.rate_per_pack}` : null} />
-                                <ReadRow label="Rate/master pack" value={s.rate_per_master_pack != null ? `₹${s.rate_per_master_pack}` : null} />
+                                <ReadRow label="Final price" value={s.price != null ? `₹${s.price}` : null} />
+                                <ReadRow label="Price basis" value={PRICE_BASIS_OPTIONS.find((o) => o.value === s.price_basis)?.label} />
+                                <ReadRow label="GST inclusive?" value={s.gst_inclusive_input ? "Yes" : "No"} />
+                                <ReadRow label="Freight included?" value={s.freight_included ? "Yes" : "No"} />
                             </SectionBlock>
 
-                            <SectionBlock icon={Boxes} title="Quantity">
+                            <SectionBlock icon={Boxes} title="Quantity & samples">
                                 <ReadRow label="MOQ" value={s.moq != null ? `${s.moq} ${s.unit || ""}` : null} />
-                                <ReadRow label="Sample" value={s.sample_available ? (s.sample_price ? `₹${s.sample_price}` : "Free") : "Not available"} />
+                                <ReadRow label="Sample" value={s.sample_available ? `${s.sample_quantity ?? "—"} (${s.sample_unit_basis || "—"})` : "Not available"} />
                             </SectionBlock>
-                            {(s.price_slabs?.length > 0 || s.quantity_discounts?.length > 0) && (
-                                <div className="-mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                    <ReadRowsList rows={s.price_slabs} columns={[{ key: "minQty" }, { key: "maxQty" }, { key: "price" }]} />
+                            {s.quantity_discounts?.length > 0 && (
+                                <div className="-mt-1">
                                     <ReadRowsList rows={s.quantity_discounts} columns={[{ key: "minQty" }, { key: "discountPercent" }]} />
                                 </div>
                             )}
 
-                            <SectionBlock icon={Archive} title="Packaging">
+                            <SectionBlock icon={Boxes} title="Packaging & availability">
                                 <ReadRow label="Pack size" value={s.pack_size} />
                                 <ReadRow label="Units/master pack" value={s.units_per_master_pack} />
-                                <ReadRow label="Master pack size" value={s.master_pack_size} />
-                                <ReadRow label="Packaging type" value={s.packaging_type} />
-                            </SectionBlock>
-
-                            <SectionBlock icon={Boxes} title="Availability">
                                 <ReadRow label="Stock" value={s.stock_quantity} />
                                 <ReadRow label="Fulfilment" value={s.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"} />
-                                <ReadRow label="Dispatch time" value={s.dispatch_time_days != null ? `${s.dispatch_time_days}d` : null} />
                                 <ReadRow label="Production lead" value={s.production_lead_time_days != null ? `${s.production_lead_time_days}d` : null} />
                             </SectionBlock>
 
                             <SectionBlock icon={Truck} title="Delivery">
-                                <ReadRow label="Seller location" value={s.seller_location} />
-                                <ReadRow label="Dispatch location" value={s.dispatch_location} />
-                                <ReadRow label="Timeline" value={s.delivery_timeline} />
+                                <ReadRow label="Dispatch pincode" value={s.dispatch_pincode} />
+                                <ReadRow label="Dispatch district" value={s.dispatch_district} />
+                                <ReadRow label="Dispatch state" value={s.dispatch_state} />
+                                <ReadRow label="Locations" value={dispatchingLocationsSummary(s.dispatching_locations)} />
                             </SectionBlock>
-                            <ReadRow label="Freight terms" value={s.freight_terms} />
 
-                            <SectionBlock icon={FileText} title="Tax & Legal">
+                            <SectionBlock icon={FileText} title="Tax & terms">
                                 <ReadRow label="HSN Code" value={s.hsn_code} />
-                                <ReadRow label="GST status" value={s.gst_registration_status} />
-                                <ReadRow label="Tax invoice" value={s.tax_invoice_available ? "Yes" : "No"} />
                             </SectionBlock>
-
-                            <SectionBlock icon={Handshake} title="Commercial Terms">
-
-                            </SectionBlock>
+                            <ReadRow label="Return / replacement policy" value={s.return_policy} />
                             <ReadRow label="Warranty" value={s.warranty} />
-                            <ReadRow label="Payment terms" value={s.payment_terms} />
-                            <ReadRow label="Return policy" value={s.return_policy} />
 
-                            {(s.quality_certificates?.length > 0 || s.tds_msds_coa?.length > 0 || s.other_certifications?.length > 0) && (
-                                <SectionBlock icon={ShieldCheck} title="Quality & Certifications">
+                            {s.quality_certificates?.length > 0 && (
+                                <SectionBlock icon={ShieldCheck} title="Quality & certifications">
                                     <div className="col-span-2 flex flex-col gap-1.5">
                                         <ReadRowsList rows={s.quality_certificates} columns={[{ key: "name" }, { key: "url" }]} />
-                                        <ReadRowsList rows={s.tds_msds_coa} columns={[{ key: "type" }, { key: "url" }]} />
-                                        <ReadRowsList rows={s.other_certifications} columns={[{ key: "name" }, { key: "url" }]} />
                                     </div>
                                 </SectionBlock>
                             )}
@@ -620,14 +600,14 @@ function ViewSubmissionModal({ token, submissionId, onClose, onEdit, onImageClic
                 )}
 
                 {!loading && s && (
-                    <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
-                        <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[12.5px] font-bold text-slate-500">Close</button>
-                        <button onClick={onEdit} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-4 py-2 text-[12.5px] font-bold text-slate-600 hover:bg-slate-50">
+                    <div className="flex shrink-0 items-center justify-end gap-2 border-t px-5 py-3" style={{ borderColor: C.hairSoft }}>
+                        <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[12.5px] font-bold" style={{ color: C.muted }}>Close</button>
+                        <button onClick={onEdit} className="inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 text-[12.5px] font-bold" style={{ borderColor: C.hair, color: C.ink }}>
                             <Pencil className="h-3.5 w-3.5" /> Edit this listing
                         </button>
                         {s.review_status === "pending_review" && (
                             <button onClick={handleApprove} disabled={approving}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-[#047084] px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-50">
+                                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-bold text-white disabled:opacity-50" style={{ background: C.secondary }}>
                                 {approving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Approve
                             </button>
                         )}
@@ -638,10 +618,24 @@ function ViewSubmissionModal({ token, submissionId, onClose, onEdit, onImageClic
     );
 }
 
+/* ===================== edit modal ===================== */
+
+function computeAdminMissing(form, images) {
+    const missing = [];
+    if (!form.productName?.trim()) missing.push("Product name");
+    if (!form.brandNotApplicable && !form.brandName?.trim()) missing.push("Brand");
+    if (!images.length) missing.push("At least one image");
+    if (!form.unit) missing.push("Unit");
+    if (!(Number(form.basePrice) > 0)) missing.push("Base price");
+    if (!(Number(form.moq) > 0)) missing.push("MOQ");
+    return missing;
+}
+
 function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove }) {
     const [loading, setLoading] = useState(true);
     const [form, setForm] = useState(null);
     const [images, setImages] = useState([]);
+    const [dispatchingLocations, setDispatchingLocations] = useState(null);
     const [saving, setSaving] = useState(false);
     const [approving, setApproving] = useState(false);
     const [error, setError] = useState("");
@@ -649,63 +643,66 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
     const [reviewStatus, setReviewStatus] = useState(null);
     const [gp, setGp] = useState(null);
     const [fixingMapping, setFixingMapping] = useState(false);
+    const [pincodeStatus, setPincodeStatus] = useState(null);
 
     function load() {
         setLoading(true);
-        import("../../utils/api.js").then(({ adminGetSellerSubmission }) =>
-            adminGetSellerSubmission(token, submissionId).then((res) => {
-                if (res?.success) {
-                    const s = res.submission;
-                    setForm({
-                        productName: s.product_name || "",
-                        brandName: s.brand_name || "",
-                        manufacturer: s.manufacturer || "",
-                        modelNo: s.model_no || "",
-                        gradeVariant: s.grade_variant || "",
-                        specifications: s.specifications || [],
-                        basePrice: s.base_price ?? "",
-                        gstPercent: s.gst_percent ?? 18,
-                        ratePerPack: s.rate_per_pack ?? "",
-                        ratePerMasterPack: s.rate_per_master_pack ?? "",
-                        priceValidityTill: s.price_validity_till || "",
-                        moq: s.moq ?? "",
-                        sampleAvailable: s.sample_available || false,
-                        samplePrice: s.sample_price ?? "",
-                        priceSlabs: s.price_slabs || [],
-                        quantityDiscounts: s.quantity_discounts || [],
-                        packSize: s.pack_size ?? "",
-                        unit: s.unit || "",
-                        unitsPerMasterPack: s.units_per_master_pack ?? "",
-                        masterPackSize: s.master_pack_size ?? "",
-                        packagingType: s.packaging_type || "",
-                        stockQuantity: s.stock_quantity ?? "",
-                        stockType: s.stock_type || "ready_stock",
-                        dispatchTimeDays: s.dispatch_time_days ?? "",
-                        productionLeadTimeDays: s.production_lead_time_days ?? "",
-                        sellerLocation: s.seller_location || "",
-                        dispatchLocation: s.dispatch_location || "",
-                        deliveryTimeline: s.delivery_timeline || "",
-                        freightTerms: s.freight_terms || "",
-                        hsnCode: s.hsn_code || "",
-                        gstRegistrationStatus: s.gst_registration_status || "regular",
-                        taxInvoiceAvailable: s.tax_invoice_available ?? true,
-                        paymentTerms: s.payment_terms || "",
-                        returnPolicy: s.return_policy || "",
-                        warranty: s.warranty || "",
-                        qualityCertificates: s.quality_certificates || [],
-                        tdsMsdsCoa: s.tds_msds_coa || [],
-                        otherCertifications: s.other_certifications || [],
-                    });
-                    setImages(s.images?.length ? s.images : (s.image ? [s.image] : []));
-                    setBrandItemId(s.brand?.id || s.generic_product_brand_id || null);
-                    setReviewStatus(s.review_status);
-                    setGp(s.generic_product || null);
-                } else {
-                    setError(res?.message || "Couldn't load this listing.");
-                }
-                setLoading(false);
-            })
-        );
+        adminGetSellerSubmission(token, submissionId).then((res) => {
+            if (res?.success) {
+                const s = res.submission;
+                setForm({
+                    productName: s.product_name || "",
+                    brandName: s.brand_name || "",
+                    brandNotApplicable: !!s.brand_not_applicable,
+                    manufacturer: s.manufacturer || "",
+                    modelNo: s.model_no || "",
+                    gradeVariant: s.grade_variant || "",
+                    description: s.description || "",
+                    manufacturingDetails: s.manufacturing_details || "",
+                    specifications: s.specifications || [],
+                    noteToAdmin: s.note_to_admin || "",
+
+                    unit: s.unit || "",
+                    packSize: s.pack_size ?? "",
+                    masterPackSize: s.units_per_master_pack ?? "",
+                    hsnCode: s.hsn_code || "",
+                    gstPercent: s.gst_percent ?? 18,
+
+                    basePrice: s.base_price ?? "",
+                    priceBasis: s.price_basis || "per_unit",
+                    gstInclusive: !!s.gst_inclusive_input,
+                    freightIncluded: !!s.freight_included,
+
+                    sampleAvailable: s.sample_available || false,
+                    sampleQuantity: s.sample_quantity ?? "",
+                    sampleUnitBasis: s.sample_unit_basis || "per_unit",
+
+                    priceSlabs: s.quantity_discounts || [],
+
+                    stockType: s.stock_type || "ready_stock",
+                    stockQuantity: s.stock_quantity ?? "",
+                    productionLeadTimeDays: s.production_lead_time_days ?? "",
+                    moq: s.moq ?? "",
+
+                    dispatchPincode: s.dispatch_pincode || "",
+                    dispatchDistrict: s.dispatch_district || "",
+                    dispatchState: s.dispatch_state || "",
+
+                    returnPolicyKey: s.return_policy_key || "",
+                    warrantyKey: s.warranty_key || "",
+
+                    qualityCertificates: s.quality_certificates || [],
+                });
+                setImages(s.images?.length ? s.images : (s.image ? [s.image] : []));
+                setDispatchingLocations(unflattenDispatchingLocations(s.dispatching_locations));
+                setBrandItemId(s.brand?.id || s.generic_product_brand_id || null);
+                setReviewStatus(s.review_status);
+                setGp(s.generic_product || null);
+            } else {
+                setError(res?.message || "Couldn't load this listing.");
+            }
+            setLoading(false);
+        });
     }
     useEffect(() => { load(); /* eslint-disable-next-line */ }, [token, submissionId]);
 
@@ -715,264 +712,253 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
     const finalPrice = form ? Math.round(Number(form.basePrice || 0) * (1 + Number(form.gstPercent || 0) / 100) * 100) / 100 : 0;
     const crumb = [gp?.subcategory?.category?.name, gp?.subcategory?.name, gp?.name].filter(Boolean).join(" › ");
 
-    async function handleSaveAndApprove() {
-        setError("");
-        if (!form.productName.trim() || !form.brandName.trim()) return setError("Product name and brand name are required.");
-        if (!(Number(form.basePrice) > 0)) return setError("Base price must be greater than 0.");
-        if (!(Number(form.moq) > 0)) return setError("MOQ must be greater than 0.");
-        if (!form.unit) return setError("Select a unit.");
-        if (!images.length) return setError("At least one image is required.");
+    async function confirmPincode() {
+        if (!/^\d{6}$/.test(form.dispatchPincode)) return;
+        setPincodeStatus("checking");
+        const res = await lookupPincode(form.dispatchPincode);
+        if (res?.success) {
+            setForm((f) => ({ ...f, dispatchDistrict: res.district, dispatchState: res.state }));
+            setPincodeStatus("ok");
+        } else setPincodeStatus("error");
+    }
 
+    async function persist() {
+        const missing = computeAdminMissing(form, images);
+        if (missing.length) { setError(`Please complete: ${missing.join(", ")}.`); return false; }
+        setError("");
         setSaving(true);
         try {
             const res = await adminUpdateSellerSubmission(token, submissionId, {
                 productName: form.productName.trim(),
                 brandName: form.brandName.trim(),
+                brandNotApplicable: form.brandNotApplicable,
                 images,
                 manufacturer: form.manufacturer,
                 modelNo: form.modelNo,
                 gradeVariant: form.gradeVariant,
+                description: form.description,
+                manufacturingDetails: form.manufacturingDetails,
                 specifications: form.specifications,
-                basePrice: form.basePrice,
-                gstPercent: form.gstPercent,
-                ratePerPack: form.ratePerPack,
-                ratePerMasterPack: form.ratePerMasterPack,
-                priceValidityTill: form.priceValidityTill,
-                moq: form.moq,
-                sampleAvailable: form.sampleAvailable,
-                samplePrice: form.samplePrice,
-                priceSlabs: form.priceSlabs,
-                quantityDiscounts: form.quantityDiscounts,
-                packSize: form.packSize,
+
                 unit: form.unit,
-                unitsPerMasterPack: form.unitsPerMasterPack,
+                packSize: form.packSize,
                 masterPackSize: form.masterPackSize,
-                packagingType: form.packagingType,
-                stockQuantity: form.stockQuantity,
-                stockType: form.stockType,
-                dispatchTimeDays: form.dispatchTimeDays,
-                productionLeadTimeDays: form.productionLeadTimeDays,
-                sellerLocation: form.sellerLocation,
-                dispatchLocation: form.dispatchLocation,
-                deliveryTimeline: form.deliveryTimeline,
-                freightTerms: form.freightTerms,
                 hsnCode: form.hsnCode,
-                gstRegistrationStatus: form.gstRegistrationStatus,
-                taxInvoiceAvailable: form.taxInvoiceAvailable,
-                paymentTerms: form.paymentTerms,
-                returnPolicy: form.returnPolicy,
-                warranty: form.warranty,
+                gstPercent: form.gstPercent,
+
+                basePrice: form.basePrice,
+                priceBasis: form.priceBasis,
+                gstInclusive: form.gstInclusive,
+                freightIncluded: form.freightIncluded,
+
+                sampleAvailable: form.sampleAvailable,
+                sampleQuantity: form.sampleQuantity,
+                sampleUnitBasis: form.sampleUnitBasis,
+
+                priceSlabs: form.priceSlabs,
+
+                stockType: form.stockType,
+                stockQuantity: form.stockQuantity,
+                productionLeadTimeDays: form.productionLeadTimeDays,
+                moq: form.moq,
+
+                dispatchPincode: form.dispatchPincode,
+                dispatchDistrict: form.dispatchDistrict,
+                dispatchState: form.dispatchState,
+                dispatchingLocations: flattenDispatchingLocations(dispatchingLocations),
+
+                returnPolicyKey: form.returnPolicyKey,
+                warrantyKey: form.warrantyKey,
+
                 qualityCertificates: form.qualityCertificates,
-                tdsMsdsCoa: form.tdsMsdsCoa,
-                otherCertifications: form.otherCertifications,
             });
             if (!res?.success) throw new Error(res?.message || "Couldn't save changes.");
-
-            // Save succeeded — if this listing was still pending, approve it
-            // in the same action, so the admin doesn't need a second click
-            // for what is, in practice, always the next step after fixing
-            // up a submission.
-            if (reviewStatus === "pending_review") {
-                await onApprove(submissionId);
-            }
-            onSaved();
+            return true;
         } catch (e) {
             setError(e.message);
+            return false;
         } finally {
             setSaving(false);
         }
     }
 
+    async function handleSave() {
+        const ok = await persist();
+        if (ok) onSaved();
+    }
+
+    async function handleSaveAndApprove() {
+        const ok = await persist();
+        if (!ok) return;
+        setApproving(true);
+        const approved = await onApprove(submissionId);
+        setApproving(false);
+        if (approved) onSaved();
+        else load(); // refresh so the mapping panel / status reflect reality
+    }
+
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
-            <div
-                onClick={(e) => e.stopPropagation()}
-                className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white"
-                style={{ height: "88vh" }}
-            >
-                <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4">
-                    <h3 className="text-[16px] font-extrabold text-slate-900">Edit listing — full commercial spec</h3>
-                    <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"><X className="h-4.5 w-4.5" /></button>
+            <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white" style={{ height: "90vh" }}>
+                <div className="flex shrink-0 items-center justify-between border-b px-5 py-4" style={{ borderColor: C.hairSoft }}>
+                    <h3 className="text-[16px] font-extrabold" style={{ color: C.ink }}>Edit listing</h3>
+                    <button onClick={onClose} className="rounded-full p-1.5" style={{ color: C.muted }}><X className="h-4.5 w-4.5" /></button>
                 </div>
 
-                {loading && (
-                    <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-slate-400" /></div>
-                )}
+                {loading && <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>}
 
                 {!loading && form && (
                     <div className="flex-1 overflow-y-auto px-5 py-4" style={{ minHeight: 0 }}>
-                        <div className="mb-3 flex items-start justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                        <div className="mb-3 flex items-start justify-between gap-2 rounded-lg px-3 py-2" style={{ background: C.hairSoft }}>
                             <div className="min-w-0">
-                                <p className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">Catalog mapping</p>
-                                <p className="text-[12px] font-bold text-slate-700 break-words">{crumb || "Not mapped to a catalog hierarchy"}</p>
+                                <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Catalog mapping</p>
+                                <p className="text-[12px] font-bold break-words" style={{ color: C.ink }}>{crumb || "Not mapped to a catalog hierarchy"}</p>
                             </div>
-                            <button onClick={() => setFixingMapping((v) => !v)}
-                                className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-white">
+                            <button onClick={() => setFixingMapping((v) => !v)} className="shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-bold" style={{ borderColor: C.hair, color: C.ink }}>
                                 {fixingMapping ? "Cancel" : "Fix mapping"}
                             </button>
                         </div>
+                        {!crumb && (
+                            <p className="mb-3 flex items-start gap-1.5 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ background: "#fef3c7", color: "#a16207" }}>
+                                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> This item can't be approved until it's mapped to a category above.
+                            </p>
+                        )}
                         {fixingMapping && brandItemId && (
-                            <FixMappingPicker
-                                token={token}
-                                brandItemId={brandItemId}
-                                current={crumb}
-                                onCancel={() => setFixingMapping(false)}
-                                onDone={() => { setFixingMapping(false); load(); }}
-                            />
+                            <FixMappingPicker token={token} brandItemId={brandItemId} current={crumb}
+                                onCancel={() => setFixingMapping(false)} onDone={() => { setFixingMapping(false); load(); }} />
                         )}
 
-                        <div className="mt-3 flex flex-col gap-3.5">
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="Product name" required><TextInput value={form.productName} onChange={(e) => set("productName", e.target.value)} /></Field>
-                                <Field label="Brand name" required><TextInput value={form.brandName} onChange={(e) => set("brandName", e.target.value)} /></Field>
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                                <Field label="Manufacturer"><TextInput value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} /></Field>
-                                <Field label="Model / Part No. / SKU"><TextInput value={form.modelNo} onChange={(e) => set("modelNo", e.target.value)} /></Field>
-                            </div>
-                            <Field label="Grade / Variant"><TextInput value={form.gradeVariant} onChange={(e) => set("gradeVariant", e.target.value)} /></Field>
-                            <Field label="Specifications">
-                                <RowsEditor rows={form.specifications} onChange={(rows) => set("specifications", rows)} addLabel="Add specification"
-                                    columns={[{ key: "key", placeholder: "Attribute" }, { key: "value", placeholder: "Value" }]} />
-                            </Field>
-                            <Field label={`Images (${images.length})`} required>
-                                <div className="flex flex-wrap gap-2">
-                                    {images.map((src, i) => (
-                                        <div key={src + i} className="relative h-20 w-20">
-                                            <img src={src} alt="" className="h-full w-full rounded-lg border border-slate-200 object-cover" />
-                                            <button type="button" onClick={() => removeImageAt(i)}
-                                                className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] leading-none text-white">×</button>
-                                            {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-black/60 py-0.5 text-center text-[8.5px] font-bold text-white">Cover</span>}
-                                        </div>
-                                    ))}
-                                    {images.length === 0 && <p className="text-[12px] font-medium text-slate-400">No images left — needs at least one.</p>}
+                        <div className="mt-3 flex flex-col gap-3">
+                            <SectionCard icon={Package} title="Product" alwaysOpen>
+                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                    <TextField required label="Product name" value={form.productName} onChange={(v) => set("productName", v)} />
+                                    <ToggleField label="Brand applicable?" value={!form.brandNotApplicable} onChange={(v) => set("brandNotApplicable", !v)} />
                                 </div>
-                                <p className="mt-1 text-[11px] font-medium text-slate-400">Adding a brand-new photo file isn't supported here yet — remove/reorder only. Upload new photos via the catalog brand-item editor.</p>
-                            </Field>
-
-                            <Accordion icon={IndianRupee} title="Pricing" subtitle="Base price, GST & validity" defaultOpen>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Field label="Base price (₹, excl. GST)" required>
-                                        <TextInput inputMode="decimal" value={form.basePrice} onChange={(e) => set("basePrice", e.target.value.replace(/[^\d.]/g, ""))} />
-                                    </Field>
-                                    <Field label="GST %" required>
-                                        <SelectInput value={form.gstPercent} onChange={(e) => set("gstPercent", Number(e.target.value))}>
-                                            {GST_OPTIONS.map((g) => <option key={g} value={g}>{g}%</option>)}
-                                        </SelectInput>
-                                    </Field>
-                                </div>
-                                <div className="rounded-lg bg-slate-50 px-3 py-2.5 text-[12.5px] font-bold text-slate-700">
-                                    Final price (incl. GST): <span className="text-[#047084]">₹{finalPrice.toLocaleString("en-IN")}</span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Field label="Rate per pack (₹)"><TextInput inputMode="decimal" value={form.ratePerPack} onChange={(e) => set("ratePerPack", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
-                                    <Field label="Rate per master pack (₹)"><TextInput inputMode="decimal" value={form.ratePerMasterPack} onChange={(e) => set("ratePerMasterPack", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
-                                </div>
-                                <Field label="Price validity till" required><TextInput type="date" value={form.priceValidityTill} onChange={(e) => set("priceValidityTill", e.target.value)} /></Field>
-                            </Accordion>
-
-                            <Accordion icon={Boxes} title="Quantity" subtitle="MOQ, samples & bulk pricing">
-                                <Field label="MOQ" required><TextInput inputMode="decimal" value={form.moq} onChange={(e) => set("moq", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
-                                <ToggleRow label="Sample available" checked={form.sampleAvailable} onChange={(v) => set("sampleAvailable", v)} />
-                                {form.sampleAvailable && <Field label="Sample price (₹)"><TextInput inputMode="decimal" value={form.samplePrice} onChange={(e) => set("samplePrice", e.target.value.replace(/[^\d.]/g, ""))} /></Field>}
-                                <Field label="Order quantity price slabs">
-                                    <RowsEditor rows={form.priceSlabs} onChange={(rows) => set("priceSlabs", rows)} addLabel="Add price slab"
-                                        columns={[{ key: "minQty", placeholder: "Min qty" }, { key: "maxQty", placeholder: "Max qty" }, { key: "price", placeholder: "₹ price" }]} />
-                                </Field>
-                                <Field label="Quantity discounts">
-                                    <RowsEditor rows={form.quantityDiscounts} onChange={(rows) => set("quantityDiscounts", rows)} addLabel="Add discount tier"
-                                        columns={[{ key: "minQty", placeholder: "Min qty" }, { key: "discountPercent", placeholder: "Discount %" }]} />
-                                </Field>
-                            </Accordion>
-
-                            <Accordion icon={Archive} title="Packaging" subtitle="Pack size & unit of measurement">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Field label="Pack size" required><TextInput inputMode="decimal" value={form.packSize} onChange={(e) => set("packSize", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
-                                    <Field label="Unit of measurement" required>
-                                        <SelectInput value={form.unit} onChange={(e) => set("unit", e.target.value)}>
-                                            <option value="" disabled>Select…</option>
-                                            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-                                        </SelectInput>
-                                    </Field>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Field label="Units per master pack"><TextInput inputMode="decimal" value={form.unitsPerMasterPack} onChange={(e) => set("unitsPerMasterPack", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
-                                    <Field label="Master pack size"><TextInput inputMode="decimal" value={form.masterPackSize} onChange={(e) => set("masterPackSize", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
-                                </div>
-                                <Field label="Packaging type"><TextInput value={form.packagingType} onChange={(e) => set("packagingType", e.target.value)} /></Field>
-                            </Accordion>
-
-                            <Accordion icon={Boxes} title="Availability" subtitle="Stock & dispatch readiness">
-                                <Field label="Stock available" required><TextInput inputMode="decimal" value={form.stockQuantity} onChange={(e) => set("stockQuantity", e.target.value.replace(/[^\d.]/g, ""))} /></Field>
-                                <Field label="Fulfilment type" required>
-                                    <SelectInput value={form.stockType} onChange={(e) => set("stockType", e.target.value)}>
-                                        <option value="ready_stock">Ready stock</option>
-                                        <option value="made_to_order">Made-to-order</option>
-                                    </SelectInput>
-                                </Field>
-                                <Field label="Expected dispatch time (days)" required><TextInput inputMode="numeric" value={form.dispatchTimeDays} onChange={(e) => set("dispatchTimeDays", e.target.value.replace(/[^\d]/g, ""))} /></Field>
-                                {form.stockType === "made_to_order" && (
-                                    <Field label="Production lead time (days)" required><TextInput inputMode="numeric" value={form.productionLeadTimeDays} onChange={(e) => set("productionLeadTimeDays", e.target.value.replace(/[^\d]/g, ""))} /></Field>
+                                {!form.brandNotApplicable && (
+                                    <TextField required label="Brand name" value={form.brandName} onChange={(v) => set("brandName", v)} />
                                 )}
-                            </Accordion>
-
-                            <Accordion icon={Truck} title="Delivery" subtitle="Locations, timeline & freight">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Field label="Seller location" required><TextInput value={form.sellerLocation} onChange={(e) => set("sellerLocation", e.target.value)} /></Field>
-                                    <Field label="Dispatch location" required><TextInput value={form.dispatchLocation} onChange={(e) => set("dispatchLocation", e.target.value)} /></Field>
+                                <div className="flex flex-col gap-1.5">
+                                    <Label>Images ({images.length})</Label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {images.map((src, i) => (
+                                            <div key={src + i} className="relative h-16 w-16">
+                                                <img src={src} alt="" className="h-full w-full rounded-lg border object-cover" style={{ borderColor: C.hair }} />
+                                                <button type="button" onClick={() => removeImageAt(i)} className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-[11px] leading-none text-white">×</button>
+                                                {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-black/60 py-0.5 text-center text-[7.5px] font-bold text-white">Cover</span>}
+                                            </div>
+                                        ))}
+                                        {images.length === 0 && <p className="text-[11.5px] font-medium" style={{ color: C.danger }}>Needs at least one image.</p>}
+                                    </div>
+                                    <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>Remove/reorder only — new photo uploads aren't supported here yet.</p>
                                 </div>
-                                <Field label="Delivery timeline" required><TextInput value={form.deliveryTimeline} onChange={(e) => set("deliveryTimeline", e.target.value)} /></Field>
-                                <Field label="Freight terms"><TextArea value={form.freightTerms} onChange={(e) => set("freightTerms", e.target.value)} rows={2} /></Field>
-                            </Accordion>
+                                {form.noteToAdmin && (
+                                    <div className="rounded-lg px-3 py-2.5" style={{ background: `${C.secondary}0c` }}>
+                                        <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.secondary }}>Seller's note to admin</p>
+                                        <p className="mt-0.5 text-[12.5px] font-medium" style={{ color: C.ink }}>{form.noteToAdmin}</p>
+                                    </div>
+                                )}
+                            </SectionCard>
 
-                            <Accordion icon={FileText} title="Tax & Legal" subtitle="HSN, GST & invoicing">
-                                <div className="grid grid-cols-2 gap-3">
-                                    <Field label="HSN Code" required><TextInput value={form.hsnCode} onChange={(e) => set("hsnCode", e.target.value)} /></Field>
-                                    <Field label="GST registration status" required>
-                                        <SelectInput value={form.gstRegistrationStatus} onChange={(e) => set("gstRegistrationStatus", e.target.value)}>
-                                            <option value="regular">Regular</option>
-                                            <option value="composition">Composition</option>
-                                            <option value="unregistered">Unregistered</option>
-                                        </SelectInput>
-                                    </Field>
+                            <SectionCard icon={FileText} title="Admin-only details" subtitle="Shared across every seller listing this item">
+                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                    <TextField label="Manufacturer" value={form.manufacturer} onChange={(v) => set("manufacturer", v)} />
+                                    <TextField label="Model / Part No." value={form.modelNo} onChange={(v) => set("modelNo", v)} />
                                 </div>
-                                <ToggleRow label="Tax invoice available" checked={form.taxInvoiceAvailable} onChange={(v) => set("taxInvoiceAvailable", v)} />
-                            </Accordion>
+                                <TextField label="Grade / Variant" value={form.gradeVariant} onChange={(v) => set("gradeVariant", v)} />
+                                <TextAreaField label="Description" value={form.description} onChange={(v) => set("description", v)} rows={3} />
+                                <TextAreaField label="Manufacturing details" value={form.manufacturingDetails} onChange={(v) => set("manufacturingDetails", v)} rows={2} />
+                                <RepeatableRows label="Specifications" rows={form.specifications} onChange={(rows) => set("specifications", rows)} addLabel="Add specification"
+                                    columns={[{ key: "key", placeholder: "Attribute" }, { key: "value", placeholder: "Value" }]} />
+                            </SectionCard>
 
-                            <Accordion icon={Handshake} title="Commercial Terms" subtitle="Payment, returns & warranty">
-                                <Field label="Payment terms" required><TextArea value={form.paymentTerms} onChange={(e) => set("paymentTerms", e.target.value)} rows={2} /></Field>
-                                <Field label="Return / replacement policy" required><TextArea value={form.returnPolicy} onChange={(e) => set("returnPolicy", e.target.value)} rows={3} /></Field>
-                                <Field label="Warranty"><TextInput value={form.warranty} onChange={(e) => set("warranty", e.target.value)} /></Field>
-                            </Accordion>
+                            <SectionCard icon={Boxes} title="Packaging & tax" alwaysOpen>
+                                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                                    <SelectField required dense label="Unit" value={form.unit} onChange={(v) => set("unit", v)} options={UNITS} />
+                                    <TextField required dense label="Pack size" value={form.packSize} onChange={(v) => set("packSize", v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
+                                    <TextField dense label="Master pack size" value={form.masterPackSize} onChange={(v) => set("masterPackSize", v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
+                                    <TextField required dense label="MOQ" value={form.moq} onChange={(v) => set("moq", v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
+                                </div>
+                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                    <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => set("hsnCode", v)} />
+                                    <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => set("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
+                                </div>
+                            </SectionCard>
 
-                            <Accordion icon={ShieldCheck} title="Quality & Certifications" subtitle="Optional — builds buyer trust">
-                                <Field label="Certificates">
-                                    <RowsEditor rows={form.qualityCertificates} onChange={(rows) => set("qualityCertificates", rows)} addLabel="Add certificate"
-                                        columns={[{ key: "name", placeholder: "Certificate name" }, { key: "url", placeholder: "Link to file" }]} />
-                                </Field>
-                                <Field label="TDS / MSDS / COA">
-                                    <RowsEditor rows={form.tdsMsdsCoa} onChange={(rows) => set("tdsMsdsCoa", rows)} addLabel="Add document"
-                                        columns={[{ key: "type", placeholder: "Document type" }, { key: "url", placeholder: "Link to file" }]} />
-                                </Field>
-                                <Field label="BIS / ISO / other certification">
-                                    <RowsEditor rows={form.otherCertifications} onChange={(rows) => set("otherCertifications", rows)} addLabel="Add certification"
-                                        columns={[{ key: "name", placeholder: "Certification name" }, { key: "url", placeholder: "Link to file" }]} />
-                                </Field>
-                            </Accordion>
+                            <SectionCard icon={IndianRupee} title="Pricing" alwaysOpen>
+                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                    <TextField required dense label="Base price (₹, ex GST per unit)" value={form.basePrice} onChange={(v) => set("basePrice", v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
+                                    <ChipToggleGroup dense label="As submitted, price was" value={form.priceBasis} onChange={(v) => set("priceBasis", v)} options={PRICE_BASIS_OPTIONS} />
+                                </div>
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    <ToggleField label="GST inclusive (as submitted)?" value={form.gstInclusive} onChange={(v) => set("gstInclusive", v)} />
+                                    <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => set("freightIncluded", v)} />
+                                </div>
+                                <div className="flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${C.secondary}0c` }}>
+                                    <span className="text-[11px] font-bold" style={{ color: C.muted }}>Final price (base + GST)</span>
+                                    <span className="text-[14.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>₹{finalPrice.toLocaleString("en-IN")}</span>
+                                </div>
+                                <ToggleField label="Sample available?" value={form.sampleAvailable} onChange={(v) => set("sampleAvailable", v)} />
+                                {form.sampleAvailable && (
+                                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                        <TextField dense label="Sample quantity" value={form.sampleQuantity} onChange={(v) => set("sampleQuantity", v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
+                                        <ChipToggleGroup dense label="Basis" value={form.sampleUnitBasis} onChange={(v) => set("sampleUnitBasis", v)} options={PRICE_BASIS_OPTIONS} />
+                                    </div>
+                                )}
+                                <RepeatableRows label="Discount slabs" rows={form.priceSlabs} onChange={(rows) => set("priceSlabs", rows)} addLabel="Add slab"
+                                    columns={[{ key: "minQty", placeholder: `Min qty (${form.unit || "units"})` }, { key: "discountPercent", placeholder: "Discount %" }]} />
+                            </SectionCard>
 
-                            {error && <p className="text-[12.5px] font-semibold text-[#c71f11]">{error}</p>}
+                            <SectionCard icon={Truck} title="Fulfilment & delivery" alwaysOpen>
+                                <ChipToggleGroup label="Fulfilment" value={form.stockType} onChange={(v) => set("stockType", v)}
+                                    options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
+                                {form.stockType === "ready_stock" ? (
+                                    <TextField required dense label={`Available stock (${form.unit || "units"})`} value={form.stockQuantity} onChange={(v) => set("stockQuantity", v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
+                                ) : (
+                                    <TextField required dense label="Production lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => set("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} inputMode="numeric" />
+                                )}
+                                <div className="flex flex-col gap-1">
+                                    <TextField required dense label="Dispatch pincode" value={form.dispatchPincode}
+                                        onChange={(v) => { set("dispatchPincode", v.replace(/[^\d]/g, "")); setPincodeStatus(null); }}
+                                        onBlur={confirmPincode} inputMode="numeric" />
+                                    {pincodeStatus === "checking" && <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>Checking…</p>}
+                                    {pincodeStatus === "ok" && <p className="text-[10.5px] font-bold" style={{ color: C.secondary }}>Dispatching from {form.dispatchDistrict}, {form.dispatchState}</p>}
+                                    {pincodeStatus === "error" && <p className="text-[10.5px] font-medium" style={{ color: C.primary }}>Couldn't verify this pincode.</p>}
+                                    {!pincodeStatus && form.dispatchDistrict && <p className="text-[10.5px] font-bold" style={{ color: C.muted }}>{form.dispatchDistrict}, {form.dispatchState}</p>}
+                                </div>
+                                <DispatchingLocationsPicker value={dispatchingLocations} onChange={setDispatchingLocations} />
+                            </SectionCard>
+
+                            <SectionCard icon={FileText} title="Terms" alwaysOpen>
+                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                    <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => set("returnPolicyKey", v)} />
+                                    <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => set("warrantyKey", v)} />
+                                </div>
+                            </SectionCard>
+
+                            <SectionCard icon={ShieldCheck} title="Quality & certifications">
+                                <RepeatableRows label="Certificates" rows={form.qualityCertificates} onChange={(rows) => set("qualityCertificates", rows)} addLabel="Add certificate"
+                                    columns={[{ key: "name", placeholder: "Certificate name" }, { key: "url", placeholder: "Link to file" }]} />
+                            </SectionCard>
+
+                            {error && <p className="rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ background: "#fee2e2", color: C.danger }}>{error}</p>}
                         </div>
                     </div>
                 )}
 
                 {!loading && form && (
-                    <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-100 px-5 py-3.5">
-                        <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[13px] font-bold text-slate-500">Cancel</button>
-                        <button onClick={handleSaveAndApprove} disabled={saving}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#047084] px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50">
-                            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                            {reviewStatus === "pending_review" ? "Save & Approve" : "Save changes"}
+                    <div className="flex shrink-0 items-center justify-end gap-2 border-t px-5 py-3.5" style={{ borderColor: C.hairSoft }}>
+                        <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[13px] font-bold" style={{ color: C.muted }}>Cancel</button>
+                        <button onClick={handleSave} disabled={saving || approving}
+                            className="rounded-lg border px-4 py-2 text-[13px] font-bold disabled:opacity-50" style={{ borderColor: C.hair, color: C.ink }}>
+                            {saving && !approving ? "Saving…" : "Save changes"}
                         </button>
+                        {reviewStatus === "pending_review" && (
+                            <button onClick={handleSaveAndApprove} disabled={saving || approving}
+                                className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-bold text-white disabled:opacity-50" style={{ background: C.secondary }}>
+                                {(saving || approving) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                Save &amp; Approve
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
