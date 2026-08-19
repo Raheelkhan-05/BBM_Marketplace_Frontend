@@ -187,7 +187,7 @@ function StateRow({ state, checked, onToggleState, mode, restriction, onSetRestr
 
     return (
         <div className="border-b py-2" style={{ borderColor: C.hairSoft }}>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 tracking-wide">
                 <button type="button" onClick={() => setExpanded((e) => !e)} disabled={!checked} className="shrink-0">
                     {expanded ? <ChevronDown className="h-3.5 w-3.5" style={{ color: checked ? C.muted : C.hair }} /> : <ChevronRight className="h-3.5 w-3.5" style={{ color: checked ? C.muted : C.hair }} />}
                 </button>
@@ -292,23 +292,23 @@ export default function DispatchingLocationsPicker({ value, onChange }) {
                 </div>
             ) : (
                 <div className="rounded-xl border p-3" style={{ borderColor: C.hair }}>
-                    <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="mb-2 flex items-center justify-between tracking-wider gap-2">
                         <span className="truncate text-[12px] font-extrabold" style={{ color: C.ink }}>{value.country.name}</span>
                     </div>
 
-                    <div className="mb-2 flex w-fit gap-1 rounded-lg p-1" style={{ background: C.hairSoft }}>
-                        <button type="button" onClick={() => setMode("exclude")} className="rounded-md px-3 py-1.5 text-[11.5px] font-bold transition-colors duration-150" style={mode === "exclude" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>Exclude specific places</button>
-                        <button type="button" onClick={() => setMode("include")} className="rounded-md px-3 py-1.5 text-[11.5px] font-bold transition-colors duration-150" style={mode === "include" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>Include specific places only</button>
+                    <div className="mb-2 flex w-fit gap-1 rounded-lg p-1 tracking-wider" style={{ background: C.hairSoft }}>
+                        <button type="button" onClick={() => setMode("exclude")} className="rounded-md px-3 py-1.5 text-[12px] font-bold transition-colors duration-150" style={mode === "exclude" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>Exclude specific places</button>
+                        <button type="button" onClick={() => setMode("include")} className="rounded-md px-3 py-1.5 text-[12px] font-bold transition-colors duration-150" style={mode === "include" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>Include specific places only</button>
                     </div>
 
-                    <div className="mb-2.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold" style={{ background: excludedStateCount > 0 || mode === "include" ? `${C.primary}0c` : `${C.secondary}0c`, color: excludedStateCount > 0 || mode === "include" ? C.primary : C.secondary }}>
+                    <div className="mb-2.5 rounded-lg px-2.5 py-1.5 text-[12px] font-bold tracking-wide" style={{ background: excludedStateCount > 0 || mode === "include" ? `${C.primary}0c` : `${C.secondary}0c`, color: excludedStateCount > 0 || mode === "include" ? C.primary : C.secondary }}>
                         {summary}
                     </div>
 
                     <div className="mb-2 flex items-center gap-1.5">
                         <div className="relative flex-1">
                             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: C.muted }} />
-                            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search states…" className="w-full rounded-lg border px-8 py-1.5 text-[11.5px] font-medium focus:outline-none focus:ring-2" style={{ borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` }} />
+                            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search states…" className="w-full rounded-lg border px-8 py-1.5 text-[11.5px] font-medium focus:outline-none focus:ring-2 tracking-wide" style={{ borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` }} />
                         </div>
                     </div>
 

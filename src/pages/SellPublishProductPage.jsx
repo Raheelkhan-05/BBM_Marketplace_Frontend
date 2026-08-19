@@ -126,8 +126,8 @@ export default function SellPublishProductPage() {
 
     return (
         <div className="mx-auto max-w-3xl min-h-screen px-4 pt-6 sm:px-6 bg-[#FCFBF9]">
-            <h1 className="text-[clamp(1.5rem,3.5vw,1.9rem)] font-bold text-slate-900">{isEdit ? "Edit listing" : "List a product"}</h1>
-            <p className="mt-1.5 text-[13.5px] font-medium text-slate-500">
+            <h1 className="text-[clamp(1.7rem,3.5vw,1.9rem)] font-bold text-slate-900">{isEdit ? "Edit listing" : "List a product"}</h1>
+            <p className="mt-1.5 text-[13.5px] tracking-wide font-medium text-slate-500">
                 {isEdit
                     ? "Update your commercial terms — buyers see this immediately if it's already approved."
                     : "Everything on one page. Save your Delivery, Tax & Legal, and Commercial Terms as groups once, and every future listing prefills from them."}

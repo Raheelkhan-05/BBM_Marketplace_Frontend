@@ -288,7 +288,7 @@ export default function SellerListingForm({
 
                         <FieldAnchor fieldKey="images">
                             <div className="flex flex-col gap-1.5">
-                                <span className="font-mono text-[9.5px] font-bold uppercase tracking-[0.12em]" style={{ color: C.muted }}>
+                                <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
                                     Product images {form.images.length > 0 && `(${form.images.length})`} <span style={{ color: C.primary }}>*</span>
                                 </span>
                                 <div className="flex flex-wrap gap-2">
@@ -358,7 +358,7 @@ export default function SellerListingForm({
                     <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />
                 </div>
                 <div className="flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${C.secondary}0c` }}>
-                    <span className="text-[11px] font-bold" style={{ color: C.muted }}>Base price / unit (excl. GST)</span>
+                    <span className="text-[11.5px] font-bold tracking-wide" style={{ color: C.muted }}>Base price / unit (excl. GST)</span>
                     <span className="text-[14.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</span>
                 </div>
 
@@ -437,19 +437,19 @@ export default function SellerListingForm({
                 ₹ amount so it's clear exactly what's being added and why. */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
-                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>Base price</p>
+                    <p className="text-[10.5px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Base price</p>
                     <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</p>
                 </div>
                 <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
-                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>+ GST ({form.gstPercent}%)</p>
+                    <p className="text-[10.5px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>+ GST ({form.gstPercent}%)</p>
                     <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{pricePreview.gstAmount.toLocaleString("en-IN")}</p>
                 </div>
                 <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
-                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.muted }}>+ Commission ({commissionPercent}%)</p>
+                    <p className="text-[10.5px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>+ Commission ({commissionPercent}%)</p>
                     <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.primary }}>₹{pricePreview.commissionAmount.toLocaleString("en-IN")}</p>
                 </div>
                 <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.secondary, background: `${C.secondary}0c` }}>
-                    <p className="font-mono text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: C.secondary }}>Final price</p>
+                    <p className="text-[10.5px] font-bold uppercase tracking-[0.08em]" style={{ color: C.secondary }}>Final price</p>
                     <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.secondary }}>₹{pricePreview.finalPricePerUnit.toLocaleString("en-IN")}</p>
                 </div>
             </div>

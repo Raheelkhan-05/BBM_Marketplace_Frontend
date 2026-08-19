@@ -2,7 +2,7 @@
 // the Home / SellerManageListingsPage visual language: same C tokens,
 // compact uppercase-caption labels (like QuickField), rounded-xl inputs,
 // rounded-2xl cards, hairline borders, tabular-nums, framer-motion entrance.
-import { useState } from "react";
+import { useState, useRef, useId, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Plus, Trash2, Info, Check } from "lucide-react";
 
@@ -22,30 +22,122 @@ export const EASE = [0.16, 1, 0.3, 1];
 // SellerManageListingsPage, so every field in the app reads the same way.
 export function Label({ children, hint }) {
     const [showHint, setShowHint] = useState(false);
+    const wrapperRef = useRef(null);
+    const tooltipId = useId();
+
+    useEffect(() => {
+        if (!showHint) return;
+
+        const handleOutsideClick = (e) => {
+            if (!wrapperRef.current?.contains(e.target)) {
+                setShowHint(false);
+            }
+        };
+
+        const handleKeyDown = (e) => {
+            if (e.key === "Escape") {
+                setShowHint(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleOutsideClick);
+        document.addEventListener("touchstart", handleOutsideClick);
+        document.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            document.removeEventListener("mousedown", handleOutsideClick);
+            document.removeEventListener("touchstart", handleOutsideClick);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [showHint]);
+
+    if (!hint) {
+        return (
+            <span className="flex items-center gap-1.5">
+                <span
+                    className="text-[11px] font-extrabold uppercase"
+                    style={{
+                        color: "#4A535B",
+                        letterSpacing: "0.08em",
+                    }}
+                >
+                    {children}
+                </span>
+            </span>
+        );
+    }
+
     return (
-        <span className="flex items-center gap-1.5">
-            <span className="text-[11px] font-extrabold uppercase" style={{ color: "#4A535B", letterSpacing: "0.045em" }}>
+        <span
+            ref={wrapperRef}
+            className="relative flex w-fit items-center gap-1.5"
+        >
+            <span
+                className="text-[11px] font-extrabold uppercase"
+                style={{
+                    color: "#4A535B",
+                    letterSpacing: "0.08em",
+                }}
+            >
                 {children}
             </span>
-            {hint && (
-                <span className="relative inline-flex">
-                    <button type="button" onMouseEnter={() => setShowHint(true)} onMouseLeave={() => setShowHint(false)}
-                        onClick={() => setShowHint((s) => !s)} className="flex h-3.5 w-3.5 items-center justify-center rounded-full" aria-label="More info">
-                        <Info className="h-3 w-3" style={{ color: C.muted }} />
-                    </button>
-                    <AnimatePresence>
-                        {showHint && (
-                            <motion.span initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 4 }} transition={{ duration: 0.15 }}
-                                className="absolute bottom-full left-1/2 z-20 mb-1.5 w-44 -translate-x-1/2 rounded-lg px-2.5 py-1.5 text-[10.5px] font-medium leading-snug text-white shadow-lg" style={{ background: C.ink }}>
-                                {hint}
-                            </motion.span>
-                        )}
-                    </AnimatePresence>
-                </span>
-            )}
+
+            <button
+                type="button"
+                onClick={() => setShowHint((s) => !s)}
+                className="flex h-5 w-5 shrink-0 touch-manipulation items-center justify-center rounded-full transition-colors hover:bg-black/5 active:bg-black/10"
+                aria-label={`More information about ${children}`}
+                aria-expanded={showHint}
+                aria-describedby={showHint ? tooltipId : undefined}
+            >
+                <Info
+                    className="h-3.5 w-3.5"
+                    style={{ color: C.muted }}
+                    aria-hidden="true"
+                />
+            </button>
+
+            <AnimatePresence>
+                {showHint && (
+                    <motion.div
+                        id={tooltipId}
+                        role="tooltip"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 4 }}
+                        transition={{ duration: 0.15 }}
+                        className="
+                            absolute
+                            left-0
+                            top-full
+                            z-[100]
+                            mt-2
+                            w-[min(18rem,calc(100vw-2rem))]
+                            rounded-lg
+                            px-3
+                            py-2
+                            text-[12px]
+                            tracking-wide
+                            font-medium
+                            leading-snug
+                            text-white
+                            shadow-lg
+                        "
+                        style={{ background: C.ink }}
+                    >
+                        {hint}
+
+                        <span
+                            className="absolute -top-1.5 left-3 h-3 w-3 rotate-45"
+                            style={{ background: C.ink }}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </span>
     );
 }
+
 // Shared border/ring style so every field control looks the same whether
 // it's untouched, valid, or (after blur) missing.
 function fieldTone(error) {
@@ -65,7 +157,7 @@ export function TextField({ label, value, onChange, onBlur, placeholder, inputMo
                 disabled={disabled}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
-                className={`w-full rounded-lg border bg-white ${dense ? "px-2.5 py-2 text-[13px]" : "px-3 py-2.5 text-[13.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
+                className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "px-2.5 py-1.5 text-[13px]" : "px-3 py-2 text-[13px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
                 style={{ color: C.ink, ...fieldTone(error) }}
             />
         </div>
@@ -82,7 +174,7 @@ export function TextAreaField({ label, value, onChange, onBlur, placeholder, hin
                 rows={rows}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
-                className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[13px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2"
+                className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[13px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2 tracking-wide"
                 style={{ color: C.ink, ...fieldTone(error) }}
             />
         </div>
@@ -97,7 +189,7 @@ export function SelectField({ label, value, onChange, onBlur, options, hint, req
                 value={value ?? ""}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
-                className={`w-full rounded-lg border bg-white ${dense ? "px-2.5 py-2 text-[13px]" : "px-3 py-2.5 text-[13.5px]"} font-bold focus:outline-none focus:ring-2`}
+                className={`w-full rounded-lg border bg-white ${dense ? "px-2.5 py-2 text-[13px]" : "px-3 py-2.5 text-[13.5px]"} font-bold focus:outline-none focus:ring-2 tracking-wide`}
                 style={{ color: C.ink, ...fieldTone(error) }}
             >
                 <option value="" disabled>{placeholder}</option>
@@ -119,7 +211,7 @@ export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", off
                         key={t}
                         type="button"
                         onClick={() => onChange(v)}
-                        className="rounded-md px-3 py-1.5 text-[12px] font-bold transition-colors duration-150"
+                        className="rounded-md px-3 py-0.5 text-[12px] tracking-wider font-bold transition-colors duration-150"
                         style={value === v ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
                     >
                         {t}
@@ -143,7 +235,7 @@ export function ChipToggleGroup({ label, value, onChange, options, hint, dense }
                             key={optValue}
                             type="button"
                             onClick={() => onChange(optValue)}
-                            className={`rounded-full border ${dense ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-[12px]"} font-bold transition-colors duration-150`}
+                            className={`rounded-full border tracking-wide ${dense ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-[12.5px]"} font-bold transition-colors duration-150`}
                             style={active
                                 ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary }
                                 : { borderColor: C.hair, color: C.muted, background: "#fff" }}
@@ -179,7 +271,7 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
                                     placeholder={c.placeholder}
                                     inputMode={c.inputMode}
                                     onChange={(e) => update(idx, c.key, e.target.value)}
-                                    className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2"
+                                    className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 tracking-wide"
                                     style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }}
                                 />
                             ))}
@@ -193,7 +285,7 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
             <button
                 type="button"
                 onClick={add}
-                className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-[11.5px] font-bold transition-colors duration-150 hover:bg-black/[0.02]"
+                className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-[11.5px] font-bold transition-colors duration-150 hover:bg-black/[0.02] tracking-wide"
                 style={{ borderColor: C.hair, color: C.secondary }}
             >
                 <Plus className="h-3.5 w-3.5" /> {addLabel}
@@ -228,8 +320,8 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
                         <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
-                        <span className="block text-[13.5px] font-extrabold leading-tight" style={{ color: C.ink }}>{title}</span>
-                        {subtitle && <span className="mt-0.5 block truncate text-[10.5px] font-semibold" style={{ color: C.muted }}>{subtitle}</span>}
+                        <span className="block text-[14px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{title}</span>
+                        {subtitle && <span className="mt-0 block truncate text-[11px] tracking-wide font-semibold" style={{ color: C.muted }}>{subtitle}</span>}
                     </span>
                 </button>
                 {headerRight}

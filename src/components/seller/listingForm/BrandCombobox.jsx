@@ -64,7 +64,7 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
         return (
             <div className="flex flex-col gap-1">
                 <Label>Brand <span style={{ color: C.primary }}> *</span></Label>
-                <div className="flex items-center justify-between rounded-xl border px-3.5 py-2.5" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                <div className="flex items-center justify-between rounded-xl border px-3.5 py-2.5 tracking-wide" style={{ borderColor: C.hair, background: C.hairSoft }}>
                     <span className="text-[12.5px] font-bold" style={{ color: C.muted }}>No brand for this product</span>
                     <button type="button" onClick={clearSelection} className="text-[11px] font-bold" style={{ color: C.secondary }}>Change</button>
                 </div>
@@ -84,7 +84,7 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[12px] font-extrabold" style={{ background: `${C.secondary}14`, color: C.secondary }}>{initials}</span>
                     )}
                     <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-extrabold" style={{ color: C.ink }}>{value}</p>
+                        <p className="truncate text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>{value}</p>
                         {justCreated && !image && <p className="text-[10.5px] font-semibold" style={{ color: C.muted }}>New brand</p>}
                     </div>
                     <button type="button" onClick={clearSelection} className="shrink-0 rounded-full p-1.5 transition-colors duration-150 hover:bg-black/[0.05]">
@@ -105,7 +105,7 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
                         </div>
                     </motion.div>
                 )}
-                <button type="button" onClick={clearSelection} className="w-fit text-[10.5px] font-bold underline" style={{ color: C.muted }}>This product has no brand</button>
+                {/* <button type="button" onClick={clearSelection} className="w-fit text-[12px] tracking-wide font-bold underline" style={{ color: C.primary }}>This product has no brand?</button> */}
             </div>
         );
     }
@@ -118,12 +118,12 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: C.muted }} />
                     <input value={query} onFocus={() => setOpen(true)} onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
                         placeholder="Search or type a new brand…"
-                        className="w-full rounded-xl border py-2.5 pl-9 pr-3 text-[13px] font-bold focus:outline-none focus:ring-2"
-                        style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
+                        className="w-full rounded-xl tracking-wide border py-2.5 pl-9 pr-3 text-[13px] focus:outline-none focus:ring-2 placeholder:text-gray-300"
+                        style={{ borderColor: C.hair }} />
                 </div>
                 <button type="button" onClick={markNotApplicable}
-                    className="shrink-0 rounded-xl border px-3 py-2.5 text-[11.5px] font-bold transition-colors duration-150 hover:bg-black/[0.02]"
-                    style={{ borderColor: C.hair, color: C.muted }}>
+                    className="shrink-0 rounded-xl border px-3 py-2.5 text-[10.5px] transition-colors font-bold tracking-wider duration-150 hover:bg-black/[0.02] text-slate-700 uppercase"
+                    style={{ borderColor: "#d4d4d4ff" }}>
                     No brand
                 </button>
             </div>
@@ -138,7 +138,7 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
                                 {it.image ? <img src={it.image} alt="" className="h-7 w-7 rounded object-cover" /> : (
                                     <span className="flex h-7 w-7 items-center justify-center rounded text-[10px] font-extrabold" style={{ background: C.hairSoft, color: C.muted }}>{it.name.slice(0, 2).toUpperCase()}</span>
                                 )}
-                                <span className="text-[12.5px] font-semibold" style={{ color: C.ink }}>{it.name}</span>
+                                <span className="text-[12.5px] tracking-wide uppercase font-bold" style={{ color: C.ink }}>{it.name}</span>
                             </button>
                         ))}
                         {query.trim() && !exactMatch && (

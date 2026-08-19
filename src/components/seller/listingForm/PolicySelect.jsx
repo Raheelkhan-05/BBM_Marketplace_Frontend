@@ -75,7 +75,7 @@ export default function PolicySelect({ kind, label, value, onChange, error, requ
         <div ref={boxRef} className="relative flex min-w-0 flex-col gap-1">
             <Label>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>
             <button type="button" onClick={() => setOpen((o) => !o)}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-left text-[13px] font-bold focus:outline-none focus:ring-2"
+                className="flex w-full items-center tracking-wide justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-left text-[13px] font-bold focus:outline-none focus:ring-2"
                 style={error ? { borderColor: "#f2b3ab", background: "#fff8f7" } : { borderColor: C.hair }}>
                 <span className="truncate" style={{ color: selected ? C.ink : "#94a3b8" }}>{selected ? selected.label : "Select…"}</span>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200" style={{ color: C.muted, transform: open ? "rotate(180deg)" : "none" }} />
@@ -96,7 +96,7 @@ export default function PolicySelect({ kind, label, value, onChange, error, requ
                     >
                         {options.map((o) => (
                             <button key={o.key} type="button" onClick={() => { onChange(o.key); setOpen(false); }}
-                                className="flex w-full items-start gap-2.5 border-b px-3.5 py-2.5 text-left last:border-b-0 transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hairSoft }}>
+                                className="flex w-full items-start gap-2.5 border-b px-3.5 py-2.5 tracking-wide text-left last:border-b-0 transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hairSoft }}>
                                 <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full" style={o.key === value ? { background: C.secondary } : { border: `1.5px solid ${C.hair}` }}>
                                     {o.key === value && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
                                 </span>
