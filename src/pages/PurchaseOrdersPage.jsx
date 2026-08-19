@@ -13,7 +13,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { fetchMyOrders, cancelMyOrder } from "../utils/api.js";
 import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
 import { C, EASE } from "../components/catalog/tokens";
-import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote } from "../components/orders/OrderDisplayHelpers.jsx";
+import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const STATUS_TABS = [
     { key: "", label: "All" }, { key: "pending_confirmation", label: "Pending" }, { key: "confirmed", label: "Confirmed" },
@@ -61,12 +61,12 @@ function OrderCard({ order, idx, onCancel }) {
                 </div>
             </div>
 
-            {(item?.lead_time_snapshot || order.stock_shortfall) && (
+            {(item && shouldShowDelivery(order, item)) || shouldShowShortfall(order) ? (
                 <div className="mt-2.5 flex flex-col gap-1.5">
-                    {item && <DeliveryEstimate date={item.lead_time_snapshot} label="Est. delivery" />}
-                    {order.stock_shortfall && <StockShortfallNote audience="buyer" />}
+                    {item && shouldShowDelivery(order, item) && <DeliveryEstimate order={order} item={item} />}
+                    {shouldShowShortfall(order) && <StockShortfallNote audience="buyer" />}
                 </div>
-            )}
+            ) : null}
 
             <div className="mt-3 flex items-center justify-between gap-2 border-t pt-2.5" style={{ borderColor: C.hairSoft }}>
                 <p className="text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>

@@ -12,7 +12,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { fetchOrderById, cancelMyOrder } from "../utils/api.js";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
-import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote } from "../components/orders/OrderDisplayHelpers.jsx";
+import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const TIMELINE_STEPS = ["pending_confirmation", "confirmed", "processing", "shipped", "delivered"];
 
@@ -66,6 +66,9 @@ export default function OrderDetailPage() {
 
     const fetcher = useCallback((orderId) => fetchOrderById(token, orderId), [token]);
     const { order, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
+    // console.log("order.stock_shortfall:", order?.stock_shortfall, "| lead_time_snapshot:", order?.items?.[0]?.lead_time_snapshot);
+
+    const deliveredEvent = events.find((e) => e.to_status === "delivered");
 
     const handleCancel = async () => {
         const res = await cancelMyOrder(token, id, "Cancelled by buyer");
@@ -122,11 +125,13 @@ export default function OrderDetailPage() {
                 <Timeline status={order.status} events={events} />
             </Card>
 
-            {(firstItem?.lead_time_snapshot || order.stock_shortfall) && (
+            {(shouldShowDelivery(order, firstItem) || shouldShowShortfall(order)) && (
                 <Card title="Delivery">
                     <div className="flex flex-col gap-2">
-                        {firstItem && <DeliveryEstimate date={firstItem.lead_time_snapshot} />}
-                        {order.stock_shortfall && <StockShortfallNote audience="buyer" />}
+                        {shouldShowDelivery(order, firstItem) && (
+                            <DeliveryEstimate order={order} item={firstItem} deliveredAt={deliveredEvent?.created_at} />
+                        )}
+                        {shouldShowShortfall(order) && <StockShortfallNote audience="buyer" />}
                     </div>
                 </Card>
             )}

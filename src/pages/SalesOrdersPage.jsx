@@ -9,7 +9,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { fetchSellerOrders, confirmSellerOrder, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder } from "../utils/api.js";
 import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
 import { C, EASE } from "../components/catalog/tokens";
-import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote } from "../components/orders/OrderDisplayHelpers.jsx";
+import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const STATUS_TABS = [
     { key: "", label: "All" }, { key: "pending_confirmation", label: "New" }, { key: "confirmed", label: "Confirmed" },
@@ -56,10 +56,10 @@ function OrderCard({ order, idx, onAction }) {
                 <StatusChip status={order.status} />
             </div>
 
-            {(order.stock_shortfall || firstItem?.lead_time_snapshot) && (
+            {(shouldShowShortfall(order) || shouldShowDelivery(order, firstItem)) && (
                 <div className="mt-2.5 flex flex-col gap-1.5">
-                    {order.stock_shortfall && <StockShortfallNote audience="seller" />}
-                    {firstItem && <DeliveryEstimate date={firstItem.lead_time_snapshot} label="Buyer's est. delivery" />}
+                    {shouldShowShortfall(order) && <StockShortfallNote audience="seller" />}
+                    {shouldShowDelivery(order, firstItem) && <DeliveryEstimate order={order} item={firstItem} label="Buyer's est. delivery" />}
                 </div>
             )}
 

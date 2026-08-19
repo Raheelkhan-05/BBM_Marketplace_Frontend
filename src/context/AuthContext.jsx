@@ -120,6 +120,7 @@ export function AuthProvider({ children }) {
     if (!chanToken) return;
 
     channelRef.current = openChannel(chanToken);
+    console.log("chanToken", chanToken)
 
     return () => {
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
@@ -128,6 +129,7 @@ export function AuthProvider({ children }) {
         channelRef.current = null;
       }
     };
+
   }, [profile?.notificationChannel, openChannel]);
 
   // Treat "tab became visible/focused again" the same as a reconnect —

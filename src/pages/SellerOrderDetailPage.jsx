@@ -13,7 +13,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { fetchSellerOrderById, confirmSellerOrder, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder } from "../utils/api.js";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
-import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote } from "../components/orders/OrderDisplayHelpers.jsx";
+import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const NEXT_ACTION = {
     pending_confirmation: [{ key: "confirm", label: "Confirm order", fn: confirmSellerOrder, primary: true }, { key: "reject", label: "Reject", fn: rejectSellerOrder, needsReason: true }],
@@ -73,6 +73,8 @@ export default function SellerOrderDetailPage() {
     const fetcher = useCallback((orderId) => fetchSellerOrderById(token, orderId), [token]);
     const { order, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
 
+    const deliveredEvent = events.find((e) => e.to_status === "delivered");
+
     const actions = NEXT_ACTION[order?.status] || [];
     const runAction = async (action) => {
         let reason;
@@ -116,11 +118,13 @@ export default function SellerOrderDetailPage() {
                 <Timeline status={order.status} events={events} />
             </Card>
 
-            {(order.stock_shortfall || firstItem?.lead_time_snapshot) && (
+            {(shouldShowDelivery(order, firstItem) || shouldShowShortfall(order)) && (
                 <Card title="Fulfilment">
                     <div className="flex flex-col gap-2">
-                        {order.stock_shortfall && <StockShortfallNote audience="seller" />}
-                        {firstItem && <DeliveryEstimate date={firstItem.lead_time_snapshot} label="Buyer's est. delivery" />}
+                        {shouldShowShortfall(order) && <StockShortfallNote audience="seller" />}
+                        {shouldShowDelivery(order, firstItem) && (
+                            <DeliveryEstimate order={order} item={firstItem} deliveredAt={deliveredEvent?.created_at} label="Buyer's est. delivery" />
+                        )}
                     </div>
                 </Card>
             )}
@@ -157,7 +161,7 @@ export default function SellerOrderDetailPage() {
             <Card title="Buyer">
                 <p className="flex items-center gap-1.5 text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>
                     <User className="h-3.5 w-3.5" /> {order.buyer_contact_name}
-                    {order.buyer_gst_verified && <span className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold text-white" style={{ background: C.secondary }}><ShieldCheck className="h-2.5 w-2.5" /> GST Verified</span>}
+                    {/* {order.buyer_gst_verified && <span className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold text-white" style={{ background: C.secondary }}><ShieldCheck className="h-2.5 w-2.5" /> GST Verified</span>} */}
                 </p>
                 {order.buyer_business_name && <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>{order.buyer_business_name}{order.buyer_gstin ? ` · ${order.buyer_gstin}` : ""}</p>}
                 <p className="mt-1.5 flex flex-wrap items-center gap-x-3 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>

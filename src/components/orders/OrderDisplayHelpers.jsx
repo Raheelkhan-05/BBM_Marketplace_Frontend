@@ -67,11 +67,51 @@ export function looksLikeDeliveryDate(value) {
     return typeof value === "string" && /^\d{2}\s[A-Za-z]{3}$/.test(value);
 }
 
-export function DeliveryEstimate({ date, label = "Estimated delivery", accent = "#006F83" }) {
-    if (!looksLikeDeliveryDate(date)) return null;
+// Accepts the ISO date ("2026-08-20") the RPC actually stores, and stays
+// backward-compatible with any legacy "DD Mon" free-text values that may
+// exist on orders placed before lead_time_snapshot held a real date.
+export function parseDeliveryDate(value) {
+    if (typeof value !== "string") return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        const d = new Date(value + "T00:00:00");
+        if (Number.isNaN(d.getTime())) return null;
+        return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+    }
+    if (/^\d{2}\s[A-Za-z]{3}$/.test(value)) return value;
+    return null;
+}
+
+// Shortfall only matters before the seller has acted — matches
+// update_order_status's own transition table, where 'confirmed'/'rejected'
+// are the only moves out of pending_confirmation.
+export function shouldShowShortfall(order) {
+    return !!order.stock_shortfall && order.status === "pending_confirmation";
+}
+
+export function shouldShowDelivery(order, item) {
+    if (order.status === "delivered") return true; // always resolvable — updated_at is always present
+    return !!parseDeliveryDate(item?.lead_time_snapshot);
+}
+
+// deliveredAt: pass an explicit ISO timestamp when you have it (detail
+// pages, from the 'delivered' order_event) — falls back to order.updated_at
+// otherwise (list pages, which don't fetch events).
+export function DeliveryEstimate({ order, item, deliveredAt, label = "Estimated delivery" }) {
+    if (order.status === "delivered") {
+        const ts = deliveredAt || order.updated_at;
+        if (!ts) return null;
+        const formatted = new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+        return (
+            <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide" style={{ color: "#059669" }}>
+                <Calendar className="h-3 w-3" /> Delivered on: {formatted}
+            </p>
+        );
+    }
+    const formatted = parseDeliveryDate(item?.lead_time_snapshot);
+    if (!formatted) return null;
     return (
-        <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide" style={{ color: accent }}>
-            <Calendar className="h-3 w-3" /> {label}: {date}
+        <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide" style={{ color: "#006F83" }}>
+            <Calendar className="h-3 w-3" /> {label}: {formatted}
         </p>
     );
 }
