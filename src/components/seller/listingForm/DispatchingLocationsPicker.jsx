@@ -98,7 +98,7 @@ function CityPanel({ state, mode, restriction, onSetRestriction }) {
     }, [state.id]);
 
     if (allCities === null) {
-        return <div className="ml-9 mt-2 flex items-center gap-2 text-[11px] font-medium" style={{ color: C.muted }}><Loader2 className="h-3 w-3 animate-spin" /> Loading cities…</div>;
+        return <div className="ml-9 mt-2 flex items-center gap-2 text-[11.5px] font-medium" style={{ color: C.muted }}><Loader2 className="h-3 w-3 animate-spin" /> Loading cities…</div>;
     }
 
     const isChecked = (city) => {
@@ -136,11 +136,11 @@ function CityPanel({ state, mode, restriction, onSetRestriction }) {
     return (
         <div className="ml-9 mt-2 flex flex-col gap-2 rounded-lg border p-2.5" style={{ borderColor: C.hairSoft }}>
             <div className="flex items-center justify-between gap-2">
-                <label className="flex items-center gap-2 text-[11px] font-bold" style={{ color: C.ink }}>
+                <label className="flex items-center gap-2 text-[11.5px] font-bold" style={{ color: C.ink }}>
                     <HeaderCheckbox checked={allSelected} indeterminate={!allSelected && !noneSelected} onChange={() => (allSelected ? deselectAll() : selectAll())} />
                     Select all cities
                 </label>
-                <span className="text-[10px] font-semibold" style={{ color: mode === "exclude" ? C.primary : C.secondary }}>
+                <span className="text-[10.5px] font-semibold" style={{ color: mode === "exclude" ? C.primary : C.secondary }}>
                     {mode === "exclude"
                         ? (restrictedCount > 0 ? `${restrictedCount} excluded` : "All included")
                         : (restriction === undefined ? "All included" : `${restriction.length} of ${allCities.length} included`)}
@@ -151,16 +151,16 @@ function CityPanel({ state, mode, restriction, onSetRestriction }) {
                 <div className="relative">
                     <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2" style={{ color: C.muted }} />
                     <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter cities…"
-                        className="w-full rounded-md border py-1 pl-6 pr-2 text-[10.5px] font-medium focus:outline-none" style={{ borderColor: C.hair }} />
+                        className="w-full rounded-md border py-1 pl-6 pr-2 text-[11px] font-medium focus:outline-none" style={{ borderColor: C.hair }} />
                 </div>
             )}
 
             {allCities.length === 0 ? (
-                <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>No cities on file for {state.name} yet — add one manually below.</p>
+                <p className="text-[11px] font-medium" style={{ color: C.muted }}>No cities on file for {state.name} yet — add one manually below.</p>
             ) : (
                 <div ref={cityScrollRef} className="grid max-h-40 grid-cols-2 gap-x-3 gap-y-1 overflow-y-auto pr-1 sm:grid-cols-3">
                     {visible.map((city) => (
-                        <label key={city} className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.ink }}>
+                        <label key={city} className="flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: C.ink }}>
                             <input type="checkbox" checked={isChecked(city)} onChange={() => toggleCity(city)} className="h-3 w-3 shrink-0" />
                             <span className="truncate">{city}</span>
                         </label>
@@ -172,7 +172,7 @@ function CityPanel({ state, mode, restriction, onSetRestriction }) {
                 <input value={customInput} onChange={(e) => setCustomInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCustom(); } }}
                     placeholder="City not listed? Type and press Enter"
-                    className="min-w-0 flex-1 rounded-md border px-2 py-1 text-[10.5px] font-medium focus:outline-none" style={{ borderColor: C.hair }} />
+                    className="min-w-0 flex-1 rounded-md border px-2 py-1 text-[11px] font-medium focus:outline-none" style={{ borderColor: C.hair }} />
                 <button type="button" onClick={addCustom} className="shrink-0 rounded-md border px-2" style={{ borderColor: C.hair, color: C.secondary }}>
                     <Plus className="h-3 w-3" />
                 </button>
@@ -193,10 +193,10 @@ function StateRow({ state, checked, onToggleState, mode, restriction, onSetRestr
                 </button>
                 <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
                     <input type="checkbox" checked={checked} onChange={() => onToggleState(state.name)} className="h-3.5 w-3.5 shrink-0" />
-                    <span className="flex-1 truncate text-[12.5px] font-semibold" style={{ color: checked ? C.ink : C.muted }}>{state.name}</span>
+                    <span className="flex-1 truncate text-[13px] font-semibold" style={{ color: checked ? C.ink : C.muted }}>{state.name}</span>
                 </label>
                 {checked && hasCityRestriction && (
-                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[9.5px] font-bold" style={{ background: `${C.primary}12`, color: C.primary }}>Customized</span>
+                    <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: `${C.primary}12`, color: C.primary }}>Customized</span>
                 )}
             </div>
             {expanded && checked && (
@@ -287,28 +287,28 @@ export default function DispatchingLocationsPicker({ value, onChange }) {
         <div className="flex flex-col gap-1.5">
             <Label>Dispatching locations <span style={{ color: C.primary }}> *</span></Label>
             {!value?.country ? (
-                <div className="flex items-center gap-2 rounded-xl border p-3 text-[11px] font-medium" style={{ borderColor: C.hair, color: C.muted }}>
+                <div className="flex items-center gap-2 rounded-xl border p-3 text-[11.5px] font-medium" style={{ borderColor: C.hair, color: C.muted }}>
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading India…
                 </div>
             ) : (
                 <div className="rounded-xl border p-3" style={{ borderColor: C.hair }}>
                     <div className="mb-2 flex items-center justify-between tracking-wider gap-2">
-                        <span className="truncate text-[12px] font-extrabold" style={{ color: C.ink }}>{value.country.name}</span>
+                        <span className="truncate text-[12.5px] font-extrabold" style={{ color: C.ink }}>{value.country.name}</span>
                     </div>
 
                     <div className="mb-2 flex w-fit gap-1 rounded-lg p-1 tracking-wider" style={{ background: C.hairSoft }}>
-                        <button type="button" onClick={() => setMode("exclude")} className="rounded-md px-3 py-1.5 text-[12px] font-bold transition-colors duration-150" style={mode === "exclude" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>Exclude specific places</button>
-                        <button type="button" onClick={() => setMode("include")} className="rounded-md px-3 py-1.5 text-[12px] font-bold transition-colors duration-150" style={mode === "include" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>Include specific places only</button>
+                        <button type="button" onClick={() => setMode("exclude")} className="rounded-md px-3 py-1.5 text-[12.5px] font-bold transition-colors duration-150" style={mode === "exclude" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>Exclude specific places</button>
+                        <button type="button" onClick={() => setMode("include")} className="rounded-md px-3 py-1.5 text-[12.5px] font-bold transition-colors duration-150" style={mode === "include" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>Include specific places only</button>
                     </div>
 
-                    <div className="mb-2.5 rounded-lg px-2.5 py-1.5 text-[12px] font-bold tracking-wide" style={{ background: excludedStateCount > 0 || mode === "include" ? `${C.primary}0c` : `${C.secondary}0c`, color: excludedStateCount > 0 || mode === "include" ? C.primary : C.secondary }}>
+                    <div className="mb-2.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-bold tracking-wide" style={{ background: excludedStateCount > 0 || mode === "include" ? `${C.primary}0c` : `${C.secondary}0c`, color: excludedStateCount > 0 || mode === "include" ? C.primary : C.secondary }}>
                         {summary}
                     </div>
 
                     <div className="mb-2 flex items-center gap-1.5">
                         <div className="relative flex-1">
                             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: C.muted }} />
-                            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search states…" className="w-full rounded-lg border px-8 py-1.5 text-[11.5px] font-medium focus:outline-none focus:ring-2 tracking-wide" style={{ borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` }} />
+                            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search states…" className="w-full rounded-lg border px-8 py-1.5 text-[12px] font-medium focus:outline-none focus:ring-2 tracking-wide" style={{ borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` }} />
                         </div>
                     </div>
 

@@ -46,7 +46,7 @@ import {
 } from "../utils/api.js";
 import ImageLightbox from "../components/ImageLightbox.jsx";
 
-const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
+// const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
 const C = {
     ink: "#0B1116",
@@ -699,7 +699,7 @@ export default function SellerManageListingsPage() {
 
     if (!isApprovedSeller) {
         return (
-            <div className="min-h-screen" style={{ background: "#FCFBF9", fontFamily: FONT_BODY }}>
+            <div className="min-h-screen" style={{ background: "#FCFBF9" }}>
                 <div className="mx-auto flex max-w-md flex-col items-center px-6 py-24 text-center">
                     <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
                         {profile?.seller_status === "pending_review" ? <Clock className="h-6 w-6" /> : <Lock className="h-6 w-6" />}
@@ -722,7 +722,7 @@ export default function SellerManageListingsPage() {
     }
 
     return (
-        <div className="min-h-screen bg-[#FCFBF9] text-slate-900 antialiased" style={{ fontFamily: FONT_BODY }}>
+        <div className="min-h-screen bg-[#FCFBF9] text-slate-900 antialiased">
             <SmoothScrollProvider>
                 <main className="mx-auto max-w-5xl px-2.5 pb-24 pt-5 sm:px-4 lg:px-6">
 

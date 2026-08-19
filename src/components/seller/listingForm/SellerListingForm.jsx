@@ -27,7 +27,7 @@ import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
 import PolicySelect from "./PolicySelect.jsx";
 
-const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
+// const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
@@ -256,7 +256,7 @@ export default function SellerListingForm({
     };
 
     return (
-        <div className="flex flex-col gap-3 pb-24 sm:gap-3.5" style={{ fontFamily: FONT_BODY }}>
+        <div className="flex flex-col gap-3 pb-24 sm:gap-3.5">
             {error && (
                 <div className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12px] font-semibold leading-snug" style={{ background: "rgba(199,31,17,0.08)", color: C.danger }}>
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
