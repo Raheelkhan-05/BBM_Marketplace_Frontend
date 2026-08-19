@@ -38,6 +38,7 @@ import GenericProductBrandsPage from "./pages/GenericProductBrandsPage.jsx";
 import BrandItemSellersPage from "./pages/BrandItemSellersPage.jsx";
 import SellerManageListingsPage from "./pages/SellerManageListingsPage.jsx";
 import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
+import PendingSubmissionWatcher from "./components/PendingSubmissionWatcher.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -51,6 +52,15 @@ function App() {
       <BrowserRouter>
         <ScrollToTop />
         <InstallAppPrompt />
+        {/*
+          Runs on every page, app-wide. If the user has a product listing
+          draft cached locally (because they tried to submit before being
+          an approved seller), this silently checks seller access and
+          auto-submits that draft the moment they become approved —
+          e.g. right after finishing onboarding, or once admin approves
+          their shop — without requiring them to revisit the listing form.
+        */}
+        <PendingSubmissionWatcher />
         <Routes>
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<AuthPage />} />

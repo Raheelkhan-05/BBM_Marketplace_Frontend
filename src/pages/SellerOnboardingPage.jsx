@@ -8,12 +8,15 @@ import {
 import { useAuth } from "../context/AuthContext.jsx";
 import {
   fetchSellerOnboarding, saveSellerProgress, submitSellerOnboarding, uploadSellerFile,
-  requestSellerWhatsappOtp, verifySellerWhatsappOtp,
+  requestSellerWhatsappOtp, verifySellerWhatsappOtp, createSellerSubmission,
 } from "../utils/api.js";
 import { lookupPincode } from "../utils/pincode.js";
 import { extractColorsFromImage } from "../utils/colorExtract.js";
 import { STEPS, BUSINESS_TYPES, EMPLOYEE_RANGES, WEEKDAYS, COUNTRIES, guessBusinessType, searchCountries } from "../components/seller/fieldConfigs.js";
 import { FONT_BODY } from "./ui.jsx";
+import {
+  readPendingProductSubmission, clearPendingProductSubmission,
+} from "./SellPublishProductPage.jsx";
 
 const STEP_ICONS = [Building2, Phone, MapPin, ShieldCheck, Settings2, Palette, ClipboardCheck];
 
@@ -32,6 +35,7 @@ export default function SellerOnboardingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
+  const [pendingProductStatus, setPendingProductStatus] = useState(null); // null | "submitted" | "still_pending"
 
   useEffect(() => {
     if (!token) return;
@@ -91,6 +95,27 @@ export default function SellerOnboardingPage() {
     try {
       const res = await submitSellerOnboarding(token, form);
       if (!res?.success) return setError(res?.message || "Couldn't submit. Please check required fields.");
+
+      // Fast path only: if the user had a product listing waiting because they weren't
+      // a seller yet, try to submit it right now in case approval is instant. If the
+      // seller still needs review, this call fails harmlessly — the draft stays cached
+      // and the app-wide <PendingSubmissionWatcher /> (mounted in App.jsx) will submit
+      // it automatically the moment access is granted, on whatever page the user is on.
+      try {
+        const pending = readPendingProductSubmission();
+        if (pending?.form) {
+          const prodRes = await createSellerSubmission(token, pending.form);
+          if (prodRes?.success) {
+            clearPendingProductSubmission();
+            setPendingProductStatus("submitted");
+          } else {
+            setPendingProductStatus("still_pending");
+          }
+        }
+      } catch {
+        setPendingProductStatus("still_pending");
+      }
+
       setSubmitted(true);
     } finally {
       setSubmitting(false);
@@ -100,7 +125,7 @@ export default function SellerOnboardingPage() {
   if (!loaded) {
     return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#047084]" /></div>;
   }
-  if (submitted) return <SubmittedScreen />;
+  if (submitted) return <SubmittedScreen pendingProductStatus={pendingProductStatus} />;
 
   const progress = ((stepIndex + 1) / STEPS.length) * 100;
 
@@ -596,7 +621,7 @@ function ReviewStep({ form }) {
   );
 }
 
-function SubmittedScreen() {
+function SubmittedScreen({ pendingProductStatus }) {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center px-6 py-20 text-center">
       <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
@@ -606,6 +631,17 @@ function SubmittedScreen() {
       <p className="mt-2 text-[13.5px] font-medium text-slate-500">
         We're verifying your details. You'll be notified as soon as your shop is approved and live to buyers.
       </p>
+
+      {pendingProductStatus === "submitted" && (
+        <div className="mt-5 rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.05] px-4 py-3 text-[12.5px] font-semibold text-slate-600">
+          The product listing you started earlier has also been submitted and will go live once approved.
+        </div>
+      )}
+      {pendingProductStatus === "still_pending" && (
+        <div className="mt-5 rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.05] px-4 py-3 text-[12.5px] font-semibold text-slate-600">
+          The product listing you started earlier is still saved. It will be submitted automatically once your shop is approved.
+        </div>
+      )}
     </div>
   );
 }
