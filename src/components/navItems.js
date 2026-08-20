@@ -5,6 +5,7 @@ import {
     Store,
     FileText,
     Package,
+    MessageCircle,
     ListChecks,
     PackagePlus,
     ChartNoAxesCombined,
@@ -25,6 +26,13 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate })
             icon: PackagePlus,
             onClick: () => navigate("/seller/sell"),
             match: (p) => p === "/seller/sell",
+        },
+        {
+            id: "chat",
+            label: "Chat",
+            icon: MessageCircle,
+            onClick: () => navigate("/chat"),
+            match: (p) => p === "/chat",
         },
         {
             id: "sellerlist",

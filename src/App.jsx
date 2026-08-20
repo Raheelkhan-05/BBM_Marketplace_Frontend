@@ -39,6 +39,8 @@ import BrandItemSellersPage from "./pages/BrandItemSellersPage.jsx";
 import SellerManageListingsPage from "./pages/SellerManageListingsPage.jsx";
 import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
 import PendingSubmissionWatcher from "./components/PendingSubmissionWatcher.jsx";
+import ChatPage from "./pages/ChatPage.jsx";
+import { SocketProvider } from "./context/SocketContext.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -49,10 +51,11 @@ function CatalogLevelPageWithKey({ configKey }) {
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <ScrollToTop />
-        <InstallAppPrompt />
-        {/*
+      <SocketProvider>
+        <BrowserRouter>
+          <ScrollToTop />
+          <InstallAppPrompt />
+          {/*
           Runs on every page, app-wide. If the user has a product listing
           draft cached locally (because they tried to submit before being
           an approved seller), this silently checks seller access and
@@ -60,57 +63,61 @@ function App() {
           e.g. right after finishing onboarding, or once admin approves
           their shop — without requiring them to revisit the listing form.
         */}
-        <PendingSubmissionWatcher />
-        <Routes>
-          <Route element={<AuthLayout />}>
-            <Route path="/login" element={<AuthPage />} />
-          </Route>
+          <PendingSubmissionWatcher />
+          <Routes>
+            <Route element={<AuthLayout />}>
+              <Route path="/login" element={<AuthPage />} />
+            </Route>
 
-          <Route element={<Layout />}>
-            <Route path="/" element={<RequireGuest><LandingPage /></RequireGuest>} />
+            <Route element={<Layout />}>
+              <Route path="/" element={<RequireGuest><LandingPage /></RequireGuest>} />
 
-            <Route path="/search" element={<SearchResultsPage />} />
-            <Route path="/home" element={<HomePage />} />
-            <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
-            <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
+              <Route path="/search" element={<SearchResultsPage />} />
+              <Route path="/home" element={<HomePage />} />
+              <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
+              <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
 
-            <Route path="/category/:idOrSlug/browse" element={<BrowsePage />} />
-            <Route path="/browse" element={<BrowsePage />} />
+              <Route path="/category/:idOrSlug/browse" element={<BrowsePage />} />
+              <Route path="/browse" element={<BrowsePage />} />
 
-            <Route path="/category/:idOrSlug/products" element={<CategoryProductsPage />} />
-            <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
-            <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
+              <Route path="/category/:idOrSlug/products" element={<CategoryProductsPage />} />
+              <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
+              <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
 
-            <Route path="/orders" element={<PurchaseOrdersPage />} />
-            <Route path="/seller/orders" element={<SalesOrdersPage />} />
-            <Route path="/orders/:id" element={<OrderDetailPage />} />
-            <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
-            <Route path="/seller/listings" element={<SellerManageListingsPage />} />
+              <Route path="/orders" element={<PurchaseOrdersPage />} />
+              <Route path="/seller/orders" element={<SalesOrdersPage />} />
+              <Route path="/orders/:id" element={<OrderDetailPage />} />
+              <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
+              <Route path="/seller/listings" element={<SellerManageListingsPage />} />
 
-            <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
-            <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/chat/:conversationId" element={<ChatPage />} />
 
-            <Route path="/seller/sell" element={<SellPublishProductPage />} />
+              <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
+              <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
 
-            <Route path="/admin/listings" element={<RequireAdmin><AdminSellerSubmissionsPage /></RequireAdmin>} />
-            <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
-            <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
-            <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
-            <Route path="/shop/:slug" element={<ShopRoute />} />
-            <Route path="/product/:id" element={<ProductDetailPage />} />
+              <Route path="/seller/sell" element={<SellPublishProductPage />} />
 
-            <Route path="/admin/catalog" element={<RequireAdmin><AdminCatalogReviewPage /></RequireAdmin>} />
-            <Route path="/admin/catalog/:level/:id" element={<RequireAdmin><AdminCatalogDetailPage /></RequireAdmin>} />
+              <Route path="/admin/listings" element={<RequireAdmin><AdminSellerSubmissionsPage /></RequireAdmin>} />
+              <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
+              <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
+              <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
+              <Route path="/shop/:slug" element={<ShopRoute />} />
+              <Route path="/product/:id" element={<ProductDetailPage />} />
 
-            <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
-            <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
-            <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
-            <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} />
+              <Route path="/admin/catalog" element={<RequireAdmin><AdminCatalogReviewPage /></RequireAdmin>} />
+              <Route path="/admin/catalog/:level/:id" element={<RequireAdmin><AdminCatalogDetailPage /></RequireAdmin>} />
 
-            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+              <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
+              <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
+              <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
+              <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} />
+
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </SocketProvider>
     </AuthProvider>
   );
 }

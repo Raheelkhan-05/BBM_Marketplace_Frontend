@@ -1,9 +1,11 @@
+// hooks/useRealtimeNotifications.js
 import { useEffect, useCallback, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useSocket } from "../context/SocketContext.jsx";
 import { fetchNotifications, markNotificationRead as apiMarkRead, markAllNotificationsRead as apiMarkAllRead } from "../utils/api.js";
 
 export default function useRealtimeNotifications({ token, onNewNotification }) {
-    const { subscribeUserEvent, registerResyncHandler } = useAuth();
+    const { socket } = useSocket();
     const [notifications, setNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
 
@@ -17,34 +19,23 @@ export default function useRealtimeNotifications({ token, onNewNotification }) {
 
     useEffect(() => { load(); }, [load]);
 
-    // Keep the latest callback in a ref so this subscription effect doesn't
-    // need to re-run (and re-subscribe to the channel) every time the caller
-    // re-renders with a fresh inline function.
     const onNewRef = useRef(onNewNotification);
     useEffect(() => { onNewRef.current = onNewNotification; }, [onNewNotification]);
 
+    // THE FIX: listen on the same socket chat already uses, not a
+    // separate (broken) realtime channel.
     useEffect(() => {
-        return subscribeUserEvent("new_notification", (payload) => {
-            setNotifications((prev) => {
-                if (payload?.id && prev.some((n) => n.id === payload.id)) return prev;
-                return [payload, ...prev];
-            });
-            onNewRef.current?.(payload);
-        });
-    }, [subscribeUserEvent]);
+        if (!socket) return;
+        const onNotif = (payload) => {
+            setNotifications((prev) => (payload?.id && prev.some((n) => n.id === payload.id) ? prev : [payload, ...prev]));
+            onNewRef.current?.(payload); // <- this is what fires the toast island + sound in NotificationBell
+        };
+        socket.on("notification:new", onNotif);
+        return () => socket.off("notification:new", onNotif);
+    }, [socket]);
 
-    useEffect(() => {
-        return registerResyncHandler(load);
-    }, [registerResyncHandler, load]);
-
-    const markRead = async (id) => {
-        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-        await apiMarkRead(token, id);
-    };
-    const markAllRead = async () => {
-        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-        await apiMarkAllRead(token);
-    };
+    const markRead = async (id) => { setNotifications((p) => p.map((n) => (n.id === id ? { ...n, read: true } : n))); await apiMarkRead(token, id); };
+    const markAllRead = async () => { setNotifications((p) => p.map((n) => ({ ...n, read: true }))); await apiMarkAllRead(token); };
 
     return { notifications, unreadCount: notifications.filter((n) => !n.read).length, loading, markRead, markAllRead, reload: load };
 }
