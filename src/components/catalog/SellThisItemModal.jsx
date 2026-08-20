@@ -101,13 +101,13 @@ export default function SellThisItemModal({ brand, onClose }) {
                     <>
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: C.secondary }}>I want to sell this</p>
-                                <h2 className="mt-0.5 truncate text-[17px] font-extrabold" style={{ color: C.ink }}>{merged.name}</h2>
+                                <p className="font-mono text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: C.secondary }}>I want to sell this</p>
+                                <h2 className="mt-0.5 truncate text-[18px] font-extrabold tracking-wider" style={{ color: C.ink }}>{merged.name}</h2>
                             </div>
                             <button onClick={onClose} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-black/[0.04]"><X className="h-4 w-4" style={{ color: C.muted }} /></button>
                         </div>
-                        <p className="mt-3 mb-4 text-[12.5px] font-medium" style={{ color: C.muted }}>
-                            The product identity is already approved — just add your commercial terms below.
+                        <p className="mt-2 mb-4 text-[12.5px] font-medium tracking-wider" style={{ color: C.muted }}>
+                            The product identity is already approved - just add your commercial terms below.
                         </p>
                         <SellerListingForm
                             identityLocked

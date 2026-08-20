@@ -20,7 +20,7 @@ export function StatusChip({ status, size = "sm" }) {
     const s = STATUS_STYLE[status] || STATUS_STYLE.pending_confirmation;
     return (
         <span
-            className={`shrink-0 rounded-full font-extrabold capitalize tracking-wide ${size === "lg" ? "px-2.5 py-1 text-[11px]" : "px-2 py-0.5 text-[10.5px]"}`}
+            className={`shrink-0 rounded-full font-extrabold capitalize tracking-wider ${size === "lg" ? "px-2.5 py-1 text-[11.5px]" : "px-2 py-0.5 text-[11.5px]"}`}
             style={{ background: s.bg, color: s.fg }}
         >
             {s.label}
@@ -30,7 +30,7 @@ export function StatusChip({ status, size = "sm" }) {
 
 export function SampleBadge({ size = "sm" }) {
     return (
-        <span className={`flex shrink-0 items-center gap-1 rounded-full font-extrabold tracking-wide ${size === "lg" ? "px-2.5 py-1 text-[10.5px]" : "px-2 py-0.5 text-[9.5px]"}`} style={{ background: "#7c3aed14", color: "#7c3aed" }}>
+        <span className={`flex shrink-0 items-center gap-1 rounded-full font-extrabold tracking-wider ${size === "lg" ? "px-2.5 py-1 text-[11px]" : "px-2 py-0.5 text-[10px]"}`} style={{ background: "#7c3aed14", color: "#7c3aed" }}>
             Sample
         </span>
     );
@@ -102,7 +102,7 @@ export function DeliveryEstimate({ order, item, deliveredAt, label = "Estimated 
         if (!ts) return null;
         const formatted = new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
         return (
-            <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide" style={{ color: "#059669" }}>
+            <p className="flex items-center gap-1.5 text-[12.5px] font-bold tracking-wide" style={{ color: "#059669" }}>
                 <Calendar className="h-3 w-3" /> Delivered on: {formatted}
             </p>
         );
@@ -110,7 +110,7 @@ export function DeliveryEstimate({ order, item, deliveredAt, label = "Estimated 
     const formatted = parseDeliveryDate(item?.lead_time_snapshot);
     if (!formatted) return null;
     return (
-        <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wide" style={{ color: "#006F83" }}>
+        <p className="flex items-center gap-1.5 text-[12.5px] font-bold tracking-wide" style={{ color: "#006F83" }}>
             <Calendar className="h-3 w-3" /> {label}: {formatted}
         </p>
     );
@@ -130,7 +130,7 @@ export function StockShortfallNote({ audience = "buyer" }) {
         ? "Ordered quantity exceeded your listed stock at the time of order — let the buyer know if fulfilment will take longer."
         : "This item was short on stock when ordered — it may take a little longer to fulfil.";
     return (
-        <p className="rounded-lg px-2.5 py-1.5 text-[10.5px] font-semibold leading-snug" style={{ background: "#fef3c7", color: "#a16207" }}>
+        <p className="rounded-lg px-2.5 py-1.5 text-[12px] font-semibold leading-snug tracking-wide" style={{ background: "#fef3c7", color: "#a16207" }}>
             {text}
         </p>
     );

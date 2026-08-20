@@ -55,7 +55,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                 >
                     <LayoutGrid className="h-3 w-3" style={{ color: C.muted }} />
                 </span>
-                <span className="whitespace-nowrap text-[12px] font-bold" style={{ color: allActive ? C.accent : C.ink }}>
+                <span className="whitespace-nowrap text-[12.5px] font-bold tracking-wide" style={{ color: allActive ? C.accent : C.ink }}>
                     All
                 </span>
             </motion.button>
@@ -88,7 +88,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                                     ? <img src={cat.image} alt="" className="h-full w-full object-cover" loading="lazy" />
                                     : <Box className="h-3 w-3" style={{ color: active ? C.accent : C.muted }} />}
                             </span>
-                            <span className="whitespace-nowrap text-[12px] font-bold" style={{ color: active ? C.accent : C.ink }}>
+                            <span className="whitespace-nowrap text-[12.5px] font-bold tracking-wide" style={{ color: active ? C.accent : C.ink }}>
                                 {cat.name}
                             </span>
                         </motion.button>

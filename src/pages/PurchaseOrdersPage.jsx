@@ -39,7 +39,7 @@ function OrderCard({ order, idx, onCancel }) {
 
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
-                    <p className="font-mono text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{order.order_number}</p>
+                    <p className="font-mono text-[11.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>{order.order_number}</p>
                     {isSample && <SampleBadge />}
                 </div>
                 <StatusChip status={order.status} />
@@ -50,7 +50,7 @@ function OrderCard({ order, idx, onCancel }) {
                     {item?.image_snapshot ? <img src={item.image_snapshot} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Package className="h-5 w-5" style={{ color: C.muted }} /></div>}
                 </span>
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{item?.product_name_snapshot}</p>
+                    <p className="truncate text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{item?.product_name_snapshot}</p>
                     <p className="mt-0.5 truncate text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                         {item && <ItemQuantityLine item={item} mutedColor={C.muted} />} · from {order.seller?.display_name}
                         {extraCount > 0 ? ` +${extraCount} more item${extraCount === 1 ? "" : "s"}` : ""}
@@ -69,13 +69,13 @@ function OrderCard({ order, idx, onCancel }) {
             ) : null}
 
             <div className="mt-3 flex items-center justify-between gap-2 border-t pt-2.5" style={{ borderColor: C.hairSoft }}>
-                <p className="text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                <p className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                     {new Date(order.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                 </p>
                 {canCancel && (
                     <button disabled={cancelling}
                         onClick={(e) => { e.stopPropagation(); (async () => { setCancelling(true); await onCancel(order.id); setCancelling(false); })(); }}
-                        className="rounded-lg border px-3 py-1.5 text-[11px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.primary }}>
+                        className="rounded-lg border px-3 py-1.5 text-[12.5px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.primary }}>
                         {cancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : "Cancel order"}
                     </button>
                 )}
@@ -103,13 +103,13 @@ export default function PurchaseOrdersPage() {
         <div className="mx-auto min-h-screen max-w-4xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
             <div className="mt-3 flex items-center gap-3">
                 <button onClick={() => navigate(-1)} className="flex h-9 w-9 items-center justify-center rounded-full border" style={{ borderColor: C.hair, color: C.ink }} aria-label="Back"><ArrowLeft className="h-4 w-4" /></button>
-                <h1 className="font-extrabold tracking-[-0.01em]" style={{ color: C.ink, fontSize: "clamp(19px, 1.8vw, 27px)" }}>My Purchase Orders</h1>
+                <h1 className="font-extrabold tracking-wide" style={{ color: C.ink, fontSize: "clamp(22px, 1.8vw, 27px)" }}>My Purchase Orders</h1>
             </div>
 
             <div className="mt-4 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {TYPE_TABS.map((t) => (
                     <button key={t.key} onClick={() => setActiveType(t.key)} className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
-                        style={{ borderColor: activeType === t.key ? "#7c3aed" : C.hair, background: activeType === t.key ? "#7c3aed10" : "#fff", color: activeType === t.key ? "#7c3aed" : C.muted }}>
+                        style={{ borderColor: activeType === t.key ? "#0B7285" : C.hair, background: activeType === t.key ? "#0B7285" : "#fff", color: activeType === t.key ? "#ffffff" : C.muted }}>
                         {t.label}
                     </button>
                 ))}
@@ -118,7 +118,7 @@ export default function PurchaseOrdersPage() {
             <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {STATUS_TABS.map((t) => (
                     <button key={t.key} onClick={() => setActiveStatus(t.key)} className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
-                        style={{ borderColor: activeStatus === t.key ? C.primary : C.hair, background: activeStatus === t.key ? `${C.primary}10` : "#fff", color: activeStatus === t.key ? C.primary : C.muted }}>
+                        style={{ borderColor: activeStatus === t.key ? C.primary : C.hair, background: activeStatus === t.key ? `${C.primary}` : "#fff", color: activeStatus === t.key ? "#ffffff" : C.muted }}>
                         {t.label}
                     </button>
                 ))}

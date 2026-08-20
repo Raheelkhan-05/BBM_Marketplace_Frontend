@@ -65,6 +65,19 @@ function toBaseUnits(seller, quantity, basis) {
     return quantity;
 }
 
+// Minimum quantity (in the currently selected basis) needed to meet MOQ.
+// MOQ is always expressed in base units, so convert it up to packs/master
+// packs when that's the active basis, rounding up since a partial pack
+// can't satisfy the MOQ.
+function computeMinQuantity(seller, basis) {
+    const moq = Number(seller?.moq) || 0;
+    if (!moq) return 1;
+    const packSize = Number(seller?.packSize) > 0 ? Number(seller.packSize) : 1;
+    const masterPackSize = Number(seller?.masterPackSize) > 0 ? Number(seller.masterPackSize) : 1;
+    const factor = basis === "per_pack" ? packSize : basis === "per_master_pack" ? packSize * masterPackSize : 1;
+    return Math.max(1, Math.ceil(moq / factor));
+}
+
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function formatDDMon(date) {
     return `${String(date.getDate()).padStart(2, "0")} ${MONTH_SHORT[date.getMonth()]}`;
@@ -198,7 +211,9 @@ function Stepper({ value, onChange, min = 1 }) {
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hair }}>
                 <Minus className="h-3.5 w-3.5" style={{ color: C.ink }} />
             </button>
-            <input type="text" inputMode="decimal" value={value} onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
+            <input type="text" inputMode="decimal" value={value}
+                onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
+                onBlur={(e) => { if (!(Number(e.target.value) >= min)) onChange(min); }}
                 className="w-full rounded-lg border px-3 py-2 text-center text-[15px] font-extrabold tabular-nums tracking-wide focus:outline-none focus:ring-2"
                 style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
             <button type="button" onClick={() => onChange(Number(value) + 1)}
@@ -242,20 +257,29 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [showNewAddress, setShowNewAddress] = useState(false);
     const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
 
+    // Sample vs standard — ALWAYS starts as standard. Never preselected.
+    const [isSample, setIsSample] = useState(false);
+
     // Purchase basis + quantity. Reactively defaults to packs when the
     // listing has a meaningful pack size, otherwise falls back to plain
     // units — recomputed via useMemo (not frozen at mount) so a
     // late-arriving `seller.packSize` is still picked up correctly.
     const defaultBasis = useMemo(() => (Number(seller?.packSize) > 1 ? "per_pack" : "per_unit"), [seller?.packSize]);
     const [basis, setBasis] = useState(defaultBasis);
-    const [quantity, setQuantity] = useState(1);
+    const minQuantity = useMemo(() => computeMinQuantity(seller, basis), [seller, basis]);
+    const [quantity, setQuantity] = useState(() => computeMinQuantity(seller, defaultBasis));
     const userPickedBasis = useRef(false);
     useEffect(() => {
         if (!userPickedBasis.current) setBasis(defaultBasis);
     }, [defaultBasis]);
 
-    // Sample vs standard — ALWAYS starts as standard. Never preselected.
-    const [isSample, setIsSample] = useState(false);
+    // Whenever the effective minimum changes (basis switched, or seller/MOQ
+    // data arrives late), bring quantity up to it if it's currently short.
+    // Never applies in sample mode — that has its own fixed-quantity effect.
+    useEffect(() => {
+        if (isSample) return;
+        setQuantity((q) => (Number(q) < minQuantity ? minQuantity : q));
+    }, [minQuantity, isSample]);
 
     const [notes, setNotes] = useState("");
 
@@ -474,9 +498,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
                         {/* ---------------- Header ---------------- */}
                         <div className="flex items-start justify-between gap-3 border-b px-5 py-4 sm:px-6" style={{ borderColor: C.hairSoft }}>
                             <div className="min-w-0">
-                                <p className="font-mono text-[10.5px] font-bold uppercase tracking-[0.16em]" style={{ color: C.secondary }}>Place order</p>
-                                <h2 className="mt-0.5 truncate text-[16.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{product?.name}</h2>
-                                <p className="truncate text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>from {seller?.display_name}</p>
+                                <p className="font-mono text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: C.secondary }}>Place order</p>
+                                <h2 className="mt-0.5 truncate text-[19px] font-extrabold tracking-wide" style={{ color: C.ink }}>{product?.name}</h2>
+                                <p className="truncate text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>from {seller?.display_name}</p>
                             </div>
                             <button onClick={onClose} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.04]"><X className="h-4 w-4" style={{ color: C.muted }} /></button>
                         </div>
@@ -486,7 +510,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 <div className="flex gap-1 rounded-xl p-1" style={{ background: C.hairSoft }}>
                                     {[{ v: false, t: "Standard order" }, { v: true, t: "Order a sample" }].map(({ v, t }) => (
                                         <button key={t} type="button" onClick={() => setIsSample(v)}
-                                            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors duration-150"
+                                            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-bold tracking-wider transition-colors duration-150"
                                             style={isSample === v ? { background: v ? "#D2462B" : C.secondary, color: "#fff" } : { color: C.muted }}>
                                             {v && <Beaker className="h-3.5 w-3.5" />} {t}
                                         </button>
@@ -494,7 +518,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </div>
                             )}
                             {isSample && (
-                                <p className="-mt-1 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                <p className="-mt-1 text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>
                                     {seller.samplePrice ? `Sample price: ₹${inr(seller.samplePrice)}/${seller.unit}` : "This sample is free."}
                                 </p>
                             )}
@@ -515,10 +539,15 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                     </div>
                                 ) : (
                                     <>
-                                        <Stepper value={quantity} onChange={setQuantity} />
-                                        <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                        <Stepper value={quantity} onChange={setQuantity} min={minQuantity} />
+                                        <p className="text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>
                                             {quantity} {basisLabel}{basis !== "per_unit" && quote?.baseQuantity ? ` = ${quote.baseQuantity} ${seller?.unit}` : ""}
                                         </p>
+                                        {minQuantity > 1 && (
+                                            <p className="text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>
+                                                Minimum {minQuantity} {basisLabel} required to meet the seller's MOQ.
+                                            </p>
+                                        )}
                                     </>
                                 )}
 
@@ -529,7 +558,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                                 {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
                                     <div className="flex flex-col gap-1.5">
-                                        <span className="flex items-center gap-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}><Layers className="h-3 w-3" /> Price slabs</span>
+                                        <span className="flex items-center gap-1 text-[12px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}><Layers className="h-3 w-3" /> Price slabs</span>
                                         <div className="flex flex-wrap gap-1.5">
                                             {seller.priceSlabs.map((slab, i) => {
                                                 const active = quote?.appliedSlab && Number(quote.appliedSlab.minQty) === Number(slab.minQty);
@@ -546,12 +575,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                                 {!isSample && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
                                     <div className="flex flex-col gap-1.5">
-                                        <span className="flex items-center gap-1 text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}><Layers className="h-3 w-3" /> Quantity discounts</span>
+                                        <span className="flex items-center gap-1 text-[12px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}><Layers className="h-3 w-3" /> Quantity discounts</span>
                                         <div className="flex flex-wrap gap-1.5">
                                             {seller.quantityDiscounts.map((tier, i) => {
                                                 const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
                                                 return (
-                                                    <span key={i} className="rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide"
+                                                    <span key={i} className="rounded-full border px-2.5 py-1 text-[12px] font-bold tracking-wide"
                                                         style={active ? { borderColor: "#D2462B", background: "rgba(210,70,43,0.1)", color: "#D2462B" } : { borderColor: C.hair, color: C.muted }}>
                                                         {tier.minQty}+ {seller.unit}: {tier.discountPercent}% off
                                                     </span>
@@ -572,8 +601,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                                 style={{ borderColor: selectedAddressId === a.id ? C.secondary : C.hair, background: selectedAddressId === a.id ? `${C.secondary}08` : "#fff" }}>
                                                 <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
                                                 <div className="min-w-0">
-                                                    <p className="text-[12.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{a.label} — {a.contact_name}</p>
-                                                    <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p>
+                                                    <p className="text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>{a.label} — {a.contact_name}</p>
+                                                    <p className="text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p>
                                                 </div>
                                             </button>
                                         ))}
@@ -664,7 +693,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                             {/* ---------------- Seller terms ---------------- */}
                             {hasTerms && (
                                 <SectionCard icon={FileText} title="Seller terms" defaultOpen={false}>
-                                    <div className="flex flex-col gap-2 text-[12px] font-semibold tracking-wide">
+                                    <div className="flex flex-col gap-2 text-[13px] font-semibold tracking-wide">
                                         {seller.deliveryTimeline && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Delivery</span><span style={{ color: C.ink, fontWeight: 800 }} className="text-right">{seller.deliveryTimeline}</span></div>}
                                         {seller.paymentTerms && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Payment</span><span style={{ color: C.ink, fontWeight: 800 }} className="text-right">{seller.paymentTerms}</span></div>}
                                         {seller.returnPolicy && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Returns</span><span style={{ color: C.ink, fontWeight: 800 }} className="text-right">{seller.returnPolicy}</span></div>}
@@ -685,7 +714,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                             <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
                                 <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
-                                <p className="text-[11px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>Test mode — payment is simulated for now. No real charge will occur.</p>
+                                <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>Test mode — payment is simulated for now. No real charge will occur.</p>
                             </div>
 
                             {error && <Notice tone="danger">{error}</Notice>}
@@ -702,7 +731,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </div>
                             )}
                             <button onClick={handleSubmit} disabled={submitting}
-                                className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
+                                className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[14px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
                                 style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
                             </button>

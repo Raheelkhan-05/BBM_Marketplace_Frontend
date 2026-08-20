@@ -26,6 +26,11 @@ const NEXT_ACTION = {
     shipped: [{ key: "deliver", label: "Mark as delivered", fn: deliverSellerOrder, primary: true }],
 };
 
+function inr(n) {
+    const val = Number(n) || 0;
+    return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
 function OrderCard({ order, idx, onAction }) {
     const navigate = useNavigate();
     const [busy, setBusy] = useState(null);
@@ -50,7 +55,7 @@ function OrderCard({ order, idx, onAction }) {
 
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
-                    <p className="font-mono text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{order.order_number}</p>
+                    <p className="font-mono text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{order.order_number}</p>
                     {isSample && <SampleBadge />}
                 </div>
                 <StatusChip status={order.status} />
@@ -70,48 +75,77 @@ function OrderCard({ order, idx, onAction }) {
                             {item.image_snapshot ? <img src={item.image_snapshot} alt="" className="h-full w-full object-cover" /> : <Package className="m-auto h-4 w-4" style={{ color: C.muted }} />}
                         </span>
                         <div className="min-w-0 flex-1">
-                            <p className="truncate text-[12.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{item.product_name_snapshot}</p>
-                            <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                            <p className="truncate text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{item.product_name_snapshot}</p>
+                            <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                 <ItemQuantityLine item={item} mutedColor={C.muted} /> × {displayAmount(item.unit_price, { isSample })}
                             </p>
                         </div>
-                        <p className="text-[12.5px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p>
+                        <p className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p>
                     </div>
                 ))}
             </div>
 
             <div className="mt-3 rounded-xl border p-2.5" style={{ borderColor: C.hair, background: "#fafbfb" }}>
-                <p className="flex items-center gap-1 text-[12px] font-bold tracking-wide" style={{ color: C.ink }}>
+                <p className="flex items-center gap-1 text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>
                     <User className="h-3 w-3" /> {order.buyer_contact_name}
                     {/* {order.buyer_gst_verified && <span className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold text-white" style={{ background: C.secondary }}><ShieldCheck className="h-2.5 w-2.5" /> GST Verified</span>} */}
                 </p>
-                {order.buyer_business_name && <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{order.buyer_business_name}{order.buyer_gstin ? ` · ${order.buyer_gstin}` : ""}</p>}
-                <p className="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                {order.buyer_business_name && <p className="text-[11.5px] font-semibold tracking-wider" style={{ color: C.muted }}>{order.buyer_business_name}{order.buyer_gstin ? ` · ${order.buyer_gstin}` : ""}</p>}
+                <p className="mt-2 flex flex-wrap items-center gap-x-3 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                     <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{order.buyer_contact_phone}</span>
                     {order.buyer_contact_email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{order.buyer_contact_email}</span>}
                 </p>
-                <p className="mt-1.5 text-[11px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>
+                <p className="mt-2 text-[12.5px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>
                     Ship to: {addr.contact_name}, {addr.address_line1}{addr.address_line2 ? `, ${addr.address_line2}` : ""}, {addr.city}, {addr.state} - {addr.pincode}
                 </p>
-                {order.buyer_notes && <p className="mt-1 text-[11px] font-medium italic tracking-wide" style={{ color: C.muted }}>"{order.buyer_notes}"</p>}
+                {order.buyer_notes && <p className="mt-2 text-[12px] font-medium italic tracking-wide" style={{ color: C.muted }}>"{order.buyer_notes}"</p>}
             </div>
 
-            <div className="mt-2.5 flex items-center justify-between rounded-xl px-3 py-2" style={{ background: isSample ? "#7c3aed08" : `${C.primary}08` }}>
+            <div className="mt-2.5 flex flex-col gap-2 rounded-xl p-3" style={{ background: isSample ? "#7c3aed08" : `${C.primary}08` }}>
                 {isSample ? (
-                    <div className="text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Free sample · no platform fee</div>
+                    <div className="flex items-center justify-between">
+                        <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                            Free sample · no platform fee
+                        </span>
+                        <p className="flex items-center gap-0.5 text-[13.5px] font-extrabold tabular-nums" style={{ color: "#7c3aed" }}>
+                            <IndianRupee className="h-3.5 w-3.5" />
+                            {inr(order.seller_payout_amount)}
+                        </p>
+                    </div>
                 ) : (
-                    <div className="text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Order total ₹{order.subtotal_amount} · Platform fee {order.platform_fee_percent}% (₹{order.platform_fee_amount})</div>
+                    <>
+                        <div className="flex items-center justify-between">
+                            <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Order total</span>
+                            <span className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>₹{inr(order.subtotal_amount)}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                Platform fee ({order.platform_fee_percent}%)
+                            </span>
+                            <span className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: C.muted }}>
+                                − ₹{inr(order.platform_fee_amount)}
+                            </span>
+                        </div>
+
+                        <div className="my-0.5 h-px" style={{ background: C.hair }} />
+
+                        <div className="flex items-center justify-between">
+                            <span className="text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>You'll receive</span>
+                            <p className="flex items-center gap-0.5 text-[16px] font-extrabold tabular-nums" style={{ color: C.primary }}>
+                                <IndianRupee className="h-3.5 w-3.5" />
+                                {inr(order.seller_payout_amount)}
+                            </p>
+                        </div>
+                    </>
                 )}
-                <p className="flex items-center gap-0.5 text-[13.5px] font-extrabold tabular-nums" style={{ color: isSample ? "#7c3aed" : C.primary }}>
-                    <IndianRupee className="h-3.5 w-3.5" />{order.seller_payout_amount}
-                </p>
             </div>
 
             {actions.length > 0 && (
                 <div className="mt-3 flex gap-2">
                     {actions.map((a) => (
                         <button key={a.key} disabled={busy !== null} onClick={(e) => { e.stopPropagation(); run(a); }}
-                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-[12.5px] font-bold tracking-wide ${a.primary ? "text-white" : ""}`}
+                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-[13px] font-bold tracking-wider ${a.primary ? "text-white" : ""}`}
                             style={a.primary ? { background: `linear-gradient(135deg, ${C.secondary} 0%, #047084 100%)` } : { border: `1px solid ${C.hair}`, color: C.primary }}>
                             {busy === a.key ? <Loader2 className="h-4 w-4 animate-spin" /> : a.label}
                         </button>
@@ -141,13 +175,13 @@ export default function SalesOrdersPage() {
         <div className="mx-auto min-h-screen max-w-4xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
             <div className="mt-3 flex items-center gap-3">
                 <button onClick={() => navigate(-1)} className="flex h-9 w-9 items-center justify-center rounded-full border" style={{ borderColor: C.hair, color: C.ink }} aria-label="Back"><ArrowLeft className="h-4 w-4" /></button>
-                <h1 className="font-extrabold tracking-[-0.01em]" style={{ color: C.ink, fontSize: "clamp(19px, 1.8vw, 27px)" }}>Sales Orders</h1>
+                <h1 className="font-extrabold tracking-[0.01em]" style={{ color: C.ink, fontSize: "clamp(22px, 1.8vw, 27px)" }}>Sales Orders</h1>
             </div>
 
             <div className="mt-4 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {TYPE_TABS.map((t) => (
                     <button key={t.key} onClick={() => setActiveType(t.key)} className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
-                        style={{ borderColor: activeType === t.key ? "#7c3aed" : C.hair, background: activeType === t.key ? "#7c3aed10" : "#fff", color: activeType === t.key ? "#7c3aed" : C.muted }}>
+                        style={{ borderColor: activeType === t.key ? "#0B7285" : C.hair, background: activeType === t.key ? "#0B7285" : "#fff", color: activeType === t.key ? "#ffffff" : C.muted }}>
                         {t.label}
                     </button>
                 ))}
@@ -156,7 +190,7 @@ export default function SalesOrdersPage() {
             <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {STATUS_TABS.map((t) => (
                     <button key={t.key} onClick={() => setActiveStatus(t.key)} className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
-                        style={{ borderColor: activeStatus === t.key ? C.secondary : C.hair, background: activeStatus === t.key ? `${C.secondary}10` : "#fff", color: activeStatus === t.key ? C.secondary : C.muted }}>
+                        style={{ borderColor: activeStatus === t.key ? C.primary : C.hair, background: activeStatus === t.key ? `${C.primary}` : "#fff", color: activeStatus === t.key ? "#ffffff" : C.muted }}>
                         {t.label}
                     </button>
                 ))}

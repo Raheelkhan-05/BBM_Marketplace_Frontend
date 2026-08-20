@@ -21,6 +21,11 @@ const C = {
 const EASE = [0.16, 1, 0.3, 1];
 const PAGE_SIZE = 24;
 
+function inr(n) {
+    const val = Number(n) || 0;
+    return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
 function ProductRow({ item, idx, onClick }) {
     return (
         <motion.button
@@ -40,18 +45,18 @@ function ProductRow({ item, idx, onClick }) {
             </span>
 
             <div className="min-w-0 flex-1">
-                <p className="truncate text-[13.5px] font-bold leading-tight" style={{ color: C.ink }}>{item.name}</p>
-                <p className="mt-0.5 truncate text-[11px] font-medium" style={{ color: C.muted }}>
+                <p className="truncate text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{item.name}</p>
+                <p className="mt-0.5 truncate text-[11.5px] font-medium tracking-wider" style={{ color: C.muted }}>
                     {item.category_name ? `${item.category_name} · ` : ""}{item.subcategory_name}
                 </p>
             </div>
 
             <div className="flex shrink-0 flex-col items-end text-right">
-                <p className="text-[13.5px] font-extrabold tabular-nums" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
-                    {item.lowest_price != null ? <>from <span style={{ color: C.primary }}>₹</span>{item.lowest_price}</> : "View price"}
+                <p className="text-[14px] font-extrabold tabular-nums tracking-wide" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
+                    {item.lowest_price != null ? <>from <span style={{ color: C.primary }}>₹</span>{inr(item.lowest_price)}</> : "View price"}
                 </p>
                 {item.seller_count > 0 && (
-                    <p className="mt-0.5 text-[10.5px] font-bold" style={{ color: C.secondary }}>{item.seller_count} sellers</p>
+                    <p className="mt-0.5 text-[11px] font-bold tracking-wide" style={{ color: C.secondary }}>{item.seller_count} sellers</p>
                 )}
             </div>
             <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.hair }} />
@@ -123,10 +128,10 @@ export default function HomeProductFeed({ category }) {
     return (
         <div>
             <div className="flex items-center justify-between px-1 pb-2">
-                <h2 className="text-[14px] font-extrabold" style={{ color: C.ink }}>
+                <h2 className="text-[14.5px] font-extrabold tracking-wider" style={{ color: C.ink }}>
                     {category ? category.name : "All products"}
                 </h2>
-                <span className="text-[11px] font-semibold" style={{ color: C.muted }}>
+                <span className="text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>
                     {total != null ? `${total} products` : "Loading…"}
                 </span>
             </div>

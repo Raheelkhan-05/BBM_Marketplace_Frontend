@@ -285,8 +285,8 @@ export default function SellerListingForm({
                     <div className="flex items-center gap-3 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
                         {form.images?.[0] && <img src={form.images[0]} alt="" className="h-12 w-12 shrink-0 rounded-lg border object-cover" style={{ borderColor: C.hair }} />}
                         <div className="min-w-0">
-                            <p className="truncate text-[13.5px] font-extrabold" style={{ color: C.ink }}>{form.productName}</p>
-                            {form.brandName && <p className="truncate text-[11px] font-bold" style={{ color: C.primary }}>{form.brandName}</p>}
+                            <p className="truncate text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{form.productName}</p>
+                            {form.brandName && <p className="truncate text-[12px] font-bold tracking-wider" style={{ color: C.primary }}>{form.brandName}</p>}
                         </div>
                     </div>
                 ) : (
@@ -473,7 +473,7 @@ export default function SellerListingForm({
             <div className={`sticky ${stickyBottomClassName} z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4`} style={{ borderColor: C.hair }}>
                 <Progress percent={percentComplete} />
                 <button type="button" onClick={handleSubmit} disabled={submitting}
-                    className="mt-2.5 flex w-full items-center tracking-wider justify-center gap-1.5 rounded-xl px-5 py-3 text-[13px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
+                    className="mt-2.5 flex w-full items-center tracking-wider justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
                     style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} <CheckCircle2 className="h-4 w-4" /></>}
                 </button>

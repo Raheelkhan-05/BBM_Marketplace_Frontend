@@ -282,7 +282,7 @@ export default function MarketplaceSearchBar({
                             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
                             placeholder={placeholder}
                             autoComplete="off"
-                            className="w-full min-w-0 bg-transparent text-[11px] lg:text-base text-slate-700 placeholder:text-slate-400 outline-none"
+                            className="w-full min-w-0 bg-transparent text-[12px] lg:text-[14px] text-slate-700 placeholder:text-slate-400 outline-none tracking-wide"
                         />
                     </div>
 
@@ -290,7 +290,7 @@ export default function MarketplaceSearchBar({
                         type="submit"
                         className="relative ml-2 lg:ml-3 flex h-9 w-9 lg:h-9 lg:w-9 shrink-0 items-center justify-center rounded-full bg-[#F15A24] text-white transition hover:scale-105"
                     >
-                        <Search size={14} className="lg:!w-[16px] lg:!h-[16px]" />
+                        <Search size={16} className="lg:!w-[16px] lg:!h-[16px]" />
                     </button>
                 </form>
             </div>

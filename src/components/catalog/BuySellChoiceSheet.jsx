@@ -36,8 +36,8 @@ function ChoiceButton({ icon: Icon, tone, title, subtitle, onClick }) {
                 <Icon className="h-5 w-5" />
             </span>
             <div className="min-w-0 flex-1">
-                <p className="text-[14.5px] font-extrabold leading-tight" style={{ color: C.ink }}>{title}</p>
-                <p className="mt-0.5 text-[12px] font-medium leading-snug" style={{ color: C.muted }}>{subtitle}</p>
+                <p className="text-[15px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{title}</p>
+                <p className="mt-0.5 text-[12px] leading-snug tracking-wider" style={{ color: C.muted }}>{subtitle}</p>
             </div>
             <ChevronRight
                 className="h-4 w-4 shrink-0 transition-transform duration-150 group-hover:translate-x-0.5"
@@ -76,16 +76,16 @@ export default function BuySellChoiceSheet({ item, onClose, onBuy, onSell }) {
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                         {item.brand_name && (
-                            <p className="truncate text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.secondary }}>
+                            <p className="truncate text-[11.5px] font-extrabold uppercase tracking-wider" style={{ color: C.secondary }}>
                                 {item.brand_name}
                             </p>
                         )}
-                        <h2 className="mt-0.5 truncate text-[17px] font-extrabold leading-tight" style={{ color: C.ink }}>{name}</h2>
+                        <h2 className="mt-0.5 truncate text-[18px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{name}</h2>
                         {priceLabel && !onlySelfSells && (
-                            <p className="mt-1 text-[12px] font-bold" style={{ color: C.primary }}>{priceLabel}</p>
+                            <p className="mt-1 text-[13px] font-bold tracking-wider" style={{ color: C.primary }}>{priceLabel}</p>
                         )}
                         {alreadySelling && (
-                            <p className="mt-1 text-[11px] font-bold" style={{ color: C.secondary }}>
+                            <p className="mt-1 text-[12.5px] font-bold tracking-wide" style={{ color: C.secondary }}>
                                 You're already listing this product
                             </p>
                         )}
@@ -100,16 +100,16 @@ export default function BuySellChoiceSheet({ item, onClose, onBuy, onSell }) {
                         <span className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: `${C.secondary}15`, color: C.secondary }}>
                             <Users className="h-5 w-5" />
                         </span>
-                        <p className="mt-3 text-[14px] font-extrabold" style={{ color: C.ink }}>
+                        <p className="mt-3 text-[14px] font-extrabold tracking-wide" style={{ color: C.ink }}>
                             You're the only seller
                         </p>
-                        <p className="mt-1 text-[12px] font-medium leading-snug" style={{ color: C.muted }}>
+                        <p className="mt-1 text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
                             No other sellers are listing this product right now — your listing is the only one live for this item.
                         </p>
                     </div>
                 ) : (
                     <>
-                        <p className="mt-4 font-mono text-[10px] font-bold uppercase tracking-[0.16em]" style={{ color: C.muted }}>
+                        <p className="mt-4 font-mono text-[11.5px] font-bold uppercase tracking-[0.13em]" style={{ color: C.muted }}>
                             What would you like to do?
                         </p>
 
@@ -130,8 +130,8 @@ export default function BuySellChoiceSheet({ item, onClose, onBuy, onSell }) {
                                     title="Sell this product"
                                     subtitle={
                                         totalSellers === 0
-                                            ? "Be the first to sell this — already approved, just add your price"
-                                            : "Already approved — just add your price to start selling"
+                                            ? "Be the first to sell this - already approved, just add your price"
+                                            : "Already approved - just add your price to start selling"
                                     }
                                     onClick={onSell}
                                 />

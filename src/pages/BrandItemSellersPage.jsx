@@ -62,6 +62,11 @@ function DiscountBadges({ discounts, unit }) {
     );
 }
 
+function inr(n) {
+    const val = Number(n) || 0;
+    return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
 function SlabBadges({ slabs, unit }) {
     if (!Array.isArray(slabs) || !slabs.length) return null;
     return (
@@ -92,26 +97,26 @@ function SellerRow({ s, idx, onBuy, onViewShop }) {
             </span>
 
             <button onClick={onBuy} className="min-w-0 flex-1 text-left">
-                <p className="truncate text-[13.5px] font-bold leading-tight" style={{ color: C.ink }}>{s.display_name}</p>
+                <p className="truncate text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{s.display_name}</p>
                 {(s.city || s.state) && (
-                    <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] font-medium" style={{ color: C.muted }}>
+                    <p className="mt-0.5 flex items-center gap-1 truncate text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
                         <MapPin className="h-3 w-3 shrink-0" /> {[s.city, s.state].filter(Boolean).join(", ")}
                     </p>
                 )}
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-1 sm:gap-x-2 gap-y-1">
-                    <span className="flex items-center gap-1 text-[10.5px] font-bold" style={{ color: C.secondary }}>
+                    <span className="flex items-center gap-1 text-[11.5px] font-bold tracking-wide" style={{ color: C.secondary }}>
                         <Boxes className="h-3 w-3" /> MOQ {s.moq} {s.unit}
                     </span>
                     {s.stock_quantity != null && (
-                        <span className="text-[10.5px] font-semibold" style={{ color: C.muted }}>{'· '}&nbsp;{s.stock_quantity} {s.unit} in stock</span>
+                        <span className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>{'· '}&nbsp;{s.stock_quantity} {s.unit} in stock</span>
                     )}
-                    <span className="flex items-center gap-1 text-[10.5px] font-semibold" style={{ color: C.muted }}>
+                    <span className="flex items-center gap-1 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                         <Truck className="h-3 w-3" /> {s.stock_type === "made_to_order" ? "Made to order" : "Ready stock"}
                         {lead != null ? ` · ${lead}d` : ""}
                     </span>
                     {s.freight_included != null && (
-                        <span className="text-[10.5px] font-semibold" style={{ color: s.freight_included ? "#059669" : C.muted }}>
-                            {'· '}{s.freight_included ? "Freight included" : "+ freight"}
+                        <span className="text-[11.5px] font-semibold tracking-wide" style={{ color: s.freight_included ? "#059669" : C.muted }}>
+                            {'· '}{s.freight_included ? "Freight included" : "+freight"}
                         </span>
                     )}
 
@@ -129,15 +134,15 @@ function SellerRow({ s, idx, onBuy, onViewShop }) {
 
             <div className="flex shrink-0 flex-col items-end gap-1.5 text-right">
                 <div>
-                    <p className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                        <span style={{ color: C.primary }}>₹</span>{s.price}
-                        <span className="ml-0.5 text-[10px] font-semibold" style={{ color: C.muted }}>/{s.unit}</span>
+                    <p className="text-[15.5px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                        <span style={{ color: C.primary }}>₹</span>{inr(s.price)}
+                        <span className="ml-0.5 text-[10.5px] font-semibold" style={{ color: C.muted }}>/{s.unit}</span>
                     </p>
-                    <p className="text-[9.5px] font-semibold" style={{ color: C.muted }}>
+                    <p className="text-[10px] font-semibold tracking-wide" style={{ color: C.muted }}>
                         incl. GST{s.gst_percent != null ? ` (${s.gst_percent}%)` : ""}
                     </p>
                 </div>
-                <button onClick={onBuy} className="rounded-lg px-3 py-1.5 text-[11px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}>
+                <button onClick={onBuy} className="rounded-lg px-3 py-1.5 text-[12px] font-bold text-white tracking-wide" style={{ background: `linear-gradient(135deg, ${C.primary} 0%, #c71f11 100%)` }}>
                     Buy now
                 </button>
             </div>
@@ -244,10 +249,10 @@ export default function BrandItemSellersPage() {
                             <ArrowLeft className="h-4 w-4" style={{ color: C.ink }} />
                         </button>
                         <div className="min-w-0">
-                            <h1 className="truncate text-[16.5px] font-extrabold leading-tight" style={{ color: C.ink }}>
+                            <h1 className="truncate text-[16.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>
                                 {brandItemHint?.name || "Sellers"}
                             </h1>
-                            <p className="truncate text-[11px] font-bold" style={{ color: C.primary }}>
+                            <p className="truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>
                                 {brandItemHint?.brand_name} {total != null ? `· ${total} sellers` : ""}
                             </p>
                         </div>
@@ -258,7 +263,7 @@ export default function BrandItemSellersPage() {
                             <button
                                 key={s.id}
                                 onClick={() => setSort(s.id)}
-                                className="rounded-full border px-3 py-1 text-[11px] font-bold"
+                                className="rounded-full border px-3 py-1 text-[12px] font-bold tracking-wide"
                                 style={{ borderColor: sort === s.id ? C.primary : C.hair, color: sort === s.id ? '#ffffff' : C.muted, background: sort === s.id ? `${C.primary}` : "white" }}
                             >
                                 {s.label}

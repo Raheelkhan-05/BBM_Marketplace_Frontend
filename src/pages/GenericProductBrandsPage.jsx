@@ -33,7 +33,7 @@ function BrandRow({ item, idx, onOpen, onInfo }) {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.22, delay: Math.min(idx * 0.015, 0.2), ease: EASE }}
-            className="flex w-full items-center gap-2.5 border-b px-3 py-3 sm:px-4"
+            className="flex w-full items-center gap-0 md:gap-2.5 border-b px-3 py-3 sm:px-4"
             style={{ borderColor: C.hairSoft }}
         >
             <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left">
@@ -41,15 +41,15 @@ function BrandRow({ item, idx, onOpen, onInfo }) {
                     {item.image ? <img src={item.image} alt="" className="h-full w-full object-cover" loading="lazy" /> : <Package className="h-4.5 w-4.5" style={{ color: C.muted }} />}
                 </span>
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13.5px] font-bold leading-tight" style={{ color: C.ink }}>{item.name}</p>
-                    <p className="mt-0.5 truncate text-[11px] font-bold" style={{ color: C.primary }}>{item.brand_name}</p>
+                    <p className="truncate text-[14.5px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{item.name}</p>
+                    <p className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>{item.brand_name}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end text-right">
-                    <p className="text-[13px] font-extrabold tabular-nums" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
-                        {item.lowest_price != null ? <>₹{item.lowest_price}</> : "Ask price"}
+                    <p className="text-[15px] font-extrabold tabular-nums" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
+                        {item.lowest_price != null ? <>₹{inr(item.lowest_price)}</> : "Ask price"}
                     </p>
                     {item.seller_count > 0 && (
-                        <p className="mt-0.5 text-[10.5px] font-bold" style={{ color: C.secondary }}>{item.seller_count} sellers</p>
+                        <p className="mt-0.5 text-[11.5px] font-bold tracking-wide" style={{ color: C.secondary }}>{item.seller_count} sellers</p>
                     )}
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.hair }} />
@@ -63,6 +63,11 @@ function BrandRow({ item, idx, onOpen, onInfo }) {
             </button>
         </motion.div>
     );
+}
+
+function inr(n) {
+    const val = Number(n) || 0;
+    return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
 function RowSkeleton() {
@@ -149,10 +154,10 @@ export default function GenericProductBrandsPage() {
                             <ArrowLeft className="h-4 w-4" style={{ color: C.ink }} />
                         </button>
                         <div className="min-w-0">
-                            <h1 className="truncate text-[16.5px] font-extrabold leading-tight" style={{ color: C.ink }}>
+                            <h1 className="truncate text-[16.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>
                                 {productHint?.name || "Product"}
                             </h1>
-                            <p className="text-[11px] font-medium" style={{ color: C.muted }}>
+                            <p className="text-[11.5px] font-medium tracking-wider" style={{ color: C.muted }}>
                                 {total != null ? `${total} brands available` : "Loading…"}
                             </p>
                         </div>
@@ -164,7 +169,7 @@ export default function GenericProductBrandsPage() {
                             value={q}
                             onChange={(e) => setQ(e.target.value)}
                             placeholder="Search brand or spec..."
-                            className="w-full min-w-0 bg-transparent text-[13px] font-medium outline-none placeholder:text-slate-400"
+                            className="w-full min-w-0 bg-transparent text-[13.5px] font-medium tracking-wide outline-none placeholder:text-slate-400"
                         />
                     </div>
 
@@ -172,7 +177,7 @@ export default function GenericProductBrandsPage() {
                         <div className="flex flex-wrap gap-1.5 py-3">
                             <button
                                 onClick={() => setActiveBrand(null)}
-                                className="rounded-full border px-3 py-1 text-[11px] font-bold"
+                                className="rounded-full border px-3 py-1 text-[12px] font-bold tracking-wide"
                                 style={{ borderColor: !activeBrand ? '#D2462B' : C.hair, color: !activeBrand ? '#ffffff' : C.muted, background: !activeBrand ? `#D2462B` : "white" }}
                             >
                                 All brands
@@ -181,7 +186,7 @@ export default function GenericProductBrandsPage() {
                                 <button
                                     key={b.name}
                                     onClick={() => setActiveBrand(b.name === activeBrand ? null : b.name)}
-                                    className="rounded-full border px-3 py-1 text-[11px] font-bold"
+                                    className="rounded-full border px-3 py-1 text-[12px] font-bold tracking-wide"
                                     style={{ borderColor: activeBrand === b.name ? C.primary : C.hair, color: activeBrand === b.name ? '#ffffff' : C.muted, background: activeBrand === b.name ? `#D2462B` : "white" }}
                                 >
                                     {b.name} ({b.count})

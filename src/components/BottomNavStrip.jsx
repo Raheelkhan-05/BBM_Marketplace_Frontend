@@ -31,7 +31,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         <button
                             key={it.id}
                             onClick={it.onClick}
-                            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[12.5px] font-bold transition-colors duration-150"
+                            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[13px] font-bold transition-colors duration-150 tracking-wide"
                             style={{
                                 color: active ? "#fff" : C.ink,
                                 background: active ? C.secondary : "rgba(20,27,34,0.045)",

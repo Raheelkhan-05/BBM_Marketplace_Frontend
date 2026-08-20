@@ -32,8 +32,8 @@ function Timeline({ status, events }) {
                             {i < TIMELINE_STEPS.length - 1 && <span className="my-0.5 h-8 w-0.5" style={{ background: done && i < currentIdx ? "#059669" : C.hairSoft }} />}
                         </div>
                         <div className="pb-6">
-                            <p className="text-[12.5px] font-bold capitalize tracking-wide" style={{ color: done ? C.ink : C.muted }}>{step.replace("_", " ")}</p>
-                            {event?.created_at && <p className="text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>{new Date(event.created_at).toLocaleString("en-IN")}</p>}
+                            <p className="text-[13.5px] font-bold capitalize tracking-wide" style={{ color: done ? C.ink : C.muted }}>{step.replace("_", " ")}</p>
+                            {event?.created_at && <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>{new Date(event.created_at).toLocaleString("en-IN")}</p>}
                         </div>
                     </div>
                 );
@@ -48,12 +48,36 @@ function Timeline({ status, events }) {
     );
 }
 
+// Same reconstruction logic as BuyNowModal's normalizeQuote — order line
+// items only ever persist the FINAL (post-discount) unit_price, so the
+// pre-discount gross rate has to be rebuilt from discount_percent when
+// base_price_applied isn't stored directly.
+function round2(n) {
+    return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+function inr(n) {
+    const val = Number(n) || 0;
+    return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
+function deriveOrderTotals(order) {
+    const item = order.items?.[0];
+    const baseQuantity = Number(item?.quantity) || 0;
+    const basePriceApplied = Number(item?.base_price_applied) || Number(item?.unit_price) || 0;
+    const discountPercent = Number(item?.discount_percent) || 0;
+    const grossSubtotal = round2(basePriceApplied * baseQuantity);
+    const subtotal = Number(order.subtotal_amount) || 0;
+    const discountAmount = round2(Math.max(grossSubtotal - subtotal, 0));
+    return { baseQuantity, basePriceApplied, discountPercent, grossSubtotal, discountAmount, subtotal, unit: item?.unit };
+}
+
 // Small section wrapper matching the rounded-2xl / uppercase-caption
 // idiom used throughout SellerListingForm.
 function Card({ title, children }) {
     return (
         <div className="mt-4 rounded-2xl border bg-white p-4" style={{ borderColor: C.hair }}>
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.08em]" style={{ color: "#4A535B" }}>{title}</p>
+            <p className="text-[12px] font-extrabold uppercase tracking-[0.08em]" style={{ color: "#4A535B" }}>{title}</p>
             <div className="mt-3">{children}</div>
         </div>
     );
@@ -93,10 +117,10 @@ export default function OrderDetailPage() {
                 <button onClick={() => navigate(-1)} className="flex h-9 w-9 items-center justify-center rounded-full border" style={{ borderColor: C.hair, color: C.ink }} aria-label="Back"><ArrowLeft className="h-4 w-4" /></button>
                 <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                        <h1 className="truncate font-extrabold tracking-[-0.01em]" style={{ color: C.ink, fontSize: "clamp(17px, 1.6vw, 22px)" }}>{order.order_number}</h1>
+                        <h1 className="truncate font-extrabold tracking-[0.01em]" style={{ color: C.ink, fontSize: "clamp(17px, 1.6vw, 22px)" }}>{order.order_number}</h1>
                         {isSample && <SampleBadge size="lg" />}
                     </div>
-                    <p className="flex items-center gap-1 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}><Radio className="h-2.5 w-2.5 animate-pulse" style={{ color: "#059669" }} /> Live</p>
+                    <p className="flex items-center gap-1 text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}><Radio className="h-2.5 w-2.5 animate-pulse" style={{ color: "#059669" }} /> Live</p>
                 </div>
                 <StatusChip status={order.status} size="lg" />
             </div>
@@ -108,13 +132,13 @@ export default function OrderDetailPage() {
                         {order.seller.logo_url ? <img src={order.seller.logo_url} alt="" className="h-full w-full object-cover" /> : <Store className="h-4 w-4" style={{ color: C.muted }} />}
                     </span>
                     <div className="min-w-0 flex-1">
-                        <p className="truncate text-[12.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{order.seller.display_name}</p>
+                        <p className="truncate text-[14px] font-extrabold tracking-wider" style={{ color: C.ink }}>{order.seller.display_name}</p>
                         {(order.seller.city || order.seller.state) && (
-                            <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{[order.seller.city, order.seller.state].filter(Boolean).join(", ")}</p>
+                            <p className="text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>{[order.seller.city, order.seller.state].filter(Boolean).join(", ")}</p>
                         )}
                     </div>
                     {order.seller.shop_slug && (
-                        <Link to={`/shop/${order.seller.shop_slug}`} onClick={(e) => e.stopPropagation()} className="shrink-0 rounded-lg border px-3 py-1.5 text-[11px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.secondary }}>
+                        <Link to={`/shop/${order.seller.shop_slug}`} onClick={(e) => e.stopPropagation()} className="shrink-0 rounded-lg border px-3 py-1.5 text-[11.5px] font-bold tracking-wider" style={{ borderColor: C.hair, color: C.secondary }}>
                             View shop
                         </Link>
                     )}
@@ -144,18 +168,59 @@ export default function OrderDetailPage() {
                                 {item.image_snapshot ? <img src={item.image_snapshot} alt="" className="h-full w-full object-cover" /> : <Package className="m-auto h-5 w-5" style={{ color: C.muted }} />}
                             </span>
                             <div className="min-w-0 flex-1">
-                                <p className="truncate text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>{item.product_name_snapshot}</p>
+                                <p className="truncate text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>{item.product_name_snapshot}</p>
                                 <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                    <ItemQuantityLine item={item} mutedColor={C.muted} /> × {displayAmount(item.unit_price, { isSample })}
+                                    {/* <ItemQuantityLine item={item} mutedColor={C.muted} /> × {displayAmount(item.unit_price, { isSample })} */}
                                 </p>
                             </div>
-                            <p className="text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p>
+                            {/* <p className="text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p> */}
                         </div>
                     ))}
                 </div>
-                <div className="mt-3 flex items-center justify-between border-t pt-3" style={{ borderColor: C.hairSoft }}>
-                    <p className="text-[12.5px] font-bold tracking-wide" style={{ color: C.muted }}>Total</p>
-                    <p className="text-[16px] font-extrabold tabular-nums" style={{ color: isSample ? "#7c3aed" : C.primary }}>{displayAmount(order.total_amount, { isSample })}</p>
+
+                <div className="mt-3 flex flex-col gap-2.5 rounded-xl p-3" style={{ background: isSample ? "#7c3aed08" : `${C.primary}08` }}>
+                    {isSample ? (
+                        <div className="flex items-center justify-between">
+                            <span className="text-[12.5px] font-bold tracking-wide" style={{ color: C.muted }}>Total</span>
+                            <span className="text-[16px] font-extrabold tabular-nums" style={{ color: "#7c3aed" }}>
+                                {displayAmount(order.total_amount, { isSample })}
+                            </span>
+                        </div>
+                    ) : (() => {
+                        const t = deriveOrderTotals(order);
+                        return (
+                            <>
+                                <p className="text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>
+                                    {inr(t.baseQuantity)} {t.unit} × ₹{inr(t.basePriceApplied)} / {t.unit}
+                                </p>
+
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Subtotal</span>
+                                    <span className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(t.grossSubtotal)}</span>
+                                </div>
+
+                                {t.discountAmount > 0 && (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.secondary }}>
+                                            Discount{t.discountPercent ? ` (${t.discountPercent}% off)` : ""}
+                                        </span>
+                                        <span className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>
+                                            − ₹{inr(t.discountAmount)}
+                                        </span>
+                                    </div>
+                                )}
+
+                                <div className="my-0.5 h-px" style={{ background: C.hair }} />
+
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>Total payable</span>
+                                    <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.primary }}>
+                                        {displayAmount(order.total_amount, { isSample })}
+                                    </span>
+                                </div>
+                            </>
+                        );
+                    })()}
                 </div>
             </Card>
 

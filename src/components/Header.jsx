@@ -118,7 +118,7 @@ export default function Header({ onOpenRfq }) {
           <SmartLink to="/" className="flex shrink-0 items-center gap-2">
             <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
             <h1
-              className="text-[17px] font-extrabold tracking-tight"
+              className="text-[18px] font-extrabold tracking-wide"
               style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: C.ink }}
             >
               BBM
