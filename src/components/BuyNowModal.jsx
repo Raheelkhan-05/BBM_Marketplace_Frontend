@@ -296,6 +296,21 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const requestIdRef = useRef(0);
     const pendingQuoteRef = useRef(Promise.resolve());
 
+    // Effective pincode/state used for delivery estimation — prefers the
+    // in-progress new-address form (so estimates update live as the buyer
+    // types), falls back to the selected saved address otherwise.
+    const effectivePincode = showNewAddress ? newAddress.pincode : selectedAddress?.pincode;
+    const effectiveState = showNewAddress ? newAddress.state : selectedAddress?.state;
+
+    // 1) INSTANT local estimate — recomputed on every keystroke / toggle.
+    useEffect(() => {
+        if (!(Number(quantity) > 0)) { setQuote(null); return; }
+        setQuote((prev) => {
+            const local = computeLocalQuote(seller, quantity, basis, isSample, effectivePincode, effectiveState);
+            return local ? normalizeQuote(local) : prev;
+        });
+    }, [seller, quantity, basis, isSample, effectivePincode, effectiveState]);
+
     // Lenis attaches its own wheel/touch listeners at the document level
     // and calls preventDefault on them — so merely calling lenis.stop()
     // (or locking body scroll ourselves) can end up swallowing scroll
@@ -352,10 +367,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
     useEffect(() => {
         if (!(Number(quantity) > 0)) { setQuote(null); return; }
         setQuote((prev) => {
-            const local = computeLocalQuote(seller, quantity, basis, isSample, selectedAddress?.pincode, selectedAddress?.state);
+            const local = computeLocalQuote(seller, quantity, basis, isSample, effectivePincode, effectiveState);
             return local ? normalizeQuote(local) : prev;
         });
-    }, [seller, quantity, basis, isSample, selectedAddress?.pincode, selectedAddress?.state]);
+    }, [seller, quantity, basis, isSample, effectivePincode, effectiveState]);
 
     // 2) CONFIRM — debounced authoritative quote from the server.
     useEffect(() => {
