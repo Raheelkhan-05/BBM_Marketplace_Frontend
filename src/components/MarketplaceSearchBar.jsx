@@ -1,6 +1,6 @@
 // components/MarketplaceSearchBar.jsx
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Loader2, Layers, Tag, Package, BadgeCheck } from "lucide-react";
@@ -12,35 +12,65 @@ const DEBOUNCE_MS = 100;
 // Static resting-state border — your original 3 stops, untouched.
 const BAR_GRADIENT = "linear-gradient(90deg, #0B8A93 0%, #3B82F6 50%, #FF6A00 100%)";
 
-// Running-border gradient, a CONIC gradient rotated via the --bbm-angle
-// custom property.
-//
-// These stops are NOT copied from BAR_GRADIENT's own 0%/50%/100% order —
-// they're derived from what BAR_GRADIENT actually looks like at each of
-// the four cardinal points (top/right/bottom/left) of a wide pill:
+// Full-ring color map, STATIC (never rotates). These stops are derived
+// from what BAR_GRADIENT actually looks like at each of the four
+// cardinal points (top/right/bottom/left) of a wide pill — see the
+// original reasoning below — so that no matter where the traveling
+// comet light currently sits on the ring, the color it reveals matches
+// the color the resting border already shows at that exact spot.
 //   - top-center and bottom-center sit at the same horizontal position
 //     (the middle of the bar) on a left-to-right linear gradient, so
 //     both must be BLUE (the 50% stop), not different colors.
 //   - right-center is the far-right edge  -> ORANGE (100% stop)
 //   - left-center  is the far-left edge   -> TEAL   (0% stop)
-// Laying the conic stops out this way (blue, orange, blue, teal, blue)
-// means every quarter-arc of the ring sweeps colors in the same
-// direction the linear bar actually sweeps them (e.g. left-center to
-// top-center goes teal->blue, same as sliding from x=0% to x=50% on
-// BAR_GRADIENT). Since the spin is a clean 0deg->360deg loop, this is
-// also exactly the frame the animation starts on and lands back on —
-// so crossfading in/out of BAR_GRADIENT reads as a continuation, not a
-// jump to an unrelated color arrangement.
 const RUNNING_BORDER_GRADIENT_STOPS =
     "#3B82F6 0%, #FF6A00 25%, #3B82F6 50%, #0B8A93 75%, #3B82F6 100%";
 
 const BORDER_WIDTH_PX = 2;
-const SPIN_CYCLE_MS = 3000;
-const INTRO_ANIMATION_MS = SPIN_CYCLE_MS;
+const SPIN_CYCLE_MS = 2000;
+const GLOW_HOLD_MS = 800;
+const GLOW_FADE_MS = 800;
 
-// Symmetric ease-in-out — the spin gently accelerates away from each
+// How long, at the tail end of the spin, the leading-edge feather takes
+// to close from 22deg down to 0deg. Kept short and run as its own
+// independent animation (see bbm-comet-feather-close below) so it never
+// interferes with the main sweep's easing curve.
+const FEATHER_CLOSE_MS = 260;
+
+// Symmetric ease-in-out — the comet gently accelerates away from each
 // checkpoint and gently decelerates into the next one.
 const SPIN_EASING = "cubic-bezier(0.45, 0, 0.55, 1)";
+
+// Default outward reach of the glow, in px, beyond the crisp border.
+// Passed in as the `glowSpread` prop — tune per-instance without
+// touching this file.
+const DEFAULT_GLOW_SPREAD_PX = 6;
+const GLOW_RING_COUNT = 6;
+const GLOW_PEAK_OPACITY = 0.5;
+
+// The glow is a stack of thin, fully-filled, un-tricked rings at growing
+// offsets — never a single blurred ring, since blurring the old
+// border-box/transparent-border trick is what caused a washed-out,
+// slightly-white haze. Each ring is genuinely painted with the conic
+// gradient (not just blurred transparency), so the color survives all
+// the way out.
+//
+// Rings are generated from `spreadPx` using a smooth quadratic falloff:
+// opacity drops off as (1 - t)^2, which reads as a natural, continuous
+// glow rather than visible discrete steps, and every ring's offset is
+// strictly >= 0 and increasing, so the spread only ever grows outward —
+// it can never fold back in on the crisp border.
+function buildGlowRings(spreadPx) {
+    const safeSpread = Math.max(0, spreadPx);
+    return Array.from({ length: GLOW_RING_COUNT }, (_, i) => {
+        const t = (i + 1) / GLOW_RING_COUNT; // (0, 1]
+        return {
+            extra: +(t * safeSpread).toFixed(2),
+            opacity: +(GLOW_PEAK_OPACITY * Math.pow(1 - t, 2)).toFixed(3),
+            blur: +(1.5 + t * 3.5).toFixed(2),
+        };
+    });
+}
 
 const LEVEL_META = {
     category: { icon: Layers, label: "Category", color: "#047084", bg: "rgba(4,112,132,0.08)" },
@@ -71,8 +101,13 @@ export default function MarketplaceSearchBar({
     placeholder = "Search any product, brand, category...",
     suggestionsDirection = "down",
     clearOnSubmit = true,
+    // How far outward (px) the glow reaches beyond the crisp border.
+    // 0 turns the glow off entirely; the ring count/falloff stay smooth
+    // at any value since buildGlowRings scales continuously.
+    glowSpread = DEFAULT_GLOW_SPREAD_PX,
 }) {
     const navigate = useNavigate();
+    const glowRings = useMemo(() => buildGlowRings(glowSpread), [glowSpread]);
 
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
@@ -82,9 +117,13 @@ export default function MarketplaceSearchBar({
     const abortRef = useRef(null);
     const containerRef = useRef(null);
 
-    const [introActive, setIntroActive] = useState(true);
+    // The border trail itself never resets — it paints once and holds
+    // (animation-fill-mode: forwards), no fade-in swap needed. Only the
+    // outer glow is timed: it stays lit through the trail animation,
+    // holds for GLOW_HOLD_MS after that, then fades out on its own.
+    const [glowFading, setGlowFading] = useState(false);
     useEffect(() => {
-        const t = setTimeout(() => setIntroActive(false), INTRO_ANIMATION_MS);
+        const t = setTimeout(() => setGlowFading(true), SPIN_CYCLE_MS + GLOW_HOLD_MS);
         return () => clearTimeout(t);
     }, []);
 
@@ -179,82 +218,151 @@ export default function MarketplaceSearchBar({
         <div className="w-full relative" ref={containerRef}>
             <style>{`
                 /* Registering the angle as a real animatable type is what
-                   makes the conic-gradient rotation interpolate smoothly
-                   frame-by-frame instead of jumping in steps. Without
-                   this, browsers treat --bbm-angle as an opaque string
-                   and can't tween between 0deg and 360deg. */
+                   makes the comet's sweep interpolate smoothly frame-by-
+                   frame instead of jumping in steps. Without this,
+                   browsers treat --bbm-angle as an opaque string and
+                   can't tween between 0deg and 360deg. */
                 @property --bbm-angle {
                     syntax: '<angle>';
                     inherits: false;
                     initial-value: 0deg;
                 }
 
-                @keyframes bbm-border-spin {
+                /* The soft leading-edge fade (the comet's "tip") is this
+                   many degrees wide. It stays constant while the comet is
+                   mid-flight, but MUST collapse to 0deg right before the
+                   animation ends — otherwise the fade zone lands exactly
+                   on the loop seam (where the comet started) and, since
+                   the animation holds forever via forwards fill, that
+                   sliver of the ring stays semi-transparent permanently.
+                   That was the source of the lingering "white part" even
+                   after the comet finished its lap. */
+                @property --bbm-feather {
+                    syntax: '<angle>';
+                    inherits: false;
+                    initial-value: 22deg;
+                }
+
+                @keyframes bbm-comet-spin {
                     from { --bbm-angle: 0deg; }
                     to   { --bbm-angle: 360deg; }
                 }
 
-                .bbm-border-static {
-                    border: ${BORDER_WIDTH_PX}px solid transparent;
-                    border-radius: 9999px;
-                    background-image: ${BAR_GRADIENT};
-                    background-origin: border-box;
-                    background-clip: border-box;
+                /* Runs as its OWN short animation, delayed to land exactly
+                   at the tail of the main sweep (see the "animation"
+                   shorthand below). Kept fully separate from
+                   bbm-comet-spin on purpose: cramming this into the same
+                   keyframes as the angle sweep (as an extra 90%/100% stop)
+                   made the browser ease the sweep to a near-stop AT that
+                   stop and then jerk forward again for the last bit — a
+                   visible stutter. Two independent animations avoid that
+                   entirely; the angle keeps one continuous, uninterrupted
+                   ease-in-out from start to finish. */
+                @keyframes bbm-comet-feather-close {
+                    from { --bbm-feather: 22deg; }
+                    to   { --bbm-feather: 0deg; }
                 }
 
-                /* Sits directly on top of the static border (same box,
-                   offset out by the border width so its own border ring
-                   overlays exactly). Starts transparent and crossfades
-                   in on mount / out at the end of the intro via the CSS
-                   transition, instead of hard-mounting/unmounting.
+                /* Shared "painted ring" layer used by BOTH the crisp trail
+                   and every glow ring below. Deliberately NOT using the
+                   border:solid-transparent + background-clip:border-box
+                   trick — on a fully rounded (9999px) pill that trick
+                   anti-aliases inconsistently at the curve and leaves a
+                   thin unpainted seam (the "white part" on the completed
+                   path). Instead this fills the ENTIRE box with the
+                   gradient; the actual ring shape comes for free from the
+                   white search-bar form sitting on top at inset:0 —
+                   whatever this layer paints outside the form's edge is
+                   all that's ever visible, with no seam because there's
+                   no border curve to anti-alias against.
 
-                   Increasing --bbm-angle from 0deg to 360deg rotates the
-                   conic pattern CLOCKWISE (conic-gradient angles run
-                   clockwise from "from"). Because the stop layout is
-                   built to match BAR_GRADIENT at rest (see the stops
-                   comment above), and 0deg/360deg are the same frame,
-                   the very first frame shown and the frame it lands
-                   back on before crossfading out are both a close match
-                   to BAR_GRADIENT — no unrelated colors popping in, no
-                   abrupt jump when it hands off to the static border. */
-                .bbm-border-dynamic {
+                   The mask is the same as before: black (fully opaque)
+                   from 0deg up to the current --bbm-angle — so color the
+                   comet has already swept past stays permanently painted
+                   — with a short ~22deg soft feather right at the leading
+                   edge blending into the untouched part still ahead.
+                   animation-fill-mode: forwards holds --bbm-angle at
+                   360deg once the one-shot animation ends, so the ring
+                   stays fully painted with no extra state/class toggling
+                   needed after mount. */
+                .bbm-comet-fill {
                     position: absolute;
-                    border: ${BORDER_WIDTH_PX}px solid transparent;
                     border-radius: 9999px;
                     --bbm-angle: 0deg;
-                    background-image: conic-gradient(from var(--bbm-angle), ${RUNNING_BORDER_GRADIENT_STOPS});
-                    background-origin: border-box;
-                    background-clip: border-box;
-                    opacity: 0;
-                    transition: opacity 700ms ease;
+                    background-image: conic-gradient(from 0deg, ${RUNNING_BORDER_GRADIENT_STOPS});
+                    -webkit-mask-image: conic-gradient(
+                        from 0deg,
+                        black 0deg,
+                        black calc(var(--bbm-angle) - var(--bbm-feather)),
+                        transparent var(--bbm-angle),
+                        transparent 360deg
+                    );
+                    mask-image: conic-gradient(
+                        from 0deg,
+                        black 0deg,
+                        black calc(var(--bbm-angle) - var(--bbm-feather)),
+                        transparent var(--bbm-angle),
+                        transparent 360deg
+                    );
+                    animation:
+                        bbm-comet-spin ${SPIN_CYCLE_MS}ms ${SPIN_EASING} 1 forwards,
+                        bbm-comet-feather-close ${FEATHER_CLOSE_MS}ms linear ${SPIN_CYCLE_MS - FEATHER_CLOSE_MS}ms 1 forwards;
                 }
-                .bbm-border-dynamic-on {
-                    opacity: 1;
-                    animation: bbm-border-spin ${SPIN_CYCLE_MS}ms ${SPIN_EASING} infinite;
+
+                /* Wrapper for the stacked glow rings — this is the only
+                   thing that fades. Once the trail finishes its lap, the
+                   whole glow (all rings together, still in sync) holds
+                   for GLOW_HOLD_MS then dissolves over GLOW_FADE_MS,
+                   leaving just the plain gradient trail behind. */
+                .bbm-comet-glow-wrap {
+                    position: absolute;
+                    pointer-events: none;
+                    transition: opacity ${GLOW_FADE_MS}ms ease;
+                }
+                .bbm-comet-glow-fade-out {
+                    opacity: 0;
                 }
 
                 /* Static glass-style sheen along the top — a small,
-                   permanent highlight (not tied to the color cycle) that
-                   reads as a glossy premium finish on the pill regardless
-                   of animation state. */
+                   permanent highlight (not tied to the comet) that reads
+                   as a glossy premium finish on the pill regardless of
+                   animation state. */
                 .bbm-glass-sheen {
                     background: linear-gradient(to bottom, rgba(255,255,255,.65) 0%, rgba(255,255,255,0) 55%);
                     opacity: .55;
                 }
                 @media (prefers-reduced-motion: reduce) {
-                    .bbm-border-dynamic-on { animation: none; opacity: 0; }
+                    .bbm-comet-fill { animation: none; --bbm-angle: 360deg; --bbm-feather: 0deg; }
+                    .bbm-comet-glow-wrap { opacity: 0; }
                 }
             `}</style>
 
-            {/* Static border always renders underneath; the animated
-                border overlays it exactly (inset outward by the border
-                width so its own border ring lines up) and crossfades its
-                opacity out at the end of the intro, revealing the static
-                one beneath with no jump. */}
-            <div className="relative rounded-full shadow-lg bbm-border-static">
+            {/* The trail paints the border once and holds — no swap, no
+                fade-in. The glow rings light up the pill while the trail
+                is drawing, hold briefly, then dissolve together, leaving
+                just the plain gradient border behind. */}
+            <div className="relative rounded-full shadow-lg">
                 <div
                     aria-hidden="true"
-                    className={`absolute rounded-full bbm-border-dynamic ${introActive ? "bbm-border-dynamic-on" : ""}`}
+                    className={`bbm-comet-glow-wrap ${glowFading ? "bbm-comet-glow-fade-out" : ""}`}
+                    style={{ inset: `-${BORDER_WIDTH_PX}px` }}
+                >
+                    {glowRings.map((ring, i) => (
+                        <div
+                            key={i}
+                            aria-hidden="true"
+                            className="absolute rounded-full bbm-comet-fill"
+                            style={{
+                                inset: `-${ring.extra}px`,
+                                opacity: ring.opacity,
+                                filter: `blur(${ring.blur}px)`,
+                            }}
+                        />
+                    ))}
+                </div>
+                <div
+                    aria-hidden="true"
+                    className="absolute rounded-full bbm-comet-fill"
                     style={{ inset: `-${BORDER_WIDTH_PX}px` }}
                 />
 
