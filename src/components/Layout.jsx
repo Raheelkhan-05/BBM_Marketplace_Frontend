@@ -19,20 +19,18 @@ export function useLightboxVisibility() {
 export default function Layout() {
   const { pathname } = useLocation();
   const isLandingPage = pathname === "/";
-  // Admin pages have their own bottom-fixed bars (save/reject/approve bar,
-  // mobile add-new FAB) — stacking the bottom nav strip on top of those
-  // covered their buttons and blocked taps, so it's hidden here.
   const isAdminPage = pathname.startsWith("/admin");
+  // /chat/:id (a specific conversation) hides the bottom nav,
+  // but /chat itself (the chat list) keeps it.
+  const isChatDetailPage = /^\/chat\/[^/]+/.test(pathname);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [rfqOpen, setRfqOpen] = useState(false);
 
-  const showBottomNav = !isLandingPage && !lightboxOpen;
+  const showBottomNav = !isLandingPage && !isAdminPage && !isChatDetailPage && !lightboxOpen;
 
   return (
     <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>
       <div className="relative min-h-screen bg-[#FCFBF9] overflow-x-clip">
-        {/* <BackgroundAmbience /> */}
-
         <div className="relative z-1">
           <Header onOpenRfq={() => setRfqOpen(true)} />
 
