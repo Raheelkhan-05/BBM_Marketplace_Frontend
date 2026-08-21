@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck,
-  Clock3, ListChecks,
+  Clock3, ListChecks, BookOpen
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { TAGLINE } from "../../data/content";
@@ -201,7 +201,7 @@ export default function Header({ onOpenRfq }) {
                               Seller Applications
                             </SmartLink>
                             <SmartLink to="/admin/catalog" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <ListChecks className="h-3.5 w-3.5 text-[#0B7285]" />
+                              <BookOpen className="h-3.5 w-3.5 text-[#0B7285]" />
                               Catalog
                             </SmartLink>
                             <SmartLink to="/admin/admins" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
@@ -210,7 +210,7 @@ export default function Header({ onOpenRfq }) {
                             </SmartLink>
                             <SmartLink to="/admin/listings" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
                               <ListChecks className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Listings
+                              Product Review Requests
                             </SmartLink>
                           </>
                         )}
@@ -303,15 +303,19 @@ export default function Header({ onOpenRfq }) {
                           <p className="mb-1 mt-3 px-3 text-[11px] font-bold uppercase tracking-wide text-slate-400">Admin</p>
                           <SmartLink to="/admin/sellers" onClick={() => setOpen(false)} className={MOBILE_ROW}>
                             <ShieldCheck className="h-4 w-4 text-slate-400" />
-                            Admin Panel
+                            Seller Applications
                           </SmartLink>
                           <SmartLink to="/admin/catalog" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <ListChecks className="h-4 w-4 text-slate-400" />
+                            <BookOpen className="h-4 w-4 text-slate-400" />
                             Catalog
                           </SmartLink>
                           <SmartLink to="/admin/admins" onClick={() => setOpen(false)} className={MOBILE_ROW}>
                             <ShieldCheck className="h-4 w-4 text-slate-400" />
                             Manage Admins
+                          </SmartLink>
+                          <SmartLink to="/admin/listings" onClick={() => setOpen(false)} className={MOBILE_ROW}>
+                            <ListChecks className="h-4 w-4 text-slate-400" />
+                            Product Review Requests
                           </SmartLink>
                         </>
                       )}
