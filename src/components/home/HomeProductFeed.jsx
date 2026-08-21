@@ -2,19 +2,32 @@
 //
 // The home page's product list — brand items (fetchBrandItemsFeed),
 // filterable live by `q` (wired from the home search bar's typed value)
-// in addition to the category filter. Tapping a row opens
-// BuySellChoiceSheet immediately, same as GenericProductBrandsPage.
+// in addition to the category filter.
+//
+// NAVIGATION CHANGE: tapping a row no longer opens BuySellChoiceSheet.
+// It now expands an inline accordion directly beneath that row listing
+// sellers (name + price only) for that exact brand item, fetched from
+// the same catalog_brand_item_sellers endpoint BrandItemSellersPage
+// uses. Tapping a seller row opens BuyNowModal immediately — same
+// payload shape/mapping as BrandItemSellersPage. A "Sell this product"
+// row sits at the bottom of the dropdown and opens SellThisItemModal,
+// unchanged from before. Only one dropdown is open at a time across
+// the whole feed (single `openItemId` state). The seller list inside
+// the dropdown carries `data-lenis-prevent` so hovering it hands
+// scroll control back to native/the list instead of the page's Lenis
+// smooth-scroll — the same opt-out pattern BuyNowModal/SellThisItemModal
+// already use for their own scroll containers.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, Package, Info } from "lucide-react";
-import { fetchBrandItemsFeed } from "../../utils/api";
+import { ChevronDown, Package, Info, Store } from "lucide-react";
+import { fetchBrandItemsFeed, fetchBrandItemSellers } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
-import BuySellChoiceSheet from "../catalog/BuySellChoiceSheet";
 import SellThisItemModal from "../catalog/SellThisItemModal";
+import BuyNowModal from "../BuyNowModal";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
@@ -22,6 +35,7 @@ const C = {
 };
 const EASE = [0.16, 1, 0.3, 1];
 const PAGE_SIZE = 24;
+const SELLER_PAGE_SIZE = 30;
 const DEBOUNCE_MS = 250;
 
 function inr(n) {
@@ -47,6 +61,48 @@ function mergeUnique(prev, incoming) {
     return [...prev, ...deduped];
 }
 
+// Same lead-time rule BuyNowModal/BrandItemSellersPage use.
+function effectiveLeadTime(s) {
+    return s.stock_type === "made_to_order" ? s.production_lead_time_days : s.dispatch_time_days;
+}
+
+// Maps a raw seller row (from catalog_brand_item_sellers) onto exactly
+// what BuyNowModal expects — identical mapping to BrandItemSellersPage's
+// buyerSellerPayload, kept in sync so the inline flow and the full
+// sellers-page flow never drift apart.
+function toBuyerSellerPayload(s) {
+    return {
+        offerId: s.submission_id,
+        display_name: s.display_name,
+        unit: s.unit,
+        moq: s.moq,
+        price: s.price,
+        gstPercent: s.gst_percent,
+        availableStock: s.stock_quantity ?? null,
+        stockType: s.stock_type,
+        leadTime: effectiveLeadTime(s),
+        dispatchTimeDays: s.dispatch_time_days,
+        productionLeadTimeDays: s.production_lead_time_days,
+        priceSlabs: s.price_slabs || [],
+        quantityDiscounts: s.quantity_discounts || [],
+        hsnCode: s.hsn_code,
+        paymentTerms: s.payment_terms,
+        returnPolicy: s.return_policy,
+        warranty: s.warranty,
+        deliveryTimeline: s.delivery_timeline,
+        freightIncluded: s.freight_included,
+        priceBasis: s.price_basis,
+        dispatchOrigin: [s.dispatch_district, s.dispatch_state].filter(Boolean).join(", ") || null,
+        dispatchPincode: s.dispatch_pincode,
+        dispatchState: s.dispatch_state,
+        packSize: s.pack_size,
+        masterPackSize: s.units_per_master_pack,
+        sampleAvailable: s.sample_available || false,
+        sampleQuantity: s.sample_quantity ?? null,
+        samplePrice: s.sample_price ?? null,
+    };
+}
+
 function ProductImage({ src, alt, onOpen }) {
     const [failed, setFailed] = useState(false);
     if (!src || failed) return <Package className="h-4.5 w-4.5" style={{ color: C.muted }} />;
@@ -63,7 +119,7 @@ function ProductImage({ src, alt, onOpen }) {
     );
 }
 
-function ProductRow({ item, idx, onOpen, onInfo, onImageOpen }) {
+function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
 
     return (
@@ -71,39 +127,158 @@ function ProductRow({ item, idx, onOpen, onInfo, onImageOpen }) {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, delay: Math.min(idx * 0.012, 0.18), ease: EASE }}
-            className="flex w-full items-center gap-0 border-b px-3 py-3 sm:px-4"
-            style={{ borderColor: C.hairSoft }}
+            className="flex w-full items-center gap-2 border-b px-3 py-3 sm:px-4"
+            style={{ borderColor: C.hairSoft, background: isOpen ? C.hairSoft : "transparent" }}
         >
-            <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left transition-colors duration-150 hover:bg-black/[0.02]">
-                <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.imgBg }}>
+            <button
+                onClick={onToggle}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left transition-colors duration-150"
+            >
+                <span
+                    className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
+                    style={{ borderColor: C.hair, background: C.imgBg }}
+                >
                     <ProductImage src={item.image} alt="" onOpen={onImageOpen} />
                 </span>
 
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{item.name}</p>
-                    <p className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>{subLabel}</p>
+                    <p className="text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>
+                        {item.name}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>
+                        {subLabel}
+                    </p>
                     <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                        {item.category_name ? `${item.category_name} · ` : ""}{item.subcategory_name}
+                        {item.category_name ? `${item.category_name} · ` : ""}
+                        {item.subcategory_name}
                     </p>
                 </div>
+            </button>
 
-                <div className="flex shrink-0 flex-col items-end text-right">
-                    <p className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
-                        {item.lowest_price != null ? <>from ₹{inr(item.lowest_price)}</> : "Ask price"}
+            <div className="flex shrink-0 items-center gap-1 pl-1">
+                <button
+                    onClick={onInfo}
+                    aria-label="Product details"
+                    className="flex h-8 w-6 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
+                >
+                    <Info className="h-4 w-4" style={{ color: C.muted }} />
+                </button>
+                <button
+                    onClick={onToggle}
+                    aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
+                    className="flex h-8 w-6 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
+                >
+                    <ChevronDown
+                        className="h-4 w-4 transition-transform duration-200"
+                        style={{ color: C.muted, transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                    />
+                </button>
+            </div>
+        </motion.div>
+    );
+}
+
+// Inline seller accordion. Renders directly under the row it belongs
+// to. `state` is { loading, items, error, total, hasMore } for this
+// item's fetch. `data-lenis-prevent` on the scrollable list is what
+// hands scroll control back to the native container the instant the
+// cursor is over it, instead of the page's Lenis smooth-scroll eating
+// the wheel event.
+function SellerDropdown({ item, state, onBuySeller, onSell }) {
+    const { loading, items = [], error, total = 0, hasMore } = state || {};
+
+    return (
+        <motion.div
+            key="dropdown"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.24, ease: EASE }}
+            className="overflow-hidden"
+        >
+            <div
+                data-lenis-prevent
+                className="border-b px-3 py-2.5 sm:px-4"
+                style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}
+            >
+                {/* Summary header — carries the price/seller-count context
+                    that used to sit on the collapsed row */}
+                <div className="flex items-center justify-between pb-2">
+                    <p className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>
+                        {loading
+                            ? "Loading sellers…"
+                            : total > 0
+                                ? `${total} seller${total === 1 ? "" : "s"} listing this`
+                                : "No sellers yet"}
                     </p>
-                    {item.seller_count > 0 && (
-                        <p className="mt-0.5 text-[11px] font-bold tracking-wide" style={{ color: C.secondary }}>{item.seller_count} sellers</p>
+                    {item.lowest_price != null && (
+                        <p className="text-[12.5px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
+                            from ₹{inr(item.lowest_price)}
+                        </p>
                     )}
                 </div>
-                {/* <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.hair }} /> */}
-            </button>
-            <button
-                onClick={onInfo}
-                aria-label="Product details"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
-            >
-                <Info className="h-4 w-4" style={{ color: C.muted }} />
-            </button>
+
+                <div className="max-h-64 overflow-y-auto overscroll-contain">
+                    {loading ? (
+                        <div className="flex flex-col gap-3 py-1">
+                            {Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className="flex items-center justify-between gap-3">
+                                    <div className="space-y-1.5">
+                                        <div className="h-2.5 w-28 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                        <div className="h-2 w-16 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                    </div>
+                                    <div className="h-2.5 w-14 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                </div>
+                            ))}
+                        </div>
+                    ) : error ? (
+                        <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>{error}</p>
+                    ) : items.length === 0 ? (
+                        <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>No sellers listing this yet.</p>
+                    ) : (
+                        <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
+                            {items.map((s) => (
+                                <button
+                                    key={s.submission_id}
+                                    onClick={() => onBuySeller(s)}
+                                    className="flex items-center justify-between gap-3 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03]"
+                                >
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                            {s.display_name}
+                                        </p>
+                                        <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                            {s.moq ? `MOQ ${s.moq} ${s.unit}` : s.unit}
+                                            {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
+                                        </p>
+                                    </div>
+                                    <div className="shrink-0 text-right">
+                                        <p className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.primary }}>
+                                            ₹{inr(s.price)}
+                                        </p>
+                                        <p className="text-[10px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                            /{s.unit}
+                                        </p>
+                                    </div>
+                                </button>
+                            ))}
+                            {hasMore && (
+                                <p className="pt-2 text-center text-[11px] font-semibold" style={{ color: C.muted }}>
+                                    +{Math.max(total - items.length, 0)} more sellers
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <button
+                    onClick={onSell}
+                    className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors duration-150 hover:bg-black/[0.03]"
+                    style={{ borderColor: `${C.primary}40`, color: C.primary }}
+                >
+                    <Store className="h-3.5 w-3.5" /> Sell this product
+                </button>
+            </div>
         </motion.div>
     );
 }
@@ -133,8 +308,17 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [lightboxSrc, setLightboxSrc] = useState(null);
     const [infoItemId, setInfoItemId] = useState(null);
 
-    const [choiceItem, setChoiceItem] = useState(null);
+    // Inline seller accordion state — only ONE item id can be open at
+    // once. sellerState is keyed by item id so a previous item's
+    // fetched sellers stay cached if the user re-opens it later in the
+    // same session (re-opening re-fetches fresh below, but this avoids
+    // a flash of nothing while that request is in flight).
+    const [openItemId, setOpenItemId] = useState(null);
+    const [sellerState, setSellerState] = useState({});
+    const sellerAbortRef = useRef(null);
+
     const [sellItem, setSellItem] = useState(null);
+    const [buyState, setBuyState] = useState(null); // { item, seller }
 
     const abortRef = useRef(null);
     const debounceRef = useRef(null);
@@ -145,6 +329,45 @@ export default function HomeProductFeed({ category, q = "" }) {
     // instead of merged — this is what stops a page-2 append from a
     // previous query landing after a page-0 reset from the new query.
     const queryTokenRef = useRef(0);
+
+    const closeDropdown = useCallback(() => {
+        sellerAbortRef.current?.abort();
+        setOpenItemId(null);
+    }, []);
+
+    const toggleDropdown = useCallback((item) => {
+        if (openItemId === item.id) {
+            closeDropdown();
+            return;
+        }
+        sellerAbortRef.current?.abort();
+        const controller = new AbortController();
+        sellerAbortRef.current = controller;
+        setOpenItemId(item.id);
+        setSellerState((prev) => ({ ...prev, [item.id]: { loading: true, items: [], error: null } }));
+
+        fetchBrandItemSellers(item.id, { sort: "price_asc", limit: SELLER_PAGE_SIZE, offset: 0, signal: controller.signal })
+            .then((res) => {
+                if (!res?.success) {
+                    setSellerState((prev) => ({ ...prev, [item.id]: { loading: false, items: [], error: "Couldn't load sellers." } }));
+                    return;
+                }
+                setSellerState((prev) => ({
+                    ...prev,
+                    [item.id]: {
+                        loading: false,
+                        items: res.items || [],
+                        error: null,
+                        total: res.total ?? (res.items || []).length,
+                        hasMore: !!res.hasMore,
+                    },
+                }));
+            })
+            .catch((err) => {
+                if (err?.name === "AbortError") return;
+                setSellerState((prev) => ({ ...prev, [item.id]: { loading: false, items: [], error: "Couldn't load sellers." } }));
+            });
+    }, [openItemId, closeDropdown]);
 
     const runQuery = useCallback((offset, { append }) => {
         abortRef.current?.abort();
@@ -179,6 +402,7 @@ export default function HomeProductFeed({ category, q = "" }) {
     useEffect(() => {
         clearTimeout(debounceRef.current);
         queryTokenRef.current += 1; // invalidate any in-flight request from before this change
+        closeDropdown(); // the item list underneath is about to change — don't leave a stale accordion open
 
         if (isFirstRun.current) {
             isFirstRun.current = false;
@@ -196,12 +420,25 @@ export default function HomeProductFeed({ category, q = "" }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [category?.id, q]);
 
+    useEffect(() => () => sellerAbortRef.current?.abort(), []); // unmount cleanup
+
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && runQuery(items.length, { append: true }),
         { lookahead: 800, disabled: loading || loadingMore || !hasMore }
     );
 
     const goToSellers = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
+
+    const handleBuySeller = (item, seller) => {
+        closeDropdown();
+        setBuyState({ item, seller });
+    };
+    const handleSell = (item) => {
+        closeDropdown();
+        setSellItem(item);
+    };
+
+    const buyerSellerPayload = buyState ? toBuyerSellerPayload(buyState.seller) : null;
 
     return (
         <div>
@@ -229,16 +466,31 @@ export default function HomeProductFeed({ category, q = "" }) {
                         </div>
                     ) : (
                         <>
-                            {items.map((item, i) => (
-                                <ProductRow
-                                    key={item.id}
-                                    item={item}
-                                    idx={i}
-                                    onOpen={() => setChoiceItem(item)}
-                                    onInfo={() => setInfoItemId(item.id)}
-                                    onImageOpen={setLightboxSrc}
-                                />
-                            ))}
+                            {items.map((item, i) => {
+                                const isOpen = openItemId === item.id;
+                                return (
+                                    <motion.div key={item.id} layout="position" transition={{ duration: 0.24, ease: EASE }}>
+                                        <ProductRow
+                                            item={item}
+                                            idx={i}
+                                            isOpen={isOpen}
+                                            onToggle={() => toggleDropdown(item)}
+                                            onInfo={() => setInfoItemId(item.id)}
+                                            onImageOpen={setLightboxSrc}
+                                        />
+                                        <AnimatePresence initial={false}>
+                                            {isOpen && (
+                                                <SellerDropdown
+                                                    item={item}
+                                                    state={sellerState[item.id]}
+                                                    onBuySeller={(seller) => handleBuySeller(item, seller)}
+                                                    onSell={() => handleSell(item)}
+                                                />
+                                            )}
+                                        </AnimatePresence>
+                                    </motion.div>
+                                );
+                            })}
                             {loadingMore && <RowSkeleton />}
                         </>
                     )}
@@ -254,23 +506,15 @@ export default function HomeProductFeed({ category, q = "" }) {
             )}
 
             <AnimatePresence>
-                {choiceItem && (
-                    <BuySellChoiceSheet
-                        item={choiceItem}
-                        onClose={() => setChoiceItem(null)}
-                        onBuy={() => {
-                            const it = choiceItem;
-                            setChoiceItem(null);
-                            goToSellers(it);
-                        }}
-                        onSell={() => {
-                            setSellItem(choiceItem);
-                            setChoiceItem(null);
-                        }}
-                    />
-                )}
                 {sellItem && (
                     <SellThisItemModal brand={sellItem} onClose={() => setSellItem(null)} />
+                )}
+                {buyState && buyerSellerPayload && (
+                    <BuyNowModal
+                        seller={buyerSellerPayload}
+                        product={{ name: buyState.item.name, brand_name: buyState.item.brand_name }}
+                        onClose={() => setBuyState(null)}
+                    />
                 )}
             </AnimatePresence>
 
