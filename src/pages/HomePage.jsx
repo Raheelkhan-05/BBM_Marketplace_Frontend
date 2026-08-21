@@ -23,6 +23,15 @@ export default function HomePage() {
     const [activeCategory, setActiveCategory] = useState(null); // { id, name, slug } | null
     const navigate = useNavigate();
 
+    const handleSuggestionSelect = (s) => {
+        if (s.level === "brandFamily") {
+            // brand family still needs its own page; only case that navigates
+            navigate(`/brand-family/${encodeURIComponent(s.name)}`);
+            return;
+        }
+        setQuery(s.name); // just fills the box — HomeProductFeed's debounced q picks it up and live-filters
+    };
+
     useEffect(() => {
         const id = requestAnimationFrame(() => setReady(true));
         return () => cancelAnimationFrame(id);
@@ -44,11 +53,12 @@ export default function HomePage() {
                         onSubmit={handleSubmit}
                         onImageResolved={handleImageResolved}
                         showMediaButtons={false}
+                        onSuggestionSelect={handleSuggestionSelect}
                     />
 
                     <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
 
-                    <HomeProductFeed category={activeCategory} />
+                    <HomeProductFeed category={activeCategory} q={query} />
                 </main>
             </SmoothScrollProvider>
         </div>

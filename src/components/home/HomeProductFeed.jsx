@@ -1,10 +1,9 @@
 // components/home/HomeProductFeed.jsx
 //
-// The home page's product list — now one level flatter: shows brand
-// items directly (fetchBrandItemsFeed), not generic products. Tapping a
-// row opens BuySellChoiceSheet immediately, same as GenericProductBrandsPage
-// — Buy goes to the sellers page, Sell opens SellThisItemModal. Tapping
-// the (i) opens BrandItemDetailModal without leaving the feed.
+// The home page's product list — brand items (fetchBrandItemsFeed),
+// filterable live by `q` (wired from the home search bar's typed value)
+// in addition to the category filter. Tapping a row opens
+// BuySellChoiceSheet immediately, same as GenericProductBrandsPage.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -23,10 +22,29 @@ const C = {
 };
 const EASE = [0.16, 1, 0.3, 1];
 const PAGE_SIZE = 24;
+const DEBOUNCE_MS = 250;
 
 function inr(n) {
     const val = Number(n) || 0;
     return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
+// Merges a new page of results into the existing list, dropping any
+// item whose id is already present. Needed because offset-based
+// pagination can hand back an id that's already on screen — most
+// commonly when a debounced search re-query (reset to page 0) races
+// with an in-flight infinite-scroll append (page 2 of the PREVIOUS
+// query), or when the underlying filtered set shifts between two
+// fetches. React requires unique keys regardless of why a dup shows
+// up, so this is the actual fix rather than a workaround.
+function mergeUnique(prev, incoming) {
+    const seen = new Set(prev.map((it) => it.id));
+    const deduped = incoming.filter((it) => {
+        if (seen.has(it.id)) return false;
+        seen.add(it.id);
+        return true;
+    });
+    return [...prev, ...deduped];
 }
 
 function ProductImage({ src, alt, onOpen }) {
@@ -46,8 +64,6 @@ function ProductImage({ src, alt, onOpen }) {
 }
 
 function ProductRow({ item, idx, onOpen, onInfo, onImageOpen }) {
-    // model_no differentiates near-duplicate names from the same brand,
-    // same treatment as GenericProductBrandsPage's BrandRow.
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
 
     return (
@@ -64,7 +80,7 @@ function ProductRow({ item, idx, onOpen, onInfo, onImageOpen }) {
                 </span>
 
                 <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{item.name}</p>
+                    <p className="truncate text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{item.name}</p>
                     <p className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>{subLabel}</p>
                     <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
                         {item.category_name ? `${item.category_name} · ` : ""}{item.subcategory_name}
@@ -79,7 +95,7 @@ function ProductRow({ item, idx, onOpen, onInfo, onImageOpen }) {
                         <p className="mt-0.5 text-[11px] font-bold tracking-wide" style={{ color: C.secondary }}>{item.seller_count} sellers</p>
                     )}
                 </div>
-                {/* <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.hair }} /> */}
+                <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.hair }} />
             </button>
             <button
                 onClick={onInfo}
@@ -105,7 +121,9 @@ function RowSkeleton() {
     );
 }
 
-export default function HomeProductFeed({ category }) {
+// `q` is optional — pages that don't pass it (or pass "") get the exact
+// same unfiltered behavior as before. Passing it wires up live search.
+export default function HomeProductFeed({ category, q = "" }) {
     const navigate = useNavigate();
     const [items, setItems] = useState([]);
     const [total, setTotal] = useState(null);
@@ -119,44 +137,70 @@ export default function HomeProductFeed({ category }) {
     const [sellItem, setSellItem] = useState(null);
 
     const abortRef = useRef(null);
+    const debounceRef = useRef(null);
+    // Bumped on every reset (category/query change). Each in-flight
+    // request captures the value current at the time it was fired; if
+    // that value no longer matches when the response lands, the
+    // response is stale (a reset happened in between) and gets dropped
+    // instead of merged — this is what stops a page-2 append from a
+    // previous query landing after a page-0 reset from the new query.
+    const queryTokenRef = useRef(0);
 
     const runQuery = useCallback((offset, { append }) => {
         abortRef.current?.abort();
         const controller = new AbortController();
         abortRef.current = controller;
+        const token = queryTokenRef.current;
         (append ? setLoadingMore : setLoading)(true);
 
         fetchBrandItemsFeed({
             categoryId: category?.id || null,
+            q,
             limit: PAGE_SIZE,
             offset,
             signal: controller.signal,
         })
             .then((res) => {
                 if (!res?.success) return;
-                setItems((prev) => (append ? [...prev, ...(res.items || [])] : res.items || []));
+                if (token !== queryTokenRef.current) return; // stale response, a reset happened after this was fired
+                setItems((prev) => (append ? mergeUnique(prev, res.items || []) : res.items || []));
                 setTotal(res.total ?? null);
                 setHasMore(!!res.hasMore);
             })
             .catch((err) => { if (err?.name !== "AbortError") setHasMore(false); })
-            .finally(() => { setLoading(false); setLoadingMore(false); });
-    }, [category?.id]);
+            .finally(() => {
+                if (token !== queryTokenRef.current) return;
+                setLoading(false);
+                setLoadingMore(false);
+            });
+    }, [category?.id, q]);
 
+    const isFirstRun = useRef(true);
     useEffect(() => {
-        setItems([]);
+        clearTimeout(debounceRef.current);
+        queryTokenRef.current += 1; // invalidate any in-flight request from before this change
+
+        if (isFirstRun.current) {
+            isFirstRun.current = false;
+            setHasMore(true);
+            runQuery(0, { append: false });
+            return;
+        }
+
         setHasMore(true);
-        runQuery(0, { append: false });
+        debounceRef.current = setTimeout(
+            () => runQuery(0, { append: false }),
+            q ? DEBOUNCE_MS : 0
+        );
+        return () => clearTimeout(debounceRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [category?.id]);
+    }, [category?.id, q]);
 
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && runQuery(items.length, { append: true }),
         { lookahead: 800, disabled: loading || loadingMore || !hasMore }
     );
 
-    // Same shape BrandRow's goToSellers used in GenericProductBrandsPage —
-    // brand-item rows already carry genericProductId/genericProductName
-    // where needed for the sellers page breadcrumb, so pass what we have.
     const goToSellers = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
 
     return (
@@ -176,8 +220,12 @@ export default function HomeProductFeed({ category }) {
                     : items.length === 0 ? (
                         <div className="flex flex-col items-center gap-1.5 px-6 py-16 text-center">
                             <Package className="h-6 w-6" style={{ color: C.hair }} />
-                            <p className="text-[13px] font-bold" style={{ color: C.ink }}>No products here yet</p>
-                            <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>Try a different category.</p>
+                            <p className="text-[13px] font-bold" style={{ color: C.ink }}>
+                                {q ? "No products match that search" : "No products here yet"}
+                            </p>
+                            <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
+                                {q ? "Try a different search term." : "Try a different category."}
+                            </p>
                         </div>
                     ) : (
                         <>
