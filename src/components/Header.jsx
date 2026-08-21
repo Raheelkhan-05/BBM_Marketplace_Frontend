@@ -198,7 +198,7 @@ export default function Header({ onOpenRfq }) {
                             <div className="my-1 border-t border-[rgba(20,27,34,0.08)]" />
                             <SmartLink to="/admin/sellers" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
                               <ShieldCheck className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Admin Panel
+                              Seller Applications
                             </SmartLink>
                             <SmartLink to="/admin/catalog" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
                               <ListChecks className="h-3.5 w-3.5 text-[#0B7285]" />
