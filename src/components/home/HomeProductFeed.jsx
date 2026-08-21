@@ -1,19 +1,21 @@
 // components/home/HomeProductFeed.jsx
 //
-// The home page's product list — fetchGenericProductsFeed for every state
-// (no category = everything, category chip = scoped), infinite-scroll
-// paginated the same way CategoryProductsPage was, just embedded in the
-// page instead of owning its own route. Re-queries from offset 0 the
-// instant `category` changes, and clears items immediately so switching
-// categories never shows stale rows while the new page loads.
+// The home page's product list — now one level flatter: shows brand
+// items directly (fetchBrandItemsFeed), not generic products. Tapping a
+// row opens BuySellChoiceSheet immediately, same as GenericProductBrandsPage
+// — Buy goes to the sellers page, Sell opens SellThisItemModal. Tapping
+// the (i) opens BrandItemDetailModal without leaving the feed.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { ChevronRight, Package } from "lucide-react";
-import { fetchGenericProductsFeed } from "../../utils/api";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronRight, Package, Info } from "lucide-react";
+import { fetchBrandItemsFeed } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
+import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
+import BuySellChoiceSheet from "../catalog/BuySellChoiceSheet";
+import SellThisItemModal from "../catalog/SellThisItemModal";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
@@ -43,37 +45,50 @@ function ProductImage({ src, alt, onOpen }) {
     );
 }
 
-function ProductRow({ item, idx, onClick, onImageOpen }) {
+function ProductRow({ item, idx, onOpen, onInfo, onImageOpen }) {
+    // model_no differentiates near-duplicate names from the same brand,
+    // same treatment as GenericProductBrandsPage's BrandRow.
+    const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
+
     return (
-        <motion.button
-            onClick={onClick}
+        <motion.div
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, delay: Math.min(idx * 0.012, 0.18), ease: EASE }}
-            className="flex w-full items-center gap-3 border-b px-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.02] sm:px-4"
+            className="flex w-full items-center gap-0 border-b px-3 py-3 sm:px-4"
             style={{ borderColor: C.hairSoft }}
         >
-            <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.imgBg }}>
-                <ProductImage src={item.image} alt="" onOpen={onImageOpen} />
-            </span>
+            <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left transition-colors duration-150 hover:bg-black/[0.02]">
+                <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.imgBg }}>
+                    <ProductImage src={item.image} alt="" onOpen={onImageOpen} />
+                </span>
 
-            <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{item.name}</p>
-                <p className="mt-0.5 truncate text-[11.5px] font-medium tracking-wider" style={{ color: C.muted }}>
-                    {item.category_name ? `${item.category_name} · ` : ""}{item.subcategory_name}
-                </p>
-            </div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{item.name}</p>
+                    <p className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>{subLabel}</p>
+                    <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                        {item.category_name ? `${item.category_name} · ` : ""}{item.subcategory_name}
+                    </p>
+                </div>
 
-            <div className="flex shrink-0 flex-col items-end text-right">
-                <p className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
-                    {item.lowest_price != null ? <>from <span style={{ color: C.primary }}>₹</span>{inr(item.lowest_price)}</> : "View price"}
-                </p>
-                {item.seller_count > 0 && (
-                    <p className="mt-0.5 text-[11px] font-bold tracking-wide" style={{ color: C.secondary }}>{item.seller_count} sellers</p>
-                )}
-            </div>
-            <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.hair }} />
-        </motion.button>
+                <div className="flex shrink-0 flex-col items-end text-right">
+                    <p className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
+                        {item.lowest_price != null ? <>from ₹{inr(item.lowest_price)}</> : "Ask price"}
+                    </p>
+                    {item.seller_count > 0 && (
+                        <p className="mt-0.5 text-[11px] font-bold tracking-wide" style={{ color: C.secondary }}>{item.seller_count} sellers</p>
+                    )}
+                </div>
+                {/* <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.hair }} /> */}
+            </button>
+            <button
+                onClick={onInfo}
+                aria-label="Product details"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
+            >
+                <Info className="h-4 w-4" style={{ color: C.muted }} />
+            </button>
+        </motion.div>
     );
 }
 
@@ -98,6 +113,10 @@ export default function HomeProductFeed({ category }) {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [lightboxSrc, setLightboxSrc] = useState(null);
+    const [infoItemId, setInfoItemId] = useState(null);
+
+    const [choiceItem, setChoiceItem] = useState(null);
+    const [sellItem, setSellItem] = useState(null);
 
     const abortRef = useRef(null);
 
@@ -107,7 +126,7 @@ export default function HomeProductFeed({ category }) {
         abortRef.current = controller;
         (append ? setLoadingMore : setLoading)(true);
 
-        fetchGenericProductsFeed({
+        fetchBrandItemsFeed({
             categoryId: category?.id || null,
             limit: PAGE_SIZE,
             offset,
@@ -135,7 +154,10 @@ export default function HomeProductFeed({ category }) {
         { lookahead: 800, disabled: loading || loadingMore || !hasMore }
     );
 
-    const openProduct = (item) => navigate(`/product/${item.slug || item.id}/brands`, { state: { genericProduct: item, category } });
+    // Same shape BrandRow's goToSellers used in GenericProductBrandsPage —
+    // brand-item rows already carry genericProductId/genericProductName
+    // where needed for the sellers page breadcrumb, so pass what we have.
+    const goToSellers = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
 
     return (
         <div>
@@ -164,7 +186,8 @@ export default function HomeProductFeed({ category }) {
                                     key={item.id}
                                     item={item}
                                     idx={i}
-                                    onClick={() => openProduct(item)}
+                                    onOpen={() => setChoiceItem(item)}
+                                    onInfo={() => setInfoItemId(item.id)}
                                     onImageOpen={setLightboxSrc}
                                 />
                             ))}
@@ -173,6 +196,35 @@ export default function HomeProductFeed({ category }) {
                     )}
                 {hasMore && !loading && <div ref={sentinelRef} className="h-1" />}
             </div>
+
+            {infoItemId && (
+                <BrandItemDetailModal
+                    brandItemId={infoItemId}
+                    onClose={() => setInfoItemId(null)}
+                    onViewSellers={(item) => { setInfoItemId(null); goToSellers(item); }}
+                />
+            )}
+
+            <AnimatePresence>
+                {choiceItem && (
+                    <BuySellChoiceSheet
+                        item={choiceItem}
+                        onClose={() => setChoiceItem(null)}
+                        onBuy={() => {
+                            const it = choiceItem;
+                            setChoiceItem(null);
+                            goToSellers(it);
+                        }}
+                        onSell={() => {
+                            setSellItem(choiceItem);
+                            setChoiceItem(null);
+                        }}
+                    />
+                )}
+                {sellItem && (
+                    <SellThisItemModal brand={sellItem} onClose={() => setSellItem(null)} />
+                )}
+            </AnimatePresence>
 
             {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />}
         </div>

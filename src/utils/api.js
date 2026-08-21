@@ -863,6 +863,19 @@ export async function fetchGenericProductBrands(genericProductId, { q = "", sort
   return res.json();
 }
 
+export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, signal } = {}) {
+  const params = new URLSearchParams({ q, sort, limit, offset });
+  if (categoryId) params.set("categoryId", categoryId);
+
+  const res = await fetch(`${API_BASE}/catalog/brand-items-feed?${params}`, { signal });
+
+  if (!res.ok) {
+    throw new Error(`Request failed with status ${res.status}`);
+  }
+
+  return res.json();
+}
+
 export async function fetchBrandItemDetail(brandItemId, { signal } = {}) {
   const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}`, { signal });
 
