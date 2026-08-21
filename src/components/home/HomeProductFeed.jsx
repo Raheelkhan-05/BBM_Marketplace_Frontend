@@ -95,7 +95,7 @@ function ProductRow({ item, idx, onOpen, onInfo, onImageOpen }) {
                         <p className="mt-0.5 text-[11px] font-bold tracking-wide" style={{ color: C.secondary }}>{item.seller_count} sellers</p>
                     )}
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.hair }} />
+                {/* <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.hair }} /> */}
             </button>
             <button
                 onClick={onInfo}
