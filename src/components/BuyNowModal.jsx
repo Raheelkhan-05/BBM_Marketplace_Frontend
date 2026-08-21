@@ -6,6 +6,13 @@
 // of the previous ad-hoc styling. The quote block is rebuilt as a clear
 // step-down breakdown — Subtotal → Discount → Payable → Delivery —
 // instead of everything competing for attention in one dense strip.
+//
+// NEW: delivery estimate uses the same simplified distance/speed model as
+// the backend (see orders.controller.js) — distance in km / 15 km/h ->
+// day range, shown as a single date or a "23 Aug - 25 Aug" range. This
+// client-side version is just an instant, rough preview (it can't call
+// the server's road-distance lookup), and gets replaced a moment later
+// by the authoritative server quote from fetchOrderQuote.
 import { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
@@ -86,6 +93,18 @@ function round2(n) {
     return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
+// NOTE: there used to be a client-side rough delivery-date guess here
+// (estimateDeliveryLocal, using a pincode/state-matched km guess through
+// the same distance -> days formula as the backend). It's been removed on
+// purpose: the client can't reach the server's real road-distance data, so
+// that guess could be meaningfully wrong (see the 400001->360003 case,
+// where haversine-based guesses undershot actual road distance). Rather
+// than show a number that might be off and then silently swap it for a
+// different one a moment later, the UI now shows nothing but a loading
+// skeleton for the delivery estimate until the authoritative server quote
+// (fetchOrderQuote) lands — see the "Estimated delivery" block in the JSX
+// below, gated on `quote.isEstimate`.
+
 // Server-confirmed quotes (from fetchOrderQuote) and the local instant
 // estimate (computeLocalQuote) don't necessarily share the exact same
 // field shape — the server may not send back grossSubtotal/discountAmount
@@ -122,22 +141,6 @@ function normalizeQuote(raw) {
     return { ...raw, baseQuantity, grossSubtotal, discountAmount, discountPercent };
 }
 
-// Client-side instant estimate — same zone heuristic as the backend
-// (same pincode prefix / same state / else), off lead time + a rough
-// transit band. Purely for the instant render; the debounced quote call
-// and the RPC both recompute this authoritatively.
-function estimateDeliveryLocal(seller, buyerPincode, buyerState) {
-    const leadDays = seller.stockType === "made_to_order"
-        ? Number(seller.productionLeadTimeDays || 0)
-        : Number(seller.dispatchTimeDays ?? seller.leadTime ?? 0);
-    let transitDays = 6;
-    if (seller.dispatchPincode && buyerPincode && seller.dispatchPincode.slice(0, 3) === buyerPincode.slice(0, 3)) transitDays = 1;
-    else if (seller.dispatchState && buyerState && seller.dispatchState.toLowerCase() === buyerState.toLowerCase()) transitDays = 3;
-    const date = new Date();
-    date.setDate(date.getDate() + leadDays + transitDays);
-    return formatDDMon(date);
-}
-
 // Instant, client-side price computation. Quantity is in `basis` units and
 // gets converted to base units before slab/discount resolution — same
 // contract as the server. Sample mode short-circuits to sample pricing
@@ -147,7 +150,9 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
     if (!seller || !(qty > 0)) return null;
 
     const baseQty = toBaseUnits(seller, qty, basis);
-    const deliveryLabel = estimateDeliveryLocal(seller, buyerPincode, buyerState);
+    // Deliberately no local delivery-date guess — see note above. The
+    // "Estimated delivery" UI block shows a loading skeleton for as long
+    // as estimatedDeliveryDate is null and isEstimate is true.
 
     if (isSample) {
         const unitPrice = Number(seller.samplePrice) || 0;
@@ -160,7 +165,7 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
             subtotal: Math.round(unitPrice * baseQty * 100) / 100,
             exceedsSampleQuantity: seller.sampleQuantity != null && baseQty > Number(seller.sampleQuantity),
             sampleQuantity: seller.sampleQuantity,
-            estimatedDeliveryDate: deliveryLabel,
+            estimatedDeliveryDate: null,
             isEstimate: true,
         };
     }
@@ -195,7 +200,7 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
         meetsMoq: moq ? baseQty >= moq : true,
         availableStock,
         stockShortfall,
-        estimatedDeliveryDate: deliveryLabel,
+        estimatedDeliveryDate: null,
         isEstimate: true,
     };
 }
@@ -235,6 +240,13 @@ function Notice({ tone = "warn", children }) {
             {children}
         </p>
     );
+}
+
+// Loading placeholder shown in place of the delivery date while we're
+// waiting on the authoritative server quote (see the "no local guess"
+// note near computeLocalQuote above).
+function SkeletonBar({ width = "70%" }) {
+    return <span className="inline-block h-3 animate-pulse rounded" style={{ width, background: C.hairSoft }} />;
 }
 
 // One line of the quote breakdown: label on the left, value on the right.
@@ -467,7 +479,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.hsnCode || seller.freightIncluded != null || seller.dispatchOrigin);
     const canSample = seller?.sampleAvailable;
     const basisLabel = basis === "per_pack" ? "pack(s)" : basis === "per_master_pack" ? "master pack(s)" : (seller?.unit || "units");
-    const deliveryDateLabel = (val) => (typeof val === "string" && val.includes("-") ? formatDDMon(new Date(val)) : val);
+    // estimatedDeliveryDate can be a single "23 Aug" label OR a range like
+    // "23 Aug - 25 Aug" (see the server's estimateDeliveryDate). Only treat
+    // it as a raw ISO date string (from the RPC's persisted
+    // order.estimated_delivery_date, e.g. "2026-08-23") when it actually
+    // looks like one — a naive `.includes("-")` check would misfire on
+    // the "23 Aug - 25 Aug" range string.
+    const deliveryDateLabel = (val) => (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val) ? formatDDMon(new Date(val)) : val);
 
     return (
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-4"
@@ -683,22 +701,24 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                             <QuoteRow strong label={isSample ? "Total payable (sample)" : "Total payable"} value={`₹${inr(quote.subtotal)}`} tone={C.ink} />
                                         </div>
 
-                                        {quote.estimatedDeliveryDate && (
-                                            <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
-                                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}14`, color: C.secondary }}>
-                                                    <Truck className="h-3.5 w-3.5" />
-                                                </span>
-                                                <div className="min-w-0">
-                                                    <p className="text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Estimated delivery</p>
+                                        {/* Only ever shows a date once it's come back from the server
+                                            (fetchOrderQuote) — no locally-guessed date is ever rendered
+                                            here. While waiting, shows a loading skeleton instead. */}
+                                        <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
+                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                                                <Truck className="h-3.5 w-3.5" />
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Estimated delivery</p>
+                                                {quote.estimatedDeliveryDate ? (
                                                     <p className="flex items-center gap-1 text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>
-                                                        <Calendar className="h-3 w-3" style={{ color: C.secondary }} /> {quote.estimatedDeliveryDate}
+                                                        <Calendar className="h-3 w-3" style={{ color: C.secondary }} /> {deliveryDateLabel(quote.estimatedDeliveryDate)}
                                                     </p>
-                                                </div>
-                                                {quote.isEstimate && (
-                                                    <span className="ml-auto shrink-0 rounded-full px-2 py-0.5 text-[9.5px] font-extrabold uppercase tracking-wide" style={{ background: C.hairSoft, color: C.muted }}>Estimate</span>
+                                                ) : (
+                                                    <p className="mt-1"><SkeletonBar width="120px" /></p>
                                                 )}
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
                                 ) : (
                                     <p className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
