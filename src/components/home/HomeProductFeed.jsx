@@ -13,6 +13,7 @@ import { motion } from "framer-motion";
 import { ChevronRight, Package } from "lucide-react";
 import { fetchGenericProductsFeed } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
+import ImageLightbox from "../ImageLightbox.jsx";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
@@ -26,7 +27,23 @@ function inr(n) {
     return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
-function ProductRow({ item, idx, onClick }) {
+function ProductImage({ src, alt, onOpen }) {
+    const [failed, setFailed] = useState(false);
+    if (!src || failed) return <Package className="h-4.5 w-4.5" style={{ color: C.muted }} />;
+    return (
+        <img
+            src={src}
+            alt={alt}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            onError={() => setFailed(true)}
+            onClick={(e) => { e.stopPropagation(); onOpen(src); }}
+            className="h-full w-full object-cover cursor-zoom-in"
+        />
+    );
+}
+
+function ProductRow({ item, idx, onClick, onImageOpen }) {
     return (
         <motion.button
             onClick={onClick}
@@ -36,12 +53,8 @@ function ProductRow({ item, idx, onClick }) {
             className="flex w-full items-center gap-3 border-b px-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.02] sm:px-4"
             style={{ borderColor: C.hairSoft }}
         >
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.imgBg }}>
-                {item.image ? (
-                    <img src={item.image} alt="" className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                    <Package className="h-4.5 w-4.5" style={{ color: C.muted }} />
-                )}
+            <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.imgBg }}>
+                <ProductImage src={item.image} alt="" onOpen={onImageOpen} />
             </span>
 
             <div className="min-w-0 flex-1">
@@ -52,7 +65,7 @@ function ProductRow({ item, idx, onClick }) {
             </div>
 
             <div className="flex shrink-0 flex-col items-end text-right">
-                <p className="text-[14px] font-extrabold tabular-nums tracking-wide" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
+                <p className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
                     {item.lowest_price != null ? <>from <span style={{ color: C.primary }}>₹</span>{inr(item.lowest_price)}</> : "View price"}
                 </p>
                 {item.seller_count > 0 && (
@@ -67,7 +80,7 @@ function ProductRow({ item, idx, onClick }) {
 function RowSkeleton() {
     return (
         <div className="flex items-center gap-3 border-b px-3 py-3 sm:px-4" style={{ borderColor: C.hairSoft }}>
-            <div className="h-11 w-11 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
+            <div className="h-16 w-16 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
             <div className="flex-1 space-y-2">
                 <div className="h-3 w-2/5 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
                 <div className="h-2.5 w-1/4 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
@@ -84,6 +97,7 @@ export default function HomeProductFeed({ category }) {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
+    const [lightboxSrc, setLightboxSrc] = useState(null);
 
     const abortRef = useRef(null);
 
@@ -109,8 +123,6 @@ export default function HomeProductFeed({ category }) {
             .finally(() => { setLoading(false); setLoadingMore(false); });
     }, [category?.id]);
 
-    // fresh query the instant the category filter changes — no debounce
-    // needed here, there's no free-text input driving it, just chip taps
     useEffect(() => {
         setItems([]);
         setHasMore(true);
@@ -148,13 +160,21 @@ export default function HomeProductFeed({ category }) {
                     ) : (
                         <>
                             {items.map((item, i) => (
-                                <ProductRow key={item.id} item={item} idx={i} onClick={() => openProduct(item)} />
+                                <ProductRow
+                                    key={item.id}
+                                    item={item}
+                                    idx={i}
+                                    onClick={() => openProduct(item)}
+                                    onImageOpen={setLightboxSrc}
+                                />
                             ))}
                             {loadingMore && <RowSkeleton />}
                         </>
                     )}
                 {hasMore && !loading && <div ref={sentinelRef} className="h-1" />}
             </div>
+
+            {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />}
         </div>
     );
 }

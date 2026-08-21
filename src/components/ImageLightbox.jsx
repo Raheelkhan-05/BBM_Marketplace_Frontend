@@ -294,6 +294,7 @@ export default function ImageLightbox({ src, images, alt, initialIndex = 0, onCl
                         key={index}
                         src={currentSrc}
                         alt={alt}
+                        referrerPolicy="no-referrer"
                         custom={direction}
                         variants={slideVariants}
                         initial="enter"
@@ -332,7 +333,7 @@ export default function ImageLightbox({ src, images, alt, initialIndex = 0, onCl
                                 }`}
                             aria-label={`Go to image ${i + 1}`}
                         >
-                            <img src={thumb} alt="" className="h-full w-full object-cover" draggable={false} />
+                            <img src={thumb} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" draggable={false} />
                         </button>
                     ))}
                 </div>

@@ -15,10 +15,9 @@ import { fetchGenericProductBrands } from "../utils/api";
 import BrandItemDetailModal from "../components/catalog/BrandItemDetailModal";
 import BuySellChoiceSheet from "../components/catalog/BuySellChoiceSheet";
 import SellThisItemModal from "../components/catalog/SellThisItemModal";
+import ImageLightbox from "../components/ImageLightbox.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
-// accent: "#ffffff",
-//     accentTint: "#D2462B",   // flat, pre-mixed tint — not an alpha overlay
-//         accentTintIcon: "#ffffff",
+
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(8, 143, 254, 0.05)", imgBg: "#F4F5F6",
@@ -27,7 +26,28 @@ const EASE = [0.16, 1, 0.3, 1];
 const PAGE_SIZE = 30;
 const DEBOUNCE_MS = 200;
 
-function BrandRow({ item, idx, onOpen, onInfo }) {
+function BrandImage({ src, alt, onOpen }) {
+    const [failed, setFailed] = useState(false);
+    if (!src || failed) return <Package className="h-6 w-6" style={{ color: C.muted }} />;
+    return (
+        <img
+            src={src}
+            alt={alt}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            onError={() => setFailed(true)}
+            onClick={(e) => { e.stopPropagation(); onOpen(src); }}
+            className="h-full w-full object-cover cursor-zoom-in"
+        />
+    );
+}
+
+function BrandRow({ item, idx, onOpen, onInfo, onImageOpen }) {
+    // model_no / grade_variant differentiate near-duplicate names from
+    // the same brand (e.g. two "AX5 10W30" listings) — show whichever
+    // is present, right under the brand name.
+    const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 6 }}
@@ -37,15 +57,18 @@ function BrandRow({ item, idx, onOpen, onInfo }) {
             style={{ borderColor: C.hairSoft }}
         >
             <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.imgBg }}>
-                    {item.image ? <img src={item.image} alt="" className="h-full w-full object-cover" loading="lazy" /> : <Package className="h-4.5 w-4.5" style={{ color: C.muted }} />}
+                <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.imgBg }}>
+                    <BrandImage src={item.image} alt="" onOpen={onImageOpen} />
                 </span>
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14.5px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{item.name}</p>
-                    <p className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>{item.brand_name}</p>
+                    <p className="text-[14px] md:text-[15px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{item.name}</p>
+                    <p className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>{subLabel}</p>
+                    {item.grade_variant && (
+                        <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>{item.grade_variant}</p>
+                    )}
                 </div>
                 <div className="flex shrink-0 flex-col items-end text-right">
-                    <p className="text-[15px] font-extrabold tabular-nums" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
+                    <p className="text-[13px] font-extrabold tabular-nums" style={{ color: item.lowest_price != null ? C.ink : C.muted }}>
                         {item.lowest_price != null ? <>₹{inr(item.lowest_price)}</> : "Ask price"}
                     </p>
                     {item.seller_count > 0 && (
@@ -73,7 +96,7 @@ function inr(n) {
 function RowSkeleton() {
     return (
         <div className="flex items-center gap-3 border-b px-3 py-3 sm:px-4" style={{ borderColor: C.hairSoft }}>
-            <div className="h-11 w-11 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
+            <div className="h-16 w-16 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
             <div className="flex-1 space-y-2">
                 <div className="h-3 w-2/5 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
                 <div className="h-2.5 w-1/4 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
@@ -98,10 +121,8 @@ export default function GenericProductBrandsPage() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [infoItemId, setInfoItemId] = useState(null);
+    const [lightboxSrc, setLightboxSrc] = useState(null);
 
-    // Buy/Sell choice flow — same pattern as BrowsePage: tapping a row
-    // opens the choice sheet; Buy goes to the sellers page (unchanged
-    // navigation), Sell opens SellThisItemModal right here.
     const [choiceItem, setChoiceItem] = useState(null);
     const [sellItem, setSellItem] = useState(null);
 
@@ -155,10 +176,10 @@ export default function GenericProductBrandsPage() {
                         </button>
                         <div className="min-w-0">
                             <h1 className="truncate text-[16.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>
-                                {productHint?.name || "Product"}
+                                Brands & variants for {productHint?.name || "this product"}
                             </h1>
                             <p className="text-[11.5px] font-medium tracking-wider" style={{ color: C.muted }}>
-                                {total != null ? `${total} brands available` : "Loading…"}
+                                {total != null ? `${total} listing${total === 1 ? "" : "s"} across ${brandFacets.length || ""} brand${brandFacets.length === 1 ? "" : "s"}` : "Loading…"}
                             </p>
                         </div>
                     </div>
@@ -214,6 +235,7 @@ export default function GenericProductBrandsPage() {
                                     idx={i}
                                     onOpen={() => setChoiceItem(item)}
                                     onInfo={() => setInfoItemId(item.id)}
+                                    onImageOpen={setLightboxSrc}
                                 />
                             ))}
                             {loadingMore && <RowSkeleton />}
@@ -250,6 +272,8 @@ export default function GenericProductBrandsPage() {
                     <SellThisItemModal brand={sellItem} onClose={() => setSellItem(null)} />
                 )}
             </AnimatePresence>
+
+            {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />}
         </div>
     );
 }
