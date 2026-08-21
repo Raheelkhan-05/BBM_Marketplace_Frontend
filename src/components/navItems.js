@@ -21,20 +21,6 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate })
             match: (p) => p === "/home",
         },
         {
-            id: "sellprod",
-            label: "Sell Product",
-            icon: PackagePlus,
-            onClick: () => navigate("/seller/sell"),
-            match: (p) => p === "/seller/sell",
-        },
-        {
-            id: "chat",
-            label: "Chat",
-            icon: MessageCircle,
-            onClick: () => navigate("/chat"),
-            match: (p) => p === "/chat",
-        },
-        {
             id: "sellerlist",
             label: "Seller Listing",
             icon: Store,
@@ -42,18 +28,11 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate })
             match: (p) => p === "/seller/listings",
         },
         {
-            id: "listings",
-            label: "Listings",
-            icon: ListChecks,
-            onClick: () => navigate("/admin/listings"),
-            match: (p) => p.startsWith("/admin/listings"),
-        },
-        {
-            id: "categories",
-            label: "Categories",
-            icon: LayoutGrid,
-            onClick: () => navigate("/categories"),
-            match: (p) => p.startsWith("/categor"),
+            id: "chat",
+            label: "Chat",
+            icon: MessageCircle,
+            onClick: () => navigate("/chat"),
+            match: (p) => p === "/chat",
         },
         {
             id: "orders",
@@ -64,13 +43,6 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate })
                     state: { from: "/orders" },
                 }),
             match: (p) => p.startsWith("/orders"),
-        },
-        {
-            id: "rfq",
-            label: "Post RFQ",
-            icon: FileText,
-            onClick: onOpenRfq,
-            match: () => false,
         },
         isApprovedSeller
             ? {

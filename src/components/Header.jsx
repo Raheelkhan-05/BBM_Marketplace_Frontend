@@ -208,6 +208,10 @@ export default function Header({ onOpenRfq }) {
                               <ShieldCheck className="h-3.5 w-3.5 text-[#0B7285]" />
                               Manage Admins
                             </SmartLink>
+                            <SmartLink to="/admin/listings" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
+                              <ListChecks className="h-3.5 w-3.5 text-[#0B7285]" />
+                              Listings
+                            </SmartLink>
                           </>
                         )}
 
