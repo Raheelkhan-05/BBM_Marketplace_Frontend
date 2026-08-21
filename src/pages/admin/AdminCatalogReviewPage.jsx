@@ -51,7 +51,7 @@ export default function AdminCatalogReviewPage() {
         let active = true;
         setLoading(true);
         adminListCatalog(token, { level, status: "all", q, parentId: parent?.id }).then((res) => {
-            if (active && res?.success) setEntries(res.entries);
+            if (active && res?.success) setEntries(res.entries ?? []);   // ← guard here
             if (active) setLoading(false);
         });
         return () => { active = false; };
@@ -114,7 +114,7 @@ export default function AdminCatalogReviewPage() {
 
             <div className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-100 bg-white shadow-sm shadow-slate-100/60">
                 {loading && Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
-                {!loading && entries.length === 0 && (
+                {!loading && (entries?.length ?? 0) === 0 && (
                     <div className="flex flex-col items-center gap-2 py-14 text-center">
                         <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-50">
                             {level === "category" ? <Folder className="h-5 w-5 text-slate-300" /> : <Tag className="h-5 w-5 text-slate-300" />}
@@ -124,7 +124,7 @@ export default function AdminCatalogReviewPage() {
                     </div>
                 )}
                 <AnimatePresence initial={false}>
-                    {!loading && entries.map((e) => {
+                    {!loading && entries?.map((e) => {
                         const isLeaf = level === "brand_item";
                         return (
                             <motion.div key={e.id}
