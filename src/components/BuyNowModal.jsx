@@ -37,6 +37,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, fetchCreditStatus, requestCredit as requestCreditApi } from "../utils/api.js";
 import { getOrCreateDirectConversation } from "../utils/chatApi.js";
 import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
+import { clearPaymentSession } from "../utils/paymentSession.js";
 import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./seller/listingForm/FormPrimitives.jsx";
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
