@@ -110,6 +110,18 @@ function toBuyerSellerPayload(s) {
     };
 }
 
+// Stable sort: items with an actual seller (lowest_price present) float
+// to the top; order within each group (has-sellers / no-sellers) is
+// left untouched, since Array.prototype.sort in modern JS engines is
+// stable and we're only comparing a boolean, never index math.
+function sortBySellerAvailability(list) {
+    return [...list].sort((a, b) => {
+        const aHas = a.lowest_price != null ? 0 : 1;
+        const bHas = b.lowest_price != null ? 0 : 1;
+        return aHas - bHas;
+    });
+}
+
 function ProductImage({ src, alt, onOpen }) {
     const [failed, setFailed] = useState(false);
     if (!src || failed) return <Package className="h-4.5 w-4.5" style={{ color: C.muted }} />;
@@ -415,7 +427,11 @@ export default function HomeProductFeed({ category, q = "" }) {
             .then((res) => {
                 if (!res?.success) return;
                 if (token !== queryTokenRef.current) return; // stale response, a reset happened after this was fired
-                setItems((prev) => (append ? mergeUnique(prev, res.items || []) : res.items || []));
+                setItems((prev) =>
+                    sortBySellerAvailability(
+                        append ? mergeUnique(prev, res.items || []) : res.items || []
+                    )
+                );
                 setTotal(res.total ?? null);
                 setHasMore(!!res.hasMore);
             })
