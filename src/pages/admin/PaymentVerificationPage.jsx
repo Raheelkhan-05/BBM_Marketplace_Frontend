@@ -19,14 +19,21 @@ import {
 import { useAuth } from "../../context/AuthContext.jsx";
 import { C } from "../../components/seller/listingForm/FormPrimitives.jsx"; // reuse existing tokens
 
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api";
+
 async function apiListProofs(token, status) {
-    const res = await fetch(`/api/admin/payment-proofs?status=${status}`, {
+    const res = await fetch(`${API_BASE}/admin/payment-proofs?status=${status}`, {
         headers: { Authorization: `Bearer ${token}` },
     });
+    if (!res.ok) {
+        let message = `Request failed (${res.status})`;
+        try { message = (await res.json())?.message || message; } catch { }
+        return { success: false, message };
+    }
     return res.json();
 }
 async function apiVerifyProof(token, id, note) {
-    const res = await fetch(`/api/admin/payment-proofs/${id}/verify`, {
+    const res = await fetch(`${API_BASE}/admin/payment-proofs/${id}/verify`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ note }),
@@ -34,7 +41,7 @@ async function apiVerifyProof(token, id, note) {
     return res.json();
 }
 async function apiRejectProof(token, id, note) {
-    const res = await fetch(`/api/admin/payment-proofs/${id}/reject`, {
+    const res = await fetch(`${API_BASE}/admin/payment-proofs/${id}/reject`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ note }),
@@ -205,12 +212,18 @@ export default function PaymentVerificationPage() {
     const [zoomSrc, setZoomSrc] = useState(null);
 
     const load = useCallback(async () => {
+        if (!token) return;
         setLoading(true);
         setError(null);
-        const res = await apiListProofs(token, tab);
-        if (!res?.success) setError(res?.message || "Couldn't load payment proofs.");
-        else setProofs(res.proofs || []);
-        setLoading(false);
+        try {
+            const res = await apiListProofs(token, tab);
+            if (!res?.success) setError(res?.message || "Couldn't load payment proofs.");
+            else setProofs(res.proofs || []);
+        } catch (err) {
+            setError("Couldn't reach the server. Please try again.");
+        } finally {
+            setLoading(false);
+        }
     }, [token, tab]);
 
     useEffect(() => { load(); }, [load]);

@@ -843,7 +843,7 @@ export async function fetchGenericProductSellers(params) {
 export async function fetchPublicListingDetail(id) {
   const res = await fetch(`${API_BASE}/catalog-search/listing/${id}`);
   //Now log the response
-  console.log(res)
+  // console.log(res)
   return res.json();
 }
 
