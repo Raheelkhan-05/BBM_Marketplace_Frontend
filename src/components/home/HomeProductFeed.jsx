@@ -10,13 +10,20 @@
 // the same catalog_brand_item_sellers endpoint BrandItemSellersPage
 // uses. Tapping a seller row opens BuyNowModal immediately — same
 // payload shape/mapping as BrandItemSellersPage. A "Sell this product"
-// row sits at the bottom of the dropdown and opens SellThisItemModal,
-// unchanged from before. Only one dropdown is open at a time across
-// the whole feed (single `openItemId` state). The seller list inside
-// the dropdown carries `data-lenis-prevent` so hovering it hands
-// scroll control back to native/the list instead of the page's Lenis
-// smooth-scroll — the same opt-out pattern BuyNowModal/SellThisItemModal
-// already use for their own scroll containers.
+// row sits at the bottom of the dropdown (visible only once sellers
+// have finished loading) and opens SellThisItemModal, unchanged from
+// before. Only one dropdown is open at a time across the whole feed
+// (single `openItemId` state). The seller list inside the dropdown
+// carries `data-lenis-prevent` so hovering it hands scroll control
+// back to native/the list instead of the page's Lenis smooth-scroll —
+// the same opt-out pattern BuyNowModal/SellThisItemModal already use
+// for their own scroll containers.
+//
+// ROW LAYOUT: the Info icon sits inline with the product name (top
+// line) rather than in a separate right-side icon cluster. The
+// right-side slot instead shows "from ₹X" pricing (when available)
+// stacked above the expand/collapse chevron — that whole slot is the
+// toggle target, same as tapping the row itself.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -130,9 +137,17 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
             className="flex w-full items-center gap-2 border-b px-3 py-3 sm:px-4"
             style={{ borderColor: C.hairSoft, background: isOpen ? C.hairSoft : "transparent" }}
         >
-            <button
+            {/* NOTE: this is a <div role="button"> rather than a <button> —
+                it now contains a nested Info <button> next to the product
+                name, and a <button> can't validly wrap another <button>. */}
+            <div
                 onClick={onToggle}
-                className="flex min-w-0 flex-1 items-center gap-3 text-left transition-colors duration-150"
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
+                }}
+                role="button"
+                tabIndex={0}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left transition-colors duration-150"
             >
                 <span
                     className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
@@ -142,9 +157,18 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
                 </span>
 
                 <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>
-                        {item.name}
-                    </p>
+                    <div className="flex min-w-0 items-center gap-1">
+                        <p className=" text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>
+                            {item.name}
+                        </p>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onInfo(); }}
+                            aria-label="Product details"
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
+                        >
+                            <Info className="h-3.5 w-3.5" style={{ color: C.muted }} />
+                        </button>
+                    </div>
                     <p className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>
                         {subLabel}
                     </p>
@@ -153,27 +177,26 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
                         {item.subcategory_name}
                     </p>
                 </div>
-            </button>
-
-            <div className="flex shrink-0 items-center gap-1 pl-1">
-                <button
-                    onClick={onInfo}
-                    aria-label="Product details"
-                    className="flex h-8 w-6 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
-                >
-                    <Info className="h-4 w-4" style={{ color: C.muted }} />
-                </button>
-                <button
-                    onClick={onToggle}
-                    aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
-                    className="flex h-8 w-6 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
-                >
-                    <ChevronDown
-                        className="h-4 w-4 transition-transform duration-200"
-                        style={{ color: C.muted, transform: isOpen ? "rotate(180deg)" : "rotate(0deg)" }}
-                    />
-                </button>
             </div>
+
+            {/* Pricing now lives here — where the arrow + info icons used
+                to sit. This whole slot still toggles the accordion. */}
+            <button
+                onClick={onToggle}
+                aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
+                className="flex shrink-0 flex-col items-end pl-1"
+            >
+                {item.lowest_price != null && (
+                    <span className="flex flex-col items-end text-right">
+                        <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>
+                            from
+                        </span>
+                        <span className="text-[15px] font-extrabold leading-tight tabular-nums tracking-wide" style={{ color: C.ink }}>
+                            ₹{inr(item.lowest_price)}
+                        </span>
+                    </span>
+                )}
+            </button>
         </motion.div>
     );
 }
@@ -201,9 +224,9 @@ function SellerDropdown({ item, state, onBuySeller, onSell }) {
                 className="border-b px-3 py-2.5 sm:px-4"
                 style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}
             >
-                {/* Summary header — carries the price/seller-count context
-                    that used to sit on the collapsed row */}
-                <div className="flex items-center justify-between pb-2">
+                {/* Pricing moved up to the row itself — this header now
+                    only carries the seller-count context. */}
+                <div className="pb-2">
                     <p className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>
                         {loading
                             ? "Loading sellers…"
@@ -211,23 +234,24 @@ function SellerDropdown({ item, state, onBuySeller, onSell }) {
                                 ? `${total} seller${total === 1 ? "" : "s"} listing this`
                                 : "No sellers yet"}
                     </p>
-                    {item.lowest_price != null && (
-                        <p className="text-[12.5px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
-                            from ₹{inr(item.lowest_price)}
-                        </p>
-                    )}
                 </div>
 
                 <div className="max-h-64 overflow-y-auto overscroll-contain">
                     {loading ? (
-                        <div className="flex flex-col gap-3 py-1">
+                        // Skeleton rows now mirror the real seller row shape:
+                        // name + MOQ/lead-time on the left, price + unit on
+                        // the right — instead of generic unaligned bars.
+                        <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
                             {Array.from({ length: 3 }).map((_, i) => (
-                                <div key={i} className="flex items-center justify-between gap-3">
-                                    <div className="space-y-1.5">
-                                        <div className="h-2.5 w-28 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                        <div className="h-2 w-16 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                <div key={i} className="flex items-center justify-between gap-3 py-2.5">
+                                    <div className="min-w-0 flex-1 space-y-1.5">
+                                        <div className="h-2.5 w-32 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                        <div className="h-2 w-20 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
                                     </div>
-                                    <div className="h-2.5 w-14 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                    <div className="shrink-0 space-y-1.5 text-right">
+                                        <div className="ml-auto h-2.5 w-12 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                        <div className="ml-auto h-2 w-8 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -271,13 +295,18 @@ function SellerDropdown({ item, state, onBuySeller, onSell }) {
                     )}
                 </div>
 
-                <button
-                    onClick={onSell}
-                    className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors duration-150 hover:bg-black/[0.03]"
-                    style={{ borderColor: `${C.primary}40`, color: C.primary }}
-                >
-                    <Store className="h-3.5 w-3.5" /> Sell this product
-                </button>
+                {/* Hidden until the sellers fetch has settled — no more
+                    "Sell this product" flashing on screen before we know
+                    who else is already selling it. */}
+                {!loading && (
+                    <button
+                        onClick={onSell}
+                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors duration-150 hover:bg-black/[0.03]"
+                        style={{ borderColor: `${C.primary}40`, color: C.primary }}
+                    >
+                        <Store className="h-3.5 w-3.5" /> Sell this product
+                    </button>
+                )}
             </div>
         </motion.div>
     );
