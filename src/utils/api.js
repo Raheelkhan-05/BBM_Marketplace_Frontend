@@ -938,3 +938,33 @@ export async function fetchGenericProductsFeed({ categoryId = null, q = "", sort
 
   return res.json();
 }
+
+export async function fetchPaymentInstructions(token, orderId) {
+  const res = await fetch(`${API_BASE}/orders/${orderId}/payment`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  let body = null;
+  try { body = await res.json(); } catch { /* non-JSON error body */ }
+  if (!res.ok) {
+    console.error("fetchPaymentInstructions failed:", res.status, body);
+    return { success: false, message: body?.message || "Couldn't load payment details.", status: body?.status };
+  }
+  return body;
+}
+
+export async function submitPaymentProof(token, orderId, { utr, screenshotFile }) {
+  const form = new FormData();
+  form.append("utr", utr);
+  if (screenshotFile) form.append("screenshot", screenshotFile);
+  const res = await fetch(`${API_BASE}/orders/${orderId}/payment-proof`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    console.error("submitPaymentProof failed:", res.status, text.slice(0, 200));
+    return { success: false, message: "Couldn't submit payment proof." };
+  }
+  return res.json();
+}

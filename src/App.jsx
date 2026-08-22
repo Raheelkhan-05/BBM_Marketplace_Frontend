@@ -41,6 +41,8 @@ import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
 import PendingSubmissionWatcher from "./components/PendingSubmissionWatcher.jsx";
 import ChatPage from "./pages/ChatPage.jsx";
 import { SocketProvider } from "./context/SocketContext.jsx";
+import PaymentVerificationPage from './pages/admin/PaymentVerificationPage.jsx';
+import PendingPaymentGate from './components/PendingPaymentGate.jsx';
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -64,6 +66,7 @@ function App() {
           their shop — without requiring them to revisit the listing form.
         */}
           <PendingSubmissionWatcher />
+          <PendingPaymentGate />
           <Routes>
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<AuthPage />} />
@@ -89,6 +92,8 @@ function App() {
               <Route path="/orders/:id" element={<OrderDetailPage />} />
               <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
               <Route path="/seller/listings" element={<SellerManageListingsPage />} />
+
+              <Route path="/admin/payments" element={<PaymentVerificationPage />} />
 
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/chat/:conversationId" element={<ChatPage />} />

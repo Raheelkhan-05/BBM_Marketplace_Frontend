@@ -15,6 +15,7 @@
 // by the authoritative server quote from fetchOrderQuote.
 import { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
+import PaymentQRModal from "./PaymentQRModal.jsx";
 import {
     Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee,
     Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
@@ -24,6 +25,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, fetchCreditStatus, requestCredit as requestCreditApi } from "../utils/api.js";
 import { getOrCreateDirectConversation } from "../utils/chatApi.js";
+import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
 import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./seller/listingForm/FormPrimitives.jsx";
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
@@ -270,7 +272,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [selectedAddressId, setSelectedAddressId] = useState(null);
     const [showNewAddress, setShowNewAddress] = useState(false);
     const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
-
+    const [awaitingPaymentOrderId, setAwaitingPaymentOrderId] = useState(null);
     // "standard" | "sample" | "credit" — ALWAYS starts as standard, never preselected.
     const [orderMode, setOrderMode] = useState("standard");
     const isSample = orderMode === "sample";
@@ -485,7 +487,70 @@ export default function BuyNowModal({ seller, product, onClose }) {
         });
         setSubmitting(false);
         if (!res?.success) return setError(res?.message || "Couldn't place the order.");
-        setDone(res);
+
+        if (res.orderStatus === "awaiting_payment") {
+            // Snapshot everything needed to reconstruct this exact form, keyed to
+            // this order. This is what lets the QR modal's close button (and
+            // PendingPaymentGate after a reload) bring the buyer back to a fully
+            // populated BuyNowModal instead of an empty one.
+            saveOrderFormSession({
+                orderId: res.orderId,
+                seller,
+                product,
+                quantity,
+                basis,
+                selectedAddressId,
+                showNewAddress,
+                newAddress,
+                notes,
+                orderMode,
+            });
+            setAwaitingPaymentOrderId(res.orderId);
+        } else {
+            setDone(res);
+        }
+    };
+
+    // Restores form fields from a saved snapshot — used both when the buyer
+    // hits "close" on the QR screen (this component stays mounted, so this
+    // mostly just needs to flip awaitingPaymentOrderId off) and, if this
+    // BuyNowModal instance was itself just (re)constructed from a saved
+    // session, to hydrate on mount.
+    const restoreFromSession = (session) => {
+        if (!session) return;
+        setQuantity(session.quantity);
+        userPickedBasis.current = true;
+        setBasis(session.basis);
+        setSelectedAddressId(session.selectedAddressId);
+        setShowNewAddress(session.showNewAddress);
+        setNewAddress(session.newAddress || EMPTY_ADDRESS);
+        setNotes(session.notes || "");
+        setOrderMode(session.orderMode || "standard");
+    };
+
+    // If this BuyNowModal was mounted fresh (no live state yet, e.g. by
+    // PendingPaymentGate after a reload) but there's a matching saved
+    // session on disk, hydrate from it once on mount.
+    useEffect(() => {
+        const session = loadOrderFormSession();
+        if (session && session.seller?.offerId === seller?.offerId) {
+            restoreFromSession(session);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Fired when the buyer hits "close" (X) on the QR screen. Unlike
+    // handleBackToEdit, this does NOT cancel the order — it's still sitting
+    // in awaiting_payment, and the buyer can resume paying later (e.g. from
+    // their Orders page, which is what PendingPaymentGate is for). We just
+    // bring back the edit form, restored from the snapshot so it's correct
+    // even if something in local state had already drifted.
+    const handleCloseToEdit = () => {
+        const session = loadOrderFormSession(awaitingPaymentOrderId);
+        restoreFromSession(session);
+        clearPaymentSession();
+        clearOrderFormSession();
+        setAwaitingPaymentOrderId(null);
     };
 
     const gateContent = {
@@ -503,6 +568,19 @@ export default function BuyNowModal({ seller, product, onClose }) {
         if (!reqRes?.success) { setError(reqRes?.message || "Couldn't send the credit request."); return; }
         onClose();
         navigate(`/chat/${reqRes.conversationId}`);
+    };
+
+    const handleBackToEdit = async () => {
+        if (awaitingPaymentOrderId) {
+            // Cancel the order we just created — otherwise resubmitting from
+            // the form would leave two orders sitting in awaiting_payment.
+            const res = await cancelOrder(token, awaitingPaymentOrderId, "Buyer went back to edit the order before paying");
+            if (!res?.success) {
+                console.warn("Couldn't cancel the pending order before going back:", res?.message);
+            }
+        }
+        clearPaymentSession();
+        setAwaitingPaymentOrderId(null); // form reappears with quantity/address/notes untouched
     };
 
     const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.hsnCode || seller.freightIncluded != null || seller.dispatchOrigin);
@@ -523,7 +601,15 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 data-lenis-prevent
                 initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }}
                 onClick={(e) => e.stopPropagation()}>
-                {done ? (
+                {awaitingPaymentOrderId ? (
+                    <PaymentQRModal
+                        token={token}
+                        orderId={awaitingPaymentOrderId}
+                        onClose={handleCloseToEdit}
+                        onBack={handleBackToEdit}
+                        onDoneViewOrders={() => navigate("/orders")}
+                    />
+                ) : done ? (
                     <div className="flex flex-col items-center px-5 py-8 text-center sm:px-6">
                         <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
                             <CheckCircle2 className="h-7 w-7" />

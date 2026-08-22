@@ -212,6 +212,10 @@ export default function Header({ onOpenRfq }) {
                               <ListChecks className="h-3.5 w-3.5 text-[#0B7285]" />
                               Product Review Requests
                             </SmartLink>
+                            <SmartLink to="/admin/payments" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
+                              <ListChecks className="h-3.5 w-3.5 text-[#0B7285]" />
+                              Payment Verification
+                            </SmartLink>
                           </>
                         )}
 
@@ -316,6 +320,10 @@ export default function Header({ onOpenRfq }) {
                           <SmartLink to="/admin/listings" onClick={() => setOpen(false)} className={MOBILE_ROW}>
                             <ListChecks className="h-4 w-4 text-slate-400" />
                             Product Review Requests
+                          </SmartLink>
+                          <SmartLink to="/admin/payments" onClick={() => setOpen(false)} className={MOBILE_ROW}>
+                            <ListChecks className="h-4 w-4 text-slate-400" />
+                            Payment Verification
                           </SmartLink>
                         </>
                       )}
