@@ -13,6 +13,17 @@
 // client-side version is just an instant, rough preview (it can't call
 // the server's road-distance lookup), and gets replaced a moment later
 // by the authoritative server quote from fetchOrderQuote.
+//
+// UI REPOSITIONING PASS (this revision):
+// - "Buy on credit" is no longer a top-tab alongside Standard/Sample.
+//   Clicking it now places the credit order immediately (no separate
+//   mode toggle step needed) — it lives as its own action button in the
+//   sticky footer, directly above "Place order".
+// - When credit isn't enabled for this buyer/seller pair yet, that same
+//   footer slot instead shows "Request credit from this seller" (or the
+//   pending/cooldown notice), replacing the old mid-form placement.
+//   Functionally this is still the same once-only-until-cooldown request
+//   flow as before — only where it's drawn has changed.
 import { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import PaymentQRModal from "./PaymentQRModal.jsx";
@@ -274,6 +285,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
     const [awaitingPaymentOrderId, setAwaitingPaymentOrderId] = useState(null);
     // "standard" | "sample" | "credit" — ALWAYS starts as standard, never preselected.
+    // NOTE: "credit" is no longer reachable via the top tabs — it's only ever
+    // set momentarily via the dedicated "Buy on credit" footer button (see
+    // handleSubmit's explicitOrderType param) or when restoring a saved
+    // in-progress session.
     const [orderMode, setOrderMode] = useState("standard");
     const isSample = orderMode === "sample";
     const isCredit = orderMode === "credit";
@@ -447,7 +462,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return res.address.id;
     };
 
-    const handleSubmit = async () => {
+    // Accepts an optional explicit order type ("credit") so the dedicated
+    // "Buy on credit" footer button can place the order immediately without
+    // first routing through the (now-removed) credit tab / orderMode state.
+    // Falls back to the current sample/standard mode when called from the
+    // regular "Place order" button, exactly as before.
+    const handleSubmit = async (explicitOrderType) => {
         setError(null);
         let addressId = selectedAddressId;
         if (showNewAddress || !addressId) {
@@ -460,18 +480,19 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
         const confirmed = await pendingQuoteRef.current;
         const finalQuote = confirmed || quote;
+        const effectiveOrderType = explicitOrderType || (isSample ? "sample" : "standard");
 
-        // Only real, hard-blocking validations remain: MOQ (standard only)
+        // Only real, hard-blocking validations remain: MOQ (standard/credit)
         // and sample-quantity ceiling (sample only, kept as a defensive
         // backstop even though the UI no longer lets buyers edit sample
         // quantity). Stock is never a blocker — a shortfall just gets
         // surfaced as a message below and the order still goes through.
         if (finalQuote) {
-            if (isSample && finalQuote.exceedsSampleQuantity) {
+            if (effectiveOrderType === "sample" && finalQuote.exceedsSampleQuantity) {
                 setSubmitting(false);
                 return setError(`Sample quantity is capped at ${finalQuote.sampleQuantity} ${finalQuote.unit}.`);
             }
-            if (!isSample && finalQuote.meetsMoq === false) {
+            if (effectiveOrderType !== "sample" && finalQuote.meetsMoq === false) {
                 setSubmitting(false);
                 return setError(`Minimum order quantity is ${finalQuote.moq} ${finalQuote.unit}.`);
             }
@@ -481,7 +502,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
             submissionId: seller.offerId,
             quantity: Number(quantity),
             purchaseBasis: basis,
-            orderType: isCredit ? "credit" : isSample ? "sample" : "standard",
+            orderType: effectiveOrderType,
             shippingAddressId: addressId,
             notes: notes.trim() || undefined,
         });
@@ -503,7 +524,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 showNewAddress,
                 newAddress,
                 notes,
-                orderMode,
+                orderMode: effectiveOrderType,
             });
             setAwaitingPaymentOrderId(res.orderId);
         } else {
@@ -594,6 +615,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // the "23 Aug - 25 Aug" range string.
     const deliveryDateLabel = (val) => (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val) ? formatDDMon(new Date(val)) : val);
 
+    // Drives the credit slot in the sticky footer: which of the three
+    // states (request / pending / cooldown) to show when credit isn't
+    // enabled yet. Kept as a small helper so both the footer render and
+    // any future callers stay in sync on the cooldown math.
+    const creditCooldownActive = creditStatus?.status === "rejected" && creditStatus.cooldown_until && new Date(creditStatus.cooldown_until) > new Date();
+
     return (
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
@@ -654,17 +681,19 @@ export default function BuyNowModal({ seller, product, onClose }) {
                         </div>
 
                         <div className="flex flex-col gap-3 px-5 py-4 sm:px-6 sm:py-4.5">
-                            {(canSample || canBuyOnCredit) && (
+                            {/* Top tabs: Standard vs Sample only. "Buy on credit" now lives
+                                as its own action in the sticky footer below, since picking it
+                                places the order immediately rather than just switching mode. */}
+                            {canSample && (
                                 <div className="flex gap-1 rounded-xl p-1" style={{ background: C.hairSoft }}>
                                     {[
                                         { v: "standard", t: "Standard order" },
-                                        ...(canSample ? [{ v: "sample", t: "Order a sample", icon: Beaker }] : []),
-                                        ...(canBuyOnCredit ? [{ v: "credit", t: "Buy on credit", icon: CreditCard }] : []),
+                                        { v: "sample", t: "Order a sample", icon: Beaker },
                                     ].map(({ v, t, icon: Icon }) => (
                                         <button key={v} type="button" onClick={() => setOrderMode(v)}
                                             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-bold tracking-wider transition-colors duration-150"
                                             style={orderMode === v
-                                                ? { background: v === "sample" ? "#D2462B" : v === "credit" ? "#7c3aed" : C.secondary, color: "#fff" }
+                                                ? { background: v === "sample" ? "#D2462B" : C.secondary, color: "#fff" }
                                                 : { color: C.muted }}>
                                             {Icon && <Icon className="h-3.5 w-3.5" />} {t}
                                         </button>
@@ -846,23 +875,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 )}
                             </SectionCard>
 
-                            {!canBuyOnCredit && !isSample && (() => {
-                                const cooldownActive = creditStatus?.status === "rejected" && creditStatus.cooldown_until && new Date(creditStatus.cooldown_until) > new Date();
-                                if (creditStatus?.status === "pending") {
-                                    return <Notice tone="info">Your credit request to {seller.display_name} is awaiting their response — check your chat with them.</Notice>;
-                                }
-                                if (cooldownActive) {
-                                    return <Notice tone="warn">Your last credit request was declined. You can request again after {new Date(creditStatus.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</Notice>;
-                                }
-                                return (
-                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit}
-                                        className="flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-bold tracking-wide disabled:opacity-60"
-                                        style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
-                                        <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
-                                    </button>
-                                );
-                            })()}
-
                             {/* ---------------- Seller terms ---------------- */}
                             {hasTerms && (
                                 <SectionCard icon={FileText} title="Seller terms" defaultOpen={false}>
@@ -885,14 +897,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </SectionCard>
                             )}
 
-                            {isCredit ? (
-                                <Notice tone="info">This order will be billed to your account with {seller.display_name}. Payable on the same terms as your other credit orders — no payment is collected now.</Notice>
-                            ) : (
-                                <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
-                                    <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
-                                    <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>Test mode — payment is simulated for now. No real charge will occur.</p>
-                                </div>
-                            )}
+                            <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
+                                <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
+                                <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>Test mode — payment is simulated for now. No real charge will occur.</p>
+                            </div>
 
                             {error && <Notice tone="danger">{error}</Notice>}
                         </div>
@@ -907,10 +915,38 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                     </span>
                                 </div>
                             )}
-                            <button onClick={handleSubmit} disabled={submitting}
+
+                            {/* Credit slot — sits just above "Place order". Either a one-tap
+                                "Buy on credit" (places the order immediately, no separate
+                                payment step) when credit is already approved for this
+                                buyer/seller pair, or the request flow when it isn't. Hidden
+                                entirely for sample orders. */}
+                            {!isSample && (
+                                canBuyOnCredit ? (
+                                    <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting}
+                                        className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
+                                        style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                        <CreditCard className="h-3.5 w-3.5" /> {submitting ? "Placing…" : "Buy on credit"}
+                                    </button>
+                                ) : creditStatus?.status === "pending" ? (
+                                    <div className="mb-2"><Notice tone="info">Your credit request to {seller.display_name} is awaiting their response — check your chat with them.</Notice></div>
+                                ) : creditCooldownActive ? (
+                                    <div className="mb-2">
+                                        <Notice tone="warn">Your last credit request was declined. You can request again after {new Date(creditStatus.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</Notice>
+                                    </div>
+                                ) : (
+                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit}
+                                        className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-bold tracking-wide disabled:opacity-60"
+                                        style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                        <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
+                                    </button>
+                                )
+                            )}
+
+                            <button onClick={() => handleSubmit()} disabled={submitting}
                                 className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[14px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
-                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : isCredit ? "linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : isCredit ? "Buy on credit" : "Place order")}
+                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
                             </button>
                         </div>
                     </>
