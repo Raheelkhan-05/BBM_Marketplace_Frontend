@@ -11,6 +11,7 @@ import {
     fetchMessages, sendChatMessage, markConversationRead,
     deleteChatMessage, fetchConversations,
 } from "../utils/chatApi.js";
+import { fetchCreditStatus, requestCredit as requestCreditApi, decideCredit as decideCreditApi, toggleCredit as toggleCreditApi } from "../utils/api.js";
 
 function makeClientMessageId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -390,4 +391,61 @@ export function usePresence(userIds = []) {
     }, [socket]);
 
     return presenceMap;
+}
+
+
+// One credit relationship, keyed off the OTHER user's profile id — role-agnostic,
+// used by ChatWindow for both buyer and seller views of the same pinned bar.
+export function useCredit(otherUserId) {
+    const { token } = useAuth();
+    const { socket, connected } = useSocket();
+    const [credit, setCredit] = useState(null);
+    const [viewerRole, setViewerRole] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    const load = useCallback(() => {
+        if (!otherUserId || !token) return;
+        setLoading(true);
+        fetchCreditStatus(token, { otherUserId }).then((res) => {
+            if (res?.success) { setCredit(res.credit); setViewerRole(res.viewerRole); }
+            setLoading(false);
+        });
+    }, [otherUserId, token]);
+
+    useEffect(() => { load(); }, [load]);
+
+    useEffect(() => {
+        if (!socket || !connected) return;
+        const onDecided = ({ creditId, status, cooldownUntil }) => {
+            setCredit((prev) => (prev && prev.id === creditId ? { ...prev, status, cooldown_until: cooldownUntil } : prev));
+        };
+        const onToggled = ({ status }) => {
+            setCredit((prev) => (prev ? { ...prev, status } : prev));
+        };
+        socket.on("credit:decided", onDecided);
+        socket.on("credit:toggled", onToggled);
+        return () => { socket.off("credit:decided", onDecided); socket.off("credit:toggled", onToggled); };
+    }, [socket, connected]);
+
+    const request = useCallback(async (conversationId) => {
+        const res = await requestCreditApi(token, { sellerUserId: otherUserId });
+        if (res?.success) load();
+        return res;
+    }, [token, otherUserId, load]);
+
+    const decide = useCallback(async (creditId, decision) => {
+        setCredit((prev) => (prev ? { ...prev, status: decision } : prev)); // optimistic
+        const res = await decideCreditApi(token, creditId, decision);
+        if (!res?.success) load();
+        return res;
+    }, [token, load]);
+
+    const toggle = useCallback(async (enabled) => {
+        setCredit((prev) => (prev ? { ...prev, status: enabled ? "approved" : "revoked" } : prev));
+        const res = await toggleCreditApi(token, otherUserId, enabled);
+        if (!res?.success) load();
+        return res;
+    }, [token, otherUserId, load]);
+
+    return { credit, viewerRole, loading, request, decide, toggle, reload: load };
 }

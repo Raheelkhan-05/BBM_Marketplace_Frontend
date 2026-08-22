@@ -754,6 +754,30 @@ export async function createBuyerAddress(token, payload) {
   return res.json();
 }
 
+export async function fetchCreditStatus(token, { sellerId, submissionId, otherUserId } = {}) {
+  const params = sellerId ? `sellerId=${sellerId}` : submissionId ? `submissionId=${submissionId}` : `otherUserId=${otherUserId}`;
+  const res = await fetch(`${API_BASE}/credit/status?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function requestCredit(token, payload) {
+  const res = await fetch(`${API_BASE}/credit/request`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+export async function decideCredit(token, creditId, decision) {
+  const res = await fetch(`${API_BASE}/credit/${creditId}/decide`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ decision }),
+  });
+  return res.json();
+}
+export async function toggleCredit(token, buyerId, enabled) {
+  const res = await fetch(`${API_BASE}/credit/toggle`, {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ buyerId, enabled }),
+  });
+  return res.json();
+}
+
 export async function fetchOrderById(token, id) {
   const res = await fetch(`${API_BASE}/orders/${id}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();

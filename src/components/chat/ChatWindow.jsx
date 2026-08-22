@@ -9,9 +9,11 @@
 // only existed inside the messages hook, so every delete threw silently).
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Loader2, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle } from "lucide-react";
+import { ArrowLeft, CreditCard, Loader2, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import useChatMessages, { usePresence } from "../../hooks/useChat.js";
+import { useNavigate } from "react-router-dom";
+import useChatMessages, { usePresence, useCredit } from "../../hooks/useChat.js";
+
 import { formatLastSeen } from "../../utils/formatLastSeen.js";
 
 const C = { ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83", hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)" };
@@ -47,6 +49,41 @@ function TypingDots({ color = C.secondary, size = "h-1.5 w-1.5" }) {
             ))}
         </span>
     );
+}
+
+function CreditBar({ credit, viewerRole, otherName, onRequest, onToggle, requesting }) {
+    if (viewerRole === "buyer") {
+        const cooldownActive = credit?.status === "rejected" && credit.cooldown_until && new Date(credit.cooldown_until) > new Date();
+        if (!credit || credit.status === "revoked" || (credit.status === "rejected" && !cooldownActive)) {
+            return (
+                <div className="flex items-center justify-between border-b px-4 py-2" style={{ borderColor: C.hair, background: "#7c3aed08" }}>
+                    <span className="text-[12px] font-semibold" style={{ color: C.muted }}>Buy on credit from {otherName}</span>
+                    <button onClick={onRequest} disabled={requesting} className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white disabled:opacity-60" style={{ background: "#7c3aed" }}>
+                        <CreditCard className="h-3 w-3" /> {requesting ? "Requesting…" : "Request credit"}
+                    </button>
+                </div>
+            );
+        }
+        if (credit.status === "pending") return <div className="border-b px-4 py-2 text-[12px] font-semibold" style={{ borderColor: C.hair, color: "#a16207", background: "#fef3c7" }}>Credit request pending seller approval.</div>;
+        if (credit.status === "approved") return <div className="border-b px-4 py-2 text-[12px] font-bold" style={{ borderColor: C.hair, color: "#059669", background: "#EAF7F2" }}>✅ Credit approved — you can buy on credit from {otherName}.</div>;
+        if (cooldownActive) return <div className="border-b px-4 py-2 text-[12px] font-semibold" style={{ borderColor: C.hair, color: C.muted }}>Credit request declined. You can request again after {new Date(credit.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</div>;
+        return null;
+    }
+
+    if (viewerRole === "seller" && credit && (credit.status === "approved" || credit.status === "revoked")) {
+        const on = credit.status === "approved";
+        return (
+            <div className="flex items-center justify-between border-b px-4 py-2" style={{ borderColor: C.hair, background: on ? "#EAF7F2" : "#FAFAFA" }}>
+                <span className="text-[12.5px] font-bold" style={{ color: C.ink }}>
+                    Credit for {otherName}: <span style={{ color: on ? "#059669" : C.muted }}>{on ? "Enabled" : "Off"}</span>
+                </span>
+                <button onClick={() => onToggle(!on)} className="relative h-6 w-11 shrink-0 rounded-full transition-colors" style={{ background: on ? "#059669" : "#CBD2D6" }}>
+                    <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all" style={{ left: on ? "22px" : "2px" }} />
+                </button>
+            </div>
+        );
+    }
+    return null;
 }
 
 function ChatHeader({ meta, otherPresence, otherTyping, onBack }) {
@@ -136,7 +173,7 @@ function TickIcon({ status, onRetry }) {
     return <Check className="h-3.5 w-3.5" style={{ color: "rgba(255,255,255,0.7)" }} />;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry }) {
+const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry, credit, onCreditDecision }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef(null);
     useEffect(() => {
@@ -145,6 +182,29 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
         document.addEventListener("mousedown", close);
         return () => document.removeEventListener("mousedown", close);
     }, [menuOpen]);
+
+    if (message.message_type === "credit_request") {
+        const creditId = message.metadata?.creditRequestId;
+        const isCurrent = credit?.id === creditId;
+        const status = isCurrent ? credit.status : null; // older row, no live status to show
+        return (
+            <div className="mb-3 flex justify-center">
+                <div className="w-full max-w-[280px] rounded-2xl border p-3.5" style={{ borderColor: "#7c3aed40", background: "#7c3aed08" }}>
+                    <p className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: C.ink }}><CreditCard className="h-3.5 w-3.5" style={{ color: "#7c3aed" }} /> Credit request</p>
+                    {status === "pending" && !isMine && (
+                        <div className="mt-2.5 flex gap-2">
+                            <button onClick={() => onCreditDecision(creditId, "approved")} className="flex-1 rounded-lg py-1.5 text-[12px] font-bold text-white" style={{ background: "#7c3aed" }}>Approve</button>
+                            <button onClick={() => onCreditDecision(creditId, "rejected")} className="flex-1 rounded-lg border py-1.5 text-[12px] font-bold" style={{ borderColor: C.hair, color: C.muted }}>Decline</button>
+                        </div>
+                    )}
+                    {status === "pending" && isMine && <p className="mt-1 text-[11.5px] font-medium" style={{ color: C.muted }}>Waiting for the seller to respond.</p>}
+                    {status === "approved" && <p className="mt-1.5 text-[12px] font-bold" style={{ color: "#059669" }}>✅ Approved</p>}
+                    {status === "rejected" && <p className="mt-1.5 text-[12px] font-bold" style={{ color: "#c71f11" }}>❌ Declined</p>}
+                    {status === "revoked" && <p className="mt-1.5 text-[12px] font-bold" style={{ color: C.muted }}>Credit turned off</p>}
+                </div>
+            </div>
+        );
+    }
 
     const time = new Date(message.created_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
     const isDeleted = !!message.deleted_at;
@@ -272,10 +332,21 @@ function ThreadSkeleton() {
 
 export default function ChatWindow({ conversationId, meta, onBack }) {
     const { profile } = useAuth();
+    const { token } = useAuth();
+    const navigate = useNavigate();
     const scrollRef = useRef(null);
     const bottomRef = useRef(null);
     const presence = usePresence(meta?.otherUserId ? [meta.otherUserId] : []);
     const otherPresence = meta?.otherUserId ? presence[meta.otherUserId] : null;
+
+    const { credit, viewerRole, request, decide, toggle } = useCredit(meta?.otherUserId);
+    const [requestingCredit, setRequestingCredit] = useState(false);
+
+    const handleRequestCredit = async () => {
+        setRequestingCredit(true);
+        await request();
+        setRequestingCredit(false);
+    };
 
     const {
         messages, loading, loadingOlder, hasMore, loadOlder,
@@ -319,7 +390,10 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
             )}
 
             <ChatHeader meta={meta} otherPresence={otherPresence} otherTyping={otherTyping} onBack={onBack} />
-
+            <CreditBar
+                credit={credit} viewerRole={viewerRole} otherName={meta?.title || "them"}
+                onRequest={handleRequestCredit} onToggle={toggle} requesting={requestingCredit}
+            />
             <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
                 {loadingOlder && (
                     <div className="flex justify-center py-2"><Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: C.muted }} /></div>
@@ -362,6 +436,8 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                                         groupPos={groupPos}
                                         onDelete={deleteMessage}
                                         onRetry={retry}
+                                        credit={credit}
+                                        onCreditDecision={decide}
                                     />
                                 </div>
                             );

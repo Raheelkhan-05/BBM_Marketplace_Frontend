@@ -18,10 +18,12 @@ import { motion } from "framer-motion";
 import {
     Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee,
     Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
+    CreditCard,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder } from "../utils/api.js";
+import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, fetchCreditStatus, requestCredit as requestCreditApi } from "../utils/api.js";
+import { getOrCreateDirectConversation } from "../utils/chatApi.js";
 import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./seller/listingForm/FormPrimitives.jsx";
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
@@ -269,8 +271,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [showNewAddress, setShowNewAddress] = useState(false);
     const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
 
-    // Sample vs standard — ALWAYS starts as standard. Never preselected.
-    const [isSample, setIsSample] = useState(false);
+    // "standard" | "sample" | "credit" — ALWAYS starts as standard, never preselected.
+    const [orderMode, setOrderMode] = useState("standard");
+    const isSample = orderMode === "sample";
+    const isCredit = orderMode === "credit";
 
     // Purchase basis + quantity. Reactively defaults to packs when the
     // listing has a meaningful pack size, otherwise falls back to plain
@@ -307,6 +311,19 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const quoteTimer = useRef(null);
     const requestIdRef = useRef(0);
     const pendingQuoteRef = useRef(Promise.resolve());
+
+    const [creditStatus, setCreditStatus] = useState(null);
+    useEffect(() => {
+        if (!seller?.offerId || !access?.canCheckout) return;
+        fetchCreditStatus(token, { submissionId: seller.offerId }).then((res) => setCreditStatus(res?.credit || null));
+    }, [seller?.offerId, access, token]);
+
+    const canBuyOnCredit = creditStatus?.status === "approved";
+
+    // If credit gets revoked mid-session while "credit" is selected, fall back to standard
+    useEffect(() => {
+        if (isCredit && !canBuyOnCredit) setOrderMode("standard");
+    }, [isCredit, canBuyOnCredit]);
 
     // Effective pincode/state used for delivery estimation — prefers the
     // in-progress new-address form (so estimates update live as the buyer
@@ -462,7 +479,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
             submissionId: seller.offerId,
             quantity: Number(quantity),
             purchaseBasis: basis,
-            orderType: isSample ? "sample" : "standard",
+            orderType: isCredit ? "credit" : isSample ? "sample" : "standard",
             shippingAddressId: addressId,
             notes: notes.trim() || undefined,
         });
@@ -475,6 +492,18 @@ export default function BuyNowModal({ seller, product, onClose }) {
         NOT_AUTHENTICATED: { title: "Sign in to place an order", body: "You'll need to sign in to your BBM Marketplace account first.", cta: "Sign in", action: () => navigate("/login") },
         NOT_VERIFIED: { title: "Verify your contact details", body: "We need a verified email or phone so sellers know you're a genuine buyer.", cta: "Verify now", action: () => navigate("/account") },
     }[access?.reason] || { title: "Can't place an order right now", body: "Please try again in a moment.", cta: "Close", action: onClose };
+
+    const [requestingCredit, setRequestingCredit] = useState(false);
+    console.log("seller : ", seller);
+    const handleRequestCredit = async () => {
+        if (!seller?.offerId) { setError("Couldn't reach this seller right now."); return; }
+        setRequestingCredit(true);
+        const reqRes = await requestCreditApi(token, { submissionId: seller.offerId });
+        setRequestingCredit(false);
+        if (!reqRes?.success) { setError(reqRes?.message || "Couldn't send the credit request."); return; }
+        onClose();
+        navigate(`/chat/${reqRes.conversationId}`);
+    };
 
     const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.hsnCode || seller.freightIncluded != null || seller.dispatchOrigin);
     const canSample = seller?.sampleAvailable;
@@ -499,7 +528,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                         <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
                             <CheckCircle2 className="h-7 w-7" />
                         </span>
-                        <h2 className="mt-4 text-[17px] font-extrabold tracking-wide" style={{ color: C.ink }}>{done.orderType === "sample" ? "Sample requested" : "Order placed"}</h2>
+                        <h2 className="mt-4 text-[17px] font-extrabold tracking-wide" style={{ color: C.ink }}>{done.orderType === "sample" ? "Sample requested" : done.paymentMethod === "credit" ? "Order placed on credit" : "Order placed"}</h2>
                         <p className="mt-1 font-mono text-[11.5px] font-bold tracking-wide" style={{ color: C.secondary }}>{done.orderNumber}</p>
                         <p className="mt-2 text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>{done.message}</p>
                         {done.estimatedDeliveryDate && (
@@ -539,13 +568,19 @@ export default function BuyNowModal({ seller, product, onClose }) {
                         </div>
 
                         <div className="flex flex-col gap-3 px-5 py-4 sm:px-6 sm:py-4.5">
-                            {canSample && (
+                            {(canSample || canBuyOnCredit) && (
                                 <div className="flex gap-1 rounded-xl p-1" style={{ background: C.hairSoft }}>
-                                    {[{ v: false, t: "Standard order" }, { v: true, t: "Order a sample" }].map(({ v, t }) => (
-                                        <button key={t} type="button" onClick={() => setIsSample(v)}
+                                    {[
+                                        { v: "standard", t: "Standard order" },
+                                        ...(canSample ? [{ v: "sample", t: "Order a sample", icon: Beaker }] : []),
+                                        ...(canBuyOnCredit ? [{ v: "credit", t: "Buy on credit", icon: CreditCard }] : []),
+                                    ].map(({ v, t, icon: Icon }) => (
+                                        <button key={v} type="button" onClick={() => setOrderMode(v)}
                                             className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-bold tracking-wider transition-colors duration-150"
-                                            style={isSample === v ? { background: v ? "#D2462B" : C.secondary, color: "#fff" } : { color: C.muted }}>
-                                            {v && <Beaker className="h-3.5 w-3.5" />} {t}
+                                            style={orderMode === v
+                                                ? { background: v === "sample" ? "#D2462B" : v === "credit" ? "#7c3aed" : C.secondary, color: "#fff" }
+                                                : { color: C.muted }}>
+                                            {Icon && <Icon className="h-3.5 w-3.5" />} {t}
                                         </button>
                                     ))}
                                 </div>
@@ -725,6 +760,23 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 )}
                             </SectionCard>
 
+                            {!canBuyOnCredit && !isSample && (() => {
+                                const cooldownActive = creditStatus?.status === "rejected" && creditStatus.cooldown_until && new Date(creditStatus.cooldown_until) > new Date();
+                                if (creditStatus?.status === "pending") {
+                                    return <Notice tone="info">Your credit request to {seller.display_name} is awaiting their response — check your chat with them.</Notice>;
+                                }
+                                if (cooldownActive) {
+                                    return <Notice tone="warn">Your last credit request was declined. You can request again after {new Date(creditStatus.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</Notice>;
+                                }
+                                return (
+                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit}
+                                        className="flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-bold tracking-wide disabled:opacity-60"
+                                        style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                        <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
+                                    </button>
+                                );
+                            })()}
+
                             {/* ---------------- Seller terms ---------------- */}
                             {hasTerms && (
                                 <SectionCard icon={FileText} title="Seller terms" defaultOpen={false}>
@@ -747,10 +799,14 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </SectionCard>
                             )}
 
-                            <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
-                                <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
-                                <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>Test mode — payment is simulated for now. No real charge will occur.</p>
-                            </div>
+                            {isCredit ? (
+                                <Notice tone="info">This order will be billed to your account with {seller.display_name}. Payable on the same terms as your other credit orders — no payment is collected now.</Notice>
+                            ) : (
+                                <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
+                                    <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
+                                    <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>Test mode — payment is simulated for now. No real charge will occur.</p>
+                                </div>
+                            )}
 
                             {error && <Notice tone="danger">{error}</Notice>}
                         </div>
@@ -767,8 +823,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
                             )}
                             <button onClick={handleSubmit} disabled={submitting}
                                 className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[14px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
-                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
+                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : isCredit ? "linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : isCredit ? "Buy on credit" : "Place order")}
                             </button>
                         </div>
                     </>
