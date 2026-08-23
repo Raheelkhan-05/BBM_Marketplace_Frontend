@@ -30,7 +30,7 @@ import PaymentQRModal from "./PaymentQRModal.jsx";
 import {
     Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee,
     Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
-    CreditCard,
+    CreditCard, Boxes,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -43,7 +43,6 @@ import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./selle
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 
 const BASIS_OPTIONS = [
-    { value: "per_unit", label: "Units" },
     { value: "per_pack", label: "Packs" },
     { value: "per_master_pack", label: "Master packs" },
 ];
@@ -52,7 +51,7 @@ const BASIS_OPTIONS = [
 // underneath (toBaseUnits, defaultBasis, computeLocalQuote all still
 // handle it) since it's still used as the implicit basis whenever a
 // listing has no meaningful packSize.
-const VISIBLE_BASIS_OPTIONS = BASIS_OPTIONS.filter((o) => o.value !== "per_unit");
+const VISIBLE_BASIS_OPTIONS = BASIS_OPTIONS;
 
 // ---- Slab / quantity-discount pricing -------------------------------
 // Mirrors the place_order RPC exactly. Discounts/slabs are always resolved
@@ -80,26 +79,26 @@ function resolveDiscountPercent(quantityDiscounts, quantity) {
     return { percent: Number(applicable[0].discountPercent) || 0, tier: applicable[0] };
 }
 
+// toBaseUnits is still needed for stock/pricing (those stay in base
+// units), but purchase basis is now only ever "per_pack" / "per_master_pack".
 function toBaseUnits(seller, quantity, basis) {
     const packSize = Number(seller.packSize) > 0 ? Number(seller.packSize) : 1;
     const masterPackSize = Number(seller.masterPackSize) > 0 ? Number(seller.masterPackSize) : 1;
-    if (basis === "per_pack") return quantity * packSize;
     if (basis === "per_master_pack") return quantity * packSize * masterPackSize;
-    return quantity;
+    return quantity * packSize; // per_pack (default/only remaining option)
 }
 
 // Minimum quantity (in the currently selected basis) needed to meet MOQ.
-// MOQ is always expressed in base units, so convert it up to packs/master
-// packs when that's the active basis, rounding up since a partial pack
-// can't satisfy the MOQ.
+// MOQ is now directly a pack count — no more base-unit conversion needed.
+// (Master-pack quantities still get converted UP to packs to compare.)
 function computeMinQuantity(seller, basis) {
-    const moq = Number(seller?.moq) || 0;
-    if (!moq) return 1;
-    const packSize = Number(seller?.packSize) > 0 ? Number(seller.packSize) : 1;
+    const moqPacks = Number(seller?.moq) || 0;
+    if (!moqPacks) return 1;
     const masterPackSize = Number(seller?.masterPackSize) > 0 ? Number(seller.masterPackSize) : 1;
-    const factor = basis === "per_pack" ? packSize : basis === "per_master_pack" ? packSize * masterPackSize : 1;
-    return Math.max(1, Math.ceil(moq / factor));
+    if (basis === "per_master_pack") return Math.max(1, Math.ceil(moqPacks / masterPackSize));
+    return Math.max(1, moqPacks); // per_pack
 }
+
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function formatDDMon(date) {
@@ -192,7 +191,9 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
     const { percent: discountPercent, tier: discountTier } = resolveDiscountPercent(seller.quantityDiscounts, baseQty);
     const unitPrice = Math.round(slabPrice * (1 - discountPercent / 100) * 100) / 100;
 
-    const moq = Number(seller.moq) || 0;
+    const packQtyEquivalent = basis === "per_master_pack" ? qty * (Number(seller.masterPackSize) || 1) : qty;
+    const moq = Number(seller.moq) || 0; // moq is in packs
+
     const availableStock = seller.availableStock != null ? Number(seller.availableStock) : null;
     const stockShortfall = seller.stockType !== "made_to_order" && availableStock != null && baseQty > availableStock;
 
@@ -213,7 +214,7 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
         discountAmount,
         subtotal,
         moq,
-        meetsMoq: moq ? baseQty >= moq : true,
+        meetsMoq: moq ? packQtyEquivalent >= moq : true,
         availableStock,
         stockShortfall,
         estimatedDeliveryDate: null,
@@ -298,7 +299,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // listing has a meaningful pack size, otherwise falls back to plain
     // units — recomputed via useMemo (not frozen at mount) so a
     // late-arriving `seller.packSize` is still picked up correctly.
-    const defaultBasis = useMemo(() => (Number(seller?.packSize) > 1 ? "per_pack" : "per_unit"), [seller?.packSize]);
+    // Always defaults to packs — never units, regardless of packSize.
+    const defaultBasis = useMemo(() => "per_pack", [seller?.packSize]);
     const [basis, setBasis] = useState(defaultBasis);
     const minQuantity = useMemo(() => computeMinQuantity(seller, basis), [seller, basis]);
     const [quantity, setQuantity] = useState(() => computeMinQuantity(seller, defaultBasis));
@@ -709,8 +711,17 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                             {/* ---------------- Quantity ---------------- */}
                             <SectionCard icon={Package} title="Quantity" alwaysOpen>
+                                {Number(seller?.packSize) > 0 && (
+                                    <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: C.hairSoft }}>
+                                        <Boxes className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                        <p className="text-[11.5px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                            1 Pack = {seller.packSize} {seller.unit}
+                                            {Number(seller?.masterPackSize) > 1 && ` · 1 Master Pack = ${seller.masterPackSize} Packs`}
+                                        </p>
+                                    </div>
+                                )}
                                 <div className="flex items-center justify-between">
-                                    <Label>{isSample ? "Sample quantity" : `Quantity · MOQ ${seller?.moq} ${seller?.unit}`}</Label>
+                                    <Label>{isSample ? "Sample quantity" : `Quantity · MOQ ${seller?.moq} Pack${seller?.moq == 1 ? "" : "s"}`}</Label>
                                     {!isSample && (
                                         <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={VISIBLE_BASIS_OPTIONS} />
                                     )}

@@ -11,6 +11,7 @@ import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import HomePageSkeleton from "../components/skeletons/HomePageSkeleton.jsx";
 import CategoryStrip from "../components/home/CategoryStrip.jsx";
 import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
+import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
 import { performSearchNavigation } from "../utils/searchResolve.js";
 
@@ -61,6 +62,7 @@ export default function HomePage() {
                     <HomeProductFeed category={activeCategory} q={query} />
                 </main>
             </SmoothScrollProvider>
+            <FloatingSellButton to="/seller/sell" label="Sell" />
         </div>
     );
 }

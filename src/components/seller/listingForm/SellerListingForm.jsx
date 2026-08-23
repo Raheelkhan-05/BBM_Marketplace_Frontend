@@ -203,20 +203,30 @@ export default function SellerListingForm({
 
     useEffect(() => { fetchCommissionInfo().then((res) => { if (res?.success) setCommissionPercent(res.commissionPercent); }); }, []);
 
-    // Prefill dispatch defaults (pincode + locations + freight toggle)
-    // from the seller's saved "delivery" group — only on create; an edit
-    // should show what's actually saved on the listing, not overwrite it.
+    // Prefill defaults from the seller's last submission — now covers delivery,
+    // tax/legal, and commercial-terms groups (see GROUP_FIELD_MAP on the
+    // backend), not just dispatch info. Product-specific fields (name, brand,
+    // images, unit/packSize/masterPackSize, price, stock, MOQ) are deliberately
+    // NOT prefilled — those are always specific to the new item being listed.
     useEffect(() => {
         if (!token || mode === "edit") return;
         fetchDefaultListingTemplates(token).then((res) => {
             if (!res?.success) return;
-            const tpl = res.defaults?.delivery?.data;
-            if (!tpl) return;
+            const d = res.defaults || {};
+            const delivery = d.delivery?.data || {};
+            const taxLegal = d.tax_legal?.data || {};
+            const commercial = d.commercial_terms?.data || {};
             setForm((f) => ({
                 ...f,
-                dispatchPincode: tpl.dispatchPincode ?? f.dispatchPincode,
-                dispatchingLocations: tpl.dispatchingLocations ?? f.dispatchingLocations,
-                freightIncluded: tpl.freightIncluded ?? f.freightIncluded,
+                dispatchPincode: delivery.dispatchPincode ?? f.dispatchPincode,
+                dispatchingLocations: delivery.dispatchingLocations ?? f.dispatchingLocations,
+                freightIncluded: delivery.freightIncluded ?? f.freightIncluded,
+                hsnCode: taxLegal.hsnCode ?? f.hsnCode,
+                gstPercent: taxLegal.gstPercent ?? f.gstPercent,
+                gstInclusive: taxLegal.gstInclusive ?? f.gstInclusive,
+                returnPolicyKey: taxLegal.returnPolicyKey ?? f.returnPolicyKey,
+                warrantyKey: taxLegal.warrantyKey ?? f.warrantyKey,
+                priceBasis: commercial.priceBasis ?? f.priceBasis,
             }));
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -343,6 +353,11 @@ export default function SellerListingForm({
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
                 </div>
             )}
+            {!locked && !mode !== "edit" /* create mode only */ && (
+                <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                    Tax, dispatch, and terms fields are prefilled from your last listing — check them, then edit anything that's different for this product.
+                </p>
+            )}
 
             {/* ---------------- Product ---------------- */}
             <SectionCard icon={Package} title="Product" subtitle={locked ? "Already approved · locked" : "Name, brand, images & documents"} alwaysOpen>
@@ -409,6 +424,17 @@ export default function SellerListingForm({
                     </p>
                 )}
 
+                {!form.brandItemMatch && (
+                    <div className="rounded-xl border p-3" style={{ borderColor: C.hairSoft, background: `${C.secondary}06` }}>
+                        <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.secondary }}>How packaging works</p>
+                        <ul className="mt-1.5 flex flex-col gap-1 text-[13px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                            <li><b style={{ color: C.ink }}>Unit</b> — the smallest measure this product is sold in <span className="md:hidden"><br /></span>(e.g. Pieces, Kg, Litres).</li>
+                            <li><b style={{ color: C.ink }}>Pack size</b> — how many of that Unit make up 1 Pack<span className="md:hidden"><br /></span> (e.g. 1 Pack = 10 Pieces).</li>
+                            <li><b style={{ color: C.ink }}>Master pack size</b> — how many Packs make up 1 Master Pack <span className="md:hidden"><br /></span>(e.g. 1 Master Pack = 5 Packs).</li>
+                        </ul>
+                    </div>
+                )}
+
                 {form.brandItemMatch ? (
                     <div className="flex items-center gap-2 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
                         <Boxes className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
@@ -438,8 +464,9 @@ export default function SellerListingForm({
 
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="moq">
-                        <TextField required dense label="MOQ" hint="Minimum order quantity, in units" value={form.moq}
-                            onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
+                        <TextField required dense label="MOQ (in Packs)" hint="Minimum number of Packs a buyer must order"
+                            value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))}
+                            onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
                     <FieldAnchor fieldKey="hsnCode">
                         <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => setField("hsnCode", v)} onBlur={() => touch("hsnCode")} error={isErr("hsnCode")} />
