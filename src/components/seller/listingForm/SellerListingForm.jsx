@@ -503,15 +503,15 @@ export default function SellerListingForm({
                 )}
 
                 <RepeatableRows
-                    label="Discount slabs" hint="Extra % off above a quantity threshold"
+                    label="Discount slabs" hint="Extra % off above a quantity threshold, in Packs"
                     rows={form.priceSlabs} onChange={(rows) => setField("priceSlabs", rows)} addLabel="Add slab"
-                    columns={[{ key: "minQty", placeholder: `Min qty (${form.unit || "units"})`, inputMode: "decimal" }, { key: "discountPercent", placeholder: "Discount %", inputMode: "decimal" }]}
+                    columns={[{ key: "minQty", placeholder: "Min qty (Packs)", inputMode: "decimal" }, { key: "discountPercent", placeholder: "Discount %", inputMode: "decimal" }]}
                 />
                 {form.priceSlabs.some((s) => s.discountPercent) && (
                     <div className="flex flex-col gap-1 rounded-xl border px-3 py-2" style={{ borderColor: C.hairSoft }}>
                         {form.priceSlabs.filter((s) => s.minQty && s.discountPercent).map((s, i) => (
                             <p key={i} className="text-[10.5px] font-semibold tabular-nums" style={{ color: C.muted }}>
-                                Above {s.minQty} {form.unit}: ₹{discountedPreview(s)} / {form.unit}
+                                Above {s.minQty} Pack{Number(s.minQty) === 1 ? "" : "s"}: ₹{discountedPreview(s)} / {form.unit}
                             </p>
                         ))}
                     </div>

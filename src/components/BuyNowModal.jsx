@@ -187,11 +187,16 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
 
     if (!(Number(seller.price) > 0)) return null;
 
-    const { price: slabPrice, slab: appliedSlab } = resolveSlabUnitPrice(seller.priceSlabs, baseQty, Number(seller.price));
-    const { percent: discountPercent, tier: discountTier } = resolveDiscountPercent(seller.quantityDiscounts, baseQty);
+    const masterPackSize = Number(seller.masterPackSize) > 0 ? Number(seller.masterPackSize) : 1;
+    // const packQtyEquivalent = basis === "per_master_pack" ? qty * masterPackSize : qty;
+    const packQtyEquivalent = basis === "per_master_pack" ? qty * (Number(seller.masterPackSize) || 1) : qty;
+
+
+    const { price: slabPrice, slab: appliedSlab } = resolveSlabUnitPrice(seller.priceSlabs, packQtyEquivalent, Number(seller.price));
+    const { percent: discountPercent, tier: discountTier } = resolveDiscountPercent(seller.quantityDiscounts, packQtyEquivalent);
     const unitPrice = Math.round(slabPrice * (1 - discountPercent / 100) * 100) / 100;
 
-    const packQtyEquivalent = basis === "per_master_pack" ? qty * (Number(seller.masterPackSize) || 1) : qty;
+
     const moq = Number(seller.moq) || 0; // moq is in packs
 
     const availableStock = seller.availableStock != null ? Number(seller.availableStock) : null;
@@ -760,7 +765,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                                 return (
                                                     <span key={i} className="rounded-full border px-2.5 py-1 text-[11px] font-bold tracking-wide"
                                                         style={active ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
-                                                        {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} {seller.unit}: ₹{inr(slab.price)}
+                                                        {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} Pack{Number(slab.maxQty || slab.minQty) === 1 ? "" : "s"}: ₹{inr(slab.price)}
                                                     </span>
                                                 );
                                             })}
@@ -777,7 +782,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                                 return (
                                                     <span key={i} className="rounded-full border px-2.5 py-1 text-[12px] font-bold tracking-wide"
                                                         style={active ? { borderColor: "#D2462B", background: "rgba(210,70,43,0.1)", color: "#D2462B" } : { borderColor: C.hair, color: C.muted }}>
-                                                        {tier.minQty}+ {seller.unit}: {tier.discountPercent}% off
+                                                        {tier.minQty}+ Packs: {tier.discountPercent}% off
                                                     </span>
                                                 );
                                             })}
