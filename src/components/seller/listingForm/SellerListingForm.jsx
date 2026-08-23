@@ -32,7 +32,6 @@ import PolicySelect from "./PolicySelect.jsx";
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
 const PRICE_BASIS_OPTIONS = [
-    { value: "per_unit", label: "Per unit" },
     { value: "per_pack", label: "Per pack" },
     { value: "per_master_pack", label: "Per master pack" },
 ];
@@ -48,10 +47,10 @@ export const DEFAULT_LISTING_FORM = {
     brandItemMatch: null,
     hsnCode: "", gstPercent: 18,
 
-    basePrice: "", priceBasis: "per_unit", gstInclusive: false,
+    basePrice: "", priceBasis: "per_pack", gstInclusive: false,
     freightIncluded: false,
 
-    sampleAvailable: false, sampleQuantity: "", sampleUnitBasis: "per_unit",
+    sampleAvailable: false, sampleQuantity: "", sampleUnitBasis: "per_pack",
 
     priceSlabs: [],
 
@@ -142,7 +141,7 @@ export default function SellerListingForm({
     });
 
     const [uploadingImage, setUploadingImage] = useState(false);
-    const [commissionPercent, setCommissionPercent] = useState(5);
+    const [commissionPercent, setCommissionPercent] = useState(2.5);
     const [error, setError] = useState(null);
     const [touched, setTouched] = useState({});
     const [checkingBrandMatch, setCheckingBrandMatch] = useState(false);
@@ -249,8 +248,8 @@ export default function SellerListingForm({
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
 
         let perUnitPrice = price;
-        if (form.priceBasis === "per_pack") perUnitPrice = price / pack;
-        if (form.priceBasis === "per_master_pack") perUnitPrice = price / (pack * master);
+        if (form.priceBasis === "per_pack") perUnitPrice = price;
+        if (form.priceBasis === "per_master_pack") perUnitPrice = price / master;
 
         let basePricePerUnit, gstAmount, commissionAmount, finalPricePerUnit;
 
@@ -483,7 +482,7 @@ export default function SellerListingForm({
                     <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />
                 </div>
                 <div className="flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${C.secondary}0c` }}>
-                    <span className="text-[11.5px] font-bold tracking-wide" style={{ color: C.muted }}>Base price / unit (excl. GST)</span>
+                    <span className="text-[11.5px] font-bold tracking-wide" style={{ color: C.muted }}>Base price / pack (excl. GST)</span>
                     <span className="text-[14.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</span>
                 </div>
 
