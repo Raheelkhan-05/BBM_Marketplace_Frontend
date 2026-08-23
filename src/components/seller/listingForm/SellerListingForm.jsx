@@ -67,6 +67,25 @@ export const DEFAULT_LISTING_FORM = {
     returnPolicyKey: "", warrantyKey: "",
 };
 
+// Dynamic MOQ label/hint — mirrors whichever basis the seller is
+// currently thinking in. When there's an outer pack, MOQ is asked for in
+// Master Packs (the unit sellers actually reason in for bulk orders);
+// otherwise it's asked in Packs, same as before. The underlying form
+// value is converted to Packs at submit time regardless — see
+// handleSubmit — since that's the unit the backend always expects.
+function getMoqLabel(hasOuterPack) {
+    return hasOuterPack ? "MOQ (in Master Packs)" : "MOQ (in Packs)";
+}
+function getMoqHint(hasOuterPack) {
+    return hasOuterPack
+        ? "Minimum number of Master Packs a buyer must order"
+        : "Minimum number of Packs a buyer must order";
+}
+
+function round2ToInt(n) {
+    return Math.max(1, Math.round(Number(n) || 0));
+}
+
 // New helper functions — dynamic labels for Pack size / Master pack size
 // based on the currently selected Unit. Falls back to generic wording
 // when no unit is selected yet.
@@ -143,11 +162,16 @@ export default function SellerListingForm({
             } : {}),
         };
 
-        // hasOuterPack always derives from whether masterPackSize > 1 — never
-        // trust a raw hasOuterPack passed in initialValues, since older
-        // submissions won't have this field at all.
         base.hasOuterPack = Number(base.masterPackSize) > 1;
         if (!base.hasOuterPack) base.masterPackSize = "1";
+
+        // incoming moq (from initialValues / backend) is always in Packs —
+        // convert it to Master Packs for display if this listing has one, so
+        // the field shows the same number of physical units the seller
+        // originally intended, in whichever unit is currently displayed.
+        if (base.hasOuterPack && Number(base.moq) > 0 && Number(base.masterPackSize) > 0) {
+            base.moq = String(Math.round(Number(base.moq) / Number(base.masterPackSize)) || "");
+        }
 
         if (locked) {
             const hasPackaging = base.unit && Number(base.packSize) > 0 && Number(base.masterPackSize) > 0;
@@ -312,14 +336,15 @@ export default function SellerListingForm({
         setForm((f) => ({
             ...f,
             hasOuterPack: value,
-            // Turning it off pins masterPackSize to 1 so backend validation
-            // and order math (which both treat masterPackSize as ">= 1")
-            // never see a blank/invalid value. Turning it on clears it so the
-            // seller has to deliberately enter a real count (>= 2) — never
-            // silently reuses a stale "1".
             masterPackSize: value ? "" : "1",
+            // MOQ's unit of measure flips between Packs and Master Packs
+            // depending on this toggle — a value entered under one meaning
+            // is wrong under the other, so clear it rather than silently
+            // reinterpreting the same number.
+            moq: "",
         }));
         if (!value) setTouched((t) => (t.masterPackSize ? { ...t, masterPackSize: false } : t));
+        setTouched((t) => (t.moq ? { ...t, moq: false } : t));
     };
 
     const missing = useMemo(() => computeMissing(form), [form]);
@@ -363,8 +388,14 @@ export default function SellerListingForm({
         }
         setError(null);
 
-        // Flatten dispatchingLocations into the jsonb array shape the
-        // backend/migration expects.
+        // MOQ is always persisted in Packs. If the seller entered it in
+        // Master Packs (hasOuterPack on), convert up before it leaves this
+        // component — every downstream consumer (backend validation,
+        // place_order math, BuyNowModal's computeMinQuantity) assumes Packs.
+        const moqInPacks = form.hasOuterPack
+            ? round2ToInt(Number(form.moq) * Number(form.masterPackSize))
+            : Number(form.moq);
+
         const dl = form.dispatchingLocations;
         let dispatchingLocations = [];
         if (dl?.country) {
@@ -383,7 +414,7 @@ export default function SellerListingForm({
                 ];
             }
         }
-        onSubmit({ ...form, dispatchingLocations });
+        onSubmit({ ...form, moq: String(moqInPacks), dispatchingLocations });
     };
 
     return (
@@ -519,7 +550,7 @@ export default function SellerListingForm({
 
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="moq">
-                        <TextField required dense halfOnMobile placeholder="1234" label="MOQ (in Packs)" hint="Minimum number of Packs a buyer must order"
+                        <TextField required dense halfOnMobile placeholder="1234" label={getMoqLabel(form.hasOuterPack)} hint={getMoqHint(form.hasOuterPack)}
                             value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))}
                             onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
