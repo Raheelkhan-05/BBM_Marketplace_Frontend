@@ -549,7 +549,7 @@ export default function SellerListingForm({
                         Master pack size, shown just above MOQ so the seller can sanity-check
                         the numbers they just entered before setting a minimum order quantity. */}
                         {form.unit && Number(form.packSize) > 0 && (
-                            <p className="text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>
+                            <p className="text-[13px] font-bold tracking-wider mt-1" style={{ color: C.primary }}>
                                 {form.hasOuterPack && Number(form.masterPackSize) >= 2
                                     ? `1 Master Pack = ${form.masterPackSize} Packs = ${Number(form.packSize) * Number(form.masterPackSize)} ${form.unit}`
                                     : `1 Pack = ${form.packSize} ${form.unit}`}
