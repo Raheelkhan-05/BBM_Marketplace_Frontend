@@ -113,15 +113,34 @@ export default function SellerListingForm({
     const identity = brandDisplay ?? lockedIdentity;
 
     const { token } = useAuth();
-    const [form, setForm] = useState(() => ({
-        ...DEFAULT_LISTING_FORM,
-        ...(initialValues || {}),
-        ...(locked ? {
-            productName: initialValues?.productName ?? identity?.name ?? identity?.productName ?? "",
-            brandName: initialValues?.brandName ?? identity?.brandName ?? "",
-            images: initialValues?.images?.length ? initialValues.images : (identity?.image ? [identity.image] : []),
-        } : {}),
-    }));
+    const [form, setForm] = useState(() => {
+        const base = {
+            ...DEFAULT_LISTING_FORM,
+            ...(initialValues || {}),
+            ...(locked ? {
+                productName: initialValues?.productName ?? identity?.name ?? identity?.productName ?? "",
+                brandName: initialValues?.brandName ?? identity?.brandName ?? "",
+                images: initialValues?.images?.length ? initialValues.images : (identity?.image ? [identity.image] : []),
+            } : {}),
+        };
+
+        // When identity is locked (selling an already-catalogued item via
+        // SellThisItemModal, or editing an existing submission on
+        // SellPublishProductPage), we already know — synchronously, no
+        // lookup needed — whether packaging is set. If it is, lock the
+        // fields read-only. If this particular catalog item predates
+        // packaging tracking and it's genuinely missing, fall through to
+        // asking the seller, same as the brand-new-product flow does.
+        if (locked) {
+            const hasPackaging = base.unit && Number(base.packSize) > 0 && Number(base.masterPackSize) > 0;
+            base.brandItemMatch = hasPackaging
+                ? { unit: base.unit, packSize: base.packSize, masterPackSize: base.masterPackSize }
+                : null;
+        }
+
+        return base;
+    });
+
     const [uploadingImage, setUploadingImage] = useState(false);
     const [commissionPercent, setCommissionPercent] = useState(5);
     const [error, setError] = useState(null);
@@ -396,7 +415,7 @@ export default function SellerListingForm({
                         <div className="min-w-0">
                             <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Fixed by this product</p>
                             <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                {form.unit} · Pack of {form.packSize} · {form.masterPackSize} packs / master pack
+                                1 Pack = {form.packSize} {form.unit} · 1 Master Pack = {form.masterPackSize} Packs
                             </p>
                         </div>
                     </div>

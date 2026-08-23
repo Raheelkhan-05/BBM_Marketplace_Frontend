@@ -50,6 +50,18 @@ export default function SellThisItemModal({ brand, onClose }) {
         image: detail?.image || brand?.image,
     };
 
+    // NEW — Unit / Pack Size / Master Pack Size are a fixed property of the
+    // catalog product itself. Pull them from the brand item detail so the
+    // form can show them as locked, instead of always asking the seller to
+    // re-enter data that's already on file. Only genuinely older catalog
+    // items (created before this was tracked) will have these blank, and
+    // only those will still prompt for input.
+    const packagingInitialValues = {
+        unit: detail?.unit || "",
+        packSize: detail?.packSize != null ? String(detail.packSize) : "",
+        masterPackSize: detail?.unitsPerMasterPack != null ? String(detail.unitsPerMasterPack) : "",
+    };
+
     const handleSubmit = async (formValues) => {
         setSubmitting(true);
         try {
@@ -112,6 +124,7 @@ export default function SellThisItemModal({ brand, onClose }) {
                         <SellerListingForm
                             identityLocked
                             lockedIdentity={{ productName: merged.name, brandName: merged.brand_name, image: merged.image }}
+                            initialValues={packagingInitialValues}
                             onSubmit={handleSubmit}
                             submitting={submitting}
                             submitLabel="Submit for review"
