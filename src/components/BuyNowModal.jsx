@@ -188,27 +188,23 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
     if (!(Number(seller.price) > 0)) return null;
 
     const masterPackSize = Number(seller.masterPackSize) > 0 ? Number(seller.masterPackSize) : 1;
-    // const packQtyEquivalent = basis === "per_master_pack" ? qty * masterPackSize : qty;
-    const packQtyEquivalent = basis === "per_master_pack" ? qty * (Number(seller.masterPackSize) || 1) : qty;
-
+    const packQtyEquivalent = basis === "per_master_pack" ? qty * masterPackSize : qty;
 
     const { price: slabPrice, slab: appliedSlab } = resolveSlabUnitPrice(seller.priceSlabs, packQtyEquivalent, Number(seller.price));
     const { percent: discountPercent, tier: discountTier } = resolveDiscountPercent(seller.quantityDiscounts, packQtyEquivalent);
     const unitPrice = Math.round(slabPrice * (1 - discountPercent / 100) * 100) / 100;
 
-
-    const moq = Number(seller.moq) || 0; // moq is in packs
-
+    const moq = Number(seller.moq) || 0;
     const availableStock = seller.availableStock != null ? Number(seller.availableStock) : null;
-    const stockShortfall = seller.stockType !== "made_to_order" && availableStock != null && baseQty > availableStock;
+    const stockShortfall = seller.stockType !== "made_to_order" && availableStock != null && packQtyEquivalent > availableStock; // ← was baseQty
 
-    const grossSubtotal = Math.round(slabPrice * baseQty * 100) / 100;
-    const subtotal = Math.round(unitPrice * baseQty * 100) / 100;
+    const grossSubtotal = Math.round(slabPrice * packQtyEquivalent * 100) / 100;
+    const subtotal = Math.round(unitPrice * packQtyEquivalent * 100) / 100;
     const discountAmount = Math.round((grossSubtotal - subtotal) * 100) / 100;
 
     return {
         orderType: "standard",
-        quantity: qty, baseQuantity: baseQty, basis,
+        quantity: qty, baseQuantity: packQtyEquivalent, basis, // baseQuantity now reports pack-equivalent qty
         unit: seller.unit,
         unitPrice,
         basePriceApplied: slabPrice,

@@ -450,7 +450,7 @@ export default function SellerListingForm({
                 ) : (
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                         <FieldAnchor fieldKey="unit">
-                            <SelectField required dense label="What is the Unit of this Product" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
+                            <SelectField required dense label="What is the Selling Unit of this Product" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
                         </FieldAnchor>
                         <FieldAnchor fieldKey="packSize">
                             <TextField required dense label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />

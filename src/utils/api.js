@@ -689,7 +689,7 @@ export async function fetchCheckoutStatus(token) {
   return res.json();
 }
 export async function fetchOrderQuote(submissionId, quantity, opts = {}) {
-  const { purchaseBasis = "per_unit", orderType = "standard", addressId } = opts;
+  const { purchaseBasis = "per_pack", orderType = "standard", addressId } = opts;
   const params = new URLSearchParams({
     submissionId,
     quantity,
