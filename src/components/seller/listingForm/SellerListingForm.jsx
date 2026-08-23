@@ -597,6 +597,16 @@ export default function SellerListingForm({
                             onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
                 </div>
+                <ToggleField label="Sample available?" value={form.sampleAvailable} onChange={(v) => setField("sampleAvailable", v)} />
+                {form.sampleAvailable && (
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        <FieldAnchor fieldKey="sampleQuantity">
+                            <TextField required dense label="Sample quantity" value={form.sampleQuantity} onChange={(v) => setField("sampleQuantity", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("sampleQuantity")} error={isErr("sampleQuantity")} inputMode="decimal" />
+                        </FieldAnchor>
+                        <ChipToggleGroup dense label="Basis" value={form.sampleUnitBasis} onChange={(v) => setField("sampleUnitBasis", v)} options={PRICE_BASIS_OPTIONS} />
+                    </div>
+                )}
+
             </SectionCard>
 
             {/* ---------------- Pricing ---------------- */}
@@ -679,15 +689,6 @@ export default function SellerListingForm({
                     <span className="text-[14.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</span>
                 </div>
 
-                <ToggleField label="Sample available?" value={form.sampleAvailable} onChange={(v) => setField("sampleAvailable", v)} />
-                {form.sampleAvailable && (
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                        <FieldAnchor fieldKey="sampleQuantity">
-                            <TextField required dense label="Sample quantity" value={form.sampleQuantity} onChange={(v) => setField("sampleQuantity", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("sampleQuantity")} error={isErr("sampleQuantity")} inputMode="decimal" />
-                        </FieldAnchor>
-                        <ChipToggleGroup dense label="Basis" value={form.sampleUnitBasis} onChange={(v) => setField("sampleUnitBasis", v)} options={PRICE_BASIS_OPTIONS} />
-                    </div>
-                )}
 
                 <RepeatableRows
                     label="Discount slabs" hint="Extra % off above a quantity threshold, in Packs"
