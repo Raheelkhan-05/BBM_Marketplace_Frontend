@@ -439,7 +439,7 @@ export default function SellerListingForm({
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
 
         const discountedPerUnit = pricePreview.basePricePerUnit * (1 - Number(slab.discountPercent) / 100);
-        const discountedPerPack = discountedPerUnit * pack;
+        const discountedPerPack = discountedPerUnit;
         const discountedPerMaster = discountedPerPack * master;
 
         const value = form.hasOuterPack ? discountedPerMaster : discountedPerPack;
