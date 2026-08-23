@@ -669,10 +669,7 @@ export default function SellerListingForm({
                                         label="How many Packs are there in one Outer Pack?"
                                         hint="How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)"
                                         value={form.masterPackSize}
-                                        onChange={(v) => {
-                                            const digitsOnly = v.replace(/[^\d]/g, "");
-                                            setField("masterPackSize", digitsOnly === "1" ? "" : digitsOnly);
-                                        }}
+                                        onChange={(v) => setField("masterPackSize", v.replace(/[^\d]/g, ""))}
                                         onBlur={() => touch("masterPackSize")}
                                         error={isErr("masterPackSize")}
                                         inputMode="numeric"
@@ -795,8 +792,23 @@ export default function SellerListingForm({
                     onChange={(rows) => setField("priceSlabs", displaySlabsToPacks(rows))}
                     addLabel="Add slab"
                     columns={[
-                        { key: "minQty", placeholder: form.hasOuterPack ? "Min qty (Master Packs)" : "Min qty (Packs)", inputMode: "decimal" },
-                        { key: "discountPercent", placeholder: "Discount %", inputMode: "decimal" },
+                        {
+                            key: "minQty",
+                            placeholder: form.hasOuterPack ? "Min qty (Master Packs)" : "Min qty (Packs)",
+                            inputMode: "decimal",
+                            flex: 7,
+                            suffix: (row) => {
+                                const unitLabel = form.hasOuterPack ? "Master Pack" : "Pack";
+                                return Number(row.minQty) === 1 ? unitLabel : `${unitLabel}s`;
+                            },
+                        },
+                        {
+                            key: "discountPercent",
+                            placeholder: "Discount %",
+                            inputMode: "decimal",
+                            flex: 3,
+                            suffix: "%",
+                        },
                     ]}
                 />
                 {form.priceSlabs.some((s) => s.discountPercent) && (
@@ -814,7 +826,7 @@ export default function SellerListingForm({
 
                 <div className="rounded-2xl border p-3 flex flex-col gap-2" style={{ borderColor: C.hairSoft, background: `${C.secondary}08` }}>
                     <p className="text-[13px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.ink }}>
-                        Demo Price breakdown for {moqPreview.totalUnits.toLocaleString("en-IN")} {form.unit || "units"}
+                        Demo Price breakdown for {form.hasOuterPack ? `${form.moq} Master Packs` : `${form.moq} Packs`}
                     </p>
 
                     {Number(form.moq) > 0 && Number(form.packSize) > 0 ? (
