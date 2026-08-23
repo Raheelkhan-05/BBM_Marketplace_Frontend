@@ -334,26 +334,31 @@ export default function SellerListingForm({
         if (form.priceBasis === "per_pack") perUnitPrice = price;
         if (form.priceBasis === "per_master_pack") perUnitPrice = price / master;
 
-        let basePricePerUnit, gstAmount, commissionAmount, finalPricePerUnit;
+        let basePricePerUnit, gstAmount, subtotalAfterGst;
 
         if (form.gstInclusive) {
-            // Reverse out GST% + commission% together, as one combined divisor,
-            // so both come off the exact figure the seller typed.
-            const divisor = 1 + (gst + commissionPercent) / 100;
-            basePricePerUnit = round2(perUnitPrice / divisor);
-            gstAmount = round2(basePricePerUnit * (gst / 100));
-            commissionAmount = round2(basePricePerUnit * (commissionPercent / 100));
-            finalPricePerUnit = round2(basePricePerUnit + gstAmount + commissionAmount);
+            // Seller's typed price IS the subtotal (base + GST) — reverse ONLY
+            // GST out of it to recover the base price. Commission is never
+            // reverse-baked in, regardless of this toggle.
+            subtotalAfterGst = round2(perUnitPrice);
+            basePricePerUnit = round2(subtotalAfterGst / (1 + gst / 100));
+            gstAmount = round2(subtotalAfterGst - basePricePerUnit);
         } else {
+            // Entered price excludes GST — this is the base price, shown as-is.
             basePricePerUnit = round2(perUnitPrice);
             gstAmount = round2(basePricePerUnit * (gst / 100));
-            commissionAmount = round2(basePricePerUnit * (commissionPercent / 100));
-            finalPricePerUnit = round2(basePricePerUnit + gstAmount + commissionAmount);
+            subtotalAfterGst = round2(basePricePerUnit + gstAmount);
         }
+
+        // Commission is always calculated forward, on top of the subtotal
+        // (base + GST) — never reversed out of a typed price.
+        const commissionAmount = round2(subtotalAfterGst * (commissionPercent / 100));
+        const finalPricePerUnit = round2(subtotalAfterGst + commissionAmount);
 
         return {
             basePricePerUnit,
             gstPercent: gst, gstAmount,
+            subtotalAfterGst,
             commissionPercent, commissionAmount,
             finalPricePerUnit,
         };
@@ -368,8 +373,6 @@ export default function SellerListingForm({
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
 
-        // form.moq is in Master Packs when hasOuterPack is on, else in Packs
-        // (see getMoqLabel) — normalize to Packs first, then to base units.
         const moqPacks = form.hasOuterPack ? moq * master : moq;
         const totalUnits = round2(moqPacks * pack);
 
@@ -378,6 +381,7 @@ export default function SellerListingForm({
             totalUnits,
             subtotal: round2(pricePreview.basePricePerUnit * totalUnits),
             gstAmount: round2(pricePreview.gstAmount * totalUnits),
+            subtotalAfterGst: round2(pricePreview.subtotalAfterGst * totalUnits),
             commissionAmount: round2(pricePreview.commissionAmount * totalUnits),
             finalTotal: round2(pricePreview.finalPricePerUnit * totalUnits),
         };
@@ -708,64 +712,6 @@ export default function SellerListingForm({
                 <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
                     <ToggleField3 label="Price includes GST?" value={form.gstInclusive} onChange={(v) => setField("gstInclusive", v)} />
                 </div>
-                <div className="rounded-2xl border p-3 flex flex-col gap-2" style={{ borderColor: C.hairSoft, background: `${C.secondary}08` }}>
-                    <p className="text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
-                        Price breakdown at Minimum Order Quantity
-                    </p>
-
-                    {Number(form.moq) > 0 && Number(form.packSize) > 0 ? (
-                        <div className="flex flex-col gap-1.5">
-                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
-                                <span>Quantity</span>
-                                <span className="text-right tabular-nums font-bold" style={{ color: C.ink }}>
-                                    {moqPreview.totalUnits.toLocaleString("en-IN")} {form.unit || "units"}
-                                    <span className="ml-1 font-medium" style={{ color: C.muted }}>
-                                        ({moqPreview.moqPacks.toLocaleString("en-IN")} Pack{moqPreview.moqPacks === 1 ? "" : "s"}
-                                        {form.hasOuterPack && Number(form.masterPackSize) >= 2
-                                            ? ` · ${Number(form.moq).toLocaleString("en-IN")} Master Pack${Number(form.moq) === 1 ? "" : "s"}`
-                                            : ""})
-                                    </span>
-                                </span>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
-                                <span>Subtotal (base price)</span>
-                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>
-                                    ₹{moqPreview.subtotal.toLocaleString("en-IN")}
-                                </span>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
-                                <span>GST ({form.gstPercent}%){form.gstInclusive ? " · already included" : ""}</span>
-                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>
-                                    ₹{moqPreview.gstAmount.toLocaleString("en-IN")}
-                                </span>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
-                                <span>Platform commission ({commissionPercent}%)</span>
-                                <span className="tabular-nums font-bold" style={{ color: C.primary }}>
-                                    ₹{moqPreview.commissionAmount.toLocaleString("en-IN")}
-                                </span>
-                            </div>
-
-                            <div className="mt-1 flex items-center justify-between gap-2 border-t pt-1.5" style={{ borderColor: C.hair }}>
-                                <span className="text-[12.5px] font-extrabold uppercase tracking-wide" style={{ color: C.secondary }}>
-                                    Final total {form.gstInclusive && <span className="font-medium normal-case" style={{ color: C.muted }}>(GST-inclusive)</span>}
-                                </span>
-                                <span className="text-[15.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>
-                                    ₹{moqPreview.finalTotal.toLocaleString("en-IN")}
-                                </span>
-                            </div>
-                        </div>
-                    ) : (
-                        <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
-                            Enter Pack size and MOQ above to see the full price breakdown
-                        </p>
-                    )}
-                </div>
-
-
                 <RepeatableRows
                     label="Discount slabs" hint="Extra % off above a quantity threshold, in Packs"
                     rows={form.priceSlabs} onChange={(rows) => setField("priceSlabs", rows)} addLabel="Add slab"
@@ -780,6 +726,89 @@ export default function SellerListingForm({
                         ))}
                     </div>
                 )}
+
+                <div className="rounded-2xl border p-3 flex flex-col gap-2" style={{ borderColor: C.hairSoft, background: `${C.secondary}08` }}>
+                    <p className="text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
+                        Price breakdown for Minimum Order Quantity
+                    </p>
+
+                    {Number(form.moq) > 0 && Number(form.packSize) > 0 ? (
+                        <div className="flex flex-col gap-1.5">
+                            <div className="flex flex-col gap-1">
+                                <p className="text-[10px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
+                                    Quantity at MOQ
+                                </p>
+                                <div className="flex flex-col gap-1 rounded-lg px-2.5 py-2 pt-0 pe-0" >
+                                    <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                        <span>Total {form.unit}</span>
+                                        <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                            {moqPreview.totalUnits.toLocaleString("en-IN")} {form.unit || "units"}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                        <span>Packs</span>
+                                        <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                            {moqPreview.moqPacks.toLocaleString("en-IN")} Pack{moqPreview.moqPacks === 1 ? "" : "s"}
+                                        </span>
+                                    </div>
+                                    {form.hasOuterPack && Number(form.masterPackSize) >= 2 && (
+                                        <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                            <span>Master Packs</span>
+                                            <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                                {Number(form.moq).toLocaleString("en-IN")} Master Pack{Number(form.moq) === 1 ? "" : "s"}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                <span>Base price {form.gstInclusive && <span className="font-medium">(excl. GST)</span>}</span>
+                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                    ₹{moqPreview.subtotal.toLocaleString("en-IN")}
+                                </span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                <span>GST ({form.gstPercent}%)</span>
+                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                    ₹{moqPreview.gstAmount.toLocaleString("en-IN")}
+                                </span>
+                            </div>
+
+                            {/* Subtotal — the anchor figure everything else builds on, so it
+                gets its own visually larger row, separated with borders. */}
+                            <div className="flex items-center justify-between gap-2 border-y py-1.5 my-0.5" style={{ borderColor: C.hair }}>
+                                <span className="text-[13px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>
+                                    Subtotal (incl. GST)
+                                </span>
+                                <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                    ₹{moqPreview.subtotalAfterGst.toLocaleString("en-IN")}
+                                </span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                <span>+ Platform commission ({commissionPercent}% of subtotal)</span>
+                                <span className="tabular-nums font-bold" style={{ color: C.primary }}>
+                                    ₹{moqPreview.commissionAmount.toLocaleString("en-IN")}
+                                </span>
+                            </div>
+
+                            <div className="mt-1 flex items-center justify-between gap-2 border-t pt-1.5" style={{ borderColor: C.hair }}>
+                                <span className="text-[12.5px] font-extrabold uppercase tracking-wide" style={{ color: C.secondary }}>
+                                    Final total
+                                </span>
+                                <span className="text-[15.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>
+                                    ₹{moqPreview.finalTotal.toLocaleString("en-IN")}
+                                </span>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
+                            Enter Pack size and MOQ above to see the full price breakdown
+                        </p>
+                    )}
+                </div>
             </SectionCard>
 
             {/* ---------------- Fulfilment ---------------- */}
