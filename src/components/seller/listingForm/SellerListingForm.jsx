@@ -29,7 +29,8 @@ import PolicySelect from "./PolicySelect.jsx";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
-const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
+const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Dozen", "Tons"];
+
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
 const PRICE_BASIS_OPTIONS = [
     { value: "per_pack", label: "Per pack" },
@@ -431,7 +432,7 @@ export default function SellerListingForm({
                 ) : (
                     <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                         <FieldAnchor fieldKey="unit">
-                            <SelectField required dense label="Unit" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
+                            <SelectField required dense label="What is the Unit of this Product" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
                         </FieldAnchor>
                         <FieldAnchor fieldKey="packSize">
                             <TextField required dense label="Pack size" hint="How many Units make up 1 Pack (e.g. 1 Pack = 10 Pieces)" value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
