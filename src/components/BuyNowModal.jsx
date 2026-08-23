@@ -53,6 +53,14 @@ const BASIS_OPTIONS = [
 // listing has no meaningful packSize.
 const VISIBLE_BASIS_OPTIONS = BASIS_OPTIONS;
 
+// VISIBLE_BASIS_OPTIONS is now computed per-seller instead of a fixed
+// constant — the Master Pack option only makes sense (and is only ever
+// shown) when the listing actually has one (masterPackSize > 1).
+function getVisibleBasisOptions(seller) {
+    const hasMasterPack = Number(seller?.masterPackSize) > 1;
+    return hasMasterPack ? BASIS_OPTIONS : BASIS_OPTIONS.filter((o) => o.value !== "per_master_pack");
+}
+
 // ---- Slab / quantity-discount pricing -------------------------------
 // Mirrors the place_order RPC exactly. Discounts/slabs are always resolved
 // against the BASE-UNIT quantity, regardless of which basis (unit/pack/
@@ -99,6 +107,7 @@ function computeMinQuantity(seller, basis) {
     return Math.max(1, moqPacks); // per_pack
 }
 
+const visibleBasisOptions = useMemo(() => getVisibleBasisOptions(seller), [seller?.masterPackSize]);
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function formatDDMon(date) {
@@ -309,6 +318,15 @@ export default function BuyNowModal({ seller, product, onClose }) {
     useEffect(() => {
         if (!userPickedBasis.current) setBasis(defaultBasis);
     }, [defaultBasis]);
+
+    // NEW — if a restored/stale basis is "per_master_pack" but this listing
+    // has no real master pack, fall back to per_pack so the (now-hidden)
+    // option never gets silently stuck as the active basis.
+    useEffect(() => {
+        if (basis === "per_master_pack" && !(Number(seller?.masterPackSize) > 1)) {
+            setBasis("per_pack");
+        }
+    }, [basis, seller?.masterPackSize]);
 
     // Whenever the effective minimum changes (basis switched, or seller/MOQ
     // data arrives late), bring quantity up to it if it's currently short.
@@ -724,7 +742,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 <div className="flex items-center justify-between">
                                     <Label>{isSample ? "Sample quantity" : `Quantity · MOQ ${seller?.moq} Pack${seller?.moq == 1 ? "" : "s"}`}</Label>
                                     {!isSample && (
-                                        <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={VISIBLE_BASIS_OPTIONS} />
+                                        <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={visibleBasisOptions} />
                                     )}
                                 </div>
 

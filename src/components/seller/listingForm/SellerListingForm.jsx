@@ -15,6 +15,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
     Loader2, CheckCircle2, AlertTriangle, ImagePlus,
+    Info,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { uploadSellerFile } from "../../../utils/api.js";
@@ -44,7 +45,7 @@ export const DEFAULT_LISTING_FORM = {
     qualityCertificates: [],
     noteToAdmin: "",
 
-    unit: "", packSize: "", masterPackSize: "",
+    unit: "", packSize: "", hasOuterPack: false, masterPackSize: "1",
     brandItemMatch: null,
     hsnCode: "", gstPercent: 18,
 
@@ -60,7 +61,7 @@ export const DEFAULT_LISTING_FORM = {
     dispatchDistrict: "", dispatchState: "",
 
     dispatchPincode: "",
-    dispatchingLocations: null, // { country, excludedStates, citiesByState }
+    dispatchingLocations: null,
 
     returnPolicyKey: "", warrantyKey: "",
 };
@@ -91,19 +92,18 @@ function computeMissing(form) {
     add(!form.brandNotApplicable && !form.brandName?.trim(), "brandName", "Brand");
     add(!form.images?.length, "images", "Product image");
 
-    // Packaging is only required from the seller when they're establishing
-    // a brand-new catalog entry — an existing product+brand match fixes
-    // these already, and the fields become read-only in the UI below.
     if (!form.brandItemMatch) {
         add(!form.unit, "unit", "Unit");
         add(!(Number(form.packSize) > 0), "packSize", "Pack size");
-        add(!(Number(form.masterPackSize) > 0), "masterPackSize", "Master pack size");
+        // Master pack is only required — and only needs to be >= 2 — when
+        // the seller says this product has an outer pack. Otherwise it's
+        // silently pinned to 1 (see the toggle handler below) so nothing
+        // downstream (backend validation, order math) ever sees a missing
+        // or invalid master pack size.
+        add(form.hasOuterPack && !(Number(form.masterPackSize) >= 2), "masterPackSize", "Master pack size");
     }
 
-    // add(!form.hsnCode?.trim(), "hsnCode", "HSN Code");
-
     add(!(Number(form.moq) > 0), "moq", "MOQ");
-
     add(form.gstPercent === "" || form.gstPercent == null, "gstPercent", "GST %");
     add(!(Number(form.basePrice) > 0), "basePrice", "Base price");
     add(form.sampleAvailable && !(Number(form.sampleQuantity) > 0), "sampleQuantity", "Sample quantity");
@@ -142,13 +142,12 @@ export default function SellerListingForm({
             } : {}),
         };
 
-        // When identity is locked (selling an already-catalogued item via
-        // SellThisItemModal, or editing an existing submission on
-        // SellPublishProductPage), we already know — synchronously, no
-        // lookup needed — whether packaging is set. If it is, lock the
-        // fields read-only. If this particular catalog item predates
-        // packaging tracking and it's genuinely missing, fall through to
-        // asking the seller, same as the brand-new-product flow does.
+        // hasOuterPack always derives from whether masterPackSize > 1 — never
+        // trust a raw hasOuterPack passed in initialValues, since older
+        // submissions won't have this field at all.
+        base.hasOuterPack = Number(base.masterPackSize) > 1;
+        if (!base.hasOuterPack) base.masterPackSize = "1";
+
         if (locked) {
             const hasPackaging = base.unit && Number(base.packSize) > 0 && Number(base.masterPackSize) > 0;
             base.brandItemMatch = hasPackaging
@@ -205,7 +204,15 @@ export default function SellerListingForm({
                 // changed the fields again mid-flight.
                 if (f.productName?.trim() !== productName || f.brandName?.trim() !== brandName || f.brandNotApplicable !== brandNotApplicable) return f;
                 if (res.match) {
-                    return { ...f, brandItemMatch: res.match, unit: res.match.unit, packSize: String(res.match.packSize), masterPackSize: String(res.match.masterPackSize) };
+                    const matchHasOuterPack = Number(res.match.masterPackSize) > 1;
+                    return {
+                        ...f,
+                        brandItemMatch: res.match,
+                        unit: res.match.unit,
+                        packSize: String(res.match.packSize),
+                        hasOuterPack: matchHasOuterPack,
+                        masterPackSize: matchHasOuterPack ? String(res.match.masterPackSize) : "1",
+                    };
                 }
                 // No match — clear any previously-locked packaging so the
                 // seller can enter their own for this brand-new product.
@@ -298,6 +305,20 @@ export default function SellerListingForm({
     const discountedPreview = (slab) => {
         if (!slab?.discountPercent) return null;
         return Math.round((pricePreview.basePricePerUnit * (1 - Number(slab.discountPercent) / 100) + Number.EPSILON) * 100) / 100;
+    };
+
+    const handleOuterPackToggle = (value) => {
+        setForm((f) => ({
+            ...f,
+            hasOuterPack: value,
+            // Turning it off pins masterPackSize to 1 so backend validation
+            // and order math (which both treat masterPackSize as ">= 1")
+            // never see a blank/invalid value. Turning it on clears it so the
+            // seller has to deliberately enter a real count (>= 2) — never
+            // silently reuses a stale "1".
+            masterPackSize: value ? "" : "1",
+        }));
+        if (!value) setTouched((t) => (t.masterPackSize ? { ...t, masterPackSize: false } : t));
     };
 
     const missing = useMemo(() => computeMissing(form), [form]);
@@ -443,24 +464,52 @@ export default function SellerListingForm({
                         <div className="min-w-0">
                             <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Fixed by this product</p>
                             <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                1 Pack = {form.packSize} {form.unit} · 1 Master Pack = {form.masterPackSize} Packs
+                                1 Pack = {form.packSize} {form.unit}
+                                {Number(form.masterPackSize) > 1 && ` · 1 Master Pack = ${form.masterPackSize} Packs`}
                             </p>
                         </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                        <FieldAnchor fieldKey="unit">
-                            <SelectField required dense label="What is the Selling Unit of this Product" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
-                        </FieldAnchor>
-                        <FieldAnchor fieldKey="packSize">
-                            <TextField required dense label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
-                        </FieldAnchor>
-                        <FieldAnchor fieldKey="masterPackSize">
-                            <TextField required dense label={getMasterPackSizeLabel(form.unit)} hint={getMasterPackSizeHint()} value={form.masterPackSize} onChange={(v) => setField("masterPackSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("masterPackSize")} error={isErr("masterPackSize")} inputMode="decimal" />
-                        </FieldAnchor>
-                        <p className="col-span-1 sm:col-span-3 text-[10.5px] font-medium" style={{ color: C.muted }}>
-                            New product — set this once. Other sellers who list it later won't need to.
-                        </p>
+                    <div className="flex flex-col gap-2.5">
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                            <FieldAnchor fieldKey="unit">
+                                <SelectField required dense label="What is the Selling Unit of this Product" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
+                            </FieldAnchor>
+                            <FieldAnchor fieldKey="packSize">
+                                <TextField required dense label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
+                            </FieldAnchor>
+                        </div>
+
+                        <ToggleField label="Does this have an Outer Pack?" value={form.hasOuterPack} onChange={handleOuterPackToggle} />
+                        <div className="flex items-start gap-2 rounded-xl border p-3" style={{ borderColor: C.hairSoft, background: `${C.secondary}06` }}>
+                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                            <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
+                                An outer pack is a larger pack / <b style={{ color: C.ink }}>Master Pack</b> containing multiple individual Packs.
+                            </p>
+                        </div>
+                        {form.hasOuterPack && (
+                            <>
+                                <FieldAnchor fieldKey="masterPackSize">
+                                    <TextField
+                                        required dense
+                                        label="How many Packs are there in one Outer Pack?"
+                                        hint="How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)"
+                                        value={form.masterPackSize}
+                                        onChange={(v) => {
+                                            const digitsOnly = v.replace(/[^\d]/g, "");
+                                            // Block "1" outright while typing — an outer
+                                            // pack of exactly 1 inner pack isn't a real
+                                            // master pack, so there's no valid single-digit
+                                            // "1" state to allow here.
+                                            setField("masterPackSize", digitsOnly === "1" ? "" : digitsOnly);
+                                        }}
+                                        onBlur={() => touch("masterPackSize")}
+                                        error={isErr("masterPackSize")}
+                                        inputMode="numeric"
+                                    />
+                                </FieldAnchor>
+                            </>
+                        )}
                     </div>
                 )}
 
