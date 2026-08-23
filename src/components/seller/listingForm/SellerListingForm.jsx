@@ -813,31 +813,31 @@ export default function SellerListingForm({
                 )}
 
                 <div className="rounded-2xl border p-3 flex flex-col gap-2" style={{ borderColor: C.hairSoft, background: `${C.secondary}08` }}>
-                    <p className="text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
-                        Price breakdown for Minimum Order Quantity
+                    <p className="text-[13px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.ink }}>
+                        Demo Price breakdown for {moqPreview.totalUnits.toLocaleString("en-IN")} {form.unit || "units"}
                     </p>
 
                     {Number(form.moq) > 0 && Number(form.packSize) > 0 ? (
                         <div className="flex flex-col gap-1.5">
                             <div className="flex flex-col gap-1">
-                                <p className="text-[10px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
+                                <p className="text-[11px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
                                     Quantity at MOQ
                                 </p>
                                 <div className="flex flex-col gap-1 rounded-lg px-2.5 py-2 pt-0 pe-0" >
-                                    <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                    <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                         <span>Total {form.unit}</span>
                                         <span className="tabular-nums font-bold" style={{ color: C.ink }}>
                                             {moqPreview.totalUnits.toLocaleString("en-IN")} {form.unit || "units"}
                                         </span>
                                     </div>
-                                    <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                    <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                         <span>Packs</span>
                                         <span className="tabular-nums font-bold" style={{ color: C.ink }}>
                                             {moqPreview.moqPacks.toLocaleString("en-IN")} Pack{moqPreview.moqPacks === 1 ? "" : "s"}
                                         </span>
                                     </div>
                                     {form.hasOuterPack && Number(form.masterPackSize) >= 2 && (
-                                        <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                        <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                             <span>Master Packs</span>
                                             <span className="tabular-nums font-bold" style={{ color: C.ink }}>
                                                 {Number(form.moq).toLocaleString("en-IN")} Master Pack{Number(form.moq) === 1 ? "" : "s"}
@@ -847,7 +847,7 @@ export default function SellerListingForm({
                                 </div>
                             </div>
 
-                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                            <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                 <span>Base price</span>
                                 <span className="tabular-nums font-bold" style={{ color: C.ink }}>
                                     ₹{moqPreview.grossSubtotal.toLocaleString("en-IN")}
@@ -855,7 +855,7 @@ export default function SellerListingForm({
                             </div>
 
                             {moqPreview.discountPercent > 0 && (
-                                <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.secondary }}>
+                                <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.secondary }}>
                                     <span>Discount ({moqPreview.discountPercent}%)</span>
                                     <span className="tabular-nums font-bold">
                                         − ₹{moqPreview.discountAmount.toLocaleString("en-IN")}
@@ -863,7 +863,7 @@ export default function SellerListingForm({
                                 </div>
                             )}
 
-                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                            <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                 <span>GST ({form.gstPercent}%){form.gstInclusive ? " · calculated on discounted price" : ""}</span>
                                 <span className="tabular-nums font-bold" style={{ color: C.ink }}>
                                     ₹{moqPreview.gstAmount.toLocaleString("en-IN")}
@@ -871,7 +871,7 @@ export default function SellerListingForm({
                             </div>
 
                             <div className="flex items-center justify-between gap-2 border-y py-1.5 my-0.5" style={{ borderColor: C.hair }}>
-                                <span className="text-[13px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>
+                                <span className="text-[14px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>
                                     Total amount
                                 </span>
                                 <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>
