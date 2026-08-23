@@ -498,7 +498,7 @@ export function CompletedBadge() {
 
 export function ToggleField2({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", infoBlock }) {
     return (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col">
             <Label hint={hint}>{label}</Label>
             {infoBlock}
             <div className="flex gap-1 rounded-lg p-1" style={{ background: C.hairSoft, width: "fit-content" }}>

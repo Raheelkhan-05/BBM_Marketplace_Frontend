@@ -487,8 +487,7 @@ export default function SellerListingForm({
                             onChange={handleOuterPackToggle}
                             infoBlock={
                                 <div className="mb-1 flex items-start gap-2 rounded-xl">
-                                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                                    <p className="text-[7.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
+                                    <p className="text-[8.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
                                         An outer pack is a larger pack / <b style={{ color: C.ink }}>Master Pack</b> containing multiple individual Packs.
                                     </p>
                                 </div>
