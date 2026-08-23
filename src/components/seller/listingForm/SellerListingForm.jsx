@@ -25,6 +25,7 @@ import {
     SectionCard, Progress,
     ToggleField2,
     TextField2,
+    ToggleField3,
 } from "./FormPrimitives.jsx";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
@@ -600,7 +601,7 @@ export default function SellerListingForm({
 
             {/* ---------------- Pricing ---------------- */}
             <SectionCard icon={IndianRupee} title="Tax & Pricing" alwaysOpen>
-                <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
+                <ChipToggleGroup dense label="Applicable GST % for this Product" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
                 {(() => {
                     const showMaster = form.hasOuterPack && Number(form.masterPackSize) >= 2;
                     const hasPrice = form.basePrice !== "" && form.basePrice != null;
@@ -670,9 +671,8 @@ export default function SellerListingForm({
                         </FieldAnchor>
                     );
                 })()}
-                <div className="grid grid-cols-2 gap-2.5">
-                    <ToggleField label="Price includes GST?" value={form.gstInclusive} onChange={(v) => setField("gstInclusive", v)} />
-                    <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />
+                <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
+                    <ToggleField3 label="Price includes GST?" value={form.gstInclusive} onChange={(v) => setField("gstInclusive", v)} />
                 </div>
                 <div className="flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${C.secondary}0c` }}>
                     <span className="text-[11.5px] font-bold tracking-wide" style={{ color: C.muted }}>Base price / pack (excl. GST)</span>
@@ -718,6 +718,10 @@ export default function SellerListingForm({
                         <TextField required dense label="Lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" />
                     </FieldAnchor>
                 )}
+
+                <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
+                    <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />
+                </div>
 
                 <FieldAnchor fieldKey="dispatchPincode">
                     <div className="flex flex-col gap-1">

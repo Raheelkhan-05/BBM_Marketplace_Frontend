@@ -458,6 +458,27 @@ export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", off
     );
 }
 
+export function ToggleField3({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No" }) {
+    return (
+        <div className="flex flex-col gap-1 self-end justify-end align-end">
+            <Label hint={hint}>{label}</Label>
+            <div className="flex gap-1 rounded-lg p-1 self-end justify-end align-end" style={{ background: C.hairSoft, width: "fit-content" }}>
+                {[{ v: true, t: onLabel }, { v: false, t: offLabel }].map(({ v, t }) => (
+                    <button
+                        key={t}
+                        type="button"
+                        onClick={() => onChange(v)}
+                        className="rounded-md px-3 py-0.5 text-[13.5px] tracking-wider font-bold transition-colors duration-150"
+                        style={value === v ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
+                    >
+                        {t}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export function ChipToggleGroup({ label, value, onChange, options, hint, dense }) {
     return (
         <div className="flex min-w-0 flex-col gap-1.5">
