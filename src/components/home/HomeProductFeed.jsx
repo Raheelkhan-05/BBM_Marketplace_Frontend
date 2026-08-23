@@ -92,7 +92,7 @@ function toBuyerSellerPayload(s) {
         productionLeadTimeDays: s.production_lead_time_days,
         priceSlabs: s.price_slabs || [],
         quantityDiscounts: s.quantity_discounts || [],
-        hsnCode: s.hsn_code,
+        // hsnCode: s.hsn_code,
         paymentTerms: s.payment_terms,
         returnPolicy: s.return_policy,
         warranty: s.warranty,

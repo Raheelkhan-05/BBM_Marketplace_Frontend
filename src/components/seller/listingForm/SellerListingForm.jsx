@@ -81,7 +81,7 @@ function computeMissing(form) {
         add(!(Number(form.masterPackSize) > 0), "masterPackSize", "Master pack size");
     }
 
-    add(!form.hsnCode?.trim(), "hsnCode", "HSN Code");
+    // add(!form.hsnCode?.trim(), "hsnCode", "HSN Code");
 
     add(!(Number(form.moq) > 0), "moq", "MOQ");
 
@@ -220,7 +220,7 @@ export default function SellerListingForm({
                 dispatchPincode: delivery.dispatchPincode ?? f.dispatchPincode,
                 dispatchingLocations: delivery.dispatchingLocations ?? f.dispatchingLocations,
                 freightIncluded: delivery.freightIncluded ?? f.freightIncluded,
-                hsnCode: taxLegal.hsnCode ?? f.hsnCode,
+                // hsnCode: taxLegal.hsnCode ?? f.hsnCode,
                 gstPercent: taxLegal.gstPercent ?? f.gstPercent,
                 gstInclusive: taxLegal.gstInclusive ?? f.gstInclusive,
                 returnPolicyKey: taxLegal.returnPolicyKey ?? f.returnPolicyKey,
@@ -418,17 +418,6 @@ export default function SellerListingForm({
                     </p>
                 )}
 
-                {!form.brandItemMatch && (
-                    <div className="rounded-xl border p-3" style={{ borderColor: C.hairSoft, background: `${C.secondary}06` }}>
-                        <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.secondary }}>How packaging works</p>
-                        <ul className="mt-1.5 flex flex-col gap-1 text-[13px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
-                            <li><b style={{ color: C.ink }}>Unit</b> — the smallest measure this product is sold in <span className="md:hidden"><br /></span>(e.g. Pieces, Kg, Litres).</li>
-                            <li><b style={{ color: C.ink }}>Pack size</b> — how many of that Unit make up 1 Pack<span className="md:hidden"><br /></span> (e.g. 1 Pack = 10 Pieces).</li>
-                            <li><b style={{ color: C.ink }}>Master pack size</b> — how many Packs make up 1 Master Pack <span className="md:hidden"><br /></span>(e.g. 1 Master Pack = 5 Packs).</li>
-                        </ul>
-                    </div>
-                )}
-
                 {form.brandItemMatch ? (
                     <div className="flex items-center gap-2 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
                         <Boxes className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
@@ -440,17 +429,17 @@ export default function SellerListingForm({
                         </div>
                     </div>
                 ) : (
-                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                         <FieldAnchor fieldKey="unit">
-                            <SelectField required dense label="Unit" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
+                            <SelectField required dense label="Unit" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
                         </FieldAnchor>
                         <FieldAnchor fieldKey="packSize">
-                            <TextField required dense label="Pack size" hint="Individual units per pack" value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
+                            <TextField required dense label="Pack size" hint="How many Units make up 1 Pack (e.g. 1 Pack = 10 Pieces)" value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
                         </FieldAnchor>
                         <FieldAnchor fieldKey="masterPackSize">
-                            <TextField required dense label="Master pack size" hint="Packs per master pack" value={form.masterPackSize} onChange={(v) => setField("masterPackSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("masterPackSize")} error={isErr("masterPackSize")} inputMode="decimal" />
+                            <TextField required dense label="Master pack size" hint="How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)" value={form.masterPackSize} onChange={(v) => setField("masterPackSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("masterPackSize")} error={isErr("masterPackSize")} inputMode="decimal" />
                         </FieldAnchor>
-                        <p className="col-span-2 sm:col-span-3 text-[10.5px] font-medium" style={{ color: C.muted }}>
+                        <p className="col-span-1 sm:col-span-3 text-[10.5px] font-medium" style={{ color: C.muted }}>
                             New product — set this once. Other sellers who list it later won't need to.
                         </p>
                     </div>
@@ -462,9 +451,9 @@ export default function SellerListingForm({
                             value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))}
                             onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
-                    <FieldAnchor fieldKey="hsnCode">
+                    {/* <FieldAnchor fieldKey="hsnCode">
                         <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => setField("hsnCode", v)} onBlur={() => touch("hsnCode")} error={isErr("hsnCode")} />
-                    </FieldAnchor>
+                    </FieldAnchor> */}
                 </div>
                 <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
             </SectionCard>

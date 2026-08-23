@@ -72,7 +72,7 @@ function rowToFormValues(row) {
         dispatchLocation: row.dispatch_location || "",
         deliveryTimeline: row.delivery_timeline || "",
         freightTerms: row.freight_terms || DEFAULT_LISTING_FORM.freightTerms,
-        hsnCode: row.hsn_code || "",
+        // hsnCode: row.hsn_code || "",
         gstRegistrationStatus: row.gst_registration_status || "regular",
         taxInvoiceAvailable: row.tax_invoice_available ?? true,
         paymentTerms: row.payment_terms || "",

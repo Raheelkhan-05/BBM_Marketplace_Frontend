@@ -220,7 +220,7 @@ export default function BrandItemSellersPage() {
         productionLeadTimeDays: buySeller.production_lead_time_days,
         priceSlabs: buySeller.price_slabs || [],
         quantityDiscounts: buySeller.quantity_discounts || [],
-        hsnCode: buySeller.hsn_code,
+        // hsnCode: buySeller.hsn_code,
         paymentTerms: buySeller.payment_terms,
         returnPolicy: buySeller.return_policy,
         warranty: buySeller.warranty,

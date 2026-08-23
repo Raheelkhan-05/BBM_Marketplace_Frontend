@@ -665,7 +665,7 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
                     unit: s.unit || "",
                     packSize: s.pack_size ?? "",
                     masterPackSize: s.units_per_master_pack ?? "",
-                    hsnCode: s.hsn_code || "",
+                    // hsnCode: s.hsn_code || "",
                     gstPercent: s.gst_percent ?? 18,
 
                     basePrice: s.base_price ?? "",
@@ -743,7 +743,7 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
                 unit: form.unit,
                 packSize: form.packSize,
                 masterPackSize: form.masterPackSize,
-                hsnCode: form.hsnCode,
+                // hsnCode: form.hsnCode,
                 gstPercent: form.gstPercent,
 
                 basePrice: form.basePrice,
@@ -879,7 +879,7 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
                                     <TextField required dense label="MOQ" value={form.moq} onChange={(v) => set("moq", v.replace(/[^\d.]/g, ""))} inputMode="decimal" />
                                 </div>
                                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                                    <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => set("hsnCode", v)} />
+                                    {/* <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => set("hsnCode", v)} /> */}
                                     <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => set("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
                                 </div>
                             </SectionCard>
