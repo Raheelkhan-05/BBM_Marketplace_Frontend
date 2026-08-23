@@ -214,7 +214,7 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
 
     return (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-900/40 sm:items-center sm:p-4" onClick={handleClose}>
-            <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white sm:max-w-sm sm:rounded-2xl">
+            <div onClick={(e) => e.stopPropagation()} className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white sm:max-w-3xl sm:rounded-2xl">
                 <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                     <h3 className="text-[16px] font-extrabold text-slate-900">{isEdit ? `Edit ${meta.title}` : `Add ${meta.title}`}</h3>
                     <button onClick={handleClose} className="rounded-full p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600"><X className="h-4.5 w-4.5" /></button>
