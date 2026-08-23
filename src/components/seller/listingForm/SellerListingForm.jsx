@@ -27,6 +27,7 @@ import {
     TextField2,
     ToggleField3,
     RepeatableRows2,
+    Label,
 } from "./FormPrimitives.jsx";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
@@ -733,6 +734,7 @@ export default function SellerListingForm({
 
                     return (
                         <FieldAnchor fieldKey="basePrice">
+                            <p className="text-[11.5px] font-semibold leading-snug tracking-wide pb-1" style={{ color: C.ink }}>The standard price before applying quantity-based discounts</p>
                             <div className={`grid gap-2.5 ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
                                 <TextField2
                                     required dense
