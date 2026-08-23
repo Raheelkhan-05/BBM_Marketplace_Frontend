@@ -968,3 +968,22 @@ export async function submitPaymentProof(token, orderId, { utr, screenshotFile }
   }
   return res.json();
 }
+
+export async function downloadFullCatalogTemplate(token) {
+  const res = await fetch(`${API_BASE}/admin/catalog-bulk/excel-template`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Download failed");
+  return res.blob();
+}
+
+export async function uploadFullCatalogFile(token, file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/admin/catalog-bulk/excel-upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  return res.json();
+}
