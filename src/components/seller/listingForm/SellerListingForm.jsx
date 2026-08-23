@@ -505,7 +505,7 @@ export default function SellerListingForm({
                     <div className="flex flex-col gap-2.5">
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                             <FieldAnchor fieldKey="unit">
-                                <SelectField required dense tinyOnMobile label="What is the Selling Unit of this Product?" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
+                                <SelectField required dense halfOnMobile label="What is the Selling Unit of this Product?" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
                             </FieldAnchor>
                             <FieldAnchor fieldKey="packSize">
                                 <TextField required dense tinyOnMobile placeholder="1234" label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
@@ -544,6 +544,16 @@ export default function SellerListingForm({
                                     />
                                 </FieldAnchor>
                             </>
+                        )}
+                        {/* Derived packaging summary — recalculates live from Unit / Pack size /
+                        Master pack size, shown just above MOQ so the seller can sanity-check
+                        the numbers they just entered before setting a minimum order quantity. */}
+                        {form.unit && Number(form.packSize) > 0 && (
+                            <p className="text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                {form.hasOuterPack && Number(form.masterPackSize) >= 2
+                                    ? `1 Master Pack = ${form.masterPackSize} Packs = ${Number(form.packSize) * Number(form.masterPackSize)} ${form.unit}`
+                                    : `1 Pack = ${form.packSize} ${form.unit}`}
+                            </p>
                         )}
                     </div>
                 )}
