@@ -359,6 +359,30 @@ export default function SellerListingForm({
         };
     }, [form.basePrice, form.gstPercent, form.packSize, form.masterPackSize, form.gstInclusive, form.priceBasis, commissionPercent]);
 
+    // Full price breakdown at MOQ — reuses pricePreview's per-unit figures
+    // (which already account for gstInclusive correctly) and simply scales
+    // them up by the total quantity implied by the current MOQ field.
+    const moqPreview = useMemo(() => {
+        const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+        const moq = Number(form.moq) || 0;
+        const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
+        const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
+
+        // form.moq is in Master Packs when hasOuterPack is on, else in Packs
+        // (see getMoqLabel) — normalize to Packs first, then to base units.
+        const moqPacks = form.hasOuterPack ? moq * master : moq;
+        const totalUnits = round2(moqPacks * pack);
+
+        return {
+            moqPacks: round2(moqPacks),
+            totalUnits,
+            subtotal: round2(pricePreview.basePricePerUnit * totalUnits),
+            gstAmount: round2(pricePreview.gstAmount * totalUnits),
+            commissionAmount: round2(pricePreview.commissionAmount * totalUnits),
+            finalTotal: round2(pricePreview.finalPricePerUnit * totalUnits),
+        };
+    }, [form.moq, form.packSize, form.masterPackSize, form.hasOuterPack, pricePreview]);
+
     const discountedPreview = (slab) => {
         if (!slab?.discountPercent) return null;
         return Math.round((pricePreview.basePricePerUnit * (1 - Number(slab.discountPercent) / 100) + Number.EPSILON) * 100) / 100;
@@ -684,9 +708,61 @@ export default function SellerListingForm({
                 <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
                     <ToggleField3 label="Price includes GST?" value={form.gstInclusive} onChange={(v) => setField("gstInclusive", v)} />
                 </div>
-                <div className="flex items-center justify-between rounded-xl px-3.5 py-2.5" style={{ background: `${C.secondary}0c` }}>
-                    <span className="text-[11.5px] font-bold tracking-wide" style={{ color: C.muted }}>Base price / pack (excl. GST)</span>
-                    <span className="text-[14.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</span>
+                <div className="rounded-2xl border p-3 flex flex-col gap-2" style={{ borderColor: C.hairSoft, background: `${C.secondary}08` }}>
+                    <p className="text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
+                        Price breakdown at Minimum Order Quantity
+                    </p>
+
+                    {Number(form.moq) > 0 && Number(form.packSize) > 0 ? (
+                        <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                <span>Quantity</span>
+                                <span className="text-right tabular-nums font-bold" style={{ color: C.ink }}>
+                                    {moqPreview.totalUnits.toLocaleString("en-IN")} {form.unit || "units"}
+                                    <span className="ml-1 font-medium" style={{ color: C.muted }}>
+                                        ({moqPreview.moqPacks.toLocaleString("en-IN")} Pack{moqPreview.moqPacks === 1 ? "" : "s"}
+                                        {form.hasOuterPack && Number(form.masterPackSize) >= 2
+                                            ? ` · ${Number(form.moq).toLocaleString("en-IN")} Master Pack${Number(form.moq) === 1 ? "" : "s"}`
+                                            : ""})
+                                    </span>
+                                </span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                <span>Subtotal (base price)</span>
+                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                    ₹{moqPreview.subtotal.toLocaleString("en-IN")}
+                                </span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                <span>GST ({form.gstPercent}%){form.gstInclusive ? " · already included" : ""}</span>
+                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                    ₹{moqPreview.gstAmount.toLocaleString("en-IN")}
+                                </span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                <span>Platform commission ({commissionPercent}%)</span>
+                                <span className="tabular-nums font-bold" style={{ color: C.primary }}>
+                                    ₹{moqPreview.commissionAmount.toLocaleString("en-IN")}
+                                </span>
+                            </div>
+
+                            <div className="mt-1 flex items-center justify-between gap-2 border-t pt-1.5" style={{ borderColor: C.hair }}>
+                                <span className="text-[12.5px] font-extrabold uppercase tracking-wide" style={{ color: C.secondary }}>
+                                    Final total {form.gstInclusive && <span className="font-medium normal-case" style={{ color: C.muted }}>(GST-inclusive)</span>}
+                                </span>
+                                <span className="text-[15.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>
+                                    ₹{moqPreview.finalTotal.toLocaleString("en-IN")}
+                                </span>
+                            </div>
+                        </div>
+                    ) : (
+                        <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
+                            Enter Pack size and MOQ above to see the full price breakdown
+                        </p>
+                    )}
                 </div>
 
 
