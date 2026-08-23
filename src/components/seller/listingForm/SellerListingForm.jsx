@@ -904,10 +904,13 @@ export default function SellerListingForm({
                         </p>
                     )}
                 </div>
+                <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
+                    <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />
+                </div>
             </SectionCard>
 
             {/* ---------------- Fulfilment ---------------- */}
-            <SectionCard icon={Truck} title="Fulfilment & delivery" alwaysOpen>
+            <SectionCard icon={Truck} title="Fulfilment" alwaysOpen>
                 <ChipToggleGroup label="Fulfilment" value={form.stockType} onChange={(v) => setField("stockType", v)}
                     options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
                 {form.stockType === "ready_stock" ? (
@@ -920,10 +923,23 @@ export default function SellerListingForm({
                     </FieldAnchor>
                 )}
 
-                <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
-                    <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />
-                </div>
 
+            </SectionCard>
+
+            {/* ---------------- Terms ---------------- */}
+            <SectionCard icon={FileText} title="Terms" alwaysOpen>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <FieldAnchor fieldKey="returnPolicyKey">
+                        <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => setField("returnPolicyKey", v)} error={isErr("returnPolicyKey")} />
+                    </FieldAnchor>
+                    <FieldAnchor fieldKey="warrantyKey">
+                        <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => setField("warrantyKey", v)} error={isErr("warrantyKey")} />
+                    </FieldAnchor>
+                </div>
+            </SectionCard>
+
+            {/* ---------------- Delivery ---------------- */}
+            <SectionCard icon={Truck} title="Delivery">
                 <FieldAnchor fieldKey="dispatchPincode">
                     <div className="flex flex-col gap-1">
                         <TextField required dense label="Dispatch pincode" value={form.dispatchPincode}
@@ -939,42 +955,8 @@ export default function SellerListingForm({
                 <FieldAnchor fieldKey="dispatchingLocations">
                     <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
                 </FieldAnchor>
-            </SectionCard>
 
-            {/* ---------------- Terms ---------------- */}
-            <SectionCard icon={FileText} title="Terms" alwaysOpen>
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    <FieldAnchor fieldKey="returnPolicyKey">
-                        <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => setField("returnPolicyKey", v)} error={isErr("returnPolicyKey")} />
-                    </FieldAnchor>
-                    <FieldAnchor fieldKey="warrantyKey">
-                        <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => setField("warrantyKey", v)} error={isErr("warrantyKey")} />
-                    </FieldAnchor>
-                </div>
             </SectionCard>
-
-            {/* ---------------- Summary ---------------- */}
-            {/* Final price = base + GST + commission, all stacked on top of
-                base price. GST and commission each show their % and their
-                ₹ amount so it's clear exactly what's being added and why. */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
-                    <p className="text-[10.5px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Base price</p>
-                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{pricePreview.basePricePerUnit.toLocaleString("en-IN")}</p>
-                </div>
-                <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
-                    <p className="text-[10.5px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>+ GST ({form.gstPercent}%)</p>
-                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{pricePreview.gstAmount.toLocaleString("en-IN")}</p>
-                </div>
-                <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.hair, background: "#fff" }}>
-                    <p className="text-[10.5px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>+ Commission ({commissionPercent}%)</p>
-                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.primary }}>₹{pricePreview.commissionAmount.toLocaleString("en-IN")}</p>
-                </div>
-                <div className="rounded-2xl border p-2.5 text-center" style={{ borderColor: C.secondary, background: `${C.secondary}0c` }}>
-                    <p className="text-[10.5px] font-bold uppercase tracking-[0.08em]" style={{ color: C.secondary }}>Final price</p>
-                    <p className="mt-1 text-[13px] font-extrabold tabular-nums" style={{ color: C.secondary }}>₹{pricePreview.finalPricePerUnit.toLocaleString("en-IN")}</p>
-                </div>
-            </div>
 
             <div className={`sticky ${stickyBottomClassName} z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4`} style={{ borderColor: C.hair }}>
                 <Progress percent={percentComplete} />
