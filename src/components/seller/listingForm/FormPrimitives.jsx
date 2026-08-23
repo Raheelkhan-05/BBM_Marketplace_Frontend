@@ -551,6 +551,51 @@ export function RepeatableRows({ label, hint, rows, columns, onChange, addLabel 
     );
 }
 
+export function RepeatableRows2({ label, hint, rows, columns, onChange, addLabel = "Add row" }) {
+    const update = (idx, key, val) => {
+        const next = rows.map((r, i) => (i === idx ? { ...r, [key]: val } : r));
+        onChange(next);
+    };
+    const remove = (idx) => onChange(rows.filter((_, i) => i !== idx));
+    const add = () => onChange([...rows, Object.fromEntries(columns.map((c) => [c.key, ""]))]);
+
+    return (
+        <div className="flex flex-col gap-1.5">
+            <Label hint={hint}>{label}</Label>
+            {rows.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                    {rows.map((row, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5">
+                            {columns.map((c) => (
+                                <input
+                                    key={c.key}
+                                    value={row[c.key] ?? ""}
+                                    placeholder={c.placeholder}
+                                    inputMode={c.inputMode}
+                                    onChange={(e) => update(idx, c.key, e.target.value)}
+                                    className="min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-[12px] font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 tracking-wide"
+                                    style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }}
+                                />
+                            ))}
+                            <button type="button" onClick={() => remove(idx)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50">
+                                <Trash2 className="h-3.5 w-3.5" style={{ color: C.danger }} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+            <button
+                type="button"
+                onClick={add}
+                className="flex w-fit items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-[13px] font-bold transition-colors duration-150 hover:bg-black/[0.02] tracking-wide"
+                style={{ borderColor: C.hair, color: C.secondary }}
+            >
+                <Plus className="h-3.5 w-3.5" /> {addLabel}
+            </button>
+        </div>
+    );
+}
+
 // SectionCard — pass `alwaysOpen` for a card that's never collapsible
 // (no chevron, no click target, content always rendered).
 export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, children, open, onOpenChange, id, alwaysOpen }) {

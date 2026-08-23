@@ -26,6 +26,7 @@ import {
     ToggleField2,
     TextField2,
     ToggleField3,
+    RepeatableRows2,
 } from "./FormPrimitives.jsx";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
@@ -171,6 +172,22 @@ function computeMissing(form) {
 
 function FieldAnchor({ fieldKey, children }) {
     return <div id={`field-${fieldKey}`} className="min-w-0 rounded-xl transition-shadow">{children}</div>;
+}
+
+function round2(n) {
+    return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+// Finds the highest-threshold discount slab the given quantity (in Packs)
+// clears. Slabs are always stored with minQty in Packs — see
+// packSlabsToDisplay/displaySlabsToPacks — so this never needs to know
+// whether the seller is currently viewing them in Packs or Master Packs.
+function getApplicableSlab(slabsInPacks, qtyPacks) {
+    const eligible = (slabsInPacks || []).filter(
+        (s) => Number(s.minQty) > 0 && Number(s.discountPercent) > 0 && qtyPacks >= Number(s.minQty)
+    );
+    if (!eligible.length) return null;
+    return eligible.reduce((best, s) => (Number(s.minQty) > Number(best.minQty) ? s : best));
 }
 
 export default function SellerListingForm({
@@ -368,28 +385,85 @@ export default function SellerListingForm({
     // (which already account for gstInclusive correctly) and simply scales
     // them up by the total quantity implied by the current MOQ field.
     const moqPreview = useMemo(() => {
-        const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
         const moq = Number(form.moq) || 0;
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
+        const gst = Number(form.gstPercent) || 0;
 
         const moqPacks = form.hasOuterPack ? moq * master : moq;
         const totalUnits = round2(moqPacks * pack);
 
+        // Gross subtotal at MOQ, before any slab discount (base price excl. GST).
+        const grossSubtotal = round2(pricePreview.basePricePerUnit * totalUnits);
+
+        // priceSlabs.minQty is always stored in Packs (canonical/backend format)
+        // regardless of the unit currently shown to the seller — so compare
+        // directly against moqPacks.
+        const slab = getApplicableSlab(form.priceSlabs, moqPacks);
+        const discountPercent = slab ? Number(slab.discountPercent) : 0;
+        const discountAmount = round2(grossSubtotal * (discountPercent / 100));
+        const netSubtotal = round2(grossSubtotal - discountAmount);
+
+        // GST calculated on the amount AFTER discount deduction.
+        const gstAmount = round2(netSubtotal * (gst / 100));
+        const totalAmount = round2(netSubtotal + gstAmount); // what's shown as "the total amount"
+
+        // Platform commission — shown separately, for reference. The
+        // commission fee itself also attracts GST, so both are combined here.
+        const commissionAmount = round2(totalAmount * (commissionPercent / 100));
+        const commissionGstAmount = round2(commissionAmount * (gst / 100));
+        const totalCommissionForReference = round2(commissionAmount + commissionGstAmount);
+
         return {
             moqPacks: round2(moqPacks),
             totalUnits,
-            subtotal: round2(pricePreview.basePricePerUnit * totalUnits),
-            gstAmount: round2(pricePreview.gstAmount * totalUnits),
-            subtotalAfterGst: round2(pricePreview.subtotalAfterGst * totalUnits),
-            commissionAmount: round2(pricePreview.commissionAmount * totalUnits),
-            finalTotal: round2(pricePreview.finalPricePerUnit * totalUnits),
+            grossSubtotal,
+            discountPercent,
+            discountAmount,
+            netSubtotal,
+            gstAmount,
+            totalAmount,
+            commissionAmount,
+            commissionGstAmount,
+            totalCommissionForReference,
         };
-    }, [form.moq, form.packSize, form.masterPackSize, form.hasOuterPack, pricePreview]);
+    }, [form.moq, form.packSize, form.masterPackSize, form.hasOuterPack, form.priceSlabs, form.gstPercent, pricePreview, commissionPercent]);
 
+    // Discounted price, expressed per Pack or per Master Pack (whichever
+    // basis is currently active) — matches the unit the minQty threshold
+    // is shown in, instead of always returning a per-base-unit figure.
     const discountedPreview = (slab) => {
         if (!slab?.discountPercent) return null;
-        return Math.round((pricePreview.basePricePerUnit * (1 - Number(slab.discountPercent) / 100) + Number.EPSILON) * 100) / 100;
+        const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
+        const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
+
+        const discountedPerUnit = pricePreview.basePricePerUnit * (1 - Number(slab.discountPercent) / 100);
+        const discountedPerPack = discountedPerUnit * pack;
+        const discountedPerMaster = discountedPerPack * master;
+
+        const value = form.hasOuterPack ? discountedPerMaster : discountedPerPack;
+        return round2(value);
+    };
+    // priceSlabs.minQty is ALWAYS stored in Packs — the backend format. When
+    // hasOuterPack is on, the seller thinks in Master Packs, so these convert
+    // for display only. Discount % never changes in either direction — a 10%
+    // break at 3 Master Packs (= 30 Packs) is stored as minQty: 30, and shown
+    // back as 3 whenever hasOuterPack is on. Same % either way, by construction.
+    const packSlabsToDisplay = (slabs) => {
+        if (!form.hasOuterPack) return slabs;
+        const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
+        return slabs.map((s) => ({
+            ...s,
+            minQty: s.minQty !== "" && s.minQty != null ? String(round2(Number(s.minQty) / master)) : s.minQty,
+        }));
+    };
+    const displaySlabsToPacks = (slabs) => {
+        if (!form.hasOuterPack) return slabs;
+        const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
+        return slabs.map((s) => ({
+            ...s,
+            minQty: s.minQty !== "" && s.minQty != null ? String(round2(Number(s.minQty) * master)) : s.minQty,
+        }));
     };
 
     const handleOuterPackToggle = (value) => {
@@ -712,18 +786,27 @@ export default function SellerListingForm({
                 <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
                     <ToggleField3 label="Price includes GST?" value={form.gstInclusive} onChange={(v) => setField("gstInclusive", v)} />
                 </div>
-                <RepeatableRows
-                    label="Discount slabs" hint="Extra % off above a quantity threshold, in Packs"
-                    rows={form.priceSlabs} onChange={(rows) => setField("priceSlabs", rows)} addLabel="Add slab"
-                    columns={[{ key: "minQty", placeholder: "Min qty (Packs)", inputMode: "decimal" }, { key: "discountPercent", placeholder: "Discount %", inputMode: "decimal" }]}
+                <RepeatableRows2
+                    label="Discount slabs"
+                    hint={form.hasOuterPack ? "Extra % off above a quantity threshold, in Master Packs" : "Extra % off above a quantity threshold, in Packs"}
+                    rows={packSlabsToDisplay(form.priceSlabs)}
+                    onChange={(rows) => setField("priceSlabs", displaySlabsToPacks(rows))}
+                    addLabel="Add slab"
+                    columns={[
+                        { key: "minQty", placeholder: form.hasOuterPack ? "Min qty (Master Packs)" : "Min qty (Packs)", inputMode: "decimal" },
+                        { key: "discountPercent", placeholder: "Discount %", inputMode: "decimal" },
+                    ]}
                 />
                 {form.priceSlabs.some((s) => s.discountPercent) && (
                     <div className="flex flex-col gap-1 rounded-xl border px-3 py-2" style={{ borderColor: C.hairSoft }}>
-                        {form.priceSlabs.filter((s) => s.minQty && s.discountPercent).map((s, i) => (
-                            <p key={i} className="text-[10.5px] font-semibold tabular-nums" style={{ color: C.muted }}>
-                                Above {s.minQty} Pack{Number(s.minQty) === 1 ? "" : "s"}: ₹{discountedPreview(s)} / {form.unit}
-                            </p>
-                        ))}
+                        {form.priceSlabs
+                            .map((raw, i) => ({ raw, display: packSlabsToDisplay(form.priceSlabs)[i] }))
+                            .filter(({ raw }) => raw.minQty && raw.discountPercent)
+                            .map(({ raw, display }, i) => (
+                                <p key={i} className="text-[10.5px] font-semibold tabular-nums" style={{ color: C.muted }}>
+                                    Above {display.minQty} {form.hasOuterPack ? "Master Pack" : "Pack"}{Number(display.minQty) === 1 ? "" : "s"}: ₹{discountedPreview(raw)} / {form.hasOuterPack ? "Master Pack" : "Pack"}
+                                </p>
+                            ))}
                     </div>
                 )}
 
@@ -763,43 +846,41 @@ export default function SellerListingForm({
                             </div>
 
                             <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
-                                <span>Base price {form.gstInclusive && <span className="font-medium">(excl. GST)</span>}</span>
+                                <span>Base price</span>
                                 <span className="tabular-nums font-bold" style={{ color: C.ink }}>
-                                    ₹{moqPreview.subtotal.toLocaleString("en-IN")}
+                                    ₹{moqPreview.grossSubtotal.toLocaleString("en-IN")}
                                 </span>
                             </div>
 
+                            {moqPreview.discountPercent > 0 && (
+                                <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.secondary }}>
+                                    <span>Discount ({moqPreview.discountPercent}%)</span>
+                                    <span className="tabular-nums font-bold">
+                                        − ₹{moqPreview.discountAmount.toLocaleString("en-IN")}
+                                    </span>
+                                </div>
+                            )}
+
                             <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
-                                <span>GST ({form.gstPercent}%)</span>
+                                <span>GST ({form.gstPercent}%){form.gstInclusive ? " · calculated on discounted price" : ""}</span>
                                 <span className="tabular-nums font-bold" style={{ color: C.ink }}>
                                     ₹{moqPreview.gstAmount.toLocaleString("en-IN")}
                                 </span>
                             </div>
 
-                            {/* Subtotal — the anchor figure everything else builds on, so it
-                gets its own visually larger row, separated with borders. */}
                             <div className="flex items-center justify-between gap-2 border-y py-1.5 my-0.5" style={{ borderColor: C.hair }}>
                                 <span className="text-[13px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>
-                                    Subtotal (incl. GST)
+                                    Total amount
                                 </span>
                                 <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                                    ₹{moqPreview.subtotalAfterGst.toLocaleString("en-IN")}
+                                    ₹{moqPreview.totalAmount.toLocaleString("en-IN")}
                                 </span>
                             </div>
 
-                            <div className="flex items-center justify-between gap-2 text-[12px] font-semibold" style={{ color: C.muted }}>
-                                <span>+ Platform commission ({commissionPercent}% of subtotal)</span>
+                            <div className="flex items-center justify-between gap-2 text-[11px] font-semibold" style={{ color: C.muted }}>
+                                <span>Platform commission ({commissionPercent}% + {form.gstPercent}% GST) <span className="italic font-medium">— for reference</span></span>
                                 <span className="tabular-nums font-bold" style={{ color: C.primary }}>
-                                    ₹{moqPreview.commissionAmount.toLocaleString("en-IN")}
-                                </span>
-                            </div>
-
-                            <div className="mt-1 flex items-center justify-between gap-2 border-t pt-1.5" style={{ borderColor: C.hair }}>
-                                <span className="text-[12.5px] font-extrabold uppercase tracking-wide" style={{ color: C.secondary }}>
-                                    Final total
-                                </span>
-                                <span className="text-[15.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>
-                                    ₹{moqPreview.finalTotal.toLocaleString("en-IN")}
+                                    ₹{moqPreview.totalCommissionForReference.toLocaleString("en-IN")}
                                 </span>
                             </div>
                         </div>
