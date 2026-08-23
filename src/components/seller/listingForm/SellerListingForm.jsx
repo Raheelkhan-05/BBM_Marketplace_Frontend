@@ -565,11 +565,11 @@ export default function SellerListingForm({
                             onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
                 </div>
-                <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
             </SectionCard>
 
             {/* ---------------- Pricing ---------------- */}
-            <SectionCard icon={IndianRupee} title="Pricing & Tax" alwaysOpen>
+            <SectionCard icon={IndianRupee} title="Tax & Pricing" alwaysOpen>
+                <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="basePrice">
                         <TextField required dense label="Base price (₹)" value={form.basePrice} onChange={(v) => setField("basePrice", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal" />
