@@ -76,7 +76,7 @@ export const DEFAULT_LISTING_FORM = {
 // value is converted to Packs at submit time regardless — see
 // handleSubmit — since that's the unit the backend always expects.
 function getMoqLabel(hasOuterPack) {
-    return hasOuterPack ? "MOQ in Master Packs" : "MOQ in Packs";
+    return hasOuterPack ? "Minimum Order Quantity in Master Packs" : "Minimum Order Quantity in Packs";
 }
 function getMoqHint(hasOuterPack) {
     return hasOuterPack
