@@ -24,6 +24,7 @@ import {
     C, TextField, TextAreaField, SelectField, ToggleField, ChipToggleGroup, RepeatableRows,
     SectionCard, Progress,
     ToggleField2,
+    TextField2,
 } from "./FormPrimitives.jsx";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
@@ -102,6 +103,36 @@ function getMasterPackSizeLabel(unit) {
 }
 function getMasterPackSizeHint() {
     return "How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)";
+}
+
+// Converts whatever single (price, basis) pair is currently stored into
+// all three display values — per unit, per pack, per master pack — so
+// the three price fields can always show a consistent, derived view of
+// the same underlying number. Mirrors normalizeEnteredPrice's basis
+// handling, but purely for display (GST/commission untouched here).
+function computeThreeTierPrices(basis, rawPrice, packSize, masterPackSize) {
+    const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+    const price = Number(rawPrice) || 0;
+    const pack = Number(packSize) > 0 ? Number(packSize) : 1;
+    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+
+    let perUnit, perPack, perMaster;
+    if (basis === "per_unit") {
+        perUnit = price;
+        perPack = price * pack;
+        perMaster = perPack * master;
+    } else if (basis === "per_master_pack") {
+        perMaster = price;
+        perPack = price / master;
+        perUnit = perPack / pack;
+    } else {
+        // per_pack (default)
+        perPack = price;
+        perUnit = price / pack;
+        perMaster = price * master;
+    }
+
+    return { perUnit: round2(perUnit), perPack: round2(perPack), perMaster: round2(perMaster) };
 }
 
 function computeMissing(form) {
@@ -570,12 +601,75 @@ export default function SellerListingForm({
             {/* ---------------- Pricing ---------------- */}
             <SectionCard icon={IndianRupee} title="Tax & Pricing" alwaysOpen>
                 <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    <FieldAnchor fieldKey="basePrice">
-                        <TextField required dense label="Base price (₹)" value={form.basePrice} onChange={(v) => setField("basePrice", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal" />
-                    </FieldAnchor>
-                    <ChipToggleGroup dense label="This price is" value={form.priceBasis} onChange={(v) => setField("priceBasis", v)} options={PRICE_BASIS_OPTIONS} />
-                </div>
+                {(() => {
+                    const showMaster = form.hasOuterPack && Number(form.masterPackSize) >= 2;
+                    const hasPrice = form.basePrice !== "" && form.basePrice != null;
+                    const { perUnit, perPack, perMaster } = hasPrice
+                        ? computeThreeTierPrices(form.priceBasis, form.basePrice, form.packSize, form.masterPackSize)
+                        : { perUnit: "", perPack: "", perMaster: "" };
+
+                    // Show the raw typed value in whichever field is the active basis,
+                    // and the derived value in the other two — but ONLY when a price has
+                    // actually been entered. Empty basePrice means all three stay empty,
+                    // never falling back to a computed "0".
+                    const unitValue = !hasPrice ? "" : (form.priceBasis === "per_unit" ? form.basePrice : String(perUnit));
+                    const packValue = !hasPrice ? "" : (form.priceBasis === "per_pack" ? form.basePrice : String(perPack));
+                    const masterValue = !hasPrice ? "" : (form.priceBasis === "per_master_pack" ? form.basePrice : String(perMaster));
+
+                    const sanitize = (v) => v.replace(/[^\d.]/g, "");
+
+                    return (
+                        <FieldAnchor fieldKey="basePrice">
+                            <div className={`grid gap-2.5 ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
+                                <TextField2
+                                    required dense
+                                    label={`Per ${form.unit || "Unit"} (₹)`}
+                                    hint={`Price for 1 ${form.unit || "Unit"} — the other fields recalculate automatically`}
+                                    value={unitValue}
+                                    onChange={(v) => setForm((f) => ({ ...f, basePrice: sanitize(v), priceBasis: "per_unit" }))}
+                                    onBlur={() => touch("basePrice")}
+                                    error={isErr("basePrice")}
+                                    inputMode="decimal"
+                                />
+                                <TextField2
+                                    required dense
+                                    label="Per Pack (₹)"
+                                    hint={`Price for 1 Pack (${form.packSize || "?"} ${form.unit || "Unit"}) — the other fields recalculate automatically`}
+                                    value={packValue}
+                                    onChange={(v) => setForm((f) => ({ ...f, basePrice: sanitize(v), priceBasis: "per_pack" }))}
+                                    onBlur={() => touch("basePrice")}
+                                    error={isErr("basePrice")}
+                                    inputMode="decimal"
+                                />
+                                {showMaster && (
+                                    <TextField2
+                                        required dense
+                                        label="Per Master Pack (₹)"
+                                        hint={`Price for 1 Master Pack (${form.masterPackSize || "?"} Packs) — the other fields recalculate automatically`}
+                                        value={masterValue}
+                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: sanitize(v), priceBasis: "per_master_pack" }))}
+                                        onBlur={() => touch("basePrice")}
+                                        error={isErr("basePrice")}
+                                        inputMode="decimal"
+                                    />
+                                )}
+                            </div>
+                            <div className={`mt-1 grid gap-2.5 items-start ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
+                                <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>
+                                    Price per 1 {form.unit || "Unit"}
+                                </p>
+                                <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>
+                                    Price per {form.packSize || "?"} {form.unit || "Unit"}
+                                </p>
+                                {showMaster && (
+                                    <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>
+                                        Price per {form.masterPackSize} packs
+                                    </p>
+                                )}
+                            </div>
+                        </FieldAnchor>
+                    );
+                })()}
                 <div className="grid grid-cols-2 gap-2.5">
                     <ToggleField label="Price includes GST?" value={form.gstInclusive} onChange={(v) => setField("gstInclusive", v)} />
                     <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />

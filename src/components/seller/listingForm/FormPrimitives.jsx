@@ -167,6 +167,131 @@ export function TextField({ label, value, onChange, onBlur, placeholder, inputMo
     );
 }
 
+export function Label2({ children, hint }) {
+    const [showHint, setShowHint] = useState(false);
+    const wrapperRef = useRef(null);
+    const tooltipId = useId();
+
+    useEffect(() => {
+        if (!showHint) return;
+
+        const handleOutsideClick = (e) => {
+            if (!wrapperRef.current?.contains(e.target)) {
+                setShowHint(false);
+            }
+        };
+
+        const handleKeyDown = (e) => {
+            if (e.key === "Escape") {
+                setShowHint(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleOutsideClick);
+        document.addEventListener("touchstart", handleOutsideClick);
+        document.addEventListener("keydown", handleKeyDown);
+
+        return () => {
+            document.removeEventListener("mousedown", handleOutsideClick);
+            document.removeEventListener("touchstart", handleOutsideClick);
+            document.removeEventListener("keydown", handleKeyDown);
+        };
+    }, [showHint]);
+
+    return (
+        <span
+            ref={wrapperRef}
+            className="relative flex h-5 w-fit items-end gap-1.5"
+        >
+            <span
+                className="text-[10.5px] font-extrabold uppercase leading-none"
+                style={{
+                    color: "#4A535B",
+                    letterSpacing: "0.08em",
+                }}
+            >
+                {children}
+            </span>
+
+            {hint && (
+                <button
+                    type="button"
+                    onClick={() => setShowHint((s) => !s)}
+                    className="flex h-5 w-5 shrink-0 touch-manipulation items-center justify-center rounded-full transition-colors hover:bg-black/5 active:bg-black/10"
+                    aria-label={`More information about ${children}`}
+                    aria-expanded={showHint}
+                    aria-describedby={showHint ? tooltipId : undefined}
+                >
+                    <Info
+                        className="h-3.5 w-3.5"
+                        style={{ color: C.muted }}
+                        aria-hidden="true"
+                    />
+                </button>
+            )}
+
+            <AnimatePresence>
+                {hint && showHint && (
+                    <motion.div
+                        id={tooltipId}
+                        role="tooltip"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 4 }}
+                        transition={{ duration: 0.15 }}
+                        className="
+                            absolute
+                            left-0
+                            top-full
+                            z-[100]
+                            mt-2
+                            w-[min(18rem,calc(100vw-2rem))]
+                            rounded-lg
+                            px-3
+                            py-2
+                            text-[13.5px]
+                            tracking-wide
+                            font-medium
+                            leading-snug
+                            text-white
+                            shadow-lg
+                        "
+                        style={{ background: C.ink }}
+                    >
+                        {hint}
+                        <span
+                            className="absolute -top-1.5 left-3 h-3 w-3 rotate-45"
+                            style={{ background: C.ink }}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </span>
+    );
+}
+
+export function TextField2({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile }) {
+    const widthClass = tinyOnMobile ? "w-[4.5rem] sm:w-full" : halfOnMobile ? "w-1/2 sm:w-full" : "w-full";
+    return (
+        <div className="flex min-w-0 flex-col items-stretch justify-end gap-1 h-full">
+            {label && <Label2 >{label}</Label2>}
+            <div className={`flex items-center ${widthClass}`}>
+                <input
+                    type={type}
+                    value={value ?? ""}
+                    inputMode={inputMode}
+                    placeholder={placeholder}
+                    disabled={disabled}
+                    onChange={(e) => onChange(e.target.value)}
+                    onBlur={onBlur}
+                    className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "px-2.5 py-1.5 text-[14.5px]" : "px-3 py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
+                    style={{ color: C.ink, ...fieldTone(error) }}
+                />
+            </div>
+        </div>
+    );
+}
+
 export function TextAreaField({ label, value, onChange, onBlur, placeholder, hint, required, rows = 2, error }) {
     return (
         <div className="flex flex-col gap-1">
