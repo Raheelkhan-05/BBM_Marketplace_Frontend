@@ -353,11 +353,6 @@ export default function SellerListingForm({
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
                 </div>
             )}
-            {!locked && !mode !== "edit" /* create mode only */ && (
-                <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                    Tax, dispatch, and terms fields are prefilled from your last listing — check them, then edit anything that's different for this product.
-                </p>
-            )}
 
             {/* ---------------- Product ---------------- */}
             <SectionCard icon={Package} title="Product" subtitle={locked ? "Already approved · locked" : "Name, brand, images & documents"} alwaysOpen>
