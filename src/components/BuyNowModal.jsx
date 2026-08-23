@@ -107,8 +107,6 @@ function computeMinQuantity(seller, basis) {
     return Math.max(1, moqPacks); // per_pack
 }
 
-const visibleBasisOptions = useMemo(() => getVisibleBasisOptions(seller), [seller?.masterPackSize]);
-
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function formatDDMon(date) {
     return `${String(date.getDate()).padStart(2, "0")} ${MONTH_SHORT[date.getMonth()]}`;
@@ -313,6 +311,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const defaultBasis = useMemo(() => "per_pack", [seller?.packSize]);
     const [basis, setBasis] = useState(defaultBasis);
     const minQuantity = useMemo(() => computeMinQuantity(seller, basis), [seller, basis]);
+
+    const visibleBasisOptions = useMemo(() => getVisibleBasisOptions(seller), [seller?.masterPackSize]);
+
     const [quantity, setQuantity] = useState(() => computeMinQuantity(seller, defaultBasis));
     const userPickedBasis = useRef(false);
     useEffect(() => {
