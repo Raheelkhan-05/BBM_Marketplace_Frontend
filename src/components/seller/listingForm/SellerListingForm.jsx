@@ -805,7 +805,7 @@ export default function SellerListingForm({
                             .map((raw, i) => ({ raw, display: packSlabsToDisplay(form.priceSlabs)[i] }))
                             .filter(({ raw }) => raw.minQty && raw.discountPercent)
                             .map(({ raw, display }, i) => (
-                                <p key={i} className="text-[10.5px] font-semibold tabular-nums" style={{ color: C.muted }}>
+                                <p key={i} className="text-[12px] font-semibold tabular-nums" style={{ color: C.muted }}>
                                     Above {display.minQty} {form.hasOuterPack ? "Master Pack" : "Pack"}{Number(display.minQty) === 1 ? "" : "s"}: ₹{discountedPreview(raw)} / {form.hasOuterPack ? "Master Pack" : "Pack"}
                                 </p>
                             ))}
