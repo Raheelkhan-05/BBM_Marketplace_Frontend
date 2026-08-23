@@ -4,7 +4,7 @@
 // rounded-2xl cards, hairline borders, tabular-nums, framer-motion entrance.
 import { useState, useRef, useId, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Plus, Trash2, Info, Check } from "lucide-react";
+import { ChevronDown, Plus, Trash2, Info, Check, X } from "lucide-react";
 
 export const C = {
     ink: "#0B1116",
@@ -145,21 +145,23 @@ function fieldTone(error) {
     return { borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` };
 }
 
-export function TextField({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense }) {
+export function TextField({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile }) {
     return (
         <div className="flex min-w-0 flex-col gap-1">
             {label && <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>}
-            <input
-                type={type}
-                value={value ?? ""}
-                inputMode={inputMode}
-                placeholder={placeholder}
-                disabled={disabled}
-                onChange={(e) => onChange(e.target.value)}
-                onBlur={onBlur}
-                className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "px-2.5 py-1.5 text-[14.5px]" : "px-3 py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
-                style={{ color: C.ink, ...fieldTone(error) }}
-            />
+            <div className={halfOnMobile ? "w-1/2 sm:w-full" : "w-full"}>
+                <input
+                    type={type}
+                    value={value ?? ""}
+                    inputMode={inputMode}
+                    placeholder={placeholder}
+                    disabled={disabled}
+                    onChange={(e) => onChange(e.target.value)}
+                    onBlur={onBlur}
+                    className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "px-2.5 py-1.5 text-[14.5px]" : "px-3 py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
+                    style={{ color: C.ink, ...fieldTone(error) }}
+                />
+            </div>
         </div>
     );
 }
@@ -181,22 +183,130 @@ export function TextAreaField({ label, value, onChange, onBlur, placeholder, hin
     );
 }
 
-export function SelectField({ label, value, onChange, onBlur, options, hint, required, placeholder = "Select…", error, dense }) {
+// Custom SelectField — replaces the native <select>. On mobile (<640px)
+// it opens as a bottom sheet sliding up to 75vh, matching the app's other
+// modal language (BuyNowModal etc). On desktop it's a normal floating
+// dropdown panel anchored under the trigger. Same external API as before
+// (label, value, onChange, onBlur, options, hint, required, placeholder,
+// error, dense) so no caller needs to change.
+export function SelectField({ label, value, onChange, onBlur, options, hint, required, placeholder = "Select…", error, dense, halfOnMobile }) {
+    const [open, setOpen] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+    const wrapperRef = useRef(null);
+
+    useEffect(() => {
+        const check = () => setIsMobile(window.innerWidth < 640);
+        check();
+        window.addEventListener("resize", check);
+        return () => window.removeEventListener("resize", check);
+    }, []);
+
+    useEffect(() => {
+        if (!open || isMobile) return;
+        const handleOutside = (e) => {
+            if (!wrapperRef.current?.contains(e.target)) setOpen(false);
+        };
+        document.addEventListener("mousedown", handleOutside);
+        return () => document.removeEventListener("mousedown", handleOutside);
+    }, [open, isMobile]);
+
+    const selectedOption = options.find((o) => (o.value ?? o) === value);
+    const selectedLabel = selectedOption ? (selectedOption.label ?? selectedOption) : null;
+
+    const handleSelect = (optValue) => {
+        onChange(optValue);
+        setOpen(false);
+        onBlur?.();
+    };
+    const closeAndBlur = () => { setOpen(false); onBlur?.(); };
+
     return (
-        <div className="flex min-w-0 flex-col gap-1">
+        <div className="relative flex min-w-0 flex-col gap-1" ref={wrapperRef}>
             {label && <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>}
-            <select
-                value={value ?? ""}
-                onChange={(e) => onChange(e.target.value)}
-                onBlur={onBlur}
-                className={`w-full rounded-lg border bg-white ${dense ? "px-2.5 py-2 text-[14.5px]" : "px-3 py-2.5 text-[15px]"} font-bold focus:outline-none focus:ring-2 tracking-wide`}
-                style={{ color: C.ink, ...fieldTone(error) }}
-            >
-                <option value="" disabled>{placeholder}</option>
-                {options.map((o) => (
-                    <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>
-                ))}
-            </select>
+
+            <div className={halfOnMobile ? "relative w-1/2 sm:w-full" : "relative w-full"}>
+                <button
+                    type="button"
+                    onClick={() => setOpen((o) => !o)}
+                    className={`flex w-full items-center justify-between rounded-lg border bg-white tracking-wide ${dense ? "px-2.5 py-1.5 text-[14.5px]" : "px-3 py-2.5 text-[15px]"} font-bold focus:outline-none focus:ring-2`}
+                    style={{ color: selectedLabel ? C.ink : "#94a3b8", ...fieldTone(error) }}
+                >
+                    <span className="truncate">{selectedLabel || placeholder}</span>
+                    <ChevronDown className="h-4 w-4 shrink-0" style={{ color: C.muted, transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+                </button>
+
+                <AnimatePresence>
+                    {open && isMobile && (
+                        <motion.div
+                            className="fixed inset-0 z-[200] flex items-end justify-center bg-black/40 backdrop-blur-[1px]"
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            onClick={closeAndBlur}
+                        >
+                            <motion.div
+                                className="flex max-h-[75vh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white"
+                                initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+                                transition={{ duration: 0.28, ease: EASE }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="flex items-center justify-between border-b px-4 py-3.5" style={{ borderColor: C.hairSoft }}>
+                                    <span className="text-[15.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{label || "Select"}</span>
+                                    <button type="button" onClick={closeAndBlur} className="flex h-7 w-7 items-center justify-center rounded-full" style={{ background: C.hairSoft }}>
+                                        <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
+                                    </button>
+                                </div>
+                                <div className="flex-1 overflow-y-auto px-2 py-2">
+                                    {options.map((o) => {
+                                        const optValue = o.value ?? o;
+                                        const optLabel = o.label ?? o;
+                                        const active = optValue === value;
+                                        return (
+                                            <button
+                                                key={optValue}
+                                                type="button"
+                                                onClick={() => handleSelect(optValue)}
+                                                className="flex w-full items-center justify-between rounded-xl px-3.5 py-3 text-left text-[14.5px] font-semibold tracking-wider"
+                                                style={active ? { background: `${C.secondary}12`, color: C.secondary } : { color: C.ink }}
+                                            >
+                                                {optLabel}
+                                                {active && <Check className="h-4 w-4" style={{ color: C.secondary }} />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+
+                    {open && !isMobile && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                            transition={{ duration: 0.15, ease: EASE }}
+                            className="absolute left-0 top-full z-[100] mt-1 max-h-64 w-full min-w-[180px] overflow-y-auto rounded-xl border bg-white py-1.5 shadow-lg"
+                            style={{ borderColor: C.hair }}
+                        >
+                            {options.map((o) => {
+                                const optValue = o.value ?? o;
+                                const optLabel = o.label ?? o;
+                                const active = optValue === value;
+                                return (
+                                    <button
+                                        key={optValue}
+                                        type="button"
+                                        onClick={() => handleSelect(optValue)}
+                                        className="flex w-full items-center justify-between px-3 py-2 text-left text-[14px] font-bold tracking-wide transition-colors duration-100 hover:bg-black/[0.03]"
+                                        style={active ? { color: C.secondary, background: `${C.secondary}0c` } : { color: C.ink }}
+                                    >
+                                        {optLabel}
+                                        {active && <Check className="h-3.5 w-3.5" style={{ color: C.secondary }} />}
+                                    </button>
+                                );
+                            })}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
         </div>
     );
 }
@@ -382,5 +492,28 @@ export function CompletedBadge() {
         <span className="flex h-4 w-4 items-center justify-center rounded-full" style={{ background: C.secondary }}>
             <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
         </span>
+    );
+}
+
+
+export function ToggleField2({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", infoBlock }) {
+    return (
+        <div className="flex flex-col gap-1">
+            <Label hint={hint}>{label}</Label>
+            {infoBlock}
+            <div className="flex gap-1 rounded-lg p-1" style={{ background: C.hairSoft, width: "fit-content" }}>
+                {[{ v: true, t: onLabel }, { v: false, t: offLabel }].map(({ v, t }) => (
+                    <button
+                        key={t}
+                        type="button"
+                        onClick={() => onChange(v)}
+                        className="rounded-md px-3 py-0.5 text-[13.5px] tracking-wider font-bold transition-colors duration-150"
+                        style={value === v ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
+                    >
+                        {t}
+                    </button>
+                ))}
+            </div>
+        </div>
     );
 }

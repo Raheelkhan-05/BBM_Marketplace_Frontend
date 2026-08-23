@@ -23,6 +23,7 @@ import { fetchCommissionInfo, fetchDefaultListingTemplates, lookupPincode, findB
 import {
     C, TextField, TextAreaField, SelectField, ToggleField, ChipToggleGroup, RepeatableRows,
     SectionCard, Progress,
+    ToggleField2,
 } from "./FormPrimitives.jsx";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
@@ -70,7 +71,7 @@ export const DEFAULT_LISTING_FORM = {
 // based on the currently selected Unit. Falls back to generic wording
 // when no unit is selected yet.
 function getPackSizeLabel(unit) {
-    return unit ? `How many ${unit} in a Pack` : "Pack size";
+    return unit ? `How many ${unit} in a Pack?` : "Pack size";
 }
 function getPackSizeHint(unit) {
     return unit
@@ -473,34 +474,38 @@ export default function SellerListingForm({
                     <div className="flex flex-col gap-2.5">
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                             <FieldAnchor fieldKey="unit">
-                                <SelectField required dense label="What is the Selling Unit of this Product" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
+                                <SelectField required dense halfOnMobile label="What is the Selling Unit of this Product?" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
                             </FieldAnchor>
                             <FieldAnchor fieldKey="packSize">
-                                <TextField required dense label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
+                                <TextField required dense halfOnMobile placeholder="1234" label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
                             </FieldAnchor>
                         </div>
 
-                        <ToggleField label="Does this have an Outer Pack?" value={form.hasOuterPack} onChange={handleOuterPackToggle} />
-                        <div className="flex items-start gap-2 rounded-xl border p-3" style={{ borderColor: C.hairSoft, background: `${C.secondary}06` }}>
-                            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                            <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
-                                An outer pack is a larger pack / <b style={{ color: C.ink }}>Master Pack</b> containing multiple individual Packs.
-                            </p>
-                        </div>
+                        <ToggleField2
+                            label="Does this have an Outer Pack?"
+                            value={form.hasOuterPack}
+                            onChange={handleOuterPackToggle}
+                            infoBlock={
+                                <div className="mb-1 flex items-start gap-2 rounded-xl border p-3" style={{ borderColor: C.hairSoft, background: `${C.secondary}06` }}>
+                                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                    <p className="text-[11.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
+                                        An outer pack is a larger pack / <b style={{ color: C.ink }}>Master Pack</b> containing multiple individual Packs.
+                                    </p>
+                                </div>
+                            }
+                        />
+
                         {form.hasOuterPack && (
                             <>
                                 <FieldAnchor fieldKey="masterPackSize">
                                     <TextField
-                                        required dense
+                                        required dense halfOnMobile
+                                        placeholder="1234"
                                         label="How many Packs are there in one Outer Pack?"
                                         hint="How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)"
                                         value={form.masterPackSize}
                                         onChange={(v) => {
                                             const digitsOnly = v.replace(/[^\d]/g, "");
-                                            // Block "1" outright while typing — an outer
-                                            // pack of exactly 1 inner pack isn't a real
-                                            // master pack, so there's no valid single-digit
-                                            // "1" state to allow here.
                                             setField("masterPackSize", digitsOnly === "1" ? "" : digitsOnly);
                                         }}
                                         onBlur={() => touch("masterPackSize")}
@@ -515,13 +520,10 @@ export default function SellerListingForm({
 
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="moq">
-                        <TextField required dense label="MOQ (in Packs)" hint="Minimum number of Packs a buyer must order"
+                        <TextField required dense halfOnMobile placeholder="1234" label="MOQ (in Packs)" hint="Minimum number of Packs a buyer must order"
                             value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))}
                             onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
-                    {/* <FieldAnchor fieldKey="hsnCode">
-                        <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => setField("hsnCode", v)} onBlur={() => touch("hsnCode")} error={isErr("hsnCode")} />
-                    </FieldAnchor> */}
                 </div>
                 <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
             </SectionCard>
