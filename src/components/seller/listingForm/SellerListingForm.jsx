@@ -29,7 +29,7 @@ import PolicySelect from "./PolicySelect.jsx";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
-const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Dozen", "Tons"];
+const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Dozen", "Tons"];
 
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
 const PRICE_BASIS_OPTIONS = [
@@ -64,6 +64,24 @@ export const DEFAULT_LISTING_FORM = {
 
     returnPolicyKey: "", warrantyKey: "",
 };
+
+// New helper functions — dynamic labels for Pack size / Master pack size
+// based on the currently selected Unit. Falls back to generic wording
+// when no unit is selected yet.
+function getPackSizeLabel(unit) {
+    return unit ? `How many ${unit} in a Pack` : "Pack size";
+}
+function getPackSizeHint(unit) {
+    return unit
+        ? `How many ${unit} make up 1 Pack (e.g. 1 Pack = 10 ${unit})`
+        : "How many Units make up 1 Pack (e.g. 1 Pack = 10 Pieces)";
+}
+function getMasterPackSizeLabel(unit) {
+    return "How many Packs in a Master Pack"; // unit doesn't change this one, kept as its own function for symmetry/future tweaks
+}
+function getMasterPackSizeHint() {
+    return "How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)";
+}
 
 function computeMissing(form) {
     const missing = [];
@@ -411,8 +429,8 @@ export default function SellerListingForm({
                 )}
             </SectionCard>
 
-            {/* ---------------- Packaging & Tax ---------------- */}
-            <SectionCard icon={Boxes} title="Packaging & tax" alwaysOpen>
+            {/* ---------------- Packaging ---------------- */}
+            <SectionCard icon={Boxes} title="Packaging" alwaysOpen>
                 {checkingBrandMatch && (
                     <p className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.muted }}>
                         <Loader2 className="h-3 w-3 animate-spin" /> Checking if this product already exists…
@@ -435,10 +453,10 @@ export default function SellerListingForm({
                             <SelectField required dense label="What is the Unit of this Product" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
                         </FieldAnchor>
                         <FieldAnchor fieldKey="packSize">
-                            <TextField required dense label="Pack size" hint="How many Units make up 1 Pack (e.g. 1 Pack = 10 Pieces)" value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
+                            <TextField required dense label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
                         </FieldAnchor>
                         <FieldAnchor fieldKey="masterPackSize">
-                            <TextField required dense label="Master pack size" hint="How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)" value={form.masterPackSize} onChange={(v) => setField("masterPackSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("masterPackSize")} error={isErr("masterPackSize")} inputMode="decimal" />
+                            <TextField required dense label={getMasterPackSizeLabel(form.unit)} hint={getMasterPackSizeHint()} value={form.masterPackSize} onChange={(v) => setField("masterPackSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("masterPackSize")} error={isErr("masterPackSize")} inputMode="decimal" />
                         </FieldAnchor>
                         <p className="col-span-1 sm:col-span-3 text-[10.5px] font-medium" style={{ color: C.muted }}>
                             New product — set this once. Other sellers who list it later won't need to.
@@ -460,7 +478,7 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Pricing ---------------- */}
-            <SectionCard icon={IndianRupee} title="Pricing" alwaysOpen>
+            <SectionCard icon={IndianRupee} title="Pricing & Tax" alwaysOpen>
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="basePrice">
                         <TextField required dense label="Base price (₹)" value={form.basePrice} onChange={(v) => setField("basePrice", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal" />

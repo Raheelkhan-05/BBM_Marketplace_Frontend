@@ -10,7 +10,7 @@ const LEVEL_META = {
     brand_item: { title: "brand item", folder: "brand-items" },
 };
 
-const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Dozen", "Tons"];
+const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Dozen", "Tons"];
 
 // Handles create AND edit for every "simple" catalog level — category,
 // subcategory, generic_product, and brand_item. brand_item is IDENTITY

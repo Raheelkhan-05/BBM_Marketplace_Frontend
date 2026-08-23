@@ -44,7 +44,7 @@ const STATUS_TABS = [
     { key: "all", label: "All" },
 ];
 
-const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Dozen", "Tons"];
+const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Dozen", "Tons"];
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
 const PRICE_BASIS_OPTIONS = [
     { value: "per_unit", label: "Per unit" },
