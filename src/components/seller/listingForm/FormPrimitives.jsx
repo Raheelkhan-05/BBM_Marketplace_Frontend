@@ -145,11 +145,12 @@ function fieldTone(error) {
     return { borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` };
 }
 
-export function TextField({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile }) {
+export function TextField({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile }) {
+    const widthClass = tinyOnMobile ? "w-[4.5rem] sm:w-full" : halfOnMobile ? "w-1/2 sm:w-full" : "w-full";
     return (
         <div className="flex min-w-0 flex-col gap-1">
             {label && <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>}
-            <div className={halfOnMobile ? "w-1/2 sm:w-full" : "w-full"}>
+            <div className={widthClass}>
                 <input
                     type={type}
                     value={value ?? ""}

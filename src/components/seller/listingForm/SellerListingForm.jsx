@@ -74,7 +74,7 @@ export const DEFAULT_LISTING_FORM = {
 // value is converted to Packs at submit time regardless — see
 // handleSubmit — since that's the unit the backend always expects.
 function getMoqLabel(hasOuterPack) {
-    return hasOuterPack ? "MOQ (in Master Packs)" : "MOQ (in Packs)";
+    return hasOuterPack ? "MOQ in Master Packs" : "MOQ in Packs";
 }
 function getMoqHint(hasOuterPack) {
     return hasOuterPack
@@ -505,10 +505,10 @@ export default function SellerListingForm({
                     <div className="flex flex-col gap-2.5">
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                             <FieldAnchor fieldKey="unit">
-                                <SelectField required dense halfOnMobile label="What is the Selling Unit of this Product?" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
+                                <SelectField required dense tinyOnMobile label="What is the Selling Unit of this Product?" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
                             </FieldAnchor>
                             <FieldAnchor fieldKey="packSize">
-                                <TextField required dense halfOnMobile placeholder="1234" label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
+                                <TextField required dense tinyOnMobile placeholder="1234" label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
                             </FieldAnchor>
                         </div>
 
@@ -529,7 +529,7 @@ export default function SellerListingForm({
                             <>
                                 <FieldAnchor fieldKey="masterPackSize">
                                     <TextField
-                                        required dense halfOnMobile
+                                        required dense tinyOnMobile
                                         placeholder="1234"
                                         label="How many Packs are there in one Outer Pack?"
                                         hint="How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)"
@@ -550,7 +550,7 @@ export default function SellerListingForm({
 
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="moq">
-                        <TextField required dense halfOnMobile placeholder="1234" label={getMoqLabel(form.hasOuterPack)} hint={getMoqHint(form.hasOuterPack)}
+                        <TextField required dense tinyOnMobile placeholder="1234" label={getMoqLabel(form.hasOuterPack)} hint={getMoqHint(form.hasOuterPack)}
                             value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))}
                             onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
