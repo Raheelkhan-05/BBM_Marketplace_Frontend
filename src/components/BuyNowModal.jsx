@@ -54,11 +54,15 @@ const BASIS_OPTIONS = [
 const VISIBLE_BASIS_OPTIONS = BASIS_OPTIONS;
 
 // VISIBLE_BASIS_OPTIONS is now computed per-seller instead of a fixed
-// constant — the Master Pack option only makes sense (and is only ever
-// shown) when the listing actually has one (masterPackSize > 1).
+// constant. When this listing has a real master pack (masterPackSize > 1),
+// buyers only ever transact in Master Packs — the "Packs" option is
+// hidden entirely, not just deprioritized. When there's no master pack,
+// only "Packs" is shown (master pack option is meaningless).
 function getVisibleBasisOptions(seller) {
     const hasMasterPack = Number(seller?.masterPackSize) > 1;
-    return hasMasterPack ? BASIS_OPTIONS : BASIS_OPTIONS.filter((o) => o.value !== "per_master_pack");
+    return hasMasterPack
+        ? BASIS_OPTIONS.filter((o) => o.value === "per_master_pack")
+        : BASIS_OPTIONS.filter((o) => o.value === "per_pack");
 }
 
 // ---- Slab / quantity-discount pricing -------------------------------
@@ -308,7 +312,16 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // units — recomputed via useMemo (not frozen at mount) so a
     // late-arriving `seller.packSize` is still picked up correctly.
     // Always defaults to packs — never units, regardless of packSize.
-    const defaultBasis = useMemo(() => "per_pack", [seller?.packSize]);
+    // Reactively defaults to Master Packs when the listing has a real master
+    // pack (masterPackSize > 1) — in that case Packs isn't even offered as a
+    // basis. Otherwise defaults to Packs, same as before. Recomputed via
+    // useMemo (not frozen at mount) so a late-arriving seller.masterPackSize
+    // is still picked up correctly.
+    const defaultBasis = useMemo(
+        () => (Number(seller?.masterPackSize) > 1 ? "per_master_pack" : "per_pack"),
+        [seller?.masterPackSize]
+    );
+
     const [basis, setBasis] = useState(defaultBasis);
     const minQuantity = useMemo(() => computeMinQuantity(seller, basis), [seller, basis]);
 
@@ -320,12 +333,20 @@ export default function BuyNowModal({ seller, product, onClose }) {
         if (!userPickedBasis.current) setBasis(defaultBasis);
     }, [defaultBasis]);
 
-    // NEW — if a restored/stale basis is "per_master_pack" but this listing
-    // has no real master pack, fall back to per_pack so the (now-hidden)
-    // option never gets silently stuck as the active basis.
+    // If a restored/stale basis is "per_master_pack" but this listing has no
+    // real master pack, fall back to per_pack (existing safety net).
     useEffect(() => {
         if (basis === "per_master_pack" && !(Number(seller?.masterPackSize) > 1)) {
             setBasis("per_pack");
+        }
+    }, [basis, seller?.masterPackSize]);
+
+    // NEW — mirror case: if a restored/stale basis is "per_pack" but this
+    // listing DOES have a real master pack (Packs is no longer offered as a
+    // basis for it), snap forward to per_master_pack instead.
+    useEffect(() => {
+        if (basis === "per_pack" && Number(seller?.masterPackSize) > 1) {
+            setBasis("per_master_pack");
         }
     }, [basis, seller?.masterPackSize]);
 
@@ -742,7 +763,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 )}
                                 <div className="flex items-center justify-between">
                                     <Label>{isSample ? "Sample quantity" : `Quantity · MOQ ${seller?.moq} Pack${seller?.moq == 1 ? "" : "s"}`}</Label>
-                                    {!isSample && (
+                                    {!isSample && visibleBasisOptions.length > 1 && (
                                         <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={visibleBasisOptions} />
                                     )}
                                 </div>
