@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { uploadSellerFile } from "../../../utils/api.js";
-import { fetchCommissionInfo, fetchDefaultListingTemplates, lookupPincode } from "../../../utils/sellerListingApi.js";
+import { fetchCommissionInfo, fetchDefaultListingTemplates, lookupPincode, findBrandItemMatch } from "../../../utils/sellerListingApi.js";
 import {
     C, TextField, TextAreaField, SelectField, ToggleField, ChipToggleGroup, RepeatableRows,
     SectionCard, Progress,
@@ -45,6 +45,7 @@ export const DEFAULT_LISTING_FORM = {
     noteToAdmin: "",
 
     unit: "", packSize: "", masterPackSize: "",
+    brandItemMatch: null,
     hsnCode: "", gstPercent: 18,
 
     basePrice: "", priceBasis: "per_unit", gstInclusive: false,
@@ -71,9 +72,16 @@ function computeMissing(form) {
     add(!form.productName?.trim(), "productName", "Product name");
     add(!form.brandNotApplicable && !form.brandName?.trim(), "brandName", "Brand");
     add(!form.images?.length, "images", "Product image");
-    add(!form.unit, "unit", "Unit");
-    add(!(Number(form.packSize) > 0), "packSize", "Pack size");
-    add(!(Number(form.masterPackSize) > 0), "masterPackSize", "Master pack size");
+
+    // Packaging is only required from the seller when they're establishing
+    // a brand-new catalog entry — an existing product+brand match fixes
+    // these already, and the fields become read-only in the UI below.
+    if (!form.brandItemMatch) {
+        add(!form.unit, "unit", "Unit");
+        add(!(Number(form.packSize) > 0), "packSize", "Pack size");
+        add(!(Number(form.masterPackSize) > 0), "masterPackSize", "Master pack size");
+    }
+
     add(!form.hsnCode?.trim(), "hsnCode", "HSN Code");
 
     add(!(Number(form.moq) > 0), "moq", "MOQ");
@@ -118,6 +126,7 @@ export default function SellerListingForm({
     const [commissionPercent, setCommissionPercent] = useState(5);
     const [error, setError] = useState(null);
     const [touched, setTouched] = useState({});
+    const [checkingBrandMatch, setCheckingBrandMatch] = useState(false);
 
     const [pincodeStatus, setPincodeStatus] = useState(null); // 'checking' | 'ok' | 'error' | null
 
@@ -132,6 +141,43 @@ export default function SellerListingForm({
             setPincodeStatus("error");
         }
     };
+
+    // Whenever productName / brandName / brandNotApplicable settle, check
+    // whether this exact product+brand already exists in the catalog. If
+    // it does, its packaging (unit/packSize/masterPackSize) is fixed and
+    // the seller no longer needs to (or can) enter their own — see the
+    // "Packaging & tax" section below.
+    useEffect(() => {
+        if (locked) return; // edit mode already has fixed identity + packaging
+        const productName = form.productName?.trim();
+        const brandName = form.brandName?.trim();
+        const brandNotApplicable = form.brandNotApplicable;
+
+        if (!productName || productName.length < 2 || (!brandNotApplicable && !brandName)) {
+            setForm((f) => (f.brandItemMatch ? { ...f, brandItemMatch: null } : f));
+            return;
+        }
+
+        setCheckingBrandMatch(true);
+        const t = setTimeout(async () => {
+            const res = await findBrandItemMatch(token, { productName, brandName, brandNotApplicable });
+            setCheckingBrandMatch(false);
+            if (!res?.success) return;
+            setForm((f) => {
+                // Guard against a stale response landing after the seller
+                // changed the fields again mid-flight.
+                if (f.productName?.trim() !== productName || f.brandName?.trim() !== brandName || f.brandNotApplicable !== brandNotApplicable) return f;
+                if (res.match) {
+                    return { ...f, brandItemMatch: res.match, unit: res.match.unit, packSize: String(res.match.packSize), masterPackSize: String(res.match.masterPackSize) };
+                }
+                // No match — clear any previously-locked packaging so the
+                // seller can enter their own for this brand-new product.
+                return f.brandItemMatch ? { ...f, brandItemMatch: null } : f;
+            });
+        }, 400);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [form.productName, form.brandName, form.brandNotApplicable, locked, token]);
 
     const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
     const touch = (key) => setTouched((t) => (t[key] ? t : { ...t, [key]: true }));
@@ -338,27 +384,49 @@ export default function SellerListingForm({
 
             {/* ---------------- Packaging & Tax ---------------- */}
             <SectionCard icon={Boxes} title="Packaging & tax" alwaysOpen>
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                    <FieldAnchor fieldKey="unit">
-                        <SelectField required dense label="Unit" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
-                    </FieldAnchor>
-                    <FieldAnchor fieldKey="packSize">
-                        <TextField required dense label="Pack size" hint="Individual units per pack" value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
-                    </FieldAnchor>
-                    <FieldAnchor fieldKey="masterPackSize">
-                        <TextField required dense label="Master pack size" hint="Packs per master pack" value={form.masterPackSize} onChange={(v) => setField("masterPackSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("masterPackSize")} error={isErr("masterPackSize")} inputMode="decimal" />
-                    </FieldAnchor>
+                {checkingBrandMatch && (
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.muted }}>
+                        <Loader2 className="h-3 w-3 animate-spin" /> Checking if this product already exists…
+                    </p>
+                )}
+
+                {form.brandItemMatch ? (
+                    <div className="flex items-center gap-2 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
+                        <Boxes className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
+                        <div className="min-w-0">
+                            <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Fixed by this product</p>
+                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                {form.unit} · Pack of {form.packSize} · {form.masterPackSize} packs / master pack
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                        <FieldAnchor fieldKey="unit">
+                            <SelectField required dense label="Unit" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
+                        </FieldAnchor>
+                        <FieldAnchor fieldKey="packSize">
+                            <TextField required dense label="Pack size" hint="Individual units per pack" value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
+                        </FieldAnchor>
+                        <FieldAnchor fieldKey="masterPackSize">
+                            <TextField required dense label="Master pack size" hint="Packs per master pack" value={form.masterPackSize} onChange={(v) => setField("masterPackSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("masterPackSize")} error={isErr("masterPackSize")} inputMode="decimal" />
+                        </FieldAnchor>
+                        <p className="col-span-2 sm:col-span-3 text-[10.5px] font-medium" style={{ color: C.muted }}>
+                            New product — set this once. Other sellers who list it later won't need to.
+                        </p>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="moq">
                         <TextField required dense label="MOQ" hint="Minimum order quantity, in units" value={form.moq}
                             onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
-                </div>
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="hsnCode">
                         <TextField required dense label="HSN Code" value={form.hsnCode} onChange={(v) => setField("hsnCode", v)} onBlur={() => touch("hsnCode")} error={isErr("hsnCode")} />
                     </FieldAnchor>
-                    <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
                 </div>
+                <ChipToggleGroup dense label="GST %" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
             </SectionCard>
 
             {/* ---------------- Pricing ---------------- */}

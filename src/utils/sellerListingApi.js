@@ -93,6 +93,15 @@ export async function searchBrandNames(token, q = "") {
     return authedJson(`/seller/catalog/brands?q=${encodeURIComponent(q)}`, token);
 }
 
+export async function findBrandItemMatch(token, { productName, brandName, brandNotApplicable }) {
+    const params = new URLSearchParams({
+        productName: productName || "",
+        brandNotApplicable: String(Boolean(brandNotApplicable)),
+    });
+    if (!brandNotApplicable) params.set("brandName", brandName || "");
+    return authedJson(`/seller/catalog/brand-item-match?${params}`, token);
+}
+
 export async function searchGeoLocations(q) {
     const res = await fetch(`${API_BASE}/geo/search?q=${encodeURIComponent(q)}`);
     return res.json();

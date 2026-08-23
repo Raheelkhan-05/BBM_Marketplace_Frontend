@@ -10,6 +10,8 @@ const LEVEL_META = {
     brand_item: { title: "brand item", folder: "brand-items" },
 };
 
+const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Meters", "Boxes", "Dozen", "Tons", "Pack", "Bundle", "Set", "Units"];
+
 // Handles create AND edit for every "simple" catalog level — category,
 // subcategory, generic_product, and brand_item. brand_item is IDENTITY
 // ONLY (this is the catalog's canonical description of the product, not
@@ -41,6 +43,11 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+
+    const [unit, setUnit] = useState("");
+    const [packSize, setPackSize] = useState("");
+    const [masterPackSize, setMasterPackSize] = useState("");
+
     // Edit mode (brand_item only) re-fetches the full row via GET /:level/:id
     // when the modal opens, rather than trusting whatever columns the LIST
     // query happens to include — the list is intentionally lightweight and
@@ -59,6 +66,9 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
                 setGradeVariant(editEntry.grade_variant || "");
                 setSpecifications(editEntry.specifications || []);
                 setImagePreviews(editEntry?.images?.length ? editEntry.images : editEntry?.image ? [editEntry.image] : []);
+                setUnit(editEntry.unit || "");
+                setPackSize(editEntry.pack_size ?? "");
+                setMasterPackSize(editEntry.units_per_master_pack ?? "");
                 setImageFiles([]);
 
                 // Refresh from the full record so fields the list row
@@ -75,6 +85,9 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
                         setGradeVariant(full.grade_variant || "");
                         setSpecifications(full.specifications || []);
                         setImagePreviews(full?.images?.length ? full.images : full?.image ? [full.image] : []);
+                        setUnit(full.unit || "");
+                        setPackSize(full.pack_size ?? "");
+                        setMasterPackSize(full.units_per_master_pack ?? "");
                         setLoadingFull(false);
                     });
                 }
@@ -86,6 +99,7 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
             setName(""); setBrandName("");
             setManufacturer(""); setModelNo(""); setGradeVariant(""); setSpecifications([]);
             setImagePreviews([]); setImageFiles([]);
+            setUnit(""); setPackSize(""); setMasterPackSize("");
             setImagePreview(null); setImageFile(null);
         }
         setError("");
@@ -144,6 +158,9 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
         if (isBrandItem && !manufacturer.trim()) return setError("Manufacturer is required.");
         if (isBrandItem && !modelNo.trim()) return setError("Model / Part No. / SKU is required.");
         if (!isEdit && level !== "category" && !parentId) return setError("Missing parent — please reopen this from inside the list.");
+        if (isBrandItem && !unit) return setError("Unit is required.");
+        if (isBrandItem && !(Number(packSize) > 0)) return setError("Pack size is required.");
+        if (isBrandItem && !(Number(masterPackSize) > 0)) return setError("Units per master pack is required.");
 
         setSaving(true);
         try {
@@ -164,6 +181,9 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
                 payload.model_no = modelNo.trim();
                 payload.grade_variant = gradeVariant.trim() || null;
                 payload.specifications = specifications.filter((s) => s?.key?.trim());
+                payload.unit = unit;
+                payload.pack_size = Number(packSize);
+                payload.units_per_master_pack = Number(masterPackSize);
             } else {
                 let imageUrl = imagePreview && !imageFile ? editEntry?.image : null;
                 if (imageFile) {
@@ -224,6 +244,31 @@ export default function CreateSimpleCatalogModal({ token, isOpen, onClose, level
                             <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Model / Part No. / SKU *</label>
                             <input value={modelNo} onChange={(e) => setModelNo(e.target.value)}
                                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13.5px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                        </div>
+                    )}
+                    {isBrandItem && (
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="col-span-1">
+                                <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Unit *</label>
+                                <select value={unit} onChange={(e) => setUnit(e.target.value)}
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25">
+                                    <option value="">Select…</option>
+                                    {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                                </select>
+                            </div>
+                            <div className="col-span-1">
+                                <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Pack size *</label>
+                                <input value={packSize} onChange={(e) => setPackSize(e.target.value.replace(/[^\d.]/g, ""))} placeholder="e.g. 1"
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                            </div>
+                            <div className="col-span-1">
+                                <label className="mb-1.5 block text-[12px] font-bold text-slate-500">Units / master pack *</label>
+                                <input value={masterPackSize} onChange={(e) => setMasterPackSize(e.target.value.replace(/[^\d.]/g, ""))} placeholder="e.g. 12"
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2.5 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#047084]/25" />
+                            </div>
+                            <p className="col-span-3 text-[11px] font-medium text-slate-400">
+                                e.g. "1 Litre bottle, 12 per master carton" — fixed for this product, every seller who lists it inherits these.
+                            </p>
                         </div>
                     )}
                     {isBrandItem && (
