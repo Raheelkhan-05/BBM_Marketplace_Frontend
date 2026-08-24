@@ -30,7 +30,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
+import Toast from "../components/Toast.jsx";
 import {
     Search, Pencil, Power, PowerOff, ImageIcon, Package, IndianRupee, Boxes,
     Archive, Truck, FileText, Handshake, ShieldCheck, X, Loader2, ChevronRight,
@@ -626,6 +627,17 @@ export default function SellerManageListingsPage() {
     const [viewingId, setViewingId] = useState(null);
     const [lightboxImage, setLightboxImage] = useState(null);
 
+    const location = useLocation();
+    const [toastMsg, setToastMsg] = useState(location.state?.toast || null);
+
+    useEffect(() => {
+        // Clear the router state so refreshing/back-nav doesn't re-show the toast.
+        if (location.state?.toast) {
+            window.history.replaceState({}, document.title);
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+
     const isApprovedSeller = profile?.seller_status === "approved";
 
     const reload = useCallback(({ silent } = {}) => {
@@ -703,25 +715,33 @@ export default function SellerManageListingsPage() {
     if (!isApprovedSeller) {
         if (profile?.seller_status === "pending_review") {
             return (
-                <div className="min-h-screen" style={{ background: "#FCFBF9" }}>
-                    <div className="mx-auto flex max-w-md flex-col items-center px-6 py-24 text-center">
-                        <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
-                            <Clock className="h-6 w-6" />
-                        </span>
-                        <h2 className="mt-4 text-[19px] font-extrabold" style={{ color: C.ink }}>
-                            Your shop is under review
-                        </h2>
-                        <p className="mt-2 text-[13.5px] font-medium" style={{ color: C.muted }}>
-                            We're verifying your details — you'll be able to manage listings once your shop is approved. This usually takes 24–48 hours.
-                        </p>
+                <>
+                    <div className="min-h-screen" style={{ background: "#FCFBF9" }}>
+                        <div className="mx-auto flex max-w-md flex-col items-center px-6 py-24 text-center">
+                            <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
+                                <Clock className="h-6 w-6" />
+                            </span>
+                            <h2 className="mt-4 text-[19px] font-extrabold" style={{ color: C.ink }}>
+                                Your shop is under review
+                            </h2>
+                            <p className="mt-2 text-[13.5px] font-medium" style={{ color: C.muted }}>
+                                We're verifying your details — you'll be able to manage listings once your shop is approved. This usually takes 24–48 hours.
+                            </p>
+                        </div>
                     </div>
-                </div>
+                    <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
+                </>
             );
         }
 
         // No seller record yet, or previously rejected — show the onboarding
         // form directly, right here, instead of a separate page.
-        return <SellerOnboardingForm />;
+        return (
+            <>
+                <SellerOnboardingForm />
+                <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
+            </>
+        );
     }
 
     return (
@@ -861,6 +881,7 @@ export default function SellerManageListingsPage() {
                     document.body
                 )}
             </SmoothScrollProvider>
+            <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
         </div>
     );
 }

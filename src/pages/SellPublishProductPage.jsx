@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
-import { CheckCircle2, Lock, Clock, Package, Loader2 } from "lucide-react";
+import { CheckCircle2, Lock, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchSellerAccessStatus, createSellerSubmission, updateSellerProductSubmission } from "../utils/api.js";
 import { fetchSubmissionDetail } from "../utils/sellerListingApi.js";
@@ -40,6 +40,13 @@ export function clearPendingProductSubmission() {
         /* noop */
     }
 }
+
+// Reasons that no longer get their own screen — the seller is bounced
+// straight to /seller/listings, which already renders the right thing
+// (onboarding form / pending-review message / listings) based on their
+// current status. Only SELLER_NOT_ONBOARDED carries a toast message;
+// SELLER_NOT_APPROVED redirects silently.
+const REDIRECT_TO_LISTINGS_REASONS = new Set(["SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"]);
 
 function rowToFormValues(row) {
     return {
@@ -128,6 +135,23 @@ export default function SellPublishProductPage() {
     // on whatever page the user happens to be on — not just this one. This page only reads
     // the draft below to prefill the form in case it's still awaiting approval.
 
+    // Bounce straight to /seller/listings for SELLER_NOT_ONBOARDED / SELLER_NOT_APPROVED,
+    // whether that came from the initial access check or from a submit attempt (`gate`).
+    // Navigation happens immediately (no blocking dialog) — the toast message travels
+    // as router state and is rendered by SellerManageListingsPage on arrival, so it
+    // plays out smoothly on the destination page instead of a page mid-unmount.
+    const activeReason = gate?.reason || (access && !access.canPublish ? access.reason : null);
+    useEffect(() => {
+        if (!activeReason || !REDIRECT_TO_LISTINGS_REASONS.has(activeReason)) return;
+        const toast = activeReason === "SELLER_NOT_ONBOARDED"
+            ? (draftSaved
+                ? "Please set up your store — we've saved your product details and will submit it automatically once you're approved."
+                : "Please set up your store first.")
+            : null; // SELLER_NOT_APPROVED redirects silently, no toast
+        navigate("/seller/listings", { replace: true, state: toast ? { toast } : undefined });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeReason]);
+
     const handleSubmit = async (form) => {
         setSubmitting(true);
         try {
@@ -159,7 +183,17 @@ export default function SellPublishProductPage() {
         }
     };
 
-    if (gate) return <AccessGate access={gate} navigate={navigate} draftSaved={draftSaved} />;
+    // While redirecting for these two reasons, show a loader — we're leaving
+    // this page immediately, no need to flash any gate/error screen first.
+    if (activeReason && REDIRECT_TO_LISTINGS_REASONS.has(activeReason)) {
+        return (
+            <div className="flex min-h-[60vh] items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} />
+            </div>
+        );
+    }
+
+    if (gate) return <AccessGate access={gate} navigate={navigate} />;
     if (submitted) return <SubmittedScreen shopSlug={shopSlug} isEdit={isEdit} />;
 
     if (access === undefined || (isEdit && editRecord === undefined)) {
@@ -169,7 +203,7 @@ export default function SellPublishProductPage() {
             </div>
         );
     }
-    if (!access?.canPublish) return <AccessGate access={access} navigate={navigate} draftSaved={draftSaved} />;
+    if (!access?.canPublish) return <AccessGate access={access} navigate={navigate} />;
     if (isEdit && !editRecord) return <AccessGate access={{ reason: "NOT_FOUND" }} navigate={navigate} />;
 
     const brandDisplay = isEdit && editRecord?.brand
@@ -210,7 +244,7 @@ export default function SellPublishProductPage() {
     );
 }
 
-function AccessGate({ access, navigate, draftSaved }) {
+function AccessGate({ access, navigate }) {
     const content = {
         NOT_AUTHENTICATED: {
             icon: Lock,
@@ -219,32 +253,12 @@ function AccessGate({ access, navigate, draftSaved }) {
             cta: "Sign in",
             action: () => navigate("/login"),
         },
-        SELLER_NOT_ONBOARDED: {
-            icon: Package,
-            title: "Set up your seller shop first",
-            body: draftSaved
-                ? "We've saved your product details. Finish setting up your seller shop and this listing will be submitted automatically once you're approved."
-                : "Listing a product requires an approved seller shop. It only takes a few minutes to set up.",
-            cta: "Set up my shop",
-            action: () => navigate("/seller/onboarding"),
-        },
-        SELLER_NOT_APPROVED: {
-            icon: Clock,
-            title: access.sellerStatus === "pending_review" ? "Your shop is under review" : "Your shop isn't approved yet",
-            body: access.sellerStatus === "pending_review"
-                ? (draftSaved
-                    ? "We're verifying your details. Your product listing is saved and will be submitted automatically once your shop is approved."
-                    : "We're verifying your details. You'll be able to list products once your shop is approved.")
-                : "Please check your shop status or contact support.",
-            cta: "Check my shop status",
-            action: () => navigate("/seller/status"),
-        },
         NOT_FOUND: {
             icon: Lock,
             title: "Listing not found",
             body: "This listing doesn't exist or isn't yours.",
             cta: "Go to my listings",
-            action: () => navigate("/seller/dashboard"),
+            action: () => navigate("/seller/listings"),
         },
     }[access.reason] || { icon: Lock, title: "Can't do this right now", body: "Please try again in a moment.", cta: "Go back", action: () => navigate(-1) };
     const Icon = content.icon;
@@ -264,11 +278,9 @@ function SubmittedScreen({ shopSlug, isEdit }) {
             <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}><CheckCircle2 className="h-7 w-7" /></span>
             <h2 className="mt-4 text-[20px] font-extrabold text-slate-900">{isEdit ? "Changes saved" : "Submitted for review"}</h2>
             <p className="mt-2 text-[13.5px] font-medium text-slate-500">{isEdit ? "Your listing has been updated." : "We'll notify you once our team approves it — or let you know what to fix if it's rejected."}</p>
-            {shopSlug ? (
-                <Link to={`/shop/${shopSlug}`} className="mt-6 rounded-xl border border-slate-200 px-5 py-2.5 text-[13.5px] font-bold text-slate-700">Go to my shop</Link>
-            ) : (
-                <Link to="/seller/dashboard" className="mt-6 rounded-xl border border-slate-200 px-5 py-2.5 text-[13.5px] font-bold text-slate-700">Go to my listings</Link>
-            )}
+            <Link to="/seller/listings" className="mt-6 rounded-xl border border-slate-200 px-5 py-2.5 text-[13.5px] font-bold text-slate-700">
+                {shopSlug ? "Go to my shop" : "Go to my listings"}
+            </Link>
         </div>
     );
 }
