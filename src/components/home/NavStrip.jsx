@@ -1,6 +1,6 @@
 // components/home/NavStrip.jsx
 import { useNavigate, useLocation } from "react-router-dom";
-import { Home, LayoutGrid, ShoppingBag, Store, FileText, Package } from "lucide-react";
+import { Home, LayoutGrid, ShoppingBag, FileText } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 const C = {
@@ -14,17 +14,13 @@ const C = {
 export default function NavStrip({ onOpenRfq }) {
     const navigate = useNavigate();
     const { pathname } = useLocation();
-    const { isLoggedIn, profile } = useAuth();
-    const isApprovedSeller = profile?.seller_status === "approved";
+    const { isLoggedIn } = useAuth();
 
     const items = [
         { id: "home", label: "Home", icon: Home, onClick: () => navigate("/home"), match: (p) => p === "/home" },
         { id: "categories", label: "Categories", icon: LayoutGrid, onClick: () => navigate("/categories"), match: (p) => p.startsWith("/categor") },
         { id: "orders", label: "My Orders", icon: ShoppingBag, onClick: () => navigate(isLoggedIn ? "/orders" : "/login", { state: { from: "/orders" } }), match: (p) => p.startsWith("/orders") },
         { id: "rfq", label: "Post RFQ", icon: FileText, onClick: onOpenRfq, match: () => false },
-        isApprovedSeller
-            ? { id: "sales", label: "My Sales", icon: Package, onClick: () => navigate("/seller/orders"), match: (p) => p.startsWith("/seller/orders") }
-            : { id: "sell", label: "Start Selling", icon: Store, onClick: () => navigate("/seller/onboarding"), match: (p) => p.startsWith("/seller") },
     ];
 
     return (
