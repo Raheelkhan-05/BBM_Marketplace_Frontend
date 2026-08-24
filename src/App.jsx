@@ -99,7 +99,7 @@ function App() {
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/chat/:conversationId" element={<ChatPage />} />
 
-              <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
+              {/* <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} /> */}
               <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
 
               <Route path="/seller/sell" element={<SellPublishProductPage />} />

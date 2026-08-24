@@ -1,15 +1,28 @@
+// export const BUSINESS_TYPES = ["Manufacturer", "Distributor", "Wholesaler", "Retailer", "Exporter", "Importer", "Service Provider"];
 export const BUSINESS_TYPES = ["Manufacturer", "Distributor", "Wholesaler", "Retailer", "Exporter", "Importer", "Service Provider"];
+
+
 export const EMPLOYEE_RANGES = ["1-10", "11-50", "51-200", "201-500", "500+"];
+
+// export const STEPS = [
+//   { key: "basics", title: "Business Basics" },
+//   { key: "contact", title: "Contact & WhatsApp" },
+//   { key: "address", title: "Address" },
+//   { key: "credentials", title: "Business Credentials" },
+//   { key: "operations", title: "Operations & Availability" },
+//   { key: "identity", title: "Shop Identity" },
+//   { key: "review", title: "Review & Submit" },
+// ];
 
 export const STEPS = [
   { key: "basics", title: "Business Basics" },
   { key: "contact", title: "Contact & WhatsApp" },
   { key: "address", title: "Address" },
-  { key: "credentials", title: "Business Credentials" },
   { key: "operations", title: "Operations & Availability" },
   { key: "identity", title: "Shop Identity" },
   { key: "review", title: "Review & Submit" },
 ];
+
 
 // GSTN's fixed "nature of business" vocabulary, mapped to our business_type
 // options. First match wins, "Others" is skipped. Always left editable —
@@ -22,6 +35,7 @@ const NATURE_TO_TYPE = [
   [/retail/i, "Retailer"],
   [/service/i, "Service Provider"],
 ];
+
 export function guessBusinessType(natureOfBusiness) {
   if (!Array.isArray(natureOfBusiness)) return "";
   for (const [pattern, type] of NATURE_TO_TYPE) {

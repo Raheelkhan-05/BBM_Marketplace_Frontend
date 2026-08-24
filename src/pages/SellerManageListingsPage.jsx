@@ -45,6 +45,7 @@ import {
     setSellerSubmissionActive, fetchSellerSubmissionDetail,
 } from "../utils/api.js";
 import ImageLightbox from "../components/ImageLightbox.jsx";
+import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -697,28 +698,30 @@ export default function SellerManageListingsPage() {
         if (res?.success) { patchItem(id, res.submission); setConfirmDeactivateId(null); }
     }
 
+
+
     if (!isApprovedSeller) {
-        return (
-            <div className="min-h-screen" style={{ background: "#FCFBF9" }}>
-                <div className="mx-auto flex max-w-md flex-col items-center px-6 py-24 text-center">
-                    <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
-                        {profile?.seller_status === "pending_review" ? <Clock className="h-6 w-6" /> : <Lock className="h-6 w-6" />}
-                    </span>
-                    <h2 className="mt-4 text-[19px] font-extrabold" style={{ color: C.ink }}>
-                        {profile?.seller_status === "pending_review" ? "Your shop is under review" : "Set up your seller shop first"}
-                    </h2>
-                    <p className="mt-2 text-[13.5px] font-medium" style={{ color: C.muted }}>
-                        {profile?.seller_status === "pending_review"
-                            ? "You'll be able to manage listings once your shop is approved."
-                            : "Managing listings requires an approved seller shop."}
-                    </p>
-                    <button onClick={() => navigate(profile?.seller_status ? "/seller/status" : "/seller/onboarding")}
-                        className="mt-6 rounded-xl px-5 py-2.5 text-[13.5px] font-bold text-white" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                        {profile?.seller_status ? "Check my shop status" : "Set up my shop"}
-                    </button>
+        if (profile?.seller_status === "pending_review") {
+            return (
+                <div className="min-h-screen" style={{ background: "#FCFBF9" }}>
+                    <div className="mx-auto flex max-w-md flex-col items-center px-6 py-24 text-center">
+                        <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
+                            <Clock className="h-6 w-6" />
+                        </span>
+                        <h2 className="mt-4 text-[19px] font-extrabold" style={{ color: C.ink }}>
+                            Your shop is under review
+                        </h2>
+                        <p className="mt-2 text-[13.5px] font-medium" style={{ color: C.muted }}>
+                            We're verifying your details — you'll be able to manage listings once your shop is approved. This usually takes 24–48 hours.
+                        </p>
+                    </div>
                 </div>
-            </div>
-        );
+            );
+        }
+
+        // No seller record yet, or previously rejected — show the onboarding
+        // form directly, right here, instead of a separate page.
+        return <SellerOnboardingForm />;
     }
 
     return (
