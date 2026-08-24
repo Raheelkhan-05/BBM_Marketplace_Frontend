@@ -93,6 +93,27 @@ function effectiveLeadTime(s) {
     return s.stock_type === "made_to_order" ? s.production_lead_time_days : s.dispatch_time_days;
 }
 
+function BrandBadge({ name, image }) {
+    if (!name) return null;
+    const initials = name.trim().slice(0, 2).toUpperCase();
+    console.log(image);
+
+    return image ? (
+        <img
+            src={image}
+            alt=""
+            className="h-4 w-auto shrink-0 rounded-full object-cover"
+        />
+    ) : (
+        <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[8.5px] font-extrabold leading-none"
+            style={{ background: `${C.secondary}18`, color: C.secondary }}
+        >
+            {initials}
+        </span>
+    );
+}
+
 // Maps a raw seller row (from catalog_brand_item_sellers) onto exactly
 // what BuyNowModal expects — identical mapping to BrandItemSellersPage's
 // buyerSellerPayload, kept in sync so the inline flow and the full
@@ -236,10 +257,11 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
                 </div>
 
                 <p
-                    className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider"
+                    className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[11.5px] font-bold tracking-wider"
                     style={{ color: C.primary }}
                 >
-                    {subLabel}
+                    <BrandBadge name={item.brand_name} image={item.brand_image} />
+                    <span className="truncate">{subLabel}</span>
                 </p>
 
                 <p

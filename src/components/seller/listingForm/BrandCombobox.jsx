@@ -28,6 +28,8 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
         if (!open || notApplicable || hasSelection) return;
         const t = setTimeout(() => {
             searchBrandNames(token, query).then((res) => setItems(res?.success ? res.items : []));
+            // console.log(items);
+
         }, query ? 250 : 0);
         return () => clearTimeout(t);
     }, [query, open, notApplicable, hasSelection, token]);
