@@ -25,6 +25,7 @@ import {
     SectionCard, Progress,
     ToggleField2,
     TextField2,
+    TextFieldWithUnitSelect,
     ToggleField3,
     RepeatableRows2,
     Label,
@@ -57,11 +58,11 @@ export const DEFAULT_LISTING_FORM = {
     basePrice: "", priceBasis: "per_pack", gstInclusive: false,
     freightIncluded: false,
 
-    sampleAvailable: false, sampleQuantity: "", sampleUnitBasis: "per_pack",
+    sampleAvailable: false, sampleQuantity: "", sampleUnitBasis: "per_unit", // was "per_pack"
 
     priceSlabs: [],
 
-    stockType: "ready_stock", stockQuantity: "", productionLeadTimeDays: "",
+    stockType: "ready_stock", stockQuantity: "", stockQuantityBasis: "per_pack", productionLeadTimeDays: "",
     moq: "",
     dispatchDistrict: "", dispatchState: "",
 
@@ -88,6 +89,55 @@ function getMoqHint(hasOuterPack) {
 
 function round2ToInt(n) {
     return Math.max(1, Math.round(Number(n) || 0));
+}
+
+function getUnitBasisOptions(hasOuterPack, unit) {
+    const opts = [
+        { value: "per_unit", label: unit || "Unit" },
+        { value: "per_pack", label: "Pack" },
+    ];
+    if (hasOuterPack) opts.push({ value: "per_master_pack", label: "Master Pack" });
+    return opts;
+}
+
+function unitBasisLabel(basis, unit) {
+    if (basis === "per_pack") return "Pack";
+    if (basis === "per_master_pack") return "Master Pack";
+    return unit || "Unit";
+}
+
+// sample_quantity is stored in base Units on the backend.
+function toBaseUnitsFromBasis(basis, qty, packSize, masterPackSize) {
+    const q = Number(qty) || 0;
+    const pack = Number(packSize) > 0 ? Number(packSize) : 1;
+    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+    if (basis === "per_pack") return q * pack;
+    if (basis === "per_master_pack") return q * pack * master;
+    return q; // per_unit
+}
+function fromBaseUnitsToBasis(basis, baseUnits, packSize, masterPackSize) {
+    const pack = Number(packSize) > 0 ? Number(packSize) : 1;
+    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+    if (basis === "per_pack") return baseUnits / pack;
+    if (basis === "per_master_pack") return baseUnits / (pack * master);
+    return baseUnits; // per_unit
+}
+
+// stock_quantity is stored in Packs on the backend.
+function toPacksFromBasis(basis, qty, packSize, masterPackSize) {
+    const q = Number(qty) || 0;
+    const pack = Number(packSize) > 0 ? Number(packSize) : 1;
+    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+    if (basis === "per_unit") return q / pack;
+    if (basis === "per_master_pack") return q * master;
+    return q; // per_pack
+}
+function fromPacksToBasis(basis, packs, packSize, masterPackSize) {
+    const pack = Number(packSize) > 0 ? Number(packSize) : 1;
+    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+    if (basis === "per_unit") return packs * pack;
+    if (basis === "per_master_pack") return packs / master;
+    return packs; // per_pack
 }
 
 // New helper functions — dynamic labels for Pack size / Master pack size
@@ -238,6 +288,27 @@ export default function SellerListingForm({
     const [error, setError] = useState(null);
     const [touched, setTouched] = useState({});
     const [checkingBrandMatch, setCheckingBrandMatch] = useState(false);
+
+    const changeSampleBasis = (newBasis) => {
+        setForm((f) => {
+            const baseUnits = toBaseUnitsFromBasis(f.sampleUnitBasis, f.sampleQuantity, f.packSize, f.masterPackSize);
+            const display = fromBaseUnitsToBasis(newBasis, baseUnits, f.packSize, f.masterPackSize);
+            return { ...f, sampleUnitBasis: newBasis, sampleQuantity: f.sampleQuantity !== "" ? String(round2(display)) : f.sampleQuantity };
+        });
+    };
+    const changeStockBasis = (newBasis) => {
+        setForm((f) => {
+            const packs = toPacksFromBasis(f.stockQuantityBasis, f.stockQuantity, f.packSize, f.masterPackSize);
+            const display = fromPacksToBasis(newBasis, packs, f.packSize, f.masterPackSize);
+            return { ...f, stockQuantityBasis: newBasis, stockQuantity: f.stockQuantity !== "" ? String(round2(display)) : f.stockQuantity };
+        });
+    };
+
+    useEffect(() => {
+        if (!form.hasOuterPack && form.sampleUnitBasis === "per_master_pack") changeSampleBasis("per_unit");
+        if (!form.hasOuterPack && form.stockQuantityBasis === "per_master_pack") changeStockBasis("per_pack");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [form.hasOuterPack]);
 
     const [pincodeStatus, setPincodeStatus] = useState(null); // 'checking' | 'ok' | 'error' | null
 
@@ -562,7 +633,21 @@ export default function SellerListingForm({
                 ];
             }
         }
-        onSubmit({ ...form, moq: String(moqInPacks), dispatchingLocations });
+        const sampleQuantityBaseUnits = form.sampleAvailable
+            ? round2(toBaseUnitsFromBasis(form.sampleUnitBasis, form.sampleQuantity, form.packSize, form.masterPackSize))
+            : form.sampleQuantity;
+
+        const stockQuantityPacks = form.stockType === "ready_stock"
+            ? round2(toPacksFromBasis(form.stockQuantityBasis, form.stockQuantity, form.packSize, form.masterPackSize))
+            : form.stockQuantity;
+
+        onSubmit({
+            ...form,
+            moq: String(moqInPacks),
+            sampleQuantity: form.sampleAvailable ? String(sampleQuantityBaseUnits) : form.sampleQuantity,
+            stockQuantity: form.stockType === "ready_stock" ? String(stockQuantityPacks) : form.stockQuantity,
+            dispatchingLocations,
+        });
     };
 
     return (
@@ -712,12 +797,20 @@ export default function SellerListingForm({
                 </div>
                 <ToggleField label="Sample available?" value={form.sampleAvailable} onChange={(v) => setField("sampleAvailable", v)} />
                 {form.sampleAvailable && (
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                        <FieldAnchor fieldKey="sampleQuantity">
-                            <TextField required dense label="Sample quantity" value={form.sampleQuantity} onChange={(v) => setField("sampleQuantity", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("sampleQuantity")} error={isErr("sampleQuantity")} inputMode="decimal" />
-                        </FieldAnchor>
-                        <ChipToggleGroup dense label="Basis" value={form.sampleUnitBasis} onChange={(v) => setField("sampleUnitBasis", v)} options={PRICE_BASIS_OPTIONS} />
-                    </div>
+                    <FieldAnchor fieldKey="sampleQuantity">
+                        <TextFieldWithUnitSelect
+                            required dense
+                            label="Sample quantity"
+                            value={form.sampleQuantity}
+                            onChange={(v) => setField("sampleQuantity", v.replace(/[^\d.]/g, ""))}
+                            onBlur={() => touch("sampleQuantity")}
+                            error={isErr("sampleQuantity")}
+                            inputMode="decimal"
+                            unitValue={form.sampleUnitBasis}
+                            unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
+                            onUnitChange={changeSampleBasis}
+                        />
+                    </FieldAnchor>
                 )}
 
             </SectionCard>
@@ -931,15 +1024,24 @@ export default function SellerListingForm({
                     options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
                 {form.stockType === "ready_stock" ? (
                     <FieldAnchor fieldKey="stockQuantity">
-                        <TextField required dense label={`Available stock (${form.unit || "units"})`} value={form.stockQuantity} onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("stockQuantity")} error={isErr("stockQuantity")} inputMode="decimal" />
+                        <TextFieldWithUnitSelect
+                            required dense
+                            label="Available stock"
+                            value={form.stockQuantity}
+                            onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))}
+                            onBlur={() => touch("stockQuantity")}
+                            error={isErr("stockQuantity")}
+                            inputMode="decimal"
+                            unitValue={form.stockQuantityBasis}
+                            unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
+                            onUnitChange={changeStockBasis}
+                        />
                     </FieldAnchor>
                 ) : (
                     <FieldAnchor fieldKey="productionLeadTimeDays">
                         <TextField required dense label="Lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" />
                     </FieldAnchor>
                 )}
-
-
             </SectionCard>
 
             {/* ---------------- Terms ---------------- */}

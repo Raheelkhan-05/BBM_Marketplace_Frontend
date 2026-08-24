@@ -6,6 +6,8 @@ import { useState, useRef, useId, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Plus, Trash2, Info, Check, X } from "lucide-react";
 
+import { createPortal } from "react-dom";
+
 export const C = {
     ink: "#0B1116",
     muted: "#667077",
@@ -267,6 +269,110 @@ export function Label2({ children, hint }) {
                 )}
             </AnimatePresence>
         </span>
+    );
+}
+
+export function TextFieldWithUnitSelect({
+    label, value, onChange, onBlur, placeholder, inputMode = "decimal", hint,
+    required, disabled, error, dense,
+    unitValue, unitOptions, onUnitChange,
+}) {
+    const [open, setOpen] = useState(false);
+    const [coords, setCoords] = useState(null);
+    const wrapperRef = useRef(null);
+    const triggerRef = useRef(null);
+
+    const updateCoords = () => {
+        const rect = triggerRef.current?.getBoundingClientRect();
+        if (rect) setCoords({ top: rect.bottom + 4, left: rect.right, width: rect.width });
+    };
+
+    useEffect(() => {
+        if (!open) return;
+        updateCoords();
+        const handleOutside = (e) => {
+            if (!wrapperRef.current?.contains(e.target) && !e.target.closest("[data-unitselect-panel]")) setOpen(false);
+        };
+        document.addEventListener("mousedown", handleOutside);
+        window.addEventListener("scroll", updateCoords, true);
+        window.addEventListener("resize", updateCoords);
+        return () => {
+            document.removeEventListener("mousedown", handleOutside);
+            window.removeEventListener("scroll", updateCoords, true);
+            window.removeEventListener("resize", updateCoords);
+        };
+    }, [open]);
+
+    const selectedOption = unitOptions.find((o) => (o.value ?? o) === unitValue);
+    const selectedLabel = selectedOption ? (selectedOption.label ?? selectedOption) : "";
+
+    return (
+        <div className="flex min-w-0 flex-col items-stretch justify-end gap-1 h-full">
+            {label && <Label2>{label}</Label2>}
+            <div
+                className="flex w-full items-stretch rounded-lg border bg-white tracking-wide focus-within:ring-2 text-[14.5px]"
+                style={{ color: C.ink, ...fieldTone(error) }}
+            >
+                <input
+                    type="text"
+                    value={value ?? ""}
+                    inputMode={inputMode}
+                    placeholder={placeholder}
+                    disabled={disabled}
+                    onChange={(e) => onChange(e.target.value)}
+                    onBlur={onBlur}
+                    className={`min-w-0 flex-1 rounded-l-lg bg-transparent font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none ${dense ? "py-1.5 pl-2.5 pr-1.5" : "py-2 pl-3 pr-2"} disabled:opacity-60`}
+                    style={{ color: C.ink }}
+                />
+
+                <div className="relative shrink-0" ref={wrapperRef}>
+                    <button
+                        ref={triggerRef}
+                        type="button"
+                        onClick={() => setOpen((o) => !o)}
+                        disabled={disabled}
+                        className={`flex h-full items-center gap-1 rounded-r-lg border-l font-bold tracking-wide disabled:opacity-60 ${dense ? "px-2.5 py-1.5 text-[13px]" : "px-3 py-2 text-[13.5px]"}`}
+                        style={{ borderColor: C.hair, color: C.secondary, background: `${C.secondary}0a` }}
+                    >
+                        <span className="max-w-[6.5rem] truncate">{selectedLabel}</span>
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
+                    </button>
+                </div>
+            </div>
+
+            {open && coords && createPortal(
+                <AnimatePresence>
+                    <motion.div
+                        data-unitselect-panel
+                        initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                        transition={{ duration: 0.15, ease: EASE }}
+                        className="fixed z-[9999] max-h-56 w-max min-w-[130px] overflow-y-auto rounded-xl border bg-white py-1.5 shadow-lg"
+                        style={{ borderColor: C.hair, top: coords.top, right: window.innerWidth - coords.left }}
+                    >
+                        {unitOptions.map((o) => {
+                            const optValue = o.value ?? o;
+                            const optLabel = o.label ?? o;
+                            const active = optValue === unitValue;
+                            return (
+                                <button
+                                    key={optValue}
+                                    type="button"
+                                    onClick={() => { onUnitChange(optValue); setOpen(false); }}
+                                    className="flex w-full items-center justify-between px-3 py-2 text-left text-[13.5px] font-bold tracking-wide transition-colors duration-100 hover:bg-black/[0.03]"
+                                    style={active ? { color: C.secondary, background: `${C.secondary}0c` } : { color: C.ink }}
+                                >
+                                    {optLabel}
+                                    {active && <Check className="h-3.5 w-3.5" style={{ color: C.secondary }} />}
+                                </button>
+                            );
+                        })}
+                    </motion.div>
+                </AnimatePresence>,
+                document.body
+            )}
+        </div>
     );
 }
 

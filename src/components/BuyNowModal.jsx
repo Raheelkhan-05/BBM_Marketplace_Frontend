@@ -787,7 +787,14 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                                 {isSample ? (
                                     <div className="flex items-center justify-between rounded-lg border px-3 py-2.5" style={{ borderColor: C.hair, background: C.hairSoft }}>
-                                        <span className="text-[15px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>{quantity} {seller?.unit}</span>
+                                        <span className="text-[15px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
+                                            {quantity} {seller?.unit}
+                                            {Number(seller?.packSize) > 0 && (
+                                                <span className="ml-1.5 text-[11px] font-semibold" style={{ color: C.muted }}>
+                                                    (~{round2(Number(quantity) / Number(seller.packSize))} Pack{round2(Number(quantity) / Number(seller.packSize)) === 1 ? "" : "s"})
+                                                </span>
+                                            )}
+                                        </span>
                                         <span className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>Fixed by seller</span>
                                     </div>
                                 ) : (
