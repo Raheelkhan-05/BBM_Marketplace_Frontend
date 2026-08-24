@@ -348,9 +348,16 @@ export default function SellerListingForm({
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
 
-        let perUnitPrice = price;
-        if (form.priceBasis === "per_pack") perUnitPrice = price;
-        if (form.priceBasis === "per_master_pack") perUnitPrice = price / master;
+        // Normalise whatever the seller typed into a true per-unit (per Litre /
+        // Piece / Kg …) price so every downstream consumer (moqPreview,
+        // discountedPreview) can simply multiply by totalUnits without caring
+        // which basis was active.
+        //   per_unit        → already the per-unit price, no conversion needed
+        //   per_pack        → divide by pack size  (e.g. ₹100 / 10 L = ₹10/L)
+        //   per_master_pack → divide by master×pack (e.g. ₹300 / 3×10 = ₹10/L)
+        let perUnitPrice = price; // per_unit basis: already correct
+        if (form.priceBasis === "per_pack") perUnitPrice = price / pack;
+        if (form.priceBasis === "per_master_pack") perUnitPrice = price / (master * pack);
 
         let basePricePerUnit, gstAmount, subtotalAfterGst;
 
@@ -394,7 +401,10 @@ export default function SellerListingForm({
         const moqPacks = form.hasOuterPack ? moq * master : moq;
         const totalUnits = round2(moqPacks * pack);
 
-        // Gross subtotal at MOQ, before any slab discount (base price excl. GST).
+        // Gross subtotal at MOQ, before any slab discount.
+        // pricePreview.basePricePerUnit is a true per-unit (per Litre/Piece/…)
+        // value, so multiplying by totalUnits gives the correct order subtotal
+        // regardless of which price basis the seller used.
         const grossSubtotal = round2(pricePreview.basePricePerUnit * totalUnits);
 
         // priceSlabs.minQty is always stored in Packs (canonical/backend format)
@@ -433,14 +443,17 @@ export default function SellerListingForm({
     // Discounted price, expressed per Pack or per Master Pack (whichever
     // basis is currently active) — matches the unit the minQty threshold
     // is shown in, instead of always returning a per-base-unit figure.
+    //
+    // pricePreview.basePricePerUnit is a true per-UNIT value (e.g. per Litre),
+    // so we must scale back up to Pack / Master Pack for display here.
     const discountedPreview = (slab) => {
         if (!slab?.discountPercent) return null;
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
 
         const discountedPerUnit = pricePreview.basePricePerUnit * (1 - Number(slab.discountPercent) / 100);
-        const discountedPerPack = discountedPerUnit;
-        const discountedPerMaster = discountedPerPack * master;
+        const discountedPerPack = discountedPerUnit * pack;           // scale up to Pack
+        const discountedPerMaster = discountedPerPack * master;       // scale up to Master Pack
 
         const value = form.hasOuterPack ? discountedPerMaster : discountedPerPack;
         return round2(value);

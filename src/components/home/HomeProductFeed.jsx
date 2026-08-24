@@ -74,6 +74,19 @@ function priceUnitLabel(masterPackSize) {
     return Number(masterPackSize) >= 1 ? "master pack" : "pack";
 }
 
+function packagingLabel(packSize, masterPackSize, unit) {
+
+    const pack = Number(packSize) || 0;
+    const master = Number(masterPackSize) || 0;
+
+    if (!pack || !unit) return null;
+
+    if (master > 1) {
+        return `1 Master Pack = ${master} Packs = ${master * pack} ${unit}`;
+    }
+
+    return `1 Pack = ${pack} ${unit}`;
+}
 
 // Same lead-time rule BuyNowModal/BrandItemSellersPage use.
 function effectiveLeadTime(s) {
@@ -148,73 +161,137 @@ function ProductImage({ src, alt, onOpen }) {
 function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
 
+    const packaging = packagingLabel(
+        item.lowest_price_pack_size,
+        item.lowest_price_master_pack_size,
+        item.lowest_price_unit
+    );
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2, delay: Math.min(idx * 0.012, 0.18), ease: EASE }}
-            className="flex w-full items-center gap-2 border-b px-3 py-3 sm:px-4"
-            style={{ borderColor: C.hairSoft, background: isOpen ? C.hairSoft : "transparent" }}
+            transition={{
+                duration: 0.2,
+                delay: Math.min(idx * 0.012, 0.18),
+                ease: EASE,
+            }}
+            className="grid w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 border-b px-3 py-3 sm:px-4"
+            style={{
+                borderColor: C.hairSoft,
+                background: isOpen ? C.hairSoft : "transparent",
+            }}
         >
-            {/* NOTE: this is a <div role="button"> rather than a <button> —
-                it now contains a nested Info <button> next to the product
-                name, and a <button> can't validly wrap another <button>. */}
+            {/* COL 1 — IMAGE */}
+            <div className="flex h-full items-center justify-center">
+                <span
+                    className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
+                    style={{
+                        borderColor: C.hair,
+                        background: C.imgBg,
+                    }}
+                >
+                    <ProductImage
+                        src={item.image}
+                        alt=""
+                        onOpen={onImageOpen}
+                    />
+                </span>
+            </div>
+
+            {/* COL 2 — PRODUCT INFO + PACKAGING */}
             <div
                 onClick={onToggle}
                 onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onToggle();
+                    }
                 }}
                 role="button"
                 tabIndex={0}
-                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left transition-colors duration-150"
+                className="min-w-0 cursor-pointer text-left"
             >
-                <span
-                    className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
-                    style={{ borderColor: C.hair, background: C.imgBg }}
-                >
-                    <ProductImage src={item.image} alt="" onOpen={onImageOpen} />
-                </span>
+                <div className="flex min-w-0 items-center gap-1">
+                    <p
+                        className="min-w-0 truncate text-[14px] font-bold leading-tight tracking-wide"
+                        style={{ color: C.ink }}
+                    >
+                        {item.name}
+                    </p>
 
-                <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-center gap-1">
-                        <p className=" text-[14px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>
-                            {item.name}
-                        </p>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onInfo(); }}
-                            aria-label="Product details"
-                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
-                        >
-                            <Info className="h-3.5 w-3.5" style={{ color: C.muted }} />
-                        </button>
-                    </div>
-                    <p className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider" style={{ color: C.primary }}>
-                        {subLabel}
-                    </p>
-                    <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                        {item.category_name ? `${item.category_name} · ` : ""}
-                        {item.subcategory_name}
-                    </p>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onInfo();
+                        }}
+                        aria-label="Product details"
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
+                    >
+                        <Info
+                            className="h-3.5 w-3.5"
+                            style={{ color: C.muted }}
+                        />
+                    </button>
                 </div>
+
+                <p
+                    className="mt-0.5 truncate text-[11.5px] font-bold tracking-wider"
+                    style={{ color: C.primary }}
+                >
+                    {subLabel}
+                </p>
+
+                <p
+                    className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide"
+                    style={{ color: C.muted }}
+                >
+                    {item.category_name
+                        ? `${item.category_name} · `
+                        : ""}
+                    {item.subcategory_name}
+                </p>
+
+                {/* PACKAGING — OWN LINE */}
+                {packaging && (
+                    <p
+                        className="mt-1 truncate text-[11.5px] font-semibold leading-tight tracking-wider"
+                        style={{ color: C.secondary }}
+                    >
+                        {packaging}
+                    </p>
+                )}
             </div>
 
-            {/* Pricing now lives here — where the arrow + info icons used
-                to sit. This whole slot still toggles the accordion. */}
+            {/* COL 3 — PRICE */}
             <button
                 onClick={onToggle}
                 aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
-                className="flex shrink-0 flex-col items-end pl-1"
+                className="flex h-full shrink-0 items-center justify-end text-right"
             >
                 {item.lowest_price != null && (
-                    <span className="flex flex-col items-end text-right">
-                        <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>
+                    <span className="flex flex-col items-end">
+                        <span
+                            className="text-[10px] font-semibold uppercase leading-tight tracking-wider"
+                            style={{ color: C.muted }}
+                        >
                             from
                         </span>
-                        <span className="text-[15px] font-extrabold leading-tight tabular-nums tracking-wide" style={{ color: C.ink }}>
+
+                        <span
+                            className="text-[15px] font-extrabold leading-tight tabular-nums tracking-wide"
+                            style={{ color: C.ink }}
+                        >
                             ₹{inr(item.lowest_price)}
                         </span>
-                        <span className="text-[9.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                            /{priceUnitLabel(item.lowest_price_master_pack_size)}
+
+                        <span
+                            className="text-[9.5px] font-semibold tracking-wide"
+                            style={{ color: C.muted }}
+                        >
+                            /{priceUnitLabel(
+                                item.lowest_price_master_pack_size
+                            )}
                         </span>
                     </span>
                 )}

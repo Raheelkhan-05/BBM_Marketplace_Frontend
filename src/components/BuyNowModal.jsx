@@ -794,7 +794,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                     <>
                                         <Stepper value={quantity} onChange={setQuantity} min={minQuantity} />
                                         <p className="text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>
-                                            {quantity} {basisLabel}{basis !== "per_unit" && quote?.baseQuantity ? ` = ${quote.baseQuantity} ${seller?.unit}` : ""}
+                                            {quantity} {basisLabel}{basis !== "per_unit" && quote?.baseQuantity ? ` = ${quote.baseQuantity * seller.packSize} ${seller?.unit}` : ""}
                                         </p>
                                         {minQuantity > 1 && (
                                             <p className="text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>
