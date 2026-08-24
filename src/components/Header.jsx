@@ -45,7 +45,7 @@ function getSellerMenuItem(profile) {
   if (status === "pending_review") {
     return { label: "Seller Status", href: "/seller/status", icon: Clock3, key: "pending" };
   }
-  return { label: "Start Selling", href: "/seller/onboarding", icon: Store, key: "new" };
+  return { label: "Start Selling", href: "/seller/listings", icon: Store, key: "new" };
 }
 
 export default function Header({ onOpenRfq }) {
