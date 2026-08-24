@@ -214,7 +214,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
             >
                 <div className="flex min-w-0 items-center gap-1">
                     <p
-                        className="min-w-0 truncate text-[14px] font-bold leading-tight tracking-wide"
+                        className="min-w-0 text-[14px] font-bold leading-tight tracking-wide"
                         style={{ color: C.ink }}
                     >
                         {item.name}
