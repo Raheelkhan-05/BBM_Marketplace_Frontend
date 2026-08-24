@@ -214,7 +214,7 @@ function BasicsStep({ form, update, gstData }) {
       {gstData?.legal_name && <ReadOnlyPill label="Company (from GST)" value={gstData.trade_name || gstData.legal_name} verified />}
       <TextField label="Display name" hint="shown to buyers" value={form.display_name} onChange={(v) => update("display_name", v)} />
       <SelectField label="Business type" value={form.business_type} onChange={(v) => update("business_type", v)} options={BUSINESS_TYPES} />
-      <p className="-mt-2 text-[12.5px] font-medium tracking-wide text-slate-400">Guessed from your GST registration — change it if it's not quite right.</p>
+      <p className="-mt-2 text-[12.5px] font-medium tracking-wide text-slate-400">Imported details from your GST registration. Change it if it's not quite right.</p>
     </div>
   );
 }
