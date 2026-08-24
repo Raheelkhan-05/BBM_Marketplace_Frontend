@@ -389,7 +389,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                 {/* PACKAGING — OWN LINE */}
                 {packaging && (
                     <p
-                        className="mt-1 truncate text-[10px] sm:text-[11px] md:text-[11.5px] font-semibold leading-tight tracking-wide"
+                        className="mt-1 text-[10px] sm:text-[11px] md:text-[11.5px] font-semibold leading-tight tracking-wide"
                         style={{ color: C.secondary }}
                     >
                         {packaging}
