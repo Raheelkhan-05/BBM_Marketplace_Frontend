@@ -91,6 +91,20 @@ function resolveDiscountPercent(quantityDiscounts, quantity) {
     return { percent: Number(applicable[0].discountPercent) || 0, tier: applicable[0] };
 }
 
+// quote.moq (and finalQuote.moq) is always stored/returned in Packs by the
+// backend — this converts it to whatever basis the buyer is currently
+// viewing in, so every MOQ-related message on screen agrees with the
+// Quantity label above instead of quietly reverting to "Packs".
+function formatMoqForBasis(moqPacks, masterPackSize, basis) {
+    const packs = Number(moqPacks) || 0;
+    if (basis === "per_master_pack") {
+        const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+        const masterPacks = Math.ceil(packs / master);
+        return `${masterPacks} Master Pack${masterPacks === 1 ? "" : "s"}`;
+    }
+    return `${packs} Pack${packs === 1 ? "" : "s"}`;
+}
+
 // toBaseUnits is still needed for stock/pricing (those stay in base
 // units), but purchase basis is now only ever "per_pack" / "per_master_pack".
 function toBaseUnits(seller, quantity, basis) {
@@ -318,7 +332,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // useMemo (not frozen at mount) so a late-arriving seller.masterPackSize
     // is still picked up correctly.
     const defaultBasis = useMemo(
-        () => (Number(seller?.masterPackSize) > 1 ? "per_master_pack" : "per_pack"),
+        () => (Number(seller?.masterPackSize) >= 1 ? "per_master_pack" : "per_pack"),
         [seller?.masterPackSize]
     );
 
@@ -336,16 +350,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // If a restored/stale basis is "per_master_pack" but this listing has no
     // real master pack, fall back to per_pack (existing safety net).
     useEffect(() => {
-        if (basis === "per_master_pack" && !(Number(seller?.masterPackSize) > 1)) {
+        if (basis === "per_master_pack" && !(Number(seller?.masterPackSize) >= 1)) {
             setBasis("per_pack");
         }
     }, [basis, seller?.masterPackSize]);
 
-    // NEW — mirror case: if a restored/stale basis is "per_pack" but this
-    // listing DOES have a real master pack (Packs is no longer offered as a
-    // basis for it), snap forward to per_master_pack instead.
     useEffect(() => {
-        if (basis === "per_pack" && Number(seller?.masterPackSize) > 1) {
+        if (basis === "per_pack" && Number(seller?.masterPackSize) >= 1) {
             setBasis("per_master_pack");
         }
     }, [basis, seller?.masterPackSize]);
@@ -538,7 +549,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
             }
             if (effectiveOrderType !== "sample" && finalQuote.meetsMoq === false) {
                 setSubmitting(false);
-                return setError(`Minimum order quantity is ${finalQuote.moq} ${finalQuote.unit}.`);
+                return setError(`Minimum order quantity is ${formatMoqForBasis(finalQuote.moq, seller?.masterPackSize, basis)}.`);
             }
         }
 
@@ -659,6 +670,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // the "23 Aug - 25 Aug" range string.
     const deliveryDateLabel = (val) => (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val) ? formatDDMon(new Date(val)) : val);
 
+    const moqUnitLabel = basis === "per_master_pack" ? "Master Pack" : "Pack";
+
     // Drives the credit slot in the sticky footer: which of the three
     // states (request / pending / cooldown) to show when credit isn't
     // enabled yet. Kept as a small helper so both the footer render and
@@ -757,12 +770,16 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         <Boxes className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
                                         <p className="text-[11.5px] font-bold tracking-wide" style={{ color: C.ink }}>
                                             1 Pack = {seller.packSize} {seller.unit}
-                                            {Number(seller?.masterPackSize) > 1 && ` · 1 Master Pack = ${seller.masterPackSize} Packs`}
+                                            {Number(seller?.masterPackSize) >= 1 && ` · 1 Master Pack = ${seller.masterPackSize} Packs`}
                                         </p>
                                     </div>
                                 )}
                                 <div className="flex items-center justify-between">
-                                    <Label>{isSample ? "Sample quantity" : `Quantity · MOQ ${seller?.moq} Pack${seller?.moq == 1 ? "" : "s"}`}</Label>
+                                    <Label>
+                                        {isSample
+                                            ? "Sample quantity"
+                                            : `Quantity · MOQ ${minQuantity} ${moqUnitLabel}${minQuantity === 1 ? "" : "s"}`}
+                                    </Label>
                                     {!isSample && visibleBasisOptions.length > 1 && (
                                         <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={visibleBasisOptions} />
                                     )}
@@ -787,7 +804,11 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                     </>
                                 )}
 
-                                {!isSample && quote && quote.meetsMoq === false && <Notice tone="danger">Below the seller's MOQ of {quote.moq} {quote.unit}.</Notice>}
+                                {!isSample && quote && quote.meetsMoq === false && (
+                                    <Notice tone="danger">
+                                        Below the seller's MOQ of {formatMoqForBasis(quote.moq, seller?.masterPackSize, basis)}.
+                                    </Notice>
+                                )}
                                 {!isSample && quote?.stockShortfall && (
                                     <Notice tone="warn">Only {quote.availableStock} {quote.unit} currently in stock — this order will still be placed, but fulfilment may take a little longer.</Notice>
                                 )}
