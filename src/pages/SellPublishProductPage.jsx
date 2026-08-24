@@ -6,6 +6,7 @@ import { fetchSellerAccessStatus, createSellerSubmission, updateSellerProductSub
 import { fetchSubmissionDetail } from "../utils/sellerListingApi.js";
 import ProductPathPicker from "../components/ProductPathPicker.jsx";
 import SellerListingForm, { DEFAULT_LISTING_FORM } from "../components/seller/listingForm/SellerListingForm.jsx";
+import Toast from "../components/Toast.jsx";
 
 const C = { ink: "#0B1116", muted: "#667077" };
 
@@ -40,13 +41,6 @@ export function clearPendingProductSubmission() {
         /* noop */
     }
 }
-
-// Reasons that no longer get their own screen — the seller is bounced
-// straight to /seller/listings, which already renders the right thing
-// (onboarding form / pending-review message / listings) based on their
-// current status. Only SELLER_NOT_ONBOARDED carries a toast message;
-// SELLER_NOT_APPROVED redirects silently.
-const REDIRECT_TO_LISTINGS_REASONS = new Set(["SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"]);
 
 function rowToFormValues(row) {
     return {
@@ -98,21 +92,21 @@ export default function SellPublishProductPage() {
 
     const isEdit = Boolean(submissionId);
 
+    // `access` is now only used for (a) the shopSlug shown on the submitted
+    // screen and (b) gating the EDIT route, which requires an already-
+    // approved seller who owns the listing. It no longer gates the CREATE
+    // flow — anyone can open /seller/sell and fill the form; seller status
+    // is only checked when they actually hit submit (see handleSubmit).
     const [access, setAccess] = useState(undefined);
-    const [gate, setGate] = useState(null);
     const [path, setPath] = useState(null);
     const [editRecord, setEditRecord] = useState(undefined); // undefined = loading, null = not found
     const [submitting, setSubmitting] = useState(false);
     const [submitted, setSubmitted] = useState(null);
     const [shopSlug, setShopSlug] = useState(null);
-    const [draftSaved, setDraftSaved] = useState(false);
+    const [toastMsg, setToastMsg] = useState(null);
 
     useEffect(() => {
         if (!token) {
-            // Guest / logged-out: don't block on an access check that needs a token.
-            // Let them see and fill the form as normal; handleSubmit already
-            // catches NOT_AUTHENTICATED at submit time, saves their draft, and
-            // routes them to the AccessGate to sign in.
             setAccess({ canPublish: true, guest: true });
             return;
         }
@@ -130,27 +124,25 @@ export default function SellPublishProductPage() {
         });
     }, [isEdit, token, submissionId]);
 
+    // EDIT route only: bounce away if this seller can't edit listings right
+    // now. This is a page-load-time check (not user-triggered), so it's the
+    // one case that still runs in an effect. CREATE mode never hits this —
+    // it's always allowed to render the form and only gets checked at submit.
+    useEffect(() => {
+        if (!isEdit || !access || access.canPublish) return;
+        if (access.reason === "SELLER_NOT_ONBOARDED") {
+            navigate("/seller/listings", { replace: true, state: { toast: "Please set up your store first." } });
+        } else if (access.reason === "SELLER_NOT_APPROVED") {
+            navigate("/seller/listings", { replace: true });
+        }
+        // NOT_AUTHENTICATED / anything else falls through to <AccessGate />
+        // rendered below.
+    }, [isEdit, access, navigate]);
+
     // Note: auto-submitting any cached draft once the user becomes an approved seller is
-    // now handled globally by <PendingSubmissionWatcher /> (mounted in App.jsx), so it fires
+    // handled globally by <PendingSubmissionWatcher /> (mounted in App.jsx), so it fires
     // on whatever page the user happens to be on — not just this one. This page only reads
     // the draft below to prefill the form in case it's still awaiting approval.
-
-    // Bounce straight to /seller/listings for SELLER_NOT_ONBOARDED / SELLER_NOT_APPROVED,
-    // whether that came from the initial access check or from a submit attempt (`gate`).
-    // Navigation happens immediately (no blocking dialog) — the toast message travels
-    // as router state and is rendered by SellerManageListingsPage on arrival, so it
-    // plays out smoothly on the destination page instead of a page mid-unmount.
-    const activeReason = gate?.reason || (access && !access.canPublish ? access.reason : null);
-    useEffect(() => {
-        if (!activeReason || !REDIRECT_TO_LISTINGS_REASONS.has(activeReason)) return;
-        const toast = activeReason === "SELLER_NOT_ONBOARDED"
-            ? (draftSaved
-                ? "Please set up your store — we've saved your product details and will submit it automatically once you're approved."
-                : "Please set up your store first.")
-            : null; // SELLER_NOT_APPROVED redirects silently, no toast
-        navigate("/seller/listings", { replace: true, state: toast ? { toast } : undefined });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeReason]);
 
     const handleSubmit = async (form) => {
         setSubmitting(true);
@@ -160,19 +152,40 @@ export default function SellPublishProductPage() {
                 res = await updateSellerProductSubmission(token, submissionId, form);
             } else {
                 res = await createSellerSubmission(token, form); // form already has genericProductId
-                // res = await createSellerSubmission(token, { genericProductId: path.genericProduct.id, ...form });
             }
             if (!res?.success) {
-                if (["NOT_AUTHENTICATED", "SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"].includes(res?.code)) {
-                    // Not (yet) an approved seller — don't lose the filled-in product data.
-                    // It gets picked up automatically once onboarding is submitted / approval completes.
-                    if (!isEdit) {
-                        setDraftSaved(savePendingProductSubmission(form));
-                    }
-                    setGate({ canPublish: false, reason: res.code, sellerStatus: res.sellerStatus });
+                const code = res?.code;
+
+                if (code === "SELLER_NOT_ONBOARDED") {
+                    // Not a seller yet — save the filled-in product so it isn't lost,
+                    // then send them to set up their shop. The listings page picks up
+                    // the toast from router state.
+                    const saved = !isEdit ? savePendingProductSubmission(form) : false;
+                    navigate("/seller/listings", {
+                        replace: true,
+                        state: {
+                            toast: saved
+                                ? "Please set up your store — we've saved your product details and will submit it automatically once you're approved."
+                                : "Please set up your store first.",
+                        },
+                    });
                     return;
                 }
-                window.alert(res?.message || "Couldn't submit. Please check the required fields.");
+
+                if (code === "NOT_AUTHENTICATED" || code === "SELLER_NOT_APPROVED") {
+                    // Everything else — stay right here, don't navigate anywhere, and
+                    // don't lose what's been typed. Just surface a toast.
+                    if (!isEdit) savePendingProductSubmission(form);
+                    const msg = code === "NOT_AUTHENTICATED"
+                        ? "Please sign in to submit your listing."
+                        : res.sellerStatus === "pending_review"
+                            ? "Your shop is still under review — we'll notify you once it's approved."
+                            : "Your shop isn't approved yet. Please check your shop status.";
+                    setToastMsg(msg);
+                    return;
+                }
+
+                setToastMsg(res?.message || "Couldn't submit. Please check the required fields.");
                 return;
             }
             // Successful submission — clear any stale pending draft.
@@ -183,28 +196,40 @@ export default function SellPublishProductPage() {
         }
     };
 
-    // While redirecting for these two reasons, show a loader — we're leaving
-    // this page immediately, no need to flash any gate/error screen first.
-    if (activeReason && REDIRECT_TO_LISTINGS_REASONS.has(activeReason)) {
+    if (submitted) {
+        return (
+            <>
+                <SubmittedScreen shopSlug={shopSlug} isEdit={isEdit} />
+                <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
+            </>
+        );
+    }
+
+    // EDIT mode still needs both the access check and the record before it
+    // can render anything meaningful.
+    if (isEdit && (access === undefined || editRecord === undefined)) {
         return (
             <div className="flex min-h-[60vh] items-center justify-center">
                 <Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} />
             </div>
         );
     }
-
-    if (gate) return <AccessGate access={gate} navigate={navigate} />;
-    if (submitted) return <SubmittedScreen shopSlug={shopSlug} isEdit={isEdit} />;
-
-    if (access === undefined || (isEdit && editRecord === undefined)) {
+    if (isEdit && access && !access.canPublish && access.reason !== "SELLER_NOT_ONBOARDED" && access.reason !== "SELLER_NOT_APPROVED") {
         return (
-            <div className="flex min-h-[60vh] items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} />
-            </div>
+            <>
+                <AccessGate access={access} navigate={navigate} />
+                <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
+            </>
         );
     }
-    if (!access?.canPublish) return <AccessGate access={access} navigate={navigate} />;
-    if (isEdit && !editRecord) return <AccessGate access={{ reason: "NOT_FOUND" }} navigate={navigate} />;
+    if (isEdit && !editRecord) {
+        return (
+            <>
+                <AccessGate access={{ reason: "NOT_FOUND" }} navigate={navigate} />
+                <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
+            </>
+        );
+    }
 
     const brandDisplay = isEdit && editRecord?.brand
         ? { name: editRecord.brand.name, brandName: editRecord.brand.brand_name, image: editRecord.brand.image }
@@ -227,19 +252,19 @@ export default function SellPublishProductPage() {
                 </div>
             )}
 
-            {(access?.canPublish) && (isEdit ? editRecord : true) && (
-                <div className="mt-6">
-                    <SellerListingForm
-                        mode={isEdit ? "edit" : "create"}
-                        identityReadOnly={isEdit}
-                        brandDisplay={brandDisplay}
-                        initialValues={isEdit ? rowToFormValues(editRecord) : pendingDraft?.form}
-                        onSubmit={handleSubmit}
-                        submitting={submitting}
-                        submitLabel={isEdit ? "Save changes" : "Submit for review"}
-                    />
-                </div>
-            )}
+            <div className="mt-6">
+                <SellerListingForm
+                    mode={isEdit ? "edit" : "create"}
+                    identityReadOnly={isEdit}
+                    brandDisplay={brandDisplay}
+                    initialValues={isEdit ? rowToFormValues(editRecord) : pendingDraft?.form}
+                    onSubmit={handleSubmit}
+                    submitting={submitting}
+                    submitLabel={isEdit ? "Save changes" : "Submit for review"}
+                />
+            </div>
+
+            <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
         </div>
     );
 }

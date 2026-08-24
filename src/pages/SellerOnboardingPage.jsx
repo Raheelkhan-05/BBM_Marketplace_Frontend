@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight, ArrowLeft, Loader2, CheckCircle2, Upload, X, Image as ImageIcon,
@@ -6,22 +7,21 @@ import {
 import { useAuth } from "../context/AuthContext.jsx";
 import {
   fetchSellerOnboarding, saveSellerProgress, submitSellerOnboarding, uploadSellerFile,
-  requestSellerWhatsappOtp, verifySellerWhatsappOtp, createSellerSubmission,
+  requestSellerWhatsappOtp, verifySellerWhatsappOtp,
 } from "../utils/api.js";
 import { extractColorsFromImage } from "../utils/colorExtract.js";
 import { STEPS, BUSINESS_TYPES, WEEKDAYS, guessBusinessType } from "../components/seller/fieldConfigs.js";
-import {
-  readPendingProductSubmission, clearPendingProductSubmission,
-} from "./SellPublishProductPage.jsx";
+import { readPendingProductSubmission } from "./SellPublishProductPage.jsx";
 
 // SellerOnboardingForm is a plain form component (no route/navigation
-// assumptions) so it can be mounted directly inside
-// SellerManageListingsPage when the seller hasn't onboarded yet, instead of
-// living on its own page. Pass onSubmitted to react once the application
-// has been submitted (e.g. to refetch the auth profile so the parent page
-// can switch to the "pending review" state immediately).
+// assumptions beyond the redirect-back-to-listing-form case below) so it
+// can be mounted directly inside SellerManageListingsPage when the seller
+// hasn't onboarded yet, instead of living on its own page. Pass
+// onSubmitted to react once the application has been submitted (e.g. to
+// refetch the auth profile so the parent page can update immediately).
 export function SellerOnboardingForm({ onSubmitted }) {
   const { token } = useAuth();
+  const navigate = useNavigate();
 
   const [loaded, setLoaded] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
@@ -34,7 +34,6 @@ export function SellerOnboardingForm({ onSubmitted }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
-  const [pendingProductStatus, setPendingProductStatus] = useState(null); // null | "submitted" | "still_pending"
 
   useEffect(() => {
     if (!token) return;
@@ -92,28 +91,23 @@ export function SellerOnboardingForm({ onSubmitted }) {
       const res = await submitSellerOnboarding(token, form);
       if (!res?.success) return setError(res?.message || "Couldn't submit. Please check required fields.");
 
-      // Fast path only: if the user had a product listing waiting because they weren't
-      // a seller yet, try to submit it right now in case approval is instant. If the
-      // seller still needs review, this call fails harmlessly — the draft stays cached
-      // and the app-wide <PendingSubmissionWatcher /> (mounted in App.jsx) will submit
-      // it automatically the moment access is granted, on whatever page the user is on.
-      try {
-        const pending = readPendingProductSubmission();
-        if (pending?.form) {
-          const prodRes = await createSellerSubmission(token, pending.form);
-          if (prodRes?.success) {
-            clearPendingProductSubmission();
-            setPendingProductStatus("submitted");
-          } else {
-            setPendingProductStatus("still_pending");
-          }
-        }
-      } catch {
-        setPendingProductStatus("still_pending");
+      onSubmitted?.(res.seller);
+
+      // If the seller had a product listing waiting because they weren't
+      // onboarded yet, send them straight back to the listing form instead
+      // of showing the generic "submitted" screen — SellPublishProductPage
+      // reads the same cached draft and prefills the form automatically.
+      // We deliberately do NOT clear the draft here: it's only cleared once
+      // that actual product submission succeeds, so if the shop is still
+      // pending review, the draft survives and <PendingSubmissionWatcher />
+      // (mounted in App.jsx) auto-submits it later once approved.
+      const pending = readPendingProductSubmission();
+      if (pending?.form) {
+        navigate("/seller/sell", { replace: true });
+        return;
       }
 
       setSubmitted(true);
-      onSubmitted?.(res.seller);
     } finally {
       setSubmitting(false);
     }
@@ -122,7 +116,7 @@ export function SellerOnboardingForm({ onSubmitted }) {
   if (!loaded) {
     return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#047084]" /></div>;
   }
-  if (submitted) return <SubmittedScreen pendingProductStatus={pendingProductStatus} />;
+  if (submitted) return <SubmittedScreen />;
 
   const progress = ((stepIndex + 1) / STEPS.length) * 100;
 
@@ -214,7 +208,7 @@ function BasicsStep({ form, update, gstData }) {
       {gstData?.legal_name && <ReadOnlyPill label="Company (from GST)" value={gstData.trade_name || gstData.legal_name} verified />}
       <TextField label="Display name" hint="shown to buyers" value={form.display_name} onChange={(v) => update("display_name", v)} />
       <SelectField label="Business type" value={form.business_type} onChange={(v) => update("business_type", v)} options={BUSINESS_TYPES} />
-      <p className="-mt-2 text-[12.5px] font-medium tracking-wide text-slate-400">Imported details from your GST registration. Change it if it's not quite right.</p>
+      <p className="-mt-2 text-[12.5px] font-medium tracking-wide text-slate-400">Guessed from your GST registration — change it if it's not quite right.</p>
     </div>
   );
 }
@@ -253,7 +247,6 @@ function ContactStep({ form, update, token }) {
 
   const sendOtp = async () => {
     if (draftNumber.length !== 10) return;
-    // Same number as the one already verified — skip OTP entirely.
     if (draftNumber === form.original_verified_number) {
       update("whatsapp_number", draftNumber);
       update("whatsapp_verified", true);
@@ -508,7 +501,7 @@ function ReviewStep({ form }) {
   );
 }
 
-function SubmittedScreen({ pendingProductStatus }) {
+function SubmittedScreen() {
   return (
     <div className="mx-auto flex max-w-md flex-col items-center px-6 py-20 text-center">
       <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}>
@@ -518,17 +511,6 @@ function SubmittedScreen({ pendingProductStatus }) {
       <p className="mt-2 text-[14.5px] font-medium tracking-wide text-slate-500">
         We're verifying your details. You'll be notified as soon as your shop is approved and live to buyers.
       </p>
-
-      {pendingProductStatus === "submitted" && (
-        <div className="mt-5 rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.05] px-4 py-3 text-[13.5px] font-semibold tracking-wide text-slate-600">
-          The product listing you started earlier has also been submitted and will go live once approved.
-        </div>
-      )}
-      {pendingProductStatus === "still_pending" && (
-        <div className="mt-5 rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.05] px-4 py-3 text-[13.5px] font-semibold tracking-wide text-slate-600">
-          The product listing you started earlier is still saved. It will be submitted automatically once your shop is approved.
-        </div>
-      )}
     </div>
   );
 }
@@ -610,4 +592,4 @@ function FileField({ label, value, onUploaded, token, folder, accept, bucket = "
       </div>
     </div>
   );
-}
+}   
