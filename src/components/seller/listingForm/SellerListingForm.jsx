@@ -50,7 +50,7 @@ export const DEFAULT_LISTING_FORM = {
     qualityCertificates: [],
     noteToAdmin: "",
 
-    unit: "", packSize: "", hasOuterPack: false, masterPackSize: "1",
+    unit: "", packSize: "", hasOuterPack: false, masterPackSize: "0",
     brandItemMatch: null,
     hsnCode: "", gstPercent: 18,
 
@@ -213,7 +213,7 @@ export default function SellerListingForm({
         };
 
         base.hasOuterPack = Number(base.masterPackSize) > 1;
-        if (!base.hasOuterPack) base.masterPackSize = "1";
+        if (!base.hasOuterPack) base.masterPackSize = "0";
 
         // incoming moq (from initialValues / backend) is always in Packs —
         // convert it to Master Packs for display if this listing has one, so
@@ -471,7 +471,7 @@ export default function SellerListingForm({
         setForm((f) => ({
             ...f,
             hasOuterPack: value,
-            masterPackSize: value ? "" : "1",
+            masterPackSize: value ? "" : "0",
             // MOQ's unit of measure flips between Packs and Master Packs
             // depending on this toggle — a value entered under one meaning
             // is wrong under the other, so clear it rather than silently
@@ -735,7 +735,8 @@ export default function SellerListingForm({
                             <div className={`grid gap-2.5 ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
                                 <TextField2
                                     required dense
-                                    label={`Per ${form.unit || "Unit"} (₹)`}
+                                    label={`Per ${form.unit || "Unit"}`}
+                                    prefix="₹"
                                     hint={`Price for 1 ${form.unit || "Unit"} — the other fields recalculate automatically`}
                                     value={unitValue}
                                     onChange={(v) => setForm((f) => ({ ...f, basePrice: sanitize(v), priceBasis: "per_unit" }))}
@@ -745,7 +746,8 @@ export default function SellerListingForm({
                                 />
                                 <TextField2
                                     required dense
-                                    label="Per Pack (₹)"
+                                    label="Per Pack"
+                                    prefix="₹"
                                     hint={`Price for 1 Pack (${form.packSize || "?"} ${form.unit || "Unit"}) — the other fields recalculate automatically`}
                                     value={packValue}
                                     onChange={(v) => setForm((f) => ({ ...f, basePrice: sanitize(v), priceBasis: "per_pack" }))}
@@ -756,7 +758,8 @@ export default function SellerListingForm({
                                 {showMaster && (
                                     <TextField2
                                         required dense
-                                        label="Per Master Pack (₹)"
+                                        label="Per Master Pack"
+                                        prefix="₹"
                                         hint={`Price for 1 Master Pack (${form.masterPackSize || "?"} Packs) — the other fields recalculate automatically`}
                                         value={masterValue}
                                         onChange={(v) => setForm((f) => ({ ...f, basePrice: sanitize(v), priceBasis: "per_master_pack" }))}

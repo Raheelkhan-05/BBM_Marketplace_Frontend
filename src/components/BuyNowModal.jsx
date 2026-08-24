@@ -59,7 +59,7 @@ const VISIBLE_BASIS_OPTIONS = BASIS_OPTIONS;
 // hidden entirely, not just deprioritized. When there's no master pack,
 // only "Packs" is shown (master pack option is meaningless).
 function getVisibleBasisOptions(seller) {
-    const hasMasterPack = Number(seller?.masterPackSize) > 1;
+    const hasMasterPack = Number(seller?.masterPackSize) >= 1;
     return hasMasterPack
         ? BASIS_OPTIONS.filter((o) => o.value === "per_master_pack")
         : BASIS_OPTIONS.filter((o) => o.value === "per_pack");

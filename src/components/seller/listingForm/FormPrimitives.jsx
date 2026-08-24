@@ -270,12 +270,20 @@ export function Label2({ children, hint }) {
     );
 }
 
-export function TextField2({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile }) {
+export function TextField2({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile, prefix }) {
     const widthClass = tinyOnMobile ? "w-[4.5rem] sm:w-full" : halfOnMobile ? "w-1/2 sm:w-full" : "w-full";
     return (
         <div className="flex min-w-0 flex-col items-stretch justify-end gap-1 h-full">
-            {label && <Label2 >{label}</Label2>}
-            <div className={`flex items-center ${widthClass}`}>
+            {label && <Label2>{label}</Label2>}
+            <div className={`relative flex items-center ${widthClass}`}>
+                {prefix && (
+                    <span
+                        className="pointer-events-none absolute left-2.5 text-[14.5px] font-bold"
+                        style={{ color: C.muted }}
+                    >
+                        {prefix}
+                    </span>
+                )}
                 <input
                     type={type}
                     value={value ?? ""}
@@ -284,14 +292,18 @@ export function TextField2({ label, value, onChange, onBlur, placeholder, inputM
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value)}
                     onBlur={onBlur}
-                    className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "px-2.5 py-1.5 text-[14.5px]" : "px-3 py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
-                    style={{ color: C.ink, ...fieldTone(error) }}
+                    className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "py-1.5 text-[14.5px]" : "py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
+                    style={{
+                        color: C.ink,
+                        paddingLeft: prefix ? "20px" : (dense ? "10px" : "12px"),
+                        paddingRight: dense ? "10px" : "12px",
+                        ...fieldTone(error),
+                    }}
                 />
             </div>
         </div>
     );
 }
-
 export function TextAreaField({ label, value, onChange, onBlur, placeholder, hint, required, rows = 2, error }) {
     return (
         <div className="flex flex-col gap-1">
