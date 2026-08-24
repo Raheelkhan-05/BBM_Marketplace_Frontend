@@ -39,7 +39,7 @@ export default function AdminSellersPage() {
   }, [tab, q, token]);
 
   return (
-    <div className="mx-auto max-w-5xl px-4 pb-16 pt-6 sm:px-6">
+    <div className="mx-auto min-h-screen max-w-5xl px-4 pb-16 pt-6 sm:px-6">
       <h1 className="text-[22px] font-extrabold text-slate-900">Seller Applications</h1>
 
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

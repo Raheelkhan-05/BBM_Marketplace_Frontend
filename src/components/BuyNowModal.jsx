@@ -190,11 +190,10 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
     if (!seller || !(qty > 0)) return null;
 
     const baseQty = toBaseUnits(seller, qty, basis);
-    // Deliberately no local delivery-date guess — see note above. The
-    // "Estimated delivery" UI block shows a loading skeleton for as long
-    // as estimatedDeliveryDate is null and isEstimate is true.
 
     if (isSample) {
+        // unchanged — samplePrice is genuinely per base-unit, and baseQty
+        // is already in base units, so this multiplication was correct.
         const unitPrice = Number(seller.samplePrice) || 0;
         return {
             orderType: "sample",
@@ -212,16 +211,23 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
 
     if (!(Number(seller.price) > 0)) return null;
 
+    const packSize = Number(seller.packSize) > 0 ? Number(seller.packSize) : 1;
     const masterPackSize = Number(seller.masterPackSize) > 0 ? Number(seller.masterPackSize) : 1;
     const packQtyEquivalent = basis === "per_master_pack" ? qty * masterPackSize : qty;
 
-    const { price: slabPrice, slab: appliedSlab } = resolveSlabUnitPrice(seller.priceSlabs, packQtyEquivalent, Number(seller.price));
-    const { percent: discountPercent, tier: discountTier } = resolveDiscountPercent(seller.quantityDiscounts, packQtyEquivalent);
+    // seller.price is stored per base UNIT (e.g. per Litre), but slab/
+    // discount resolution and the totals below are all expressed against
+    // Pack quantities (packQtyEquivalent) — scale up to a per-Pack price
+    // first, same anchor-then-scale-up direction as HomeProductFeed's fix.
+    const pricePerPack = round2(Number(seller.price) * packSize);
+
+    const { price: slabPrice, slab: appliedSlab } = resolveSlabUnitPrice(seller.priceSlabs, packQtyEquivalent, pricePerPack);
+    const { percent: discountPercent, tier: discountTier } = resolveDiscountPercent(seller.quantityDiscounts, qty);
     const unitPrice = Math.round(slabPrice * (1 - discountPercent / 100) * 100) / 100;
 
     const moq = Number(seller.moq) || 0;
     const availableStock = seller.availableStock != null ? Number(seller.availableStock) : null;
-    const stockShortfall = seller.stockType !== "made_to_order" && availableStock != null && packQtyEquivalent > availableStock; // ← was baseQty
+    const stockShortfall = seller.stockType !== "made_to_order" && availableStock != null && packQtyEquivalent > availableStock;
 
     const grossSubtotal = Math.round(slabPrice * packQtyEquivalent * 100) / 100;
     const subtotal = Math.round(unitPrice * packQtyEquivalent * 100) / 100;
@@ -229,7 +235,7 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
 
     return {
         orderType: "standard",
-        quantity: qty, baseQuantity: packQtyEquivalent, basis, // baseQuantity now reports pack-equivalent qty
+        quantity: qty, baseQuantity: packQtyEquivalent, basis,
         unit: seller.unit,
         unitPrice,
         basePriceApplied: slabPrice,
@@ -843,10 +849,11 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         <div className="flex flex-wrap gap-1.5">
                                             {seller.quantityDiscounts.map((tier, i) => {
                                                 const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
+                                                const tierUnitLabel = Number(seller?.masterPackSize) >= 1 ? "Master Pack" : "Pack";
                                                 return (
                                                     <span key={i} className="rounded-full border px-2.5 py-1 text-[12px] font-bold tracking-wide"
                                                         style={active ? { borderColor: "#D2462B", background: "rgba(210,70,43,0.1)", color: "#D2462B" } : { borderColor: C.hair, color: C.muted }}>
-                                                        {tier.minQty}+ Packs: {tier.discountPercent}% off
+                                                        {tier.minQty}+ {tierUnitLabel}{Number(tier.minQty) === 1 ? "" : "s"}: {tier.discountPercent}% off
                                                     </span>
                                                 );
                                             })}
@@ -905,36 +912,79 @@ export default function BuyNowModal({ seller, product, onClose }) {
                             </SectionCard>
 
                             {/* ---------------- Quote breakdown ---------------- */}
+                            {/* ---------------- Quote breakdown ---------------- */}
                             <SectionCard icon={ReceiptText} title="Price breakdown" alwaysOpen>
                                 {quote ? (
                                     <div className="flex flex-col gap-3">
-                                        <div className="flex flex-col gap-2.5 rounded-xl p-3" style={{ background: C.hairSoft }}>
-                                            {/* Rate line — just the math reference, kept small/muted so it
-                                                doesn't compete with the actual amount rows below it. */}
-                                            <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                {quote.baseQuantity ?? quote.quantity} {moqUnitLabel} × ₹{inr(quote.unitPrice)} / {moqUnitLabel}
-                                            </p>
+                                        {/* Quantity strip — what's actually being bought, in plain units.
+                Separated from money math below so the two kinds of numbers
+                never blur together. */}
+                                        <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair, background: "#fff" }}>
+                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                                                <Boxes className="h-3.5 w-3.5" />
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
+                                                    {quote.baseQuantity ?? quote.quantity} Pack{(quote.baseQuantity ?? quote.quantity) === 1 ? "" : "s"}
+                                                    {Number(seller?.packSize) > 0 && (
+                                                        <span className="font-semibold" style={{ color: C.muted }}> · {(quote.baseQuantity ?? quote.quantity) * Number(seller.packSize)} {seller?.unit}</span>
+                                                    )}
+                                                </p>
+                                                {basis === "per_master_pack" && (
+                                                    <p className="text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                        {quantity} Master Pack{Number(quantity) === 1 ? "" : "s"} selected
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
 
-                                            <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} />
+                                        {/* Money math — rate first (with per-unit shown for reference so
+                the ₹/Pack figure is never opaque), then a clean step-down to
+                the payable total. */}
+                                        {/* Money math — original rate first, discount called out separately,
+    then a clean step-down to the payable total. */}
+                                        <div className="flex flex-col gap-2.5 rounded-xl border p-3.5" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                                            <span className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Rate applied</span>
+
+                                            <div className="flex items-baseline justify-between">
+                                                <span className="text-[13px] font-semibold tracking-wide" style={{ color: C.ink }}>
+                                                    ₹{inr(quote.basePriceApplied ?? quote.unitPrice)} <span className="font-medium" style={{ color: C.muted }}>/ Pack</span>
+                                                </span>
+                                                {Number(seller?.packSize) > 0 && (
+                                                    <span className="text-[11px] font-semibold tabular-nums tracking-wide" style={{ color: C.muted }}>
+                                                        ≈ ₹{inr((quote.basePriceApplied ?? quote.unitPrice) / Number(seller.packSize))} / {seller?.unit}
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="my-0.5 h-px" style={{ background: C.hair }} />
+
+                                            <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} small />
 
                                             {!isSample && quote.discountAmount > 0 ? (
                                                 <QuoteRow
-                                                    label={`Discount${quote.discountPercent ? ` (${quote.discountPercent}% off)` : ""}`}
+                                                    label={`Discount (${quote.discountPercent}% off)`}
                                                     value={`− ₹${inr(quote.discountAmount)}`}
                                                     tone={C.secondary}
+                                                    small
                                                 />
                                             ) : (
-                                                <QuoteRow label="Discount" value="₹0" />
+                                                <QuoteRow label="Discount" value="₹0" small />
                                             )}
 
                                             <div className="my-0.5 h-px" style={{ background: C.hair }} />
 
-                                            <QuoteRow strong label={isSample ? "Total payable (sample)" : "Total payable"} value={`₹${inr(quote.subtotal)}`} tone={C.ink} />
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[13px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>
+                                                    {isSample ? "Total payable (sample)" : "Total payable"}
+                                                </span>
+                                                <span className="text-[19px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                                    ₹{inr(quote.subtotal)}
+                                                </span>
+                                            </div>
                                         </div>
 
-                                        {/* Only ever shows a date once it's come back from the server
-                                            (fetchOrderQuote) — no locally-guessed date is ever rendered
-                                            here. While waiting, shows a loading skeleton instead. */}
+                                        {/* Delivery — unchanged */}
                                         <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
                                             <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}14`, color: C.secondary }}>
                                                 <Truck className="h-3.5 w-3.5" />
