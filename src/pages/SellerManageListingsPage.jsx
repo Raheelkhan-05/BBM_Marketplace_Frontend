@@ -47,6 +47,7 @@ import {
 } from "../utils/api.js";
 import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
+import FloatingSellButton from "../components/FloatingSellButton.jsx";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -882,6 +883,7 @@ export default function SellerManageListingsPage() {
                 )}
             </SmoothScrollProvider>
             <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
+            <FloatingSellButton to="/seller/sell" label="Sell" />
         </div>
     );
 }
