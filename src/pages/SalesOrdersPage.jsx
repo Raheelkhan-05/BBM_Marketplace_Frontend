@@ -57,6 +57,11 @@ function OrderCard({ order, idx, onAction }) {
                 <div className="flex items-center gap-1.5">
                     <p className="font-mono text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{order.order_number}</p>
                     {isSample && <SampleBadge />}
+                    {order.group_number && (
+                        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide" style={{ background: "#0B728514", color: "#0B7285" }}>
+                            Group #{order.group_number}
+                        </span>
+                    )}
                 </div>
                 <StatusChip status={order.status} />
             </div>

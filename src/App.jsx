@@ -44,6 +44,7 @@ import { SocketProvider } from "./context/SocketContext.jsx";
 import PaymentVerificationPage from './pages/admin/PaymentVerificationPage.jsx';
 import PendingPaymentGate from './components/PendingPaymentGate.jsx';
 import AdminFullCatalogUploadPage from './pages/admin/AdminFullCatalogUploadPage.jsx';
+import CartPage from "./pages/CartPage.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -103,6 +104,8 @@ function App() {
               <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
 
               <Route path="/seller/sell" element={<SellPublishProductPage />} />
+
+              <Route path="/cart" element={<CartPage />} />
 
               <Route path="/admin/catalog/bulk-upload" element={<AdminFullCatalogUploadPage />} />
 

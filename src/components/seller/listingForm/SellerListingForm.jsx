@@ -464,7 +464,7 @@ export default function SellerListingForm({
     // (which already account for gstInclusive correctly) and simply scales
     // them up by the total quantity implied by the current MOQ field.
     const moqPreview = useMemo(() => {
-        const moq = Number(form.moq) || 0;
+        const moq = Number(form.moq) || 1;
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
         const gst = Number(form.gstPercent) || 0;
@@ -935,10 +935,10 @@ export default function SellerListingForm({
 
                 <div className="rounded-2xl border p-3 flex flex-col gap-2" style={{ borderColor: C.hairSoft, background: `${C.secondary}08` }}>
                     <p className="text-[13px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.ink }}>
-                        Demo Price breakdown for {form.hasOuterPack ? `${form.moq} Master Packs` : `${form.moq} Packs`}
+                        Demo Price breakdown for {form.hasOuterPack ? `${form.moq || 1} Master Packs` : `${form.moq || 1} Packs`}
                     </p>
 
-                    {Number(form.moq) > 0 && Number(form.packSize) > 0 ? (
+                    {Number(form.packSize) > 0 ? (
                         <div className="flex flex-col gap-1.5">
                             <div className="flex flex-col gap-1">
                                 <p className="text-[11px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>

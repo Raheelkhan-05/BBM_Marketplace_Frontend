@@ -20,13 +20,14 @@ export default function Layout() {
   const { pathname } = useLocation();
   const isLandingPage = pathname === "/";
   const isAdminPage = pathname.startsWith("/admin");
+  const isCartPage = pathname.startsWith("/cart");
   // /chat/:id (a specific conversation) hides the bottom nav,
   // but /chat itself (the chat list) keeps it.
   const isChatDetailPage = /^\/chat\/[^/]+/.test(pathname);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [rfqOpen, setRfqOpen] = useState(false);
 
-  const showBottomNav = !isLandingPage && !isAdminPage && !isChatDetailPage && !lightboxOpen;
+  const showBottomNav = !isLandingPage && !isAdminPage && !isCartPage && !isChatDetailPage && !lightboxOpen;
 
   return (
     <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>

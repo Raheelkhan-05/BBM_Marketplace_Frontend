@@ -1,10 +1,8 @@
-//Header.jsx
-
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck,
-  Clock3, ListChecks, BookOpen
+  Clock3, ListChecks, BookOpen, Users, IndianRupee
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { TAGLINE } from "../../data/content";
@@ -24,29 +22,8 @@ const C = {
 const DROPDOWN_ITEM =
   "flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-50";
 
-// Single consistent row style for every mobile menu item — account actions
-// and admin links all render the same way. Icons are optional; omit the
-// `icon` prop for plain rows.
 const MOBILE_ROW =
   "flex min-h-[46px] items-center gap-3 rounded-lg px-3 text-[14.5px] font-semibold text-slate-700 transition-colors active:bg-slate-100";
-
-// Resolves the single seller-related menu entry based on onboarding/review status.
-// An approved seller with a live shop should only ever see "My Shop", never
-// any trace of "start selling" language.
-function getSellerMenuItem(profile) {
-  const status = profile?.seller_status;
-
-  if (status === "approved") {
-    return { label: "My Shop", href: `/shop/${profile.shop_slug}`, icon: Store, key: "approved" };
-  }
-  if (status === "draft" || status === "rejected") {
-    return { label: "Finish Seller Setup", href: "/seller/onboarding", icon: Clock3, key: "draft" };
-  }
-  if (status === "pending_review") {
-    return { label: "Seller Status", href: "/seller/status", icon: Clock3, key: "pending" };
-  }
-  return { label: "Start Selling", href: "/seller/listings", icon: Store, key: "new" };
-}
 
 export default function Header({ onOpenRfq }) {
   const [open, setOpen] = useState(false);
@@ -100,8 +77,6 @@ export default function Header({ onOpenRfq }) {
   }, [open]);
 
   const displayName = profile?.name?.trim().split(" ")[0] || "Account";
-  const sellerItem = getSellerMenuItem(profile);
-  const SellerIcon = sellerItem.icon;
   const isAdmin = profile?.role === "admin";
   const isApprovedSeller = profile?.seller_status === "approved";
 
@@ -125,10 +100,6 @@ export default function Header({ onOpenRfq }) {
             </h1>
           </SmartLink>
 
-          {/* Absolutely centered regardless of how wide the logo or the
-              right-side actions are — a flex justify-between row can never
-              guarantee true centering when its two side groups differ in
-              width, so this sits independently in the middle of the bar. */}
           <nav className="absolute left-1/2 hidden max-w-[60%] -translate-x-1/2 items-center gap-1 overflow-x-auto [scrollbar-width:none] md:flex lg:gap-1.5 [&::-webkit-scrollbar]:hidden">
             {navItems.map((it) => {
               const Icon = it.icon;
@@ -180,22 +151,20 @@ export default function Header({ onOpenRfq }) {
                         transition={{ duration: 0.15 }}
                         className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-[rgba(20,27,34,0.08)] bg-white py-1.5 shadow-xl"
                       >
-                        <SmartLink to="/home" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                          Marketplace
-                        </SmartLink>
-
-                        <SmartLink
-                          to={sellerItem.href}
-                          onClick={() => setAccountOpen(false)}
-                          className={DROPDOWN_ITEM}
-                        >
-                          <SellerIcon className="h-3.5 w-3.5 text-[#0B7285]" />
-                          {sellerItem.label}
-                        </SmartLink>
+                        {isApprovedSeller && (
+                          <SmartLink
+                            to={`/shop/${profile.shop_slug}`}
+                            onClick={() => setAccountOpen(false)}
+                            className={DROPDOWN_ITEM}
+                          >
+                            <Store className="h-3.5 w-3.5 text-[#0B7285]" />
+                            My Shop
+                          </SmartLink>
+                        )}
 
                         {isAdmin && (
                           <>
-                            <div className="my-1 border-t border-[rgba(20,27,34,0.08)]" />
+                            {isApprovedSeller && <div className="my-1 border-t border-[rgba(20,27,34,0.08)]" />}
                             <SmartLink to="/admin/sellers" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
                               <ShieldCheck className="h-3.5 w-3.5 text-[#0B7285]" />
                               Seller Applications
@@ -205,7 +174,7 @@ export default function Header({ onOpenRfq }) {
                               Catalog
                             </SmartLink>
                             <SmartLink to="/admin/admins" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <ShieldCheck className="h-3.5 w-3.5 text-[#0B7285]" />
+                              <Users className="h-3.5 w-3.5 text-[#0B7285]" />
                               Manage Admins
                             </SmartLink>
                             <SmartLink to="/admin/listings" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
@@ -213,7 +182,7 @@ export default function Header({ onOpenRfq }) {
                               Product Review Requests
                             </SmartLink>
                             <SmartLink to="/admin/payments" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <ListChecks className="h-3.5 w-3.5 text-[#0B7285]" />
+                              <IndianRupee className="h-3.5 w-3.5 text-[#0B7285]" />
                               Payment Verification
                             </SmartLink>
                           </>
@@ -274,11 +243,6 @@ export default function Header({ onOpenRfq }) {
               className="fixed left-0 right-0 z-50 max-h-[calc(100dvh-var(--h))] overflow-y-auto border-b border-[rgba(20,27,34,0.08)] bg-[#FCFBF9] shadow-xl backdrop-blur-xl md:hidden"
             >
               <div className="mx-auto max-w-7xl px-5 py-4">
-                {/* Identity strip — mirrors the desktop avatar button so mobile
-                      users get the same "signed in as" context before diving into links.
-                      Nav items themselves now live in the fixed bottom strip
-                      (see BottomNavStrip.jsx), not here — this menu is just
-                      account/admin actions. */}
                 {isLoggedIn && (
                   <div className="mb-3 flex items-center gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5">
                     <span
@@ -297,10 +261,12 @@ export default function Header({ onOpenRfq }) {
                 <nav className="flex flex-col gap-0.5">
                   {isLoggedIn && (
                     <>
-                      <SmartLink to={sellerItem.href} onClick={() => setOpen(false)} className={`${MOBILE_ROW} text-[#0B7285]`}>
-                        <SellerIcon className="h-4 w-4 text-[#0B7285]" />
-                        {sellerItem.label}
-                      </SmartLink>
+                      {isApprovedSeller && (
+                        <SmartLink to={`/shop/${profile.shop_slug}`} onClick={() => setOpen(false)} className={`${MOBILE_ROW} text-[#0B7285]`}>
+                          <Store className="h-4 w-4 text-[#0B7285]" />
+                          My Shop
+                        </SmartLink>
+                      )}
 
                       {isAdmin && (
                         <>
@@ -314,7 +280,7 @@ export default function Header({ onOpenRfq }) {
                             Catalog
                           </SmartLink>
                           <SmartLink to="/admin/admins" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <ShieldCheck className="h-4 w-4 text-slate-400" />
+                            <Users className="h-4 w-4 text-slate-400" />
                             Manage Admins
                           </SmartLink>
                           <SmartLink to="/admin/listings" onClick={() => setOpen(false)} className={MOBILE_ROW}>
@@ -322,7 +288,7 @@ export default function Header({ onOpenRfq }) {
                             Product Review Requests
                           </SmartLink>
                           <SmartLink to="/admin/payments" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <ListChecks className="h-4 w-4 text-slate-400" />
+                            <IndianRupee className="h-4 w-4 text-slate-400" />
                             Payment Verification
                           </SmartLink>
                         </>

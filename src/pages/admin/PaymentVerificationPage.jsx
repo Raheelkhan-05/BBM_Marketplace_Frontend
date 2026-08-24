@@ -245,11 +245,11 @@ export default function PaymentVerificationPage() {
     };
 
     return (
-        <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+        <div className="mx-auto min-h-screen max-w-3xl px-4 py-6 sm:px-6">
             <div className="mb-5 flex items-center justify-between">
                 <div>
                     <p className="font-mono text-[11px] font-bold uppercase tracking-[0.16em]" style={{ color: C.secondary }}>Admin</p>
-                    <h1 className="text-[20px] font-extrabold tracking-wide" style={{ color: C.ink }}>UPI payment verification</h1>
+                    <h1 className="text-[20px] font-extrabold tracking-wide" style={{ color: C.ink }}>Payment verification</h1>
                 </div>
                 <button onClick={load} className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.muted }}>
                     <RefreshCw className="h-3.5 w-3.5" /> Refresh

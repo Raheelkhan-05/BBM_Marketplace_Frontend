@@ -30,11 +30,12 @@ import PaymentQRModal from "./PaymentQRModal.jsx";
 import {
     Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee,
     Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
-    CreditCard, Boxes,
+    CreditCard, Boxes, ShoppingCart,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, fetchCreditStatus, requestCredit as requestCreditApi } from "../utils/api.js";
+import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi } from "../utils/api.js";
+import { addToCart } from "../utils/cartApi.js";
 import { getOrCreateDirectConversation } from "../utils/chatApi.js";
 import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
 import { clearPaymentSession } from "../utils/paymentSession.js";
@@ -641,7 +642,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
     }[access?.reason] || { title: "Can't place an order right now", body: "Please try again in a moment.", cta: "Close", action: onClose };
 
     const [requestingCredit, setRequestingCredit] = useState(false);
-    console.log("seller : ", seller);
+    // console.log("seller : ", seller);
     const handleRequestCredit = async () => {
         if (!seller?.offerId) { setError("Couldn't reach this seller right now."); return; }
         setRequestingCredit(true);
@@ -654,15 +655,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const handleBackToEdit = async () => {
         if (awaitingPaymentOrderId) {
-            // Cancel the order we just created — otherwise resubmitting from
-            // the form would leave two orders sitting in awaiting_payment.
-            const res = await cancelOrder(token, awaitingPaymentOrderId, "Buyer went back to edit the order before paying");
+            const res = await cancelMyOrder(token, awaitingPaymentOrderId, "Buyer went back to edit the order before paying");
             if (!res?.success) {
                 console.warn("Couldn't cancel the pending order before going back:", res?.message);
             }
         }
         clearPaymentSession();
-        setAwaitingPaymentOrderId(null); // form reappears with quantity/address/notes untouched
+        setAwaitingPaymentOrderId(null);
     };
 
     const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.hsnCode || seller.freightIncluded != null || seller.dispatchOrigin);
@@ -1072,6 +1071,25 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
                                     </button>
                                 )
+                            )}
+
+                            {!isSample && !isCredit && (
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        setSubmitting(true);
+                                        const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
+                                        setSubmitting(false);
+                                        if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
+                                        onClose();
+                                        navigate("/cart");
+                                    }}
+                                    disabled={submitting}
+                                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
+                                    style={{ borderColor: C.hair, color: C.ink }}
+                                >
+                                    <ShoppingCart className="h-3.5 w-3.5" /> Add to cart
+                                </button>
                             )}
 
                             <button onClick={() => handleSubmit()} disabled={submitting}

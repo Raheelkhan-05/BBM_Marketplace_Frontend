@@ -8,6 +8,7 @@ import {
     MessageCircle,
     ListChecks,
     PackagePlus,
+    ShoppingCart,
     ChartNoAxesCombined,
 } from "lucide-react";
 
@@ -33,6 +34,13 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate })
             icon: MessageCircle,
             onClick: () => navigate("/chat"),
             match: (p) => p === "/chat",
+        },
+        {
+            id: "cart",
+            label: "Cart",
+            icon: ShoppingCart,
+            onClick: () => navigate("/cart"),
+            match: (p) => p === "/cart",
         },
         {
             id: "orders",

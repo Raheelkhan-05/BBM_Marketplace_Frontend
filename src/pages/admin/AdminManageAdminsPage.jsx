@@ -32,7 +32,7 @@ export default function AdminManageAdminsPage() {
     if (q.trim().length < 2) { setResults([]); return; }
     debounceRef.current = setTimeout(async () => {
       setSearching(true);
-    //   console.log("token : ",token);
+      //   console.log("token : ",token);
       const res = await adminSearchUsers(token, q.trim());
       if (res?.success) setResults(res.users);
       setSearching(false);
@@ -59,7 +59,7 @@ export default function AdminManageAdminsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-2xl px-4 pb-16 pt-6 sm:px-6">
+    <div className="mx-auto min-h-screen max-w-2xl px-4 pb-16 pt-6 sm:px-6">
       <h1 className="text-[22px] font-extrabold text-slate-900">Manage Admins</h1>
       <p className="mt-1 text-[13px] font-medium text-slate-500">Search users by name, phone, or email to grant admin access.</p>
 
