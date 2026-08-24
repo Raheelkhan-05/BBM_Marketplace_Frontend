@@ -371,7 +371,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell }) {
                                             {s.display_name}
                                         </p>
                                         <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                            {s.moq ? `MOQ ${s.moq} ${s.unit}` : s.unit}
+                                            {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
                                             {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
                                         </p>
                                     </div>

@@ -905,7 +905,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                             {/* Rate line — just the math reference, kept small/muted so it
                                                 doesn't compete with the actual amount rows below it. */}
                                             <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                {quote.baseQuantity ?? quote.quantity} {quote.unit} × ₹{inr(quote.unitPrice)} / {quote.unit}
+                                                {quote.baseQuantity ?? quote.quantity} {moqUnitLabel} × ₹{inr(quote.unitPrice)} / {moqUnitLabel}
                                             </p>
 
                                             <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} />
