@@ -98,21 +98,12 @@ function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, in
     const hasMasterPack = master >= 1;
     const gst = Number(gstPercent) || 0;
 
-    // Stored price is GST-inclusive; reverse it out for the "excl. GST" view.
-    const adjusted = includeGst ? sourcePrice : sourcePrice / (1 + gst / 100);
+    // Stored price is GST-inclusive PER UNIT; reverse GST out first, then
+    // scale UP to Pack / Master Pack — never divide down from a larger basis.
+    const unitPrice = includeGst ? sourcePrice : sourcePrice / (1 + gst / 100);
 
-    let masterPackPrice = null;
-    let packPrice = null;
-    let unitPrice = null;
-
-    if (hasMasterPack) {
-        masterPackPrice = adjusted;
-        packPrice = master > 0 ? adjusted / master : null;
-        unitPrice = packPrice != null && pack > 0 ? packPrice / pack : null;
-    } else {
-        packPrice = adjusted;
-        unitPrice = pack > 0 ? packPrice / pack : null;
-    }
+    const packPrice = pack > 0 ? unitPrice * pack : null;
+    const masterPackPrice = hasMasterPack && packPrice != null ? packPrice * master : null;
 
     return {
         unitPrice,
