@@ -1,34 +1,26 @@
 // components/home/HomeProductFeed.jsx
 //
-// The home page's product list — brand items (fetchBrandItemsFeed),
-// filterable live by `q` (wired from the home search bar's typed value)
-// in addition to the category filter.
-//
-// NAVIGATION CHANGE: tapping a row no longer opens BuySellChoiceSheet.
-// It now expands an inline accordion directly beneath that row listing
-// sellers (name + price only) for that exact brand item, fetched from
-// the same catalog_brand_item_sellers endpoint BrandItemSellersPage
-// uses. Tapping a seller row opens BuyNowModal immediately — same
-// payload shape/mapping as BrandItemSellersPage. A "Sell this product"
-// row sits at the bottom of the dropdown (visible only once sellers
-// have finished loading) and opens SellThisItemModal, unchanged from
-// before. Only one dropdown is open at a time across the whole feed
-// (single `openItemId` state). The seller list inside the dropdown
-// carries `data-lenis-prevent` so hovering it hands scroll control
-// back to native/the list instead of the page's Lenis smooth-scroll —
-// the same opt-out pattern BuyNowModal/SellThisItemModal already use
-// for their own scroll containers.
-//
-// ROW LAYOUT: the Info icon sits inline with the product name (top
-// line) rather than in a separate right-side icon cluster. The
-// right-side slot instead shows "from ₹X" pricing (when available)
-// stacked above the expand/collapse chevron — that whole slot is the
-// toggle target, same as tapping the row itself.
+// PRICE BREAKDOWN + GST TOGGLE (this revision):
+// - The seller's stored `price` is the source of truth, always keyed to
+//   whatever basis that seller sells in (per Pack, or per Master Pack when
+//   masterPackSize >= 1 — same convention as priceUnitLabel/packagingLabel
+//   already used). From that single number we derive the other two prices:
+//   unit price, pack price, and master-pack price (when applicable).
+// - That stored price is GST-inclusive by convention (confirmed by seller
+//   at listing time, using that same listing's gst_percent). A single
+//   toggle — replacing the old static "X products" label — switches the
+//   whole feed (rows + open seller dropdown) between showing GST-inclusive
+//   and GST-exclusive prices. Exclusive is derived by reversing the GST
+//   percent on the stored (inclusive) price: excl = incl / (1 + gst/100).
+// - All of this is pure client-side arithmetic on numbers already present
+//   in the row/seller payload (or, for the feed rows, one added field
+//   `lowest_price_gst_percent` — see catalog_browse SQL), so toggling is
+//   instant with no refetch.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Package, Info, Store } from "lucide-react";
+import { ChevronDown, Package, Info, Store, ShieldCheck } from "lucide-react";
 import { fetchBrandItemsFeed, fetchBrandItemSellers } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -75,7 +67,6 @@ function priceUnitLabel(masterPackSize) {
 }
 
 function packagingLabel(packSize, masterPackSize, unit) {
-
     const pack = Number(packSize) || 0;
     const master = Number(masterPackSize) || 0;
 
@@ -88,6 +79,89 @@ function packagingLabel(packSize, masterPackSize, unit) {
     return `1 Pack = ${pack} ${unit}`;
 }
 
+// ---------------------------------------------------------------------
+// Price breakdown — derives unit / pack / master-pack prices from the
+// single source-of-truth price, and applies the GST toggle.
+//
+// `price` is whatever the seller actually stores: per Pack if
+// masterPackSize < 1, per Master Pack if masterPackSize >= 1 (same
+// convention as priceUnitLabel above). `price` is assumed GST-inclusive
+// at rest — includeGst=false reverses that seller's own gst_percent to
+// get the exclusive figure; includeGst=true returns it unchanged.
+// ---------------------------------------------------------------------
+function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, includeGst }) {
+    const sourcePrice = Number(price);
+    if (!(sourcePrice > 0)) return null;
+
+    const pack = Number(packSize) || 0;
+    const master = Number(masterPackSize) || 0;
+    const hasMasterPack = master >= 1;
+    const gst = Number(gstPercent) || 0;
+
+    // Stored price is GST-inclusive; reverse it out for the "excl. GST" view.
+    const adjusted = includeGst ? sourcePrice : sourcePrice / (1 + gst / 100);
+
+    let masterPackPrice = null;
+    let packPrice = null;
+    let unitPrice = null;
+
+    if (hasMasterPack) {
+        masterPackPrice = adjusted;
+        packPrice = master > 0 ? adjusted / master : null;
+        unitPrice = packPrice != null && pack > 0 ? packPrice / pack : null;
+    } else {
+        packPrice = adjusted;
+        unitPrice = pack > 0 ? packPrice / pack : null;
+    }
+
+    return {
+        unitPrice,
+        packPrice,
+        masterPackPrice,
+        hasMasterPack,
+        basis: hasMasterPack ? "master_pack" : "pack",
+    };
+}
+
+// Compact, reusable price-breakdown block — shows whichever of
+// unit/pack/master-pack prices are available, smallest to largest.
+// `align` controls whether it's left- or right-aligned (rows want
+// right-aligned in the price column; seller dropdown rows want the
+// same but slightly denser).
+function PriceBreakdown({ breakdown, unit, size = "row" }) {
+    if (!breakdown) return null;
+    const { unitPrice, packPrice, masterPackPrice, hasMasterPack } = breakdown;
+
+    const rows = [
+        unitPrice != null && unit ? { label: unit, value: unitPrice } : null,
+        packPrice != null ? { label: "Pack", value: packPrice } : null,
+        hasMasterPack && masterPackPrice != null ? { label: "M Pack", value: masterPackPrice } : null,
+    ].filter(Boolean);
+
+    if (!rows.length) return null;
+
+    const isRow = size === "row";
+    const valueClass = isRow
+        ? "text-[12px] font-extrabold tabular-nums"
+        : "text-[11.5px] font-extrabold tabular-nums";
+    const labelClass = "text-[9px] font-semibold tracking-wide";
+
+    return (
+        <div className="grid items-baseline gap-x-1 gap-y-0.5" style={{ gridTemplateColumns: "auto auto" }}>
+            {rows.map((r) => (
+                <div key={r.label} className="contents">
+                    <span className={`${valueClass} text-right whitespace-nowrap`} style={{ color: C.ink }}>
+                        ₹{inr(r.value)}
+                    </span>
+                    <span className={`${labelClass} text-left whitespace-nowrap`} style={{ color: C.muted }}>
+                        /{r.label}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 // Same lead-time rule BuyNowModal/BrandItemSellersPage use.
 function effectiveLeadTime(s) {
     return s.stock_type === "made_to_order" ? s.production_lead_time_days : s.dispatch_time_days;
@@ -96,13 +170,11 @@ function effectiveLeadTime(s) {
 function BrandBadge({ name, image }) {
     if (!name) return null;
     const initials = name.trim().slice(0, 2).toUpperCase();
-    console.log(image);
-
     return image ? (
         <img
             src={image}
             alt=""
-            className="h-4 w-auto shrink-0 rounded-full object-cover"
+            className="h-6 w-auto shrink-0 rounded-full object-cover"
         />
     ) : (
         <span
@@ -179,7 +251,28 @@ function ProductImage({ src, alt, onOpen }) {
     );
 }
 
-function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
+// GST toggle — replaces the old static "X products" label at the top of
+// the feed. Purely a local UI switch; all price math it drives is
+// recomputed client-side (useMemo), so flipping it is instant.
+function GstToggle({ includeGst, onChange }) {
+    return (
+        <button
+            type="button"
+            onClick={() => onChange(!includeGst)}
+            className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10.5px] font-bold tracking-wide transition-colors duration-150"
+            style={{
+                borderColor: includeGst ? `${C.secondary}40` : C.hair,
+                background: includeGst ? `${C.secondary}0f` : "transparent",
+                color: includeGst ? C.secondary : C.muted,
+            }}
+        >
+            <ShieldCheck className="h-3 w-3" />
+            {includeGst ? "Incl. GST" : "Excl. GST"}
+        </button>
+    );
+}
+
+function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
 
     const packaging = packagingLabel(
@@ -187,6 +280,25 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
         item.lowest_price_master_pack_size,
         item.lowest_price_unit
     );
+
+    // Recomputed only when the underlying price fields or the GST toggle
+    // change — cheap pure arithmetic, so this stays effectively instant.
+    const breakdown = useMemo(() => {
+        if (item.lowest_price == null) return null;
+        return computePriceBreakdown({
+            price: item.lowest_price,
+            packSize: item.lowest_price_pack_size,
+            masterPackSize: item.lowest_price_master_pack_size,
+            gstPercent: item.lowest_price_gst_percent,
+            includeGst,
+        });
+    }, [
+        item.lowest_price,
+        item.lowest_price_pack_size,
+        item.lowest_price_master_pack_size,
+        item.lowest_price_gst_percent,
+        includeGst,
+    ]);
 
     return (
         <motion.div
@@ -285,38 +397,21 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
                 )}
             </div>
 
-            {/* COL 3 — PRICE */}
+            {/* COL 3 — PRICE BREAKDOWN (unit / pack / master pack) */}
             <button
                 onClick={onToggle}
                 aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
-                className="flex h-full shrink-0 items-center justify-end text-right"
+                className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right"
             >
-                {item.lowest_price != null && (
-                    <span className="flex flex-col items-end">
-                        <span
-                            className="text-[10px] font-semibold uppercase leading-tight tracking-wider"
-                            style={{ color: C.muted }}
-                        >
-                            from
-                        </span>
-
-                        <span
-                            className="text-[15px] font-extrabold leading-tight tabular-nums tracking-wide"
-                            style={{ color: C.ink }}
-                        >
-                            ₹{inr(item.lowest_price)}
-                        </span>
-
-                        <span
-                            className="text-[9.5px] font-semibold tracking-wide"
-                            style={{ color: C.muted }}
-                        >
-                            /{priceUnitLabel(
-                                item.lowest_price_master_pack_size
-                            )}
-                        </span>
+                {breakdown && (
+                    <span
+                        className="text-[10px] font-semibold uppercase leading-tight tracking-wider"
+                        style={{ color: C.muted }}
+                    >
+                        from
                     </span>
                 )}
+                <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
             </button>
         </motion.div>
     );
@@ -328,7 +423,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
 // hands scroll control back to the native container the instant the
 // cursor is over it, instead of the page's Lenis smooth-scroll eating
 // the wheel event.
-function SellerDropdown({ item, state, onBuySeller, onSell }) {
+function SellerDropdown({ item, state, onBuySeller, onSell, includeGst }) {
     const { loading, items = [], error, total = 0, hasMore } = state || {};
 
     return (
@@ -382,31 +477,35 @@ function SellerDropdown({ item, state, onBuySeller, onSell }) {
                         <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>No sellers listing this yet.</p>
                     ) : (
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
-                            {items.map((s) => (
-                                <button
-                                    key={s.submission_id}
-                                    onClick={() => onBuySeller(s)}
-                                    className="flex items-center justify-between gap-3 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03]"
-                                >
-                                    <div className="min-w-0 flex-1">
-                                        <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                            {s.display_name}
-                                        </p>
-                                        <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                            {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
-                                            {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
-                                        </p>
-                                    </div>
-                                    <div className="shrink-0 text-right">
-                                        <p className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.primary }}>
-                                            ₹{inr(s.price)}
-                                        </p>
-                                        <p className="text-[10px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                            /{priceUnitLabel(s.units_per_master_pack)}
-                                        </p>
-                                    </div>
-                                </button>
-                            ))}
+                            {items.map((s) => {
+                                // Same derivation as the row-level breakdown, just
+                                // sourced from this seller's own fields.
+                                const breakdown = computePriceBreakdown({
+                                    price: s.price,
+                                    packSize: s.pack_size,
+                                    masterPackSize: s.units_per_master_pack,
+                                    gstPercent: s.gst_percent,
+                                    includeGst,
+                                });
+                                return (
+                                    <button
+                                        key={s.submission_id}
+                                        onClick={() => onBuySeller(s)}
+                                        className="flex items-center justify-between gap-3 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03]"
+                                    >
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                {s.display_name}
+                                            </p>
+                                            <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
+                                                {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
+                                            </p>
+                                        </div>
+                                        <PriceBreakdown breakdown={breakdown} unit={s.unit} size="seller" />
+                                    </button>
+                                );
+                            })}
                             {hasMore && (
                                 <p className="pt-2 text-center text-[11px] font-semibold" style={{ color: C.muted }}>
                                     +{Math.max(total - items.length, 0)} more sellers
@@ -457,6 +556,11 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [hasMore, setHasMore] = useState(true);
     const [lightboxSrc, setLightboxSrc] = useState(null);
     const [infoItemId, setInfoItemId] = useState(null);
+
+    // GST view toggle — defaults to inclusive, since that's what the
+    // stored price already represents. Purely client-side; no refetch
+    // needed on flip, every price is re-derived instantly via useMemo.
+    const [includeGst, setIncludeGst] = useState(true);
 
     // Inline seller accordion state — only ONE item id can be open at
     // once. sellerState is keyed by item id so a previous item's
@@ -600,9 +704,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                 <h2 className="text-[14.5px] font-extrabold tracking-wider" style={{ color: C.ink }}>
                     {category ? category.name : "All products"}
                 </h2>
-                <span className="text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                    {total != null ? `${total} products` : "Loading…"}
-                </span>
+                <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
             </div>
 
             <div className="rounded-2xl border bg-white" style={{ borderColor: C.hair }}>
@@ -631,6 +733,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                                             onToggle={() => toggleDropdown(item)}
                                             onInfo={() => setInfoItemId(item.id)}
                                             onImageOpen={setLightboxSrc}
+                                            includeGst={includeGst}
                                         />
                                         <AnimatePresence initial={false}>
                                             {isOpen && (
@@ -639,6 +742,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                     state={sellerState[item.id]}
                                                     onBuySeller={(seller) => handleBuySeller(item, seller)}
                                                     onSell={() => handleSell(item)}
+                                                    includeGst={includeGst}
                                                 />
                                             )}
                                         </AnimatePresence>
