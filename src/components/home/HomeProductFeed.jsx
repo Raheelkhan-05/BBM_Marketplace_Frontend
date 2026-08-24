@@ -68,6 +68,13 @@ function mergeUnique(prev, incoming) {
     return [...prev, ...deduped];
 }
 
+// Whether this listing's price is priced per Pack or per Master Pack.
+// masterPackSize >= 1 means a master pack applies; otherwise it's per Pack.
+function priceUnitLabel(masterPackSize) {
+    return Number(masterPackSize) >= 1 ? "master pack" : "pack";
+}
+
+
 // Same lead-time rule BuyNowModal/BrandItemSellersPage use.
 function effectiveLeadTime(s) {
     return s.stock_type === "made_to_order" ? s.production_lead_time_days : s.dispatch_time_days;
@@ -206,6 +213,9 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen }) {
                         <span className="text-[15px] font-extrabold leading-tight tabular-nums tracking-wide" style={{ color: C.ink }}>
                             ₹{inr(item.lowest_price)}
                         </span>
+                        <span className="text-[9.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                            /{priceUnitLabel(item.lowest_price_master_pack_size)}
+                        </span>
                     </span>
                 )}
             </button>
@@ -293,7 +303,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell }) {
                                             ₹{inr(s.price)}
                                         </p>
                                         <p className="text-[10px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                            /{s.unit}
+                                            /{priceUnitLabel(s.units_per_master_pack)}
                                         </p>
                                     </div>
                                 </button>
