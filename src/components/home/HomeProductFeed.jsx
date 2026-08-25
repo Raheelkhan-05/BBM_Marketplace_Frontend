@@ -42,6 +42,146 @@ function inr(n) {
     return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
+// Same slab/discount resolution logic as BuyNowModal.js — kept in sync
+// on purpose so "how much you'll actually pay" never disagrees between
+// the feed dropdown and the checkout modal.
+function resolveSlabUnitPrice(priceSlabs, quantity, fallbackPrice) {
+    if (!Array.isArray(priceSlabs) || !priceSlabs.length) return fallbackPrice;
+    const applicable = priceSlabs
+        .filter((s) => Number(s.minQty) > 0 && quantity >= Number(s.minQty) && (!s.maxQty || quantity <= Number(s.maxQty)))
+        .sort((a, b) => Number(b.minQty) - Number(a.minQty));
+    return applicable.length ? Number(applicable[0].price) : fallbackPrice;
+}
+function resolveDiscountPercent(quantityDiscounts, quantity) {
+    if (!Array.isArray(quantityDiscounts) || !quantityDiscounts.length) return 0;
+    const applicable = quantityDiscounts
+        .filter((d) => Number(d.minQty) > 0 && quantity >= Number(d.minQty))
+        .sort((a, b) => Number(b.minQty) - Number(a.minQty));
+    return applicable.length ? Number(applicable[0].discountPercent) || 0 : 0;
+}
+
+function moqInPacks(seller) {
+    return Math.max(1, Number(seller.moq) || 1);
+}
+
+const SELLER_SORT_OPTIONS = [
+    { value: "best_value", label: "Best price at MOQ" },
+    { value: "max_discount", label: "Biggest discount" },
+];
+
+function SellerSortToggle({ value, onChange }) {
+    return (
+        <div className="flex gap-1 rounded-full p-0.5" style={{ background: C.hairSoft }}>
+            {SELLER_SORT_OPTIONS.map((opt) => (
+                <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onChange(opt.value)}
+                    className="rounded-full px-2 py-1 text-[10px] font-bold tracking-wide transition-colors duration-150"
+                    style={value === opt.value ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
+                >
+                    {opt.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+// The number that actually answers "who's cheaper": per-Pack price paid
+// if the buyer commits to exactly this seller's own MOQ, after their
+// slab price AND any quantity-discount tier that MOQ unlocks.
+// seller.price is per base-UNIT (same convention as elsewhere in this
+// file) — scale up to per-Pack first, same anchor-then-scale direction
+// used in computePriceBreakdown.
+function effectivePricePerPackAtMoq(seller) {
+    const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
+    const pricePerPack = Number(seller.price) * packSize;
+    if (!(pricePerPack > 0)) return null;
+
+    const qty = moqInPacks(seller);
+    const slabPrice = resolveSlabUnitPrice(seller.price_slabs, qty, pricePerPack);
+    const discountPercent = resolveDiscountPercent(seller.quantity_discounts, qty);
+
+    return {
+        unitPrice: slabPrice * (1 - discountPercent / 100),
+        moqQty: qty,
+        discountPercent,
+        basis: Number(seller.units_per_master_pack) >= 1 ? "Master Pack" : "Pack",
+    };
+}
+
+
+// Best discount % this seller offers at all (regardless of how much
+// quantity is needed to unlock it) — used by the "Biggest discount" sort.
+function maxDiscountPercent(seller) {
+    if (!Array.isArray(seller.quantity_discounts) || !seller.quantity_discounts.length) return 0;
+    return Math.max(...seller.quantity_discounts.map((d) => Number(d.discountPercent) || 0));
+}
+
+function SellerPriceBlock({ pricing, unit }) {
+    if (!pricing) return null;
+    const { discountPercent, hasMasterPack, unit: u, pack, masterPack } = pricing;
+    const hasDiscount = discountPercent > 0;
+
+    const rows = [
+        unit ? { label: unit, ...u } : null,
+        { label: "Pack", ...pack },
+        hasMasterPack && masterPack ? { label: "M Pack", ...masterPack } : null,
+    ].filter(Boolean);
+
+    return (
+        <div className="grid shrink-0 items-baseline gap-x-1.5 gap-y-0.5" style={{ gridTemplateColumns: "auto auto auto" }}>
+            {rows.map((r) => (
+                <div key={r.label} className="contents">
+                    {hasDiscount && (
+                        <span className="text-[9.5px] text-right font-semibold tabular-nums line-through" style={{ color: C.muted }}>
+                            ₹{inr(r.original)}
+                        </span>
+                    )}
+                    <span
+                        className="text-right text-[12.5px] font-extrabold tabular-nums whitespace-nowrap"
+                        style={{ color: hasDiscount ? C.secondary : C.ink, gridColumn: hasDiscount ? "auto" : "1 / span 2" }}
+                    >
+                        ₹{inr(r.final)}
+                    </span>
+                    <span className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap" style={{ color: C.muted }}>
+                        /{r.label}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// What a buyer actually pays per sale-unit (Pack or Master Pack) if they
+// bought exactly `saleQty` of them — slab price first, then whichever
+// quantity-discount tier that saleQty unlocks.
+function computeSellerPricingAtQty(seller, saleQty, includeGst) {
+    const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
+    const master = Number(seller.units_per_master_pack) || 1;
+    const hasMasterPack = sellerSaleUnit(seller) === "Master Pack";
+    const gst = Number(seller.gst_percent) || 0;
+
+    const unitPriceBase = includeGst ? Number(seller.price) : Number(seller.price) / (1 + gst / 100);
+    if (!(unitPriceBase > 0)) return null;
+
+    const pricePerPack = unitPriceBase * packSize;
+    const packQtyEquivalent = hasMasterPack ? saleQty * master : saleQty;
+
+    const slabPrice = resolveSlabUnitPrice(seller.price_slabs, packQtyEquivalent, pricePerPack);
+    const discountPercent = resolveDiscountPercent(seller.quantity_discounts, saleQty);
+    const finalPricePerPack = slabPrice * (1 - discountPercent / 100);
+
+    const scale = hasMasterPack ? master : 1;
+    return {
+        saleUnit: sellerSaleUnit(seller),
+        saleQty,
+        originalPrice: slabPrice * scale,
+        finalPrice: finalPricePerPack * scale,
+        discountPercent,
+    };
+}
+
 // Merges a new page of results into the existing list, dropping any
 // item whose id is already present. Needed because offset-based
 // pagination can hand back an id that's already on screen — most
@@ -408,14 +548,109 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
     );
 }
 
+function sellerSaleUnit(seller) {
+    return Number(seller.units_per_master_pack) >= 1 ? "Master Pack" : "Pack";
+}
+
+// seller.moq is always stored in Packs — convert to whichever unit this
+// seller actually sells/discounts in (Master Pack or Pack) before it's
+// used anywhere near quantity_discounts, which are denominated in that
+// sale unit, not Packs.
+// seller.moq is stored directly in the seller's own sale unit (Master
+// Pack if this listing sells by master pack, otherwise Pack) — it is
+// NOT always in Packs, despite BuyNowModal's MOQ-display comment. Use
+// it as-is; converting it again here was shrinking MOQs like "3 Master
+// Packs" down below real discount tiers and silently killing discounts
+// that should have applied.
+function moqInSaleUnits(seller) {
+    return Math.max(1, Number(seller.moq) || 1);
+}
+
+// Single source of truth: computes the slab price + quantity-discount at
+// a given sale-unit quantity, ONCE, at the Pack level — then derives
+// unit / pack / master-pack prices from that one resolved number so all
+// three bases are always mutually consistent (no separate re-derivation
+// to drift apart, which was the root cause of MOQ-60 mismatches).
+function computeEffectivePricing(seller, saleQty, includeGst) {
+    const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
+    const master = Number(seller.units_per_master_pack) || 1;
+    const hasMasterPack = sellerSaleUnit(seller) === "Master Pack";
+    const gst = Number(seller.gst_percent) || 0;
+
+    const unitPriceBase = includeGst ? Number(seller.price) : Number(seller.price) / (1 + gst / 100);
+    if (!(unitPriceBase > 0)) return null;
+
+    const pricePerPack = unitPriceBase * packSize;
+    // price_slabs are keyed by pack-equivalent quantity — convert this
+    // sale-unit qty up to packs ONLY for the slab lookup.
+    const packQtyEquivalent = hasMasterPack ? saleQty * master : saleQty;
+    const slabPricePerPack = resolveSlabUnitPrice(seller.price_slabs, packQtyEquivalent, pricePerPack);
+
+    // quantity_discounts are keyed by the seller's actual sale unit —
+    // saleQty is already in that unit, no conversion here.
+    const discountPercent = resolveDiscountPercent(seller.quantity_discounts, saleQty);
+    const finalPricePerPack = slabPricePerPack * (1 - discountPercent / 100);
+
+    return {
+        saleUnit: hasMasterPack ? "Master Pack" : "Pack",
+        saleQty,
+        discountPercent,
+        hasMasterPack,
+        // "original" = after slab, before the quantity-discount % — this
+        // is what gets struck through when a discount applies.
+        unit: { original: slabPricePerPack / packSize, final: finalPricePerPack / packSize },
+        pack: { original: slabPricePerPack, final: finalPricePerPack },
+        masterPack: hasMasterPack
+            ? { original: slabPricePerPack * master, final: finalPricePerPack * master }
+            : null,
+    };
+}
+
+function bestDiscountTier(seller) {
+    if (!Array.isArray(seller.quantity_discounts) || !seller.quantity_discounts.length) return null;
+    return [...seller.quantity_discounts].sort(
+        (a, b) => (Number(b.discountPercent) || 0) - (Number(a.discountPercent) || 0)
+    )[0] || null;
+}
+
+function sellerPricingForMode(seller, sortMode, includeGst) {
+    if (sortMode === "max_discount") {
+        const tier = bestDiscountTier(seller);
+        const qty = tier ? (Number(tier.minQty) || moqInSaleUnits(seller)) : moqInSaleUnits(seller);
+        return computeEffectivePricing(seller, qty, includeGst);
+    }
+    return computeEffectivePricing(seller, moqInSaleUnits(seller), includeGst); // best_value, at MOQ
+}
+
 // Inline seller accordion. Renders directly under the row it belongs
 // to. `state` is { loading, items, error, total, hasMore } for this
 // item's fetch. `data-lenis-prevent` on the scrollable list is what
 // hands scroll control back to the native container the instant the
 // cursor is over it, instead of the page's Lenis smooth-scroll eating
 // the wheel event.
-function SellerDropdown({ item, state, onBuySeller, onSell, includeGst }) {
+function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange }) {
     const { loading, items = [], error, total = 0, hasMore } = state || {};
+
+    // Re-sort whichever page of sellers we've already fetched. Note: this
+    // only sorts what's loaded so far (SELLER_PAGE_SIZE per fetch) — a
+    // seller further down a very long list won't be pulled to the top
+    // until they're fetched. Fine for the common case; flag if you want
+    // server-side sort-aware pagination too.
+    const sortedItems = useMemo(() => {
+        if (!items.length) return items;
+        const withMeta = items.map((s) => ({ s, pricing: sellerPricingForMode(s, sortMode, includeGst) }));
+        // Sort mode only changes WHICH quantity/tier the price is computed
+        // at (MOQ vs. best-available-discount) — the resulting list is
+        // always ordered cheapest-to-priciest by that computed price, so
+        // the seller who's genuinely cheapest is always shown first no
+        // matter which mode is selected.
+        withMeta.sort((a, b) => {
+            const av = a.pricing?.pack?.final ?? Infinity;
+            const bv = b.pricing?.pack?.final ?? Infinity;
+            return av - bv;
+        });
+        return withMeta.map((x) => x.s);
+    }, [items, sortMode, includeGst]);
 
     return (
         <motion.div
@@ -433,14 +668,13 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst }) {
             >
                 {/* Pricing moved up to the row itself — this header now
                     only carries the seller-count context. */}
-                <div className="pb-2">
+                <div className="flex items-center justify-between gap-2 pb-2.5">
                     <p className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>
-                        {loading
-                            ? "Loading sellers…"
-                            : total > 0
-                                ? `${total} seller${total === 1 ? "" : "s"} listing this`
-                                : "No sellers yet"}
+                        {loading ? "Loading sellers…" : total > 0 ? `${total} seller${total === 1 ? "" : "s"} listing this` : "No sellers yet"}
                     </p>
+                    {!loading && items.length > 1 && (
+                        <SellerSortToggle value={sortMode} onChange={onSortModeChange} />
+                    )}
                 </div>
 
                 <div className="max-h-64 overflow-y-auto overscroll-contain">
@@ -464,36 +698,28 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst }) {
                         </div>
                     ) : error ? (
                         <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>{error}</p>
-                    ) : items.length === 0 ? (
+                    ) : sortedItems.length === 0 ? (
                         <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>No sellers listing this yet.</p>
                     ) : (
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
-                            {items.map((s) => {
-                                // Same derivation as the row-level breakdown, just
-                                // sourced from this seller's own fields.
-                                const breakdown = computePriceBreakdown({
-                                    price: s.price,
-                                    packSize: s.pack_size,
-                                    masterPackSize: s.units_per_master_pack,
-                                    gstPercent: s.gst_percent,
-                                    includeGst,
-                                });
+                            {sortedItems.map((s) => {
+                                const pricing = sellerPricingForMode(s, sortMode, includeGst);
+                                const hasDiscount = pricing?.discountPercent > 0;
                                 return (
-                                    <button
-                                        key={s.submission_id}
-                                        onClick={() => onBuySeller(s)}
-                                        className="flex items-center justify-between gap-3 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03]"
-                                    >
+                                    <button key={s.submission_id} onClick={() => onBuySeller(s)} className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03]">
                                         <div className="min-w-0 flex-1">
-                                            <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                {s.display_name}
-                                            </p>
+                                            <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{s.display_name}</p>
                                             <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                 {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
                                                 {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
                                             </p>
+                                            {hasDiscount && (
+                                                <p className="mt-0.5 truncate text-[11px] font-extrabold tracking-wider" style={{ color: C.secondary }}>
+                                                    {pricing.discountPercent}% off · {pricing.saleQty}+ {pricing.saleUnit}{pricing.saleQty === 1 ? "" : "s"}
+                                                </p>
+                                            )}
                                         </div>
-                                        <PriceBreakdown breakdown={breakdown} unit={s.unit} size="seller" />
+                                        <SellerPriceBlock pricing={pricing} unit={s.unit} />
                                     </button>
                                 );
                             })}
@@ -503,8 +729,10 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst }) {
                                 </p>
                             )}
                         </div>
+
                     )}
                 </div>
+
 
                 {/* Hidden until the sellers fetch has settled — no more
                     "Sell this product" flashing on screen before we know
@@ -547,6 +775,8 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [hasMore, setHasMore] = useState(true);
     const [lightboxSrc, setLightboxSrc] = useState(null);
     const [infoItemId, setInfoItemId] = useState(null);
+
+    const [sellerSortMode, setSellerSortMode] = useState("best_value");
 
     // GST view toggle — defaults to inclusive, since that's what the
     // stored price already represents. Purely client-side; no refetch
@@ -734,6 +964,8 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                     onBuySeller={(seller) => handleBuySeller(item, seller)}
                                                     onSell={() => handleSell(item)}
                                                     includeGst={includeGst}
+                                                    sortMode={sellerSortMode}
+                                                    onSortModeChange={setSellerSortMode}
                                                 />
                                             )}
                                         </AnimatePresence>
