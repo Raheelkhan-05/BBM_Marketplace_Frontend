@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck,
-  Clock3, ListChecks, BookOpen, Users, IndianRupee
+  Clock3, ListChecks, BookOpen, Users, IndianRupee,
+  Skull
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { TAGLINE } from "../../data/content";
@@ -185,6 +186,10 @@ export default function Header({ onOpenRfq }) {
                               <IndianRupee className="h-3.5 w-3.5 text-[#0B7285]" />
                               Payment Verification
                             </SmartLink>
+                            <SmartLink to="/admin/database" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
+                              <Skull className="h-3.5 w-3.5 text-[#0B7285]" />
+                              Database
+                            </SmartLink>
                           </>
                         )}
 
@@ -290,6 +295,10 @@ export default function Header({ onOpenRfq }) {
                           <SmartLink to="/admin/payments" onClick={() => setOpen(false)} className={MOBILE_ROW}>
                             <IndianRupee className="h-4 w-4 text-slate-400" />
                             Payment Verification
+                          </SmartLink>
+                          <SmartLink to="/admin/database" onClick={() => setOpen(false)} className={MOBILE_ROW}>
+                            <Skull className="h-4 w-4 text-slate-400" />
+                            Database
                           </SmartLink>
                         </>
                       )}
