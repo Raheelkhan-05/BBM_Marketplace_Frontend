@@ -47,6 +47,7 @@ import AdminFullCatalogUploadPage from './pages/admin/AdminFullCatalogUploadPage
 import CartPage from "./pages/CartPage.jsx";
 import AdminWalletSellersPage from "./pages/admin/AdminWalletSellersPage.jsx";
 import SellerWalletPage from "./pages/SellerWalletPage.jsx";
+import AdminDatabasePanel from "./pages/admin/AdminDatabasePanel.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -112,6 +113,8 @@ function App() {
               <Route path="/admin/wallets" element={<AdminWalletSellersPage />} />
 
               <Route path="/seller/wallet" element={<SellerWalletPage />} />
+
+              <Route path="/admin/database" element={<AdminDatabasePanel />} />
 
               <Route path="/admin/catalog/bulk-upload" element={<AdminFullCatalogUploadPage />} />
 
