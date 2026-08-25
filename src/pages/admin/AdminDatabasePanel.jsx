@@ -296,8 +296,8 @@ function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onD
                                 This record is still referenced elsewhere. Deleting it will also remove:
                             </p>
                             <div className="flex flex-col gap-1.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.bg }}>
-                                {dependents.map((d) => (
-                                    <div key={d.table + d.column} className="flex items-center justify-between gap-2 text-[12.5px]">
+                                {dependents.map((d, i) => (
+                                    <div key={`${d.table || "table"}-${d.column || "col"}-${i}`} className="flex items-center justify-between gap-2 text-[12.5px]">
                                         <span className="flex min-w-0 items-center gap-1.5 truncate font-bold" style={{ color: C.ink }}>
                                             <Link2 className="h-3 w-3 shrink-0" style={{ color: C.muted }} />
                                             {prettify(d.table)}
@@ -709,6 +709,7 @@ export default function AdminDatabasePanel() {
 
     // ---- load table list once ----
     const loadTables = useCallback(() => {
+        if (!token) return; // wait for auth to hydrate — firing before token exists (or with a stale one) 401s
         setTablesLoading(true);
         setTablesError(null);
         adminDbApi.listTables(token)
@@ -726,7 +727,7 @@ export default function AdminDatabasePanel() {
 
     // ---- load schema + rows whenever the active table / page / sort changes ----
     const loadRows = useCallback((silent = false) => {
-        if (!activeTable) return;
+        if (!activeTable || !token) return; // same race — wait for both
         if (!silent) { setRowsLoading(true); setRowsError(null); }
         adminDbApi.listRows(token, activeTable, { page, pageSize: PAGE_SIZE, sortBy: sort.sortBy, sortDir: sort.sortDir })
             .then((res) => {
