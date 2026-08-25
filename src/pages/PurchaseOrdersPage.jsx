@@ -146,12 +146,9 @@ export default function PurchaseOrdersPage() {
 
     return (
         <div className="mx-auto min-h-screen max-w-4xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
+
             <div className="mt-3 flex items-center gap-3">
                 <button onClick={() => navigate('/home')} className="flex h-9 w-9 items-center justify-center rounded-full border" style={{ borderColor: C.hair }}><ArrowLeft className="h-4 w-4" /></button>
-                <h1 className="font-extrabold" style={{ color: C.ink, fontSize: "clamp(20px,1.8vw,26px)" }}>Cart</h1>
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-
                 <h1 className="font-extrabold tracking-wide" style={{ color: C.ink, fontSize: "clamp(22px, 1.8vw, 27px)" }}>My Purchase Orders</h1>
             </div>
 

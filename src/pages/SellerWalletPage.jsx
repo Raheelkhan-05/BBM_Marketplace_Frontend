@@ -1,11 +1,12 @@
 // pages/SellerWalletPage.jsx
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Wallet, Loader2, AlertTriangle, CheckCircle2, Settings2, IndianRupee, Clock, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Wallet, Loader2, AlertTriangle, IndianRupee, Clock, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import { fetchWalletStatus, fetchWalletTransactions, submitWalletPayment, fetchWalletPayments } from "../utils/walletApi.js";
-import { C, EASE } from "../components/catalog/tokens";
+import { fetchWalletStatus, fetchWalletTransactions, fetchWalletPayments } from "../utils/walletApi.js";
+import { C } from "../components/catalog/tokens";
+import WalletPaymentQRModal from "../components/WalletPaymentQRModal.jsx";
 
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
 
@@ -21,17 +22,18 @@ function Card({ title, children, right }) {
     );
 }
 
+// `sign` is the semantic effect on the seller's credits, NOT the raw sign
+// stored in the DB row — wallet_verify_payment still writes payment_made
+// as a negative amount (legacy from the old debt model, where a payment
+// reduced a debt total). Deriving sign from type instead of trusting
+// t.amount's sign keeps the ledger readable without needing a DB migration.
 const TXN_LABEL = {
-    commission_accrued: { label: "Commission + GST deducted", color: "#c71f11" },
-    commission_reversed: { label: "Commission reversed", color: "#059669" },
-    payment_made: { label: "Credits added", color: "#059669" },
-    manual_adjustment: { label: "Adjustment", color: C.muted },
+    commission_accrued: { label: "Commission + GST deducted", color: "#c71f11", sign: -1 },
+    commission_reversed: { label: "Commission reversed", color: "#059669", sign: 1 },
+    payment_made: { label: "Credits added", color: "#059669", sign: 1 },
+    manual_adjustment: { label: "Adjustment", color: C.muted, sign: null }, // unknown intent — show raw
 };
 
-// Balance card gradient reads as danger as credits run out, instead of a
-// flat teal regardless of how close to blocked the seller is. Uses the
-// threshold as the reference point for "healthy" so it scales sensibly
-// whether an individual seller's threshold is ₹1000 or ₹10,000.
 function balanceGradient(balance, threshold) {
     const ratio = threshold > 0 ? Math.max(0, Math.min(1, balance / threshold)) : 1;
     if (ratio <= 0) return "linear-gradient(135deg, #a11a10 0%, #c71f11 100%)";
@@ -49,9 +51,8 @@ export default function SellerWalletPage() {
     const [loading, setLoading] = useState(true);
 
     const [payAmount, setPayAmount] = useState("");
-    const [payUtr, setPayUtr] = useState("");
-    const [submittingPayment, setSubmittingPayment] = useState(false);
-    const [error, setError] = useState(null);
+    const [showQrModal, setShowQrModal] = useState(false);
+    const [amountError, setAmountError] = useState(null);
     const [notice, setNotice] = useState(null);
 
     const load = useCallback(async () => {
@@ -67,14 +68,14 @@ export default function SellerWalletPage() {
         load();
     }, [load, token]);
 
-    const handleSubmitPayment = async () => {
-        setError(null);
-        if (!(Number(payAmount) > 0)) return setError("Enter a valid amount.");
-        setSubmittingPayment(true);
-        const res = await submitWalletPayment(token, { amount: Number(payAmount), utr: payUtr.trim() || undefined });
-        setSubmittingPayment(false);
-        if (!res?.success) return setError(res?.message || "Couldn't submit payment.");
-        setPayAmount(""); setPayUtr("");
+    const handleProceedToPay = () => {
+        setAmountError(null);
+        if (!(Number(payAmount) > 0)) { setAmountError("Enter a valid amount."); return; }
+        setShowQrModal(true);
+    };
+
+    const handlePaymentSubmitted = () => {
+        setPayAmount("");
         setNotice("Credits submitted for verification.");
         load();
     };
@@ -123,50 +124,24 @@ export default function SellerWalletPage() {
             {/* ---- Add credits ---- */}
             <Card title={isThreshold ? "Add credits" : "Pay platform commission"}>
                 <div className="flex flex-col gap-2.5">
-                    <div className="grid grid-cols-2 gap-2.5">
-                        <div>
-                            <label className="text-[12px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Amount</label>
-                            <input type="text" inputMode="decimal" value={payAmount} onChange={(e) => setPayAmount(e.target.value.replace(/[^\d.]/g, ""))}
-                                placeholder={isThreshold ? `e.g. ₹${inr(wallet.threshold_amount)}` : `Up to ₹${inr(wallet.balance_due)}`}
-                                className="mt-1 w-full rounded-lg border px-3 py-2 text-[13.5px] font-bold tabular-nums" style={{ borderColor: C.hair }} />
-                        </div>
-                        <div>
-                            <label className="text-[12px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>UTR / reference (optional)</label>
-                            <input type="text" value={payUtr} onChange={(e) => setPayUtr(e.target.value)}
-                                className="mt-1 w-full rounded-lg border px-3 py-2 text-[13.5px] font-semibold" style={{ borderColor: C.hair }} />
-                        </div>
+                    <div>
+                        <label className="text-[12px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Amount</label>
+                        <input type="text" inputMode="decimal" value={payAmount} onChange={(e) => setPayAmount(e.target.value.replace(/[^\d.]/g, ""))}
+                            placeholder={isThreshold ? `e.g. ₹${inr(wallet.threshold_amount)}` : `Up to ₹${inr(wallet.balance_due)}`}
+                            className="mt-1 w-full rounded-lg border px-3 py-2 text-[13.5px] font-bold tabular-nums" style={{ borderColor: C.hair }} />
                     </div>
+                    {amountError && <p className="text-[11.5px] font-semibold" style={{ color: "#c71f11" }}>{amountError}</p>}
                     <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                        {isThreshold
-                            ? "Test mode — payment is simulated. Credits are added once verified, and can be topped up any time."
-                            : "Test mode — payment is simulated. Submitting here marks it pending until verified."}
+                        Test mode — payment is simulated. You'll get a QR code on the next step to pay and submit your UTR.
                     </p>
-                    <button onClick={handleSubmitPayment} disabled={submittingPayment}
-                        className="rounded-xl px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-50" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                        {submittingPayment ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : (isThreshold ? "Add credits" : "Submit payment")}
+                    <button onClick={handleProceedToPay}
+                        className="rounded-xl px-4 py-2.5 text-[13px] font-bold text-white" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                        Proceed to pay
                     </button>
                 </div>
             </Card>
 
-            {/* ---- Billing mode settings ---- */}
-            {/* <Card title="Billing settings">
-                <div className="flex items-start gap-2.5">
-                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" style={{ color: C.secondary }} />
-                    <div>
-                        <p className="text-[13px] font-semibold tracking-wide" style={{ color: C.ink }}>
-                            {wallet.billing_mode === "threshold"
-                                ? `Threshold mode — credits start at ₹${inr(wallet.threshold_amount)} and are used up by commission + GST`
-                                : "Monthly mode — dues settle at the start of each month"}
-                        </p>
-                        <p className="mt-1 text-[11.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                            Set by the platform team. Reach out to support if you'd like this changed.
-                        </p>
-                    </div>
-                </div>
-            </Card> */}
-
             {notice && <p className="mt-3 rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ background: `${C.secondary}10`, color: C.secondary }}>{notice}</p>}
-            {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{error}</p>}
 
             {/* ---- Payment history ---- */}
             {payments.length > 0 && (
@@ -175,8 +150,8 @@ export default function SellerWalletPage() {
                         {payments.map((p) => (
                             <div key={p.id} className="flex items-center justify-between">
                                 <div>
-                                    <p className="text-[13px] font-bold tabular-nums" style={{ color: C.ink }}>₹{inr(p.amount)}</p>
-                                    <p className="text-[11px] font-semibold" style={{ color: C.muted }}>{p.billing_period} · {new Date(p.created_at).toLocaleDateString("en-IN")}</p>
+                                    <p className="text-[15px] font-bold tabular-nums tracking-wide" style={{ color: C.ink }}>₹{inr(p.amount)}</p>
+                                    <p className="text-[11.5px] font-semibold tracking-wider" style={{ color: C.muted }}>{p.billing_period} · {new Date(p.created_at).toLocaleDateString("en-IN")}</p>
                                 </div>
                                 <span className="rounded-full px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wide"
                                     style={p.status === "verified" ? { background: "#05966912", color: "#059669" } : p.status === "rejected" ? { background: "#c71f1112", color: "#c71f11" } : { background: "#f59e0b12", color: "#a16207" }}>
@@ -199,12 +174,14 @@ export default function SellerWalletPage() {
                             return (
                                 <div key={t.id} className="flex items-center justify-between border-b pb-2.5 last:border-b-0 last:pb-0" style={{ borderColor: C.hairSoft }}>
                                     <div className="min-w-0">
-                                        <p className="text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{meta.label}</p>
-                                        <p className="truncate text-[11px] font-medium" style={{ color: C.muted }}>{t.note}</p>
-                                        <p className="text-[10.5px] font-semibold" style={{ color: C.muted }}>{new Date(t.created_at).toLocaleString("en-IN")}</p>
+                                        <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{meta.label}</p>
+                                        <p className="truncate text-[11.5px] font-medium tracking-wider" style={{ color: C.muted }}>{t.note}</p>
+                                        <p className="text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>{new Date(t.created_at).toLocaleString("en-IN")}</p>
                                     </div>
-                                    <p className="shrink-0 text-[13px] font-extrabold tabular-nums" style={{ color: t.amount > 0 ? "#c71f11" : "#059669" }}>
-                                        {t.amount > 0 ? "+" : ""}₹{inr(t.amount)}
+                                    <p className="shrink-0 text-[15px] font-extrabold tabular-nums" style={{ color: meta.color }}>
+                                        {meta.sign === null
+                                            ? `${t.amount > 0 ? "+" : ""}₹${inr(t.amount)}`
+                                            : `${meta.sign > 0 ? "+" : "−"}₹${inr(Math.abs(t.amount))}`}
                                     </p>
                                 </div>
                             );
@@ -212,6 +189,15 @@ export default function SellerWalletPage() {
                     </div>
                 )}
             </Card>
+
+            {showQrModal && (
+                <WalletPaymentQRModal
+                    token={token}
+                    amount={Number(payAmount)}
+                    onClose={() => setShowQrModal(false)}
+                    onSubmitted={handlePaymentSubmitted}
+                />
+            )}
         </div>
     );
 }
