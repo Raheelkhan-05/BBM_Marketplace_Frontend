@@ -131,7 +131,7 @@ export default function ConversationList({ conversations, loading, activeId, onS
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center justify-between gap-2">
                                         <p className="truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
-                                            🏪 {c.otherShopName || "Unknown seller"}
+                                            {c.otherShopName || "Unknown seller"}
                                         </p>
                                         <span className="shrink-0 text-[10.5px] font-semibold" style={{ color: c.unread ? C.secondary : C.muted }}>
                                             {timeLabel(c.lastMessageAt)}

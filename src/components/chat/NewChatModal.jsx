@@ -65,7 +65,7 @@ export default function NewChatModal({ onClose, onCreated }) {
                                 <span className="block truncate text-[13px] font-bold" style={{ color: C.ink }}>{u.name}</span>
                                 {u.shopName && (
                                     <span className="block truncate text-[10.5px] font-bold" style={{ color: C.primary }}>
-                                        🏪 {u.shopName}
+                                        {u.shopName}
                                     </span>
                                 )}
                             </span>
