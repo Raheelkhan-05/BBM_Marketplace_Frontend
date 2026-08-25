@@ -1,13 +1,9 @@
 // components/chat/ConversationList.jsx
-//
-// List + "start a new chat" modal combined into one file — they only ever
-// get touched together, and NewChatModal is small enough that a separate
-// file was just one more click to trace through.
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Search, Plus, MessageSquare, X, Loader2, User } from "lucide-react";
+import { Search, MessageSquare, Loader2, Store } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { searchChatUsers, getOrCreateDirectConversation } from "../../utils/chatApi.js";
+import { fetchApprovedSellers, getOrCreateDirectConversation } from "../../utils/chatApi.js";
 
 const C = { ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83", hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)" };
 const EASE = [0.16, 1, 0.3, 1];
@@ -21,89 +17,10 @@ function timeLabel(iso) {
         : d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
-function initials(name) {
-    return (name || "?").trim().split(" ").slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
+// Only ever initial-ise off the shop name — personal name is never passed in.
+function initials(shopName) {
+    return (shopName || "?").trim().split(" ").slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
 }
-
-// ---- new chat modal -----------------------------------------------------
-
-function NewChatModal({ onClose, onCreated }) {
-    const { token } = useAuth();
-    const [query, setQuery] = useState("");
-    const [results, setResults] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [starting, setStarting] = useState(null);
-    const debounceRef = useRef(null);
-
-    useEffect(() => {
-        clearTimeout(debounceRef.current);
-        if (query.trim().length < 2) { setResults([]); return; }
-        setLoading(true);
-        debounceRef.current = setTimeout(async () => {
-            const res = await searchChatUsers(token, query.trim());
-            if (res?.success) setResults(res.users);
-            setLoading(false);
-        }, 250);
-        return () => clearTimeout(debounceRef.current);
-    }, [query, token]);
-
-    const start = async (user) => {
-        setStarting(user.id);
-        const res = await getOrCreateDirectConversation(token, user.id);
-        setStarting(null);
-        if (res?.success) onCreated(res.conversationId);
-    };
-
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 backdrop-blur-[2px]" onClick={onClose}>
-            <motion.div
-                initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.16, ease: EASE }}
-                onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl"
-            >
-                <div className="flex items-center justify-between border-b px-4 py-3" style={{ borderColor: C.hair }}>
-                    <p className="text-[14px] font-extrabold tracking-wide" style={{ color: C.ink }}>New message</p>
-                    <button onClick={onClose} className="rounded-full p-1 hover:bg-black/5"><X className="h-4 w-4" style={{ color: C.muted }} /></button>
-                </div>
-                <div className="px-4 pt-3">
-                    <div className="flex items-center gap-2 rounded-full border px-3 py-2 transition-colors focus-within:border-[#006F83]" style={{ borderColor: C.hair }}>
-                        <Search className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} />
-                        <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name"
-                            className="w-full bg-transparent text-[13px] font-medium outline-none" style={{ color: C.ink }} />
-                    </div>
-                </div>
-                <div className="max-h-72 overflow-y-auto px-2 py-2">
-                    {loading && <div className="flex justify-center py-6"><Loader2 className="h-4 w-4 animate-spin" style={{ color: C.muted }} /></div>}
-                    {!loading && results.map((u) => (
-                        <button key={u.id} onClick={() => start(u)} disabled={starting === u.id}
-                            className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-black/[0.03]">
-                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold text-white"
-                                style={{ background: "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}>
-                                {initials(u.name)}
-                            </span>
-                            <span className="min-w-0 flex-1">
-                                <span className="block truncate text-[13px] font-bold" style={{ color: C.ink }}>{u.name}</span>
-                                {u.shopName && (
-                                    <span className="block truncate text-[10.5px] font-bold" style={{ color: C.primary }}>
-                                        🏪 {u.shopName}
-                                    </span>
-                                )}
-                            </span>
-                            {starting === u.id && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: C.secondary }} />}
-                        </button>
-                    ))}
-                    {!loading && query.trim().length >= 2 && results.length === 0 && (
-                        <p className="px-2.5 py-6 text-center text-[12px] font-medium" style={{ color: C.muted }}>No users found.</p>
-                    )}
-                </div>
-            </motion.div>
-        </div>
-    );
-}
-
-// ---- row skeleton ---------------------------------------------------------
 
 function RowSkeleton() {
     return (
@@ -117,25 +34,68 @@ function RowSkeleton() {
     );
 }
 
-// ---- main -----------------------------------------------------------------
+function Avatar({ logoUrl, shopName, size = "h-11 w-11" }) {
+    if (logoUrl) {
+        return (
+            <img
+                src={logoUrl}
+                alt={shopName || "Shop"}
+                className={`${size} shrink-0 rounded-full object-cover shadow-sm`}
+                style={{ border: `1px solid ${C.hair}` }}
+                onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }}
+            />
+        );
+    }
+    return (
+        <span className={`flex ${size} shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold text-white shadow-sm`}
+            style={{ background: "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}>
+            {initials(shopName)}
+        </span>
+    );
+}
 
 export default function ConversationList({ conversations, loading, activeId, onSelect, reload }) {
+    const { token } = useAuth();
     const [query, setQuery] = useState("");
-    const [newChatOpen, setNewChatOpen] = useState(false);
+    const [sellers, setSellers] = useState([]);
+    const [sellersLoading, setSellersLoading] = useState(true);
+    const [starting, setStarting] = useState(null);
 
-    const filtered = conversations.filter((c) => c.title?.toLowerCase().includes(query.toLowerCase()));
+    useEffect(() => {
+        let cancelled = false;
+        fetchApprovedSellers(token).then((res) => {
+            if (cancelled) return;
+            if (res?.success) setSellers(res.sellers);
+            setSellersLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, [token]);
+
+    // Sellers who don't have an existing conversation yet — those already show up below.
+    const conversationSellerIds = useMemo(
+        () => new Set(conversations.filter((c) => c.otherUserId).map((c) => String(c.otherUserId).toLowerCase())),
+        [conversations],
+    );
+    const newSellers = sellers.filter((s) => !conversationSellerIds.has(String(s.id).toLowerCase()));
+
+    const q = query.trim().toLowerCase();
+    const filteredConversations = conversations.filter((c) => (c.otherShopName || "").toLowerCase().includes(q));
+    const filteredNewSellers = newSellers.filter((s) => (s.shopName || "").toLowerCase().includes(q));
+
+    const startChat = async (seller) => {
+        setStarting(seller.id);
+        const res = await getOrCreateDirectConversation(token, seller.id);
+        if (res?.success) {
+            await reload();       // wait for the conversations list to include it...
+            onSelect(res.conversationId); // ...before navigating, so the seller list has already dropped it
+        }
+        setStarting(null);
+    };
 
     return (
         <div className="flex h-full flex-col" style={{ background: "#fff" }}>
-            <div className="flex items-center justify-between px-3.5 pb-2 pt-3.5">
+            <div className="px-3.5 pb-2 pt-3.5">
                 <h1 className="text-[16.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>Messages</h1>
-                <button
-                    onClick={() => setNewChatOpen(true)}
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-white shadow-sm transition hover:scale-105"
-                    style={{ background: C.secondary }}
-                >
-                    <Plus className="h-4 w-4" />
-                </button>
             </div>
 
             <div className="px-3.5 pb-2.5">
@@ -143,7 +103,7 @@ export default function ConversationList({ conversations, loading, activeId, onS
                     <Search className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} />
                     <input
                         value={query} onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Search conversations"
+                        placeholder="Search sellers or chats"
                         className="w-full bg-transparent text-[13px] font-medium outline-none placeholder:text-slate-400"
                         style={{ color: C.ink }}
                     />
@@ -151,16 +111,11 @@ export default function ConversationList({ conversations, loading, activeId, onS
             </div>
 
             <div className="flex-1 overflow-y-auto">
+                {/* --- Existing chats --- */}
                 {loading ? (
-                    Array.from({ length: 6 }).map((_, i) => <RowSkeleton key={i} />)
-                ) : filtered.length === 0 ? (
-                    <div className="flex flex-col items-center gap-1.5 px-6 py-16 text-center">
-                        <MessageSquare className="h-6 w-6" style={{ color: C.hair }} />
-                        <p className="text-[13px] font-bold" style={{ color: C.ink }}>No conversations yet</p>
-                        <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>Start one with the + button.</p>
-                    </div>
+                    Array.from({ length: 4 }).map((_, i) => <RowSkeleton key={`c-${i}`} />)
                 ) : (
-                    filtered.map((c, i) => {
+                    filteredConversations.map((c, i) => {
                         const active = c.id === activeId;
                         return (
                             <motion.button
@@ -172,15 +127,12 @@ export default function ConversationList({ conversations, loading, activeId, onS
                                 className="flex w-full items-center gap-3 border-b px-3.5 py-3 text-left transition-colors duration-150"
                                 style={{ borderColor: C.hairSoft, background: active ? `${C.secondary}0f` : "transparent" }}
                             >
-                                <span
-                                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold text-white shadow-sm"
-                                    style={{ background: "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}
-                                >
-                                    {initials(c.title)}
-                                </span>
+                                <Avatar logoUrl={c.otherShopLogo} shopName={c.otherShopName} />
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center justify-between gap-2">
-                                        <p className="truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{c.title}</p>
+                                        <p className="truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                                            🏪 {c.otherShopName || "Unknown seller"}
+                                        </p>
                                         <span className="shrink-0 text-[10.5px] font-semibold" style={{ color: c.unread ? C.secondary : C.muted }}>
                                             {timeLabel(c.lastMessageAt)}
                                         </span>
@@ -196,9 +148,48 @@ export default function ConversationList({ conversations, loading, activeId, onS
                         );
                     })
                 )}
-            </div>
 
-            {newChatOpen && <NewChatModal onClose={() => setNewChatOpen(false)} onCreated={(id) => { setNewChatOpen(false); reload(); onSelect(id); }} />}
+                {!loading && filteredConversations.length === 0 && q && (
+                    <p className="px-3.5 py-3 text-[11.5px] font-medium" style={{ color: C.muted }}>No chats match "{query}".</p>
+                )}
+
+                {/* --- Approved sellers you haven't messaged yet --- */}
+                {(sellersLoading || filteredNewSellers.length > 0) && (
+                    <div className="mt-1 border-t px-3.5 pb-1 pt-3" style={{ borderColor: C.hairSoft }}>
+                        <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Approved sellers</p>
+                    </div>
+                )}
+                {sellersLoading ? (
+                    Array.from({ length: 3 }).map((_, i) => <RowSkeleton key={`s-${i}`} />)
+                ) : (
+                    filteredNewSellers.map((s) => (
+                        <button
+                            key={s.id}
+                            onClick={() => startChat(s)}
+                            disabled={starting === s.id}
+                            className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors duration-150 hover:bg-black/[0.02]"
+                        >
+                            <Avatar logoUrl={s.logoUrl} shopName={s.shopName} />
+                            <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                                    {s.shopName}
+                                </span>
+                                <span className="block text-[11.5px] font-medium" style={{ color: C.muted }}>Tap to start chatting</span>
+                            </span>
+                            {starting === s.id && <Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: C.secondary }} />}
+                        </button>
+                    ))
+                )}
+
+                {!loading && !sellersLoading && filteredConversations.length === 0 && filteredNewSellers.length === 0 && (
+                    <div className="flex flex-col items-center gap-1.5 px-6 py-16 text-center">
+                        <MessageSquare className="h-6 w-6" style={{ color: C.hair }} />
+                        <p className="text-[13px] font-bold" style={{ color: C.ink }}>
+                            {q ? "No matches" : "No approved sellers yet"}
+                        </p>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

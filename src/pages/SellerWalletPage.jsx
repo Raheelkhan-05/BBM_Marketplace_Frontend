@@ -22,11 +22,23 @@ function Card({ title, children, right }) {
 }
 
 const TXN_LABEL = {
-    commission_accrued: { label: "Commission accrued", color: "#c71f11" },
+    commission_accrued: { label: "Commission + GST deducted", color: "#c71f11" },
     commission_reversed: { label: "Commission reversed", color: "#059669" },
-    payment_made: { label: "Payment made", color: "#059669" },
+    payment_made: { label: "Credits added", color: "#059669" },
     manual_adjustment: { label: "Adjustment", color: C.muted },
 };
+
+// Balance card gradient reads as danger as credits run out, instead of a
+// flat teal regardless of how close to blocked the seller is. Uses the
+// threshold as the reference point for "healthy" so it scales sensibly
+// whether an individual seller's threshold is ₹1000 or ₹10,000.
+function balanceGradient(balance, threshold) {
+    const ratio = threshold > 0 ? Math.max(0, Math.min(1, balance / threshold)) : 1;
+    if (ratio <= 0) return "linear-gradient(135deg, #a11a10 0%, #c71f11 100%)";
+    if (ratio <= 0.25) return "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)";
+    if (ratio <= 0.5) return "linear-gradient(135deg, #b8860b 0%, #d99a1f 100%)";
+    return "linear-gradient(135deg, #047084 0%, #0B7285 100%)";
+}
 
 export default function SellerWalletPage() {
     const navigate = useNavigate();
@@ -36,26 +48,15 @@ export default function SellerWalletPage() {
     const [payments, setPayments] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    const [editingSettings, setEditingSettings] = useState(false);
-    const [billingMode, setBillingMode] = useState("threshold");
-    const [thresholdAmount, setThresholdAmount] = useState("1000");
-    const [savingSettings, setSavingSettings] = useState(false);
-
     const [payAmount, setPayAmount] = useState("");
     const [payUtr, setPayUtr] = useState("");
     const [submittingPayment, setSubmittingPayment] = useState(false);
     const [error, setError] = useState(null);
     const [notice, setNotice] = useState(null);
 
-
-
     const load = useCallback(async () => {
         const [w, t, p] = await Promise.all([fetchWalletStatus(token), fetchWalletTransactions(token), fetchWalletPayments(token)]);
-        if (w?.success) {
-            setWallet(w.wallet);
-            setBillingMode(w.wallet.billing_mode);
-            setThresholdAmount(String(w.wallet.threshold_amount || 1000));
-        }
+        if (w?.success) setWallet(w.wallet);
         if (t?.success) setTxns(t.transactions);
         if (p?.success) setPayments(p.payments);
         setLoading(false);
@@ -74,13 +75,14 @@ export default function SellerWalletPage() {
         setSubmittingPayment(false);
         if (!res?.success) return setError(res?.message || "Couldn't submit payment.");
         setPayAmount(""); setPayUtr("");
-        setNotice("Payment submitted for verification.");
+        setNotice("Credits submitted for verification.");
         load();
     };
 
     if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>;
 
     const isBlocked = wallet?.is_blocked;
+    const isThreshold = wallet.billing_mode === "threshold";
 
     return (
         <div className="mx-auto min-h-screen max-w-3xl px-2.5 pb-16 pt-3 sm:px-4">
@@ -99,50 +101,52 @@ export default function SellerWalletPage() {
                         <p className="mt-0.5 text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                             {wallet.blocked_reason === "monthly_unpaid"
                                 ? "You have an unpaid balance from a previous month. Clear it below to start receiving orders again."
-                                : "Your accumulated platform commission has reached your set threshold. Pay it down below to start receiving orders again."}
+                                : "You've run out of order credits. Add credits below to start receiving orders again."}
                         </p>
                     </div>
                 </motion.div>
             )}
 
             {/* ---- Balance summary ---- */}
-            <div className="mt-4 rounded-2xl p-4 text-white" style={{ background: "linear-gradient(135deg, #047084 0%, #0B7285 100%)" }}>
-                <p className="text-[12px] font-bold uppercase tracking-[0.15em] opacity-90">Balance due to platform</p>
+            <div className="mt-4 rounded-2xl p-4 text-white" style={{ background: balanceGradient(wallet.balance_due, wallet.threshold_amount) }}>
+                <p className="text-[12px] font-bold uppercase tracking-[0.15em] opacity-90">Available credits</p>
                 <p className="mt-1 flex items-center text-[34px] font-extrabold tabular-nums"><IndianRupee className="h-6 w-6" />{inr(wallet.balance_due)}</p>
                 <div className="mt-1 flex items-center gap-2 text-[12.5px] font-semibold opacity-90 tracking-wider">
-                    {wallet.billing_mode === "threshold" ? (
-                        <><ShieldCheck className="h-3.5 w-3.5" /> Threshold mode · pay when you reach ₹{inr(wallet.threshold_amount)}</>
+                    {isThreshold ? (
+                        <><ShieldCheck className="h-3.5 w-3.5" />Recharge before it hits ₹0, to smoothly receive orders</>
                     ) : (
                         <><Clock className="h-3.5 w-3.5" /> Monthly mode · settle by the 1st of next month</>
                     )}
                 </div>
             </div>
 
-            {/* ---- Pay down balance ---- */}
-            {wallet.balance_due > 0 && (
-                <Card title="Pay platform commission">
-                    <div className="flex flex-col gap-2.5">
-                        <div className="grid grid-cols-2 gap-2.5">
-                            <div>
-                                <label className="text-[12px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Amount</label>
-                                <input type="text" inputMode="decimal" value={payAmount} onChange={(e) => setPayAmount(e.target.value.replace(/[^\d.]/g, ""))}
-                                    placeholder={`Up to ₹${inr(wallet.balance_due)}`}
-                                    className="mt-1 w-full rounded-lg border px-3 py-2 text-[13.5px] font-bold tabular-nums" style={{ borderColor: C.hair }} />
-                            </div>
-                            <div>
-                                <label className="text-[12px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>UTR / reference (optional)</label>
-                                <input type="text" value={payUtr} onChange={(e) => setPayUtr(e.target.value)}
-                                    className="mt-1 w-full rounded-lg border px-3 py-2 text-[13.5px] font-semibold" style={{ borderColor: C.hair }} />
-                            </div>
+            {/* ---- Add credits ---- */}
+            <Card title={isThreshold ? "Add credits" : "Pay platform commission"}>
+                <div className="flex flex-col gap-2.5">
+                    <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                            <label className="text-[12px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Amount</label>
+                            <input type="text" inputMode="decimal" value={payAmount} onChange={(e) => setPayAmount(e.target.value.replace(/[^\d.]/g, ""))}
+                                placeholder={isThreshold ? `e.g. ₹${inr(wallet.threshold_amount)}` : `Up to ₹${inr(wallet.balance_due)}`}
+                                className="mt-1 w-full rounded-lg border px-3 py-2 text-[13.5px] font-bold tabular-nums" style={{ borderColor: C.hair }} />
                         </div>
-                        <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Test mode — payment is simulated. Submitting here marks it pending until verified.</p>
-                        <button onClick={handleSubmitPayment} disabled={submittingPayment}
-                            className="rounded-xl px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-50" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                            {submittingPayment ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Submit payment"}
-                        </button>
+                        <div>
+                            <label className="text-[12px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>UTR / reference (optional)</label>
+                            <input type="text" value={payUtr} onChange={(e) => setPayUtr(e.target.value)}
+                                className="mt-1 w-full rounded-lg border px-3 py-2 text-[13.5px] font-semibold" style={{ borderColor: C.hair }} />
+                        </div>
                     </div>
-                </Card>
-            )}
+                    <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                        {isThreshold
+                            ? "Test mode — payment is simulated. Credits are added once verified, and can be topped up any time."
+                            : "Test mode — payment is simulated. Submitting here marks it pending until verified."}
+                    </p>
+                    <button onClick={handleSubmitPayment} disabled={submittingPayment}
+                        className="rounded-xl px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-50" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                        {submittingPayment ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : (isThreshold ? "Add credits" : "Submit payment")}
+                    </button>
+                </div>
+            </Card>
 
             {/* ---- Billing mode settings ---- */}
             {/* <Card title="Billing settings">
@@ -151,7 +155,7 @@ export default function SellerWalletPage() {
                     <div>
                         <p className="text-[13px] font-semibold tracking-wide" style={{ color: C.ink }}>
                             {wallet.billing_mode === "threshold"
-                                ? `Threshold mode — you'll be paused once dues reach ₹${inr(wallet.threshold_amount)}`
+                                ? `Threshold mode — credits start at ₹${inr(wallet.threshold_amount)} and are used up by commission + GST`
                                 : "Monthly mode — dues settle at the start of each month"}
                         </p>
                         <p className="mt-1 text-[11.5px] font-medium tracking-wide" style={{ color: C.muted }}>

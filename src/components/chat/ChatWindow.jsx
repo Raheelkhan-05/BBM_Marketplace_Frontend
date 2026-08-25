@@ -95,7 +95,7 @@ function ChatHeader({ meta, otherPresence, otherTyping, onBack }) {
             <div className="relative shrink-0">
                 <span className="flex h-10 w-10 items-center justify-center rounded-full text-[12.5px] font-extrabold text-white shadow-sm"
                     style={{ background: "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}>
-                    {meta ? initials(meta.title) : ""}
+                    {meta ? initials(meta.otherShopName) : ""}
                 </span>
                 {otherPresence?.online && (
                     <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white" style={{ background: "#1FAE5C" }} />
@@ -104,7 +104,7 @@ function ChatHeader({ meta, otherPresence, otherTyping, onBack }) {
             <div className="min-w-0 flex-1">
                 {meta ? (
                     <>
-                        <p className="truncate text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{meta.title}</p>
+                        <p className="truncate text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{meta.otherShopName}</p>
                         {/* header line swaps to "typing…" (with the same bouncing
                             dots, scaled down) in place of online/last-seen the
                             moment a typing:update event comes in, and reverts the

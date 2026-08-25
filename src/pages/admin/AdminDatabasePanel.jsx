@@ -428,7 +428,7 @@ function RowDrawer({ table, schema, row, pkCol, mode, token, onClose, onSaved, o
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-5 py-4">
+                <div className="flex-1 overflow-y-auto px-5 py-4" data-lenis-prevent>
                     <div className="flex flex-col gap-4">
                         {columns.map((col) => (
                             <div key={col.column_name} className="flex flex-col gap-1">
@@ -526,7 +526,7 @@ function Sidebar({ tables, activeTable, onSelect, search, onSearch, mobileOpen, 
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-2 pb-4">
+            <div className="flex-1 overflow-y-auto px-2 pb-4" data-lenis-prevent>
                 {tablesError ? (
                     <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
                         <AlertTriangle className="h-4.5 w-4.5" style={{ color: C.danger }} />
@@ -621,7 +621,7 @@ function RowBrowser({ table, schema, rows, onOpenRow, sort, onSort }) {
     return (
         <>
             {/* Desktop table */}
-            <div className="hidden overflow-x-auto md:block">
+            <div className="hidden overflow-x-auto md:block" data-lenis-prevent>
                 <table className="w-full border-collapse text-left">
                     <thead>
                         <tr className="border-b" style={{ borderColor: C.hair }}>
@@ -830,7 +830,7 @@ export default function AdminDatabasePanel() {
                     )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto" data-lenis-prevent>
                     <div className="mx-auto max-w-6xl px-0 py-0 sm:px-4 sm:py-4">
                         <div className="overflow-hidden rounded-none border-y bg-white sm:rounded-2xl sm:border" style={{ borderColor: C.hair }}>
                             {schemaError || rowsError ? (

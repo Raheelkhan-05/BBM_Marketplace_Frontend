@@ -58,3 +58,8 @@ export async function deleteChatMessage(token, conversationId, messageId, scope)
     });
     return res.json();
 }
+
+export async function fetchApprovedSellers(token) {
+    const res = await fetch(`${API_BASE}/chat/sellers/approved`, { headers: authed(token) });
+    return res.json();
+}
