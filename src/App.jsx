@@ -45,6 +45,8 @@ import PaymentVerificationPage from './pages/admin/PaymentVerificationPage.jsx';
 import PendingPaymentGate from './components/PendingPaymentGate.jsx';
 import AdminFullCatalogUploadPage from './pages/admin/AdminFullCatalogUploadPage.jsx';
 import CartPage from "./pages/CartPage.jsx";
+import AdminWalletSellersPage from "./pages/admin/AdminWalletSellersPage.jsx";
+import SellerWalletPage from "./pages/SellerWalletPage.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -106,6 +108,10 @@ function App() {
               <Route path="/seller/sell" element={<SellPublishProductPage />} />
 
               <Route path="/cart" element={<CartPage />} />
+
+              <Route path="/admin/wallets" element={<AdminWalletSellersPage />} />
+
+              <Route path="/seller/wallet" element={<SellerWalletPage />} />
 
               <Route path="/admin/catalog/bulk-upload" element={<AdminFullCatalogUploadPage />} />
 

@@ -1,6 +1,45 @@
 // utils/api.js
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api";
 
+async function request(path, token, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch (err) {
+    // network failure — keep the shape consistent so callers can just check `.success`
+    return { success: false, message: "Couldn't reach the server. Check your connection." };
+  }
+
+  let body;
+  try {
+    body = await res.json();
+  } catch {
+    body = null;
+  }
+
+  if (!res.ok) {
+    // still return the server's own message/code if it sent one, don't swallow it
+    return body && typeof body === "object" ? { success: false, ...body } : { success: false, message: `Request failed (${res.status}).` };
+  }
+  return body;
+}
+
+export function apiGet(path, token) {
+  return request(path, token, { method: "GET" });
+}
+export function apiPost(path, token, body) {
+  return request(path, token, { method: "POST", body: body != null ? JSON.stringify(body) : undefined });
+}
+export function apiPatch(path, token, body) {
+  return request(path, token, { method: "PATCH", body: body != null ? JSON.stringify(body) : undefined });
+}
+export function apiDelete(path, token) {
+  return request(path, token, { method: "DELETE" });
+}
+
 export async function requestOtp(identifier) {
   const res = await fetch(`${API_BASE}/auth/request-otp`, {
     method: "POST",

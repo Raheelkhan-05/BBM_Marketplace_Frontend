@@ -124,14 +124,17 @@ function OrderCard({ order, idx, onAction }) {
                             <span className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>₹{inr(order.subtotal_amount)}</span>
                         </div>
 
-                        <div className="flex items-center justify-between">
+                        {/* <div className="flex items-center justify-between">
                             <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                 Platform fee ({order.platform_fee_percent}%)
                             </span>
                             <span className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: C.muted }}>
                                 − ₹{inr(order.platform_fee_amount)}
                             </span>
-                        </div>
+
+
+
+                        </div> */}
 
                         <div className="my-0.5 h-px" style={{ background: C.hair }} />
 
@@ -141,6 +144,10 @@ function OrderCard({ order, idx, onAction }) {
                                 <IndianRupee className="h-3.5 w-3.5" />
                                 {inr(order.seller_payout_amount)}
                             </p>
+
+                            <span className="text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                Platform commission ({order.platform_fee_percent}%) — added to wallet
+                            </span>
                         </div>
                     </>
                 )}

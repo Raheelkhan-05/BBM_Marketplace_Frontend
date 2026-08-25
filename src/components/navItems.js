@@ -10,6 +10,7 @@ import {
     PackagePlus,
     ShoppingCart,
     ChartNoAxesCombined,
+    Wallet,
 } from "lucide-react";
 
 export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate }) {
@@ -61,6 +62,15 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate })
                 icon: ChartNoAxesCombined,
                 onClick: () => navigate("/seller/orders"),
                 match: (p) => p.startsWith("/seller/orders"),
+            }
+            : null,
+        isApprovedSeller
+            ? {
+                id: "wallet",
+                label: "Wallet",
+                icon: Wallet,
+                onClick: () => navigate("/seller/wallet"),
+                match: (p) => p.startsWith("/seller/wallet"),
             }
             : null,
     ].filter(Boolean);
