@@ -106,6 +106,39 @@ function unitBasisLabel(basis, unit) {
     return unit || "Unit";
 }
 
+// Inverse of the flatten step in handleSubmit — converts the persisted flat
+// dispatchingLocations array (the shape it's actually stored/submitted in)
+// back into the {country, mode, excludedStates, citiesByState, includedStates,
+// includedCitiesByState} shape form state and the picker expect. Without this,
+// autofill silently fails computeMissing (array has no .country) until the
+// picker mounts and its own "no country" fallback resets everything to a
+// blank all-India default — which is what was masquerading as "autofill only
+// works after opening the section."
+function unflattenDispatchingLocations(flat) {
+    if (!Array.isArray(flat) || !flat.length) return null;
+    const countryEntry = flat.find((e) => e?.type === "country");
+    if (!countryEntry) return null;
+
+    const country = { name: countryEntry.name, code: countryEntry.code };
+    const stateEntries = flat.filter((e) => e?.type === "state");
+
+    if (countryEntry.includeOnly) {
+        const includedStates = stateEntries.map((s) => s.name);
+        const includedCitiesByState = {};
+        stateEntries.forEach((s) => {
+            if (s.includedCities !== undefined) includedCitiesByState[s.name] = s.includedCities;
+        });
+        return { country, mode: "include", excludedStates: [], citiesByState: {}, includedStates, includedCitiesByState };
+    }
+
+    const excludedStates = countryEntry.excludedStates || [];
+    const citiesByState = {};
+    stateEntries.forEach((s) => {
+        if (s.excludedCities !== undefined) citiesByState[s.name] = s.excludedCities;
+    });
+    return { country, mode: "exclude", excludedStates, citiesByState, includedStates: [], includedCitiesByState: {} };
+}
+
 // Display-only: how many Packs the current MOQ (in sale units) works out
 // to, when the listing has an outer pack. Purely derived — never stored,
 // never fed back into moq itself.
@@ -395,12 +428,19 @@ export default function SellerListingForm({
             const delivery = d.delivery?.data || {};
             const taxLegal = d.tax_legal?.data || {};
             const commercial = d.commercial_terms?.data || {};
+
+            // Stored as the flat array (see handleSubmit) — unflatten before
+            // merging into form state, otherwise it's the wrong shape for both
+            // computeMissing and the picker.
+            const restoredDispatchingLocations = Array.isArray(delivery.dispatchingLocations)
+                ? unflattenDispatchingLocations(delivery.dispatchingLocations)
+                : delivery.dispatchingLocations; // already object-shaped from some other source — pass through
+
             setForm((f) => ({
                 ...f,
                 dispatchPincode: delivery.dispatchPincode ?? f.dispatchPincode,
-                dispatchingLocations: delivery.dispatchingLocations ?? f.dispatchingLocations,
+                dispatchingLocations: restoredDispatchingLocations ?? f.dispatchingLocations,
                 freightIncluded: delivery.freightIncluded ?? f.freightIncluded,
-                // hsnCode: taxLegal.hsnCode ?? f.hsnCode,
                 gstPercent: taxLegal.gstPercent ?? f.gstPercent,
                 gstInclusive: taxLegal.gstInclusive ?? f.gstInclusive,
                 returnPolicyKey: taxLegal.returnPolicyKey ?? f.returnPolicyKey,

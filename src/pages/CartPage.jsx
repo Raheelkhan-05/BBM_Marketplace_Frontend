@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Plus } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -7,25 +7,48 @@ import { fetchBuyerAddresses, createBuyerAddress } from "../utils/api.js";
 import { C } from "../components/catalog/tokens";
 import GroupPaymentQRModal from "../components/GroupPaymentQRModal.jsx";
 
+import { purchaseQtyToSaleUnitQty, saleUnitLabel, round2, hasOuterPack } from "../shared/packUnits.js";
+
+// Mirrors resolveSlabUnitPrice/resolveDiscountPercent used everywhere else
+// (BuyNowModal, orders.controller) — kept local since there's no shared
+// pricing module yet, but the logic must stay identical to those.
+function resolveSlabUnitPrice(slabs, saleQty, fallbackPrice) {
+    if (!Array.isArray(slabs) || !slabs.length) return fallbackPrice;
+    const applicable = slabs
+        .filter((s) => Number(s.minQty) > 0 && saleQty >= Number(s.minQty) && (!s.maxQty || saleQty <= Number(s.maxQty)))
+        .sort((a, b) => Number(b.minQty) - Number(a.minQty));
+    return applicable.length ? Number(applicable[0].price) : fallbackPrice;
+}
+function resolveDiscountPercent(tiers, saleQty) {
+    if (!Array.isArray(tiers) || !tiers.length) return 0;
+    const applicable = tiers
+        .filter((d) => Number(d.minQty) > 0 && saleQty >= Number(d.minQty))
+        .sort((a, b) => Number(b.minQty) - Number(a.minQty));
+    return applicable.length ? Number(applicable[0].discountPercent) || 0 : 0;
+}
+
+// item.price is ALREADY per sale unit (Pack, or Master Pack when this
+// listing hasOuterPack) — see shared/packUnits.js. Never re-multiply it
+// by pack_size again, that's the double-scaling bug this replaces.
+// purchase_basis can, in principle, differ from the seller's canonical
+// sale unit, so always convert through purchaseQtyToSaleUnitQty rather
+// than assuming they match.
+function priceFor(item) {
+    const saleQty = purchaseQtyToSaleUnitQty(item.quantity, item.purchase_basis, item.pack_size, item.units_per_master_pack);
+
+    const basePricePerSaleUnit = resolveSlabUnitPrice(item.price_slabs, saleQty, Number(item.price));
+    const discountPercent = resolveDiscountPercent(item.quantity_discounts, saleQty);
+    const unitPrice = round2(basePricePerSaleUnit * (1 - discountPercent / 100));
+
+    const moqSaleUnits = Number(item.moq) || 0;
+    const meetsMoq = moqSaleUnits ? saleQty >= moqSaleUnits : true;
+
+    return { saleQty, lineTotal: round2(unitPrice * saleQty), discountPercent, meetsMoq, moqSaleUnits };
+}
+
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
 
-// Same slab/discount resolution as BuyNowModal, kept local & simple.
-function priceFor(item) {
-    const packSize = Number(item.pack_size) > 0 ? Number(item.pack_size) : 1;
-    const packQty = item.purchase_basis === "per_master_pack"
-        ? item.quantity * (Number(item.units_per_master_pack) || 1) : item.quantity;
-    const pricePerPack = Math.round(Number(item.price) * packSize * 100) / 100;
-    const slabs = Array.isArray(item.price_slabs) ? item.price_slabs : [];
-    const applicable = slabs.filter(s => Number(s.minQty) > 0 && packQty >= Number(s.minQty) && (!s.maxQty || packQty <= Number(s.maxQty)))
-        .sort((a, b) => Number(b.minQty) - Number(a.minQty));
-    const basePrice = applicable[0] ? Number(applicable[0].price) : pricePerPack;
-    const discounts = Array.isArray(item.quantity_discounts) ? item.quantity_discounts : [];
-    const applicableD = discounts.filter(d => Number(d.minQty) > 0 && packQty >= Number(d.minQty))
-        .sort((a, b) => Number(b.minQty) - Number(a.minQty));
-    const discountPercent = applicableD[0] ? Number(applicableD[0].discountPercent) : 0;
-    const unitPrice = Math.round(basePrice * (1 - discountPercent / 100) * 100) / 100;
-    return { lineTotal: Math.round(unitPrice * packQty * 100) / 100, discountPercent };
-}
+
 
 export default function CartPage() {
     const navigate = useNavigate();
@@ -37,6 +60,7 @@ export default function CartPage() {
     const [checking, setChecking] = useState(false);
     const [error, setError] = useState(null);
     const [payingGroupId, setPayingGroupId] = useState(null);
+    const pendingWrites = useRef({});
 
     const load = useCallback(async () => {
         const res = await fetchCart(token);
@@ -62,11 +86,47 @@ export default function CartPage() {
 
     const grandTotal = items.reduce((sum, it) => sum + priceFor(it).lineTotal, 0);
 
-    const handleQty = async (submissionId, quantity) => {
-        if (quantity <= 0) { await removeFromCart(token, submissionId); } else { await updateCartItem(token, submissionId, { quantity }); }
-        load();
+    useEffect(() => {
+        // Clean up any in-flight debounce timers on unmount so they don't
+        // fire updateCartItem calls against an unmounted page.
+        return () => { Object.values(pendingWrites.current).forEach(clearTimeout); };
+    }, []);
+
+    const handleQty = (submissionId, quantity, moq) => {
+        const floor = Number(moq) > 0 ? Number(moq) : 1;
+        if (quantity < floor) return; // client-side floor; server also enforces via BELOW_MOQ
+
+        // Reflect instantly — no waiting on the network for the number to change.
+        setItems((prev) => prev.map((it) => (it.submission_id === submissionId ? { ...it, quantity } : it)));
+
+        // Debounce the actual write so a burst of +/- taps sends one request,
+        // not one per click.
+        clearTimeout(pendingWrites.current[submissionId]);
+        pendingWrites.current[submissionId] = setTimeout(async () => {
+            const res = quantity <= 0
+                ? await removeFromCart(token, submissionId)
+                : await updateCartItem(token, submissionId, { quantity });
+            if (res && res.success === false) {
+                // Server rejected it (e.g. BELOW_MOQ from a race) — surface the
+                // error and pull the real server-side state back in, since our
+                // optimistic guess was wrong.
+                setError(res.message || "Couldn't update quantity.");
+                load();
+            }
+        }, 350);
     };
-    const handleRemove = async (submissionId) => { await removeFromCart(token, submissionId); load(); };
+
+    const handleRemove = (submissionId) => {
+        // Optimistic removal too — drop it from view immediately.
+        setItems((prev) => prev.filter((it) => it.submission_id !== submissionId));
+        removeFromCart(token, submissionId).then((res) => {
+            if (res && res.success === false) {
+                setError(res.message || "Couldn't remove item.");
+                load(); // reconcile — it's still actually in the cart server-side
+            }
+        });
+    };
+
 
     const handleCheckout = async () => {
         if (!addressId) return setError("Please select a shipping address.");
@@ -99,20 +159,36 @@ export default function CartPage() {
                             <div className="mt-3 flex flex-col gap-3">
                                 {g.items.map((it) => {
                                     const p = priceFor(it);
+                                    const floor = Number(it.moq) > 0 ? Number(it.moq) : 1;
+                                    const atFloor = it.quantity <= floor;
                                     return (
-                                        <div key={it.cart_item_id} className="flex items-center gap-3">
-                                            <img src={it.product_image} className="h-12 w-12 rounded-lg border object-cover" style={{ borderColor: C.hair }} />
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate text-[13.5px] font-bold" style={{ color: C.ink }}>{it.product_name}</p>
-                                                <div className="mt-1 flex items-center gap-2">
-                                                    <button onClick={() => handleQty(it.submission_id, it.quantity - 1)} className="h-6 w-6 rounded border text-xs" style={{ borderColor: C.hair }}>−</button>
-                                                    <span className="text-[12.5px] font-bold tabular-nums">{it.quantity}</span>
-                                                    <button onClick={() => handleQty(it.submission_id, it.quantity + 1)} className="h-6 w-6 rounded border text-xs" style={{ borderColor: C.hair }}>+</button>
-                                                    <span className="text-[11px] font-semibold" style={{ color: C.muted }}>{it.purchase_basis === "per_master_pack" ? "master pack(s)" : "pack(s)"}</span>
+                                        <div key={it.cart_item_id} className="flex flex-col gap-1">
+                                            <div className="flex items-center gap-3">
+                                                <img src={it.product_image} className="h-12 w-12 rounded-lg border object-cover" style={{ borderColor: C.hair }} />
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-[13.5px] font-bold" style={{ color: C.ink }}>{it.product_name}</p>
+                                                    <div className="mt-1 flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => handleQty(it.submission_id, it.quantity - 1, it.moq)}
+                                                            disabled={atFloor}
+                                                            className="h-6 w-6 rounded border text-xs disabled:opacity-30"
+                                                            style={{ borderColor: C.hair }}
+                                                        >
+                                                            −
+                                                        </button>
+                                                        <span className="text-[12.5px] font-bold tabular-nums">{it.quantity}</span>
+                                                        <button onClick={() => handleQty(it.submission_id, it.quantity + 1, it.moq)} className="h-6 w-6 rounded border text-xs" style={{ borderColor: C.hair }}>+</button>
+                                                        <span className="text-[11px] font-semibold" style={{ color: C.muted }}>{saleUnitLabel(it.units_per_master_pack)}(s)</span>
+                                                    </div>
+                                                    {atFloor && floor > 1 && (
+                                                        <p className="mt-0.5 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                            At the seller's MOQ ({floor} {saleUnitLabel(it.units_per_master_pack)}{floor === 1 ? "" : "s"}) — remove the item instead of going lower.
+                                                        </p>
+                                                    )}
                                                 </div>
+                                                <p className="text-[13.5px] font-extrabold tabular-nums">₹{inr(p.lineTotal)}</p>
+                                                <button onClick={() => handleRemove(it.submission_id)}><Trash2 className="h-4 w-4" style={{ color: C.muted }} /></button>
                                             </div>
-                                            <p className="text-[13.5px] font-extrabold tabular-nums">₹{inr(p.lineTotal)}</p>
-                                            <button onClick={() => handleRemove(it.submission_id)}><Trash2 className="h-4 w-4" style={{ color: C.muted }} /></button>
                                         </div>
                                     );
                                 })}

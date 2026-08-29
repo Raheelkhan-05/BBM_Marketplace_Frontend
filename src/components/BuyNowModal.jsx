@@ -240,7 +240,10 @@ function Stepper({ value, onChange, min = 1 }) {
             </button>
             <input type="text" inputMode="decimal" value={value}
                 onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
-                onBlur={(e) => { if (!(Number(e.target.value) >= min)) onChange(min); }}
+                // No more auto-snap-to-min on blur. Leave the invalid value as
+                // typed — the disabled buttons + Notice below already tell the
+                // person what's wrong. Silently rewriting their input right
+                // before submit is what let a below-MOQ order sneak through.
                 className="w-full rounded-lg border px-3 py-2 text-center text-[15px] font-extrabold tabular-nums tracking-wide focus:outline-none focus:ring-2"
                 style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
             <button type="button" onClick={() => onChange(Number(value) + 1)}
@@ -322,6 +325,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const [quantity, setQuantity] = useState(() => computeMinQuantity(seller, defaultBasis));
     const userPickedBasis = useRef(false);
+
+    const belowMoq = !isSample && Number(quantity) < minQuantity;
+
     useEffect(() => {
         if (!userPickedBasis.current) setBasis(defaultBasis);
     }, [defaultBasis]);
@@ -343,6 +349,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // Whenever the effective minimum changes (basis switched, or seller/MOQ
     // data arrives late), bring quantity up to it if it's currently short.
     // Never applies in sample mode — that has its own fixed-quantity effect.
+    // Whenever the effective minimum changes (basis switched, or seller/MOQ
+    // data arrives late), bring quantity up to it if it's currently short.
     useEffect(() => {
         if (isSample) return;
         setQuantity((q) => (Number(q) < minQuantity ? minQuantity : q));
@@ -530,6 +538,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // regular "Place order" button, exactly as before.
     const handleSubmit = async (explicitOrderType) => {
         setError(null);
+        // Hard guard — never trust the disabled prop alone. Re-check against
+        // whatever quote we have right now before doing anything else.
+        if (!isSample && Number(quantity) < minQuantity) {
+            setError(`Minimum order quantity is ${minQuantity} ${moqUnitLabel}${minQuantity === 1 ? "" : "s"}.`);
+            return;
+        }
         let addressId = selectedAddressId;
         if (showNewAddress || !addressId) {
             addressId = await handleSaveNewAddress();
@@ -1028,9 +1042,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 payment step) when credit is already approved for this
                                 buyer/seller pair, or the request flow when it isn't. Hidden
                                 entirely for sample orders. */}
+                            {/* Credit slot */}
                             {!isSample && (
                                 canBuyOnCredit ? (
-                                    <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting}
+                                    <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq}
                                         className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
                                         style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
                                         <CreditCard className="h-3.5 w-3.5" /> {submitting ? "Placing…" : "Buy on credit"}
@@ -1042,7 +1057,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         <Notice tone="warn">Your last credit request was declined. You can request again after {new Date(creditStatus.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</Notice>
                                     </div>
                                 ) : (
-                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit}
+                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit || belowMoq}
                                         className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-bold tracking-wide disabled:opacity-60"
                                         style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
                                         <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
@@ -1054,6 +1069,18 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 <button
                                     type="button"
                                     onClick={async () => {
+                                        // Guard immediately, using whatever quote is on hand — don't wait on
+                                        // the debounced server quote before rejecting an obviously-invalid tap.
+                                        if (quote && quote.meetsMoq === false) {
+                                            setError(`Minimum order quantity is ${formatMoqForBasis(quote.moq, seller)}.`);
+                                            return;
+                                        }
+                                        const confirmed = await pendingQuoteRef.current;
+                                        const finalQuote = confirmed || quote;
+                                        if (finalQuote && finalQuote.meetsMoq === false) {
+                                            setError(`Minimum order quantity is ${formatMoqForBasis(finalQuote.moq, seller)}.`);
+                                            return;
+                                        }
                                         setSubmitting(true);
                                         const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
                                         setSubmitting(false);
@@ -1061,7 +1088,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         onClose();
                                         navigate("/cart");
                                     }}
-                                    disabled={submitting}
+                                    disabled={submitting || belowMoq}
                                     className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
                                     style={{ borderColor: C.hair, color: C.ink }}
                                 >
@@ -1069,7 +1096,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </button>
                             )}
 
-                            <button onClick={() => handleSubmit()} disabled={submitting}
+                            <button onClick={() => handleSubmit()} disabled={submitting || (!isSample && belowMoq)}
                                 className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[14px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
                                 style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
