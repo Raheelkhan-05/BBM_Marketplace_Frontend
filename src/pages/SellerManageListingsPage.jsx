@@ -48,6 +48,7 @@ import {
 import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
+import SellerListingForm from "../components/seller/listingForm/SellerListingForm.jsx";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -72,6 +73,135 @@ function summarizeDispatchLocations(locations) {
         ? ` (excl. ${country.excludedStates.length} state${country.excludedStates.length === 1 ? "" : "s"})`
         : "";
     return `${country.name}${excludedStates}`;
+}
+
+/* ---------------- edit listing modal ---------------- */
+
+// Maps a raw seller_product_submissions row (as returned by
+// fetchSellerSubmissionDetail) into the shape SellerListingForm's
+// `initialValues` expects. Mirrors the field-name translation
+// updateSubmission() already does server-side, just in reverse and
+// for display instead of for persistence.
+function submissionToInitialValues(s) {
+    const packSize = Number(s.pack_size) || 1;
+    const masterPackSize = Number(s.units_per_master_pack) || 1;
+    const hasOuterPack = masterPackSize > 1;
+
+    return {
+        productName: s.product_name || s.brand?.name || "",
+        brandName: s.brand_name || s.brand?.brand_name || "",
+        brandImage: s.brand?.image || null,
+        brandNotApplicable: !s.brand_name,
+        images: s.images?.length ? s.images : (s.image ? [s.image] : []),
+        qualityCertificates: s.quality_certificates || [],
+        noteToAdmin: s.note_to_admin || "",
+
+        unit: s.unit || "",
+        packSize: String(packSize),
+        hasOuterPack,
+        masterPackSize: hasOuterPack ? String(masterPackSize) : "0",
+
+        hsnCode: s.hsn_code || "",
+        gstPercent: s.gst_percent ?? 18,
+
+        basePrice: s.base_price != null ? String(s.base_price) : "",
+        priceBasis: s.price_basis || (hasOuterPack ? "per_master_pack" : "per_pack"),
+        gstInclusive: Boolean(s.gst_inclusive_input),
+        freightIncluded: Boolean(s.freight_included),
+
+        sampleAvailable: Boolean(s.sample_available),
+        sampleQuantity: s.sample_quantity != null ? String(s.sample_quantity) : "",
+        sampleUnitBasis: s.sample_unit_basis || "per_unit",
+
+        priceSlabs: s.quantity_discounts || [],
+
+        stockType: s.stock_type || "ready_stock",
+        stockQuantity: s.stock_quantity != null ? String(s.stock_quantity) : "",
+        stockQuantityBasis: "per_pack",
+        productionLeadTimeDays: s.production_lead_time_days != null ? String(s.production_lead_time_days) : "",
+
+        moq: s.moq != null ? String(s.moq) : "",
+
+        dispatchDistrict: s.dispatch_district || "",
+        dispatchState: s.dispatch_state || "",
+        dispatchPincode: s.dispatch_pincode || "",
+        dispatchingLocations: s.dispatching_locations || null,
+
+        returnPolicyKey: s.return_policy_key || "",
+        warrantyKey: s.warranty_key || "",
+    };
+}
+
+function EditListingModal({ token, submissionId, onClose, onSaved }) {
+    useLockBodyScroll();
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [initialValues, setInitialValues] = useState(null);
+    const [brandDisplay, setBrandDisplay] = useState(null);
+    const [submitting, setSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true); setError("");
+        fetchSellerSubmissionDetail(token, submissionId).then((res) => {
+            if (cancelled) return;
+            if (!res?.success) { setError(res?.message || "Couldn't load this listing."); setLoading(false); return; }
+            const s = res.submission;
+            setInitialValues(submissionToInitialValues(s));
+            setBrandDisplay({
+                name: s.product_name || s.brand?.name,
+                brandName: s.brand_name || s.brand?.brand_name,
+                image: s.image || s.brand?.image,
+            });
+            setLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, [token, submissionId]);
+
+    const handleSubmit = async (payload) => {
+        setSubmitting(true);
+        setSubmitError(null);
+        const res = await updateSellerProductSubmission(token, submissionId, payload);
+        setSubmitting(false);
+        if (!res?.success) { setSubmitError(res?.message || "Couldn't save changes."); return; }
+        onSaved(submissionId, res.submission, res.message || "Changes submitted for review.");
+    };
+
+    return (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-2.5 sm:p-4" onClick={onClose}>
+            <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white" style={{ height: "92vh" }}>
+                <div className="flex shrink-0 items-center justify-between border-b px-5 py-3.5" style={{ borderColor: C.hairSoft }}>
+                    <h3 className="text-[15px] font-extrabold" style={{ color: C.ink }}>Edit listing</h3>
+                    <button onClick={onClose} className="shrink-0 rounded-full p-1.5 transition-colors duration-150 hover:bg-black/[0.05]" style={{ color: C.muted }}>
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-5 py-4" style={{ minHeight: 0, overscrollBehavior: "contain" }}>
+                    {loading && <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>}
+                    {!loading && error && <p className="py-8 text-center text-[13px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
+
+                    {!loading && !error && submitError && (
+                        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{submitError}</p>
+                    )}
+
+                    {!loading && !error && initialValues && (
+                        <SellerListingForm
+                            mode="edit"
+                            identityReadOnly
+                            brandDisplay={brandDisplay}
+                            initialValues={initialValues}
+                            onSubmit={handleSubmit}
+                            submitting={submitting}
+                            submitLabel="Save & resubmit for review"
+                            stickyBottomClassName="-bottom-4"
+                        />
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 }
 
 function stockState(stock) {
@@ -618,6 +748,8 @@ export default function SellerManageListingsPage() {
     const [refreshing, setRefreshing] = useState(false);
     const [lastSynced, setLastSynced] = useState(null);
 
+    const [editingId, setEditingId] = useState(null);
+
     const [query, setQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [needsRestockOnly, setNeedsRestockOnly] = useState(false);
@@ -877,7 +1009,21 @@ export default function SellerManageListingsPage() {
                         submissionId={viewingId}
                         onClose={() => setViewingId(null)}
                         onImageClick={setLightboxImage}
-                        onEdit={() => { const id = viewingId; setViewingId(null); navigate(`/seller/sell/${id}/edit`); }}
+                        onEdit={() => { const id = viewingId; setViewingId(null); setEditingId(id); }}
+                    />,
+                    document.body
+                )}
+
+                {editingId && createPortal(
+                    <EditListingModal
+                        token={token}
+                        submissionId={editingId}
+                        onClose={() => setEditingId(null)}
+                        onSaved={(id, submission, message) => {
+                            patchItem(id, submission);
+                            setEditingId(null);
+                            setToastMsg(message);
+                        }}
                     />,
                     document.body
                 )}

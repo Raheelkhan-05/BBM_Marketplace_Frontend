@@ -49,6 +49,7 @@ import AdminWalletSellersPage from "./pages/admin/AdminWalletSellersPage.jsx";
 import SellerWalletPage from "./pages/SellerWalletPage.jsx";
 import AdminDatabasePanel from "./pages/admin/AdminDatabasePanel.jsx";
 import AdminProductCommissionsPage from "./pages/admin/AdminProductCommissionsPage.jsx";
+import SellerEditListingPage from "./pages/SellerEditListingPage.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -108,6 +109,7 @@ function App() {
               <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
 
               <Route path="/seller/sell" element={<SellPublishProductPage />} />
+              <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />
 
               <Route path="/cart" element={<CartPage />} />
 
