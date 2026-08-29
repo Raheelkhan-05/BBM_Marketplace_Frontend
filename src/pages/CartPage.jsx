@@ -6,6 +6,7 @@ import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../util
 import { fetchBuyerAddresses, createBuyerAddress } from "../utils/api.js";
 import { C } from "../components/catalog/tokens";
 import GroupPaymentQRModal from "../components/GroupPaymentQRModal.jsx";
+import { TextField } from "../components/seller/listingForm/FormPrimitives.jsx";
 
 import { purchaseQtyToSaleUnitQty, saleUnitLabel, round2, hasOuterPack } from "../shared/packUnits.js";
 
@@ -48,7 +49,7 @@ function priceFor(item) {
 
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
 
-
+const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 
 export default function CartPage() {
     const navigate = useNavigate();
@@ -57,10 +58,14 @@ export default function CartPage() {
     const [loading, setLoading] = useState(true);
     const [addresses, setAddresses] = useState([]);
     const [addressId, setAddressId] = useState(null);
+    const [showNewAddress, setShowNewAddress] = useState(false);
+    const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
     const [checking, setChecking] = useState(false);
     const [error, setError] = useState(null);
     const [payingGroupId, setPayingGroupId] = useState(null);
     const pendingWrites = useRef({});
+
+    const pendingWritePromises = useRef({});
 
     const load = useCallback(async () => {
         const res = await fetchCart(token);
@@ -75,6 +80,7 @@ export default function CartPage() {
                 setAddresses(res.addresses || []);
                 const def = res.addresses?.find((a) => a.is_default) || res.addresses?.[0];
                 if (def) setAddressId(def.id);
+                else setShowNewAddress(true); // no saved addresses yet — go straight to the form, same as BuyNowModal
             }
         });
     }, [token]);
@@ -94,26 +100,48 @@ export default function CartPage() {
 
     const handleQty = (submissionId, quantity, moq) => {
         const floor = Number(moq) > 0 ? Number(moq) : 1;
-        if (quantity < floor) return; // client-side floor; server also enforces via BELOW_MOQ
+        if (quantity < floor) return;
 
-        // Reflect instantly — no waiting on the network for the number to change.
         setItems((prev) => prev.map((it) => (it.submission_id === submissionId ? { ...it, quantity } : it)));
 
-        // Debounce the actual write so a burst of +/- taps sends one request,
-        // not one per click.
         clearTimeout(pendingWrites.current[submissionId]);
-        pendingWrites.current[submissionId] = setTimeout(async () => {
-            const res = quantity <= 0
+
+        // Wrap the debounced write in a promise we can await elsewhere (checkout).
+        pendingWritePromises.current[submissionId] = new Promise((resolve) => {
+            pendingWrites.current[submissionId] = setTimeout(async () => {
+                const res = quantity <= 0
+                    ? await removeFromCart(token, submissionId)
+                    : await updateCartItem(token, submissionId, { quantity });
+                if (res && res.success === false) {
+                    setError(res.message || "Couldn't update quantity.");
+                    load();
+                }
+                delete pendingWritePromises.current[submissionId];
+                resolve();
+            }, 350);
+        });
+    };
+
+    const flushPendingWrites = async () => {
+        const submissionIds = Object.keys(pendingWrites.current);
+        submissionIds.forEach((id) => clearTimeout(pendingWrites.current[id]));
+
+        // Re-run each write immediately (bypassing the timer) for anything
+        // still pending, then wait for all of them.
+        const flushes = submissionIds.map(async (submissionId) => {
+            const it = items.find((i) => i.submission_id === submissionId);
+            if (!it) return;
+            const res = it.quantity <= 0
                 ? await removeFromCart(token, submissionId)
-                : await updateCartItem(token, submissionId, { quantity });
+                : await updateCartItem(token, submissionId, { quantity: it.quantity });
             if (res && res.success === false) {
-                // Server rejected it (e.g. BELOW_MOQ from a race) — surface the
-                // error and pull the real server-side state back in, since our
-                // optimistic guess was wrong.
                 setError(res.message || "Couldn't update quantity.");
-                load();
             }
-        }, 350);
+        });
+
+        await Promise.all(flushes);
+        pendingWrites.current = {};
+        pendingWritePromises.current = {};
     };
 
     const handleRemove = (submissionId) => {
@@ -127,14 +155,41 @@ export default function CartPage() {
         });
     };
 
+    const setAddrField = (key, value) => setNewAddress((a) => ({ ...a, [key]: value }));
+
+    const handleSaveNewAddress = async () => {
+        const missing = ["contact_name", "contact_phone", "address_line1", "city", "state", "pincode"].filter((k) => !newAddress[k].trim());
+        if (missing.length) { setError("Please fill in the shipping address completely."); return null; }
+        setError(null);
+        const res = await createBuyerAddress(token, { ...newAddress, is_default: addresses.length === 0 });
+        if (!res?.success) { setError(res?.message || "Couldn't save address."); return null; }
+        setAddresses((prev) => [res.address, ...prev]);
+        setAddressId(res.address.id);
+        setShowNewAddress(false);
+        setNewAddress(EMPTY_ADDRESS);
+        return res.address.id;
+    };
 
     const handleCheckout = async () => {
         if (!addressId) return setError("Please select a shipping address.");
+
         setChecking(true);
-        const res = await checkoutCart(token, { shippingAddressId: addressId });
+
+        // Make sure every optimistic quantity change actually landed in the DB
+        // before place_cart_order reads cart_items — otherwise it can price
+        // off a stale quantity that doesn't match what's shown on screen.
+        await flushPendingWrites();
+
+        let effectiveAddressId = addressId;
+        if (showNewAddress || !effectiveAddressId) {
+            effectiveAddressId = await handleSaveNewAddress();
+            if (!effectiveAddressId) { setChecking(false); return; }
+        }
+
+        const res = await checkoutCart(token, { shippingAddressId: effectiveAddressId });
         setChecking(false);
         if (!res?.success) return setError(res?.message || "Couldn't place the order.");
-        setPayingGroupId(res.orderGroupId); // works for both fresh and resumed groups
+        setPayingGroupId(res.orderGroupId);
     };
 
     if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>;
@@ -197,15 +252,49 @@ export default function CartPage() {
                     ))}
 
                     <div className="mt-4 rounded-2xl border p-3.5" style={{ borderColor: C.hair }}>
-                        <p className="flex items-center gap-1.5 text-[12px] font-extrabold uppercase" style={{ color: C.muted }}><MapPin className="h-3.5 w-3.5" /> Shipping address</p>
-                        <div className="mt-2 flex flex-col gap-2">
-                            {addresses.map((a) => (
-                                <button key={a.id} onClick={() => setAddressId(a.id)} className="rounded-xl border p-2.5 text-left" style={{ borderColor: addressId === a.id ? C.secondary : C.hair }}>
-                                    <p className="text-[12.5px] font-bold">{a.label} — {a.contact_name}</p>
-                                    <p className="text-[11.5px]" style={{ color: C.muted }}>{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p>
+                        <p className="flex items-center gap-1.5 text-[12px] font-extrabold uppercase" style={{ color: C.muted }}>
+                            <MapPin className="h-3.5 w-3.5" /> Shipping address
+                        </p>
+
+                        {!showNewAddress && addresses.length > 0 && (
+                            <div className="mt-2 flex flex-col gap-2">
+                                {addresses.map((a) => (
+                                    <button
+                                        key={a.id}
+                                        onClick={() => setAddressId(a.id)}
+                                        className="rounded-xl border p-2.5 text-left"
+                                        style={{ borderColor: addressId === a.id ? C.secondary : C.hair, background: addressId === a.id ? `${C.secondary}08` : "#fff" }}
+                                    >
+                                        <p className="text-[12.5px] font-bold">{a.label} — {a.contact_name}</p>
+                                        <p className="text-[11.5px]" style={{ color: C.muted }}>{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p>
+                                    </button>
+                                ))}
+                                <button type="button" onClick={() => setShowNewAddress(true)} className="flex w-fit items-center gap-1.5 text-[12px] font-bold tracking-wide" style={{ color: C.secondary }}>
+                                    <Plus className="h-3.5 w-3.5" /> Add a new address
                                 </button>
-                            ))}
-                        </div>
+                            </div>
+                        )}
+
+                        {showNewAddress && (
+                            <div className="mt-2 flex flex-col gap-2.5">
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    <TextField dense label="Contact name" value={newAddress.contact_name} onChange={(v) => setAddrField("contact_name", v)} />
+                                    <TextField dense label="Phone" value={newAddress.contact_phone} onChange={(v) => setAddrField("contact_phone", v)} />
+                                </div>
+                                <TextField dense label="Address line 1" value={newAddress.address_line1} onChange={(v) => setAddrField("address_line1", v)} />
+                                <TextField dense label="Address line 2 (optional)" value={newAddress.address_line2} onChange={(v) => setAddrField("address_line2", v)} />
+                                <div className="grid grid-cols-3 gap-2.5">
+                                    <TextField dense label="City" value={newAddress.city} onChange={(v) => setAddrField("city", v)} />
+                                    <TextField dense label="State" value={newAddress.state} onChange={(v) => setAddrField("state", v)} />
+                                    <TextField dense label="Pincode" value={newAddress.pincode} onChange={(v) => setAddrField("pincode", v)} />
+                                </div>
+                                {addresses.length > 0 && (
+                                    <button type="button" onClick={() => setShowNewAddress(false)} className="w-fit text-[12px] font-bold tracking-wide" style={{ color: C.muted }}>
+                                        Use a saved address instead
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{error}</p>}
