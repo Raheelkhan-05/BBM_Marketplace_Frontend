@@ -28,6 +28,10 @@ function inr(n) {
     return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
+function round2(n) {
+    return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
 function Timeline({ status, events }) {
     const isTerminalBad = status === "cancelled" || status === "rejected";
     const currentIdx = TIMELINE_STEPS.indexOf(status);
@@ -166,33 +170,15 @@ export default function SellerOrderDetailPage() {
                     ) : (
                         <>
                             <div className="flex items-center justify-between">
-                                <span className="text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>Order total</span>
-                                <span className="text-[13.5px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>₹{inr(order.subtotal_amount)}</span>
-                            </div>
-                            {/* 
-                            <div className="flex items-center justify-between">
-                                <span className="text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                    Platform fee ({order.platform_fee_percent}%)
-                                </span>
-                                <span className="text-[13.5px] font-extrabold tabular-nums tracking-wide" style={{ color: C.muted }}>
-                                    − ₹{inr(order.platform_fee_amount)}
-                                </span>
-                            </div> */}
-
-                            <div className="my-0.5 h-px" style={{ background: C.hair }} />
-
-                            <div className="flex items-center justify-between">
                                 <span className="text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>You'll receive</span>
                                 <p className="flex items-center gap-0.5 text-[15.5px] font-extrabold tabular-nums" style={{ color: C.primary }}>
                                     <IndianRupee className="h-3.5 w-3.5" />
-                                    {inr(order.seller_payout_amount)}
+                                    {inr(order.subtotal_amount)}
                                 </p>
-
-
-                                <span className="text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                    Platform commission ({order.platform_fee_percent}%) — added to wallet
-                                </span>
                             </div>
+                            <p className="mt-1 text-[13px] italic font-medium tracking-wide" style={{ color: C.muted }}>
+                                Wallet deduction: ₹{inr(round2(order.subtotal_amount * order.platform_fee_percent / 100 * 1.18))} (0.25% commission + 18% GST)
+                            </p>
                         </>
                     )}
                 </div>
