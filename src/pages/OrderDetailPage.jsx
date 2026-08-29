@@ -12,7 +12,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { fetchOrderById, cancelMyOrder } from "../utils/api.js";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
-import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall } from "../components/orders/OrderDisplayHelpers.jsx";
+import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall, basisLabel } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const TIMELINE_STEPS = ["pending_confirmation", "confirmed", "processing", "shipped", "delivered"];
 
@@ -61,15 +61,39 @@ function inr(n) {
     return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
+function saleUnitLabelFromBasis(basis) {
+    if (basis === "per_master_pack") return "Master Pack";
+    if (basis === "per_pack") return "Pack";
+    return null;
+}
+
 function deriveOrderTotals(order) {
     const item = order.items?.[0];
-    const baseQuantity = Number(item?.quantity) || 0;
-    const basePriceApplied = Number(item?.base_price_applied) || Number(item?.unit_price) || 0;
+    const baseQuantity = Number(item?.quantity) || 0;                 // base units (e.g. 100 Litres)
+    const basePriceApplied = Number(item?.base_price_applied) || Number(item?.unit_price) || 0; // per SALE unit
+
+    // FIX: was multiplying a per-sale-unit price directly against the
+    // base-unit quantity (mixing units, ~20x inflation in the Master
+    // Pack case) and inventing a phantom discount for the difference.
+    // pack_quantity_snapshot already holds the real sale-unit quantity
+    // the buyer entered (e.g. 5 Master Packs) — same field
+    // ItemQuantityLine above already uses correctly. No derivation
+    // needed; just read it.
+    const saleUnitQuantity = Number(item?.pack_quantity_snapshot) || 0;
     const discountPercent = Number(item?.discount_percent) || 0;
-    const grossSubtotal = round2(basePriceApplied * baseQuantity);
     const subtotal = Number(order.subtotal_amount) || 0;
+
+    const grossSubtotal = round2(basePriceApplied * saleUnitQuantity);
     const discountAmount = round2(Math.max(grossSubtotal - subtotal, 0));
-    return { baseQuantity, basePriceApplied, discountPercent, grossSubtotal, discountAmount, subtotal, unit: item?.unit };
+    const perBaseUnitRate = baseQuantity > 0 ? round2(grossSubtotal / baseQuantity) : 0;
+
+    // reuse the shared label helper rather than a local reimplementation —
+    // basisLabel returns lowercase "master pack"/"pack"; capitalize to
+    // match this page's existing "Master Pack"/"Pack" casing.
+    const rawLabel = basisLabel(item?.purchase_basis);
+    const saleUnitLabel = rawLabel ? rawLabel.replace(/\b\w/g, (c) => c.toUpperCase()) : null;
+
+    return { baseQuantity, saleUnitQuantity, basePriceApplied, perBaseUnitRate, discountPercent, grossSubtotal, discountAmount, subtotal, unit: item?.unit, saleUnitLabel };
 }
 
 // Small section wrapper matching the rounded-2xl / uppercase-caption
@@ -190,9 +214,19 @@ export default function OrderDetailPage() {
                         const t = deriveOrderTotals(order);
                         return (
                             <>
-                                <p className="text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>
-                                    {inr(t.baseQuantity)} {t.unit} × ₹{inr(t.basePriceApplied)} / {t.unit}
-                                </p>
+
+                                {t.saleUnitLabel ? (
+                                    <p className="text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>
+                                        {inr(t.saleUnitQuantity)} {t.saleUnitLabel}{t.saleUnitQuantity === 1 ? "" : "s"} · {inr(t.baseQuantity)} {t.unit}
+                                        <span className="ml-1.5" style={{ color: C.muted }}>
+                                            (₹{inr(t.basePriceApplied)} / {t.saleUnitLabel} ≈ ₹{inr(t.perBaseUnitRate)} / {t.unit})
+                                        </span>
+                                    </p>
+                                ) : (
+                                    <p className="text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>
+                                        {inr(t.baseQuantity)} {t.unit} × ₹{inr(t.perBaseUnitRate)} / {t.unit}
+                                    </p>
+                                )}
 
                                 <div className="flex items-center justify-between">
                                     <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Subtotal</span>

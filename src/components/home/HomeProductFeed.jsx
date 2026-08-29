@@ -65,8 +65,8 @@ function moqInPacks(seller) {
 }
 
 const SELLER_SORT_OPTIONS = [
-    { value: "best_value", label: "Best price at MOQ" },
-    { value: "max_discount", label: "Biggest discount" },
+    { value: "min_moq", label: "Min MOQ" },
+    { value: "best_price", label: "Best price" },
 ];
 
 function SellerSortToggle({ value, onChange }) {
@@ -110,14 +110,6 @@ function effectivePricePerPackAtMoq(seller) {
     };
 }
 
-
-// Best discount % this seller offers at all (regardless of how much
-// quantity is needed to unlock it) — used by the "Biggest discount" sort.
-function maxDiscountPercent(seller) {
-    if (!Array.isArray(seller.quantity_discounts) || !seller.quantity_discounts.length) return 0;
-    return Math.max(...seller.quantity_discounts.map((d) => Number(d.discountPercent) || 0));
-}
-
 function SellerPriceBlock({ pricing, unit }) {
     if (!pricing) return null;
     const { discountPercent, hasMasterPack, unit: u, pack, masterPack } = pricing;
@@ -151,35 +143,6 @@ function SellerPriceBlock({ pricing, unit }) {
             ))}
         </div>
     );
-}
-
-// What a buyer actually pays per sale-unit (Pack or Master Pack) if they
-// bought exactly `saleQty` of them — slab price first, then whichever
-// quantity-discount tier that saleQty unlocks.
-function computeSellerPricingAtQty(seller, saleQty, includeGst) {
-    const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
-    const master = Number(seller.units_per_master_pack) || 1;
-    const hasMasterPack = sellerSaleUnit(seller) === "Master Pack";
-    const gst = Number(seller.gst_percent) || 0;
-
-    const unitPriceBase = includeGst ? Number(seller.price) : Number(seller.price) / (1 + gst / 100);
-    if (!(unitPriceBase > 0)) return null;
-
-    const pricePerPack = unitPriceBase * packSize;
-    const packQtyEquivalent = hasMasterPack ? saleQty * master : saleQty;
-
-    const slabPrice = resolveSlabUnitPrice(seller.price_slabs, packQtyEquivalent, pricePerPack);
-    const discountPercent = resolveDiscountPercent(seller.quantity_discounts, saleQty);
-    const finalPricePerPack = slabPrice * (1 - discountPercent / 100);
-
-    const scale = hasMasterPack ? master : 1;
-    return {
-        saleUnit: sellerSaleUnit(seller),
-        saleQty,
-        originalPrice: slabPrice * scale,
-        finalPrice: finalPricePerPack * scale,
-        discountPercent,
-    };
 }
 
 // Merges a new page of results into the existing list, dropping any
@@ -556,20 +519,45 @@ function moqInSaleUnits(seller) {
     return Math.max(1, Number(seller.moq) || 1);
 }
 
-function bestDiscountTier(seller) {
-    if (!Array.isArray(seller.quantity_discounts) || !seller.quantity_discounts.length) return null;
-    return [...seller.quantity_discounts].sort(
-        (a, b) => (Number(b.discountPercent) || 0) - (Number(a.discountPercent) || 0)
-    )[0] || null;
+// All quantity thresholds worth checking for this seller: their MOQ,
+// plus every price-slab and quantity-discount minQty at or above MOQ
+// (a threshold below MOQ isn't purchasable, so it's excluded).
+function candidateSaleQuantities(seller) {
+    const moq = moqInSaleUnits(seller);
+    const quantities = new Set([moq]);
+    (seller.price_slabs || []).forEach((s) => {
+        const q = Number(s.minQty);
+        if (q >= moq) quantities.add(q);
+    });
+    (seller.quantity_discounts || []).forEach((d) => {
+        const q = Number(d.minQty);
+        if (q >= moq) quantities.add(q);
+    });
+    return Array.from(quantities).sort((a, b) => a - b);
+}
+
+// The genuinely lowest price this seller can offer, checked across every
+// quantity breakpoint they have — not just their MOQ. A higher-quantity
+// slab or discount tier can beat the MOQ price per unit, and this is what
+// surfaces that instead of hiding it behind "best price at MOQ" framing.
+function bestAchievablePricing(seller, includeGst) {
+    const quantities = candidateSaleQuantities(seller);
+    let best = null;
+    for (const qty of quantities) {
+        const pricing = computeEffectivePricing(seller, qty, includeGst);
+        if (!pricing) continue;
+        if (!best || pricing.pack.final < best.pack.final) {
+            best = pricing;
+        }
+    }
+    return best || computeEffectivePricing(seller, moqInSaleUnits(seller), includeGst);
 }
 
 function sellerPricingForMode(seller, sortMode, includeGst) {
-    if (sortMode === "max_discount") {
-        const tier = bestDiscountTier(seller);
-        const qty = tier ? (Number(tier.minQty) || moqInSaleUnits(seller)) : moqInSaleUnits(seller);
-        return computeEffectivePricing(seller, qty, includeGst);
+    if (sortMode === "min_moq") {
+        return computeEffectivePricing(seller, moqInSaleUnits(seller), includeGst);
     }
-    return computeEffectivePricing(seller, moqInSaleUnits(seller), includeGst); // best_value, at MOQ
+    return bestAchievablePricing(seller, includeGst); // "best_price"
 }
 
 // Inline seller accordion. Renders directly under the row it belongs
@@ -588,12 +576,16 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
     // server-side sort-aware pagination too.
     const sortedItems = useMemo(() => {
         if (!items.length) return items;
-        const withMeta = items.map((s) => ({ s, pricing: sellerPricingForMode(s, sortMode, includeGst) }));
-        // Sort mode only changes WHICH quantity/tier the price is computed
-        // at (MOQ vs. best-available-discount) — the resulting list is
-        // always ordered cheapest-to-priciest by that computed price, so
-        // the seller who's genuinely cheapest is always shown first no
-        // matter which mode is selected.
+
+        if (sortMode === "min_moq") {
+            // Lowest MOQ first — display order tracks MOQ directly here,
+            // not price.
+            return [...items].sort((a, b) => moqInSaleUnits(a) - moqInSaleUnits(b));
+        }
+
+        // "best_price" — order by whichever quantity gets each seller their
+        // lowest achievable per-unit price, cheapest seller first.
+        const withMeta = items.map((s) => ({ s, pricing: bestAchievablePricing(s, includeGst) }));
         withMeta.sort((a, b) => {
             const av = a.pricing?.pack?.final ?? Infinity;
             const bv = b.pricing?.pack?.final ?? Infinity;
@@ -663,11 +655,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                 {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
                                                 {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
                                             </p>
-                                            {hasDiscount && (
-                                                <p className="mt-0.5 truncate text-[11px] font-extrabold tracking-wider" style={{ color: C.secondary }}>
-                                                    {pricing.discountPercent}% off · {pricing.saleQty}+ {pricing.saleUnit}{pricing.saleQty === 1 ? "" : "s"}
-                                                </p>
-                                            )}
+
                                         </div>
                                         <SellerPriceBlock pricing={pricing} unit={s.unit} />
                                     </button>
@@ -726,7 +714,7 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [lightboxSrc, setLightboxSrc] = useState(null);
     const [infoItemId, setInfoItemId] = useState(null);
 
-    const [sellerSortMode, setSellerSortMode] = useState("best_value");
+    const [sellerSortMode, setSellerSortMode] = useState("best_price");
 
     // GST view toggle — defaults to inclusive, since that's what the
     // stored price already represents. Purely client-side; no refetch
