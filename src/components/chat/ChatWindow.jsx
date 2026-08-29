@@ -51,29 +51,80 @@ function TypingDots({ color = C.secondary, size = "h-1.5 w-1.5" }) {
     );
 }
 
-function CreditBar({ credit, viewerRole, otherName, onRequest, onToggle, requesting }) {
+// ChatWindow.jsx — replace CreditBar entirely
+
+function CreditBar({ credit, viewerRole, otherName, onRequest, onToggle, onDecide, requesting }) {
     if (viewerRole === "buyer") {
         const cooldownActive = credit?.status === "rejected" && credit.cooldown_until && new Date(credit.cooldown_until) > new Date();
         if (!credit || credit.status === "revoked" || (credit.status === "rejected" && !cooldownActive)) {
             return (
-                <div className="flex items-center justify-between border-b px-4 py-2" style={{ borderColor: C.hair, background: "#7c3aed08" }}>
-                    <span className="text-[12px] font-semibold" style={{ color: C.muted }}>Buy on credit from {otherName}</span>
-                    <button onClick={onRequest} disabled={requesting} className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white disabled:opacity-60" style={{ background: "#7c3aed" }}>
-                        <CreditCard className="h-3 w-3" /> {requesting ? "Requesting…" : "Request credit"}
+                <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: `${C.secondary}08` }}>
+                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: C.ink }}>
+                        <CreditCard className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Buy on credit from {otherName}
+                    </span>
+                    <button onClick={onRequest} disabled={requesting}
+                        className="shrink-0 rounded-lg px-3.5 py-1.5 text-[11.5px] font-bold text-white transition-opacity disabled:opacity-60"
+                        style={{ background: C.secondary }}>
+                        {requesting ? "Requesting…" : "Request credit"}
                     </button>
                 </div>
             );
         }
-        if (credit.status === "pending") return <div className="border-b px-4 py-2 text-[12px] font-semibold" style={{ borderColor: C.hair, color: "#a16207", background: "#fef3c7" }}>Credit request pending seller approval.</div>;
-        if (credit.status === "approved") return <div className="border-b px-4 py-2 text-[12px] font-bold" style={{ borderColor: C.hair, color: "#059669", background: "#EAF7F2" }}>✅ Credit approved — you can buy on credit from {otherName}.</div>;
-        if (cooldownActive) return <div className="border-b px-4 py-2 text-[12px] font-semibold" style={{ borderColor: C.hair, color: C.muted }}>Credit request declined. You can request again after {new Date(credit.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</div>;
+        if (credit.status === "pending") {
+            return (
+                <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: "#fef3c7" }}>
+                    <Clock3 className="h-3.5 w-3.5 shrink-0" style={{ color: "#a16207" }} />
+                    <span className="text-[12px] font-semibold" style={{ color: "#a16207" }}>Credit request pending {otherName}'s approval.</span>
+                </div>
+            );
+        }
+        if (credit.status === "approved") {
+            return (
+                <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: "#EAF7F2" }}>
+                    <Check className="h-3.5 w-3.5 shrink-0" style={{ color: "#059669" }} />
+                    <span className="text-[12px] font-bold" style={{ color: "#059669" }}>Credit approved — you can buy on credit from {otherName}.</span>
+                </div>
+            );
+        }
+        if (cooldownActive) {
+            return (
+                <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                    <span className="text-[12px] font-semibold" style={{ color: C.muted }}>
+                        Credit request declined. You can request again after {new Date(credit.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.
+                    </span>
+                </div>
+            );
+        }
         return null;
+    }
+
+    // seller — the important fix: a pending request now shows here too,
+    // pinned at the top, with Approve/Decline right in the bar. This is
+    // always visible regardless of how far the seller has scrolled.
+    if (viewerRole === "seller" && credit?.status === "pending") {
+        return (
+            <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: "#fef3c7" }}>
+                <span className="flex items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: "#a16207" }}>
+                    <CreditCard className="h-3.5 w-3.5" /> {otherName} requested to buy on credit
+                </span>
+                <div className="flex shrink-0 gap-1.5">
+                    <button onClick={() => onDecide(credit.id, "approved")}
+                        className="rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white" style={{ background: "#059669" }}>
+                        Approve
+                    </button>
+                    <button onClick={() => onDecide(credit.id, "rejected")}
+                        className="rounded-lg border px-3 py-1.5 text-[11.5px] font-bold" style={{ borderColor: C.hair, color: C.muted, background: "#fff" }}>
+                        Decline
+                    </button>
+                </div>
+            </div>
+        );
     }
 
     if (viewerRole === "seller" && credit && (credit.status === "approved" || credit.status === "revoked")) {
         const on = credit.status === "approved";
         return (
-            <div className="flex items-center justify-between border-b px-4 py-2" style={{ borderColor: C.hair, background: on ? "#EAF7F2" : "#FAFAFA" }}>
+            <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: C.hair, background: on ? "#EAF7F2" : "#FAFAFA" }}>
                 <span className="text-[12.5px] font-bold" style={{ color: C.ink }}>
                     Credit for {otherName}: <span style={{ color: on ? "#059669" : C.muted }}>{on ? "Enabled" : "Off"}</span>
                 </span>
@@ -186,21 +237,26 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
     if (message.message_type === "credit_request") {
         const creditId = message.metadata?.creditRequestId;
         const isCurrent = credit?.id === creditId;
-        const status = isCurrent ? credit.status : null; // older row, no live status to show
+        const status = isCurrent ? credit.status : null;
+        const statusStyle = {
+            pending: { color: "#a16207", bg: "#fef3c7", label: "Pending" },
+            approved: { color: "#059669", bg: "#EAF7F2", label: "Approved" },
+            rejected: { color: "#c71f11", bg: "rgba(199,31,17,0.08)", label: "Declined" },
+            revoked: { color: C.muted, bg: C.hairSoft, label: "Turned off" },
+        }[status] || { color: C.muted, bg: C.hairSoft, label: "Sent" };
+
         return (
             <div className="mb-3 flex justify-center">
-                <div className="w-full max-w-[280px] rounded-2xl border p-3.5" style={{ borderColor: "#7c3aed40", background: "#7c3aed08" }}>
-                    <p className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: C.ink }}><CreditCard className="h-3.5 w-3.5" style={{ color: "#7c3aed" }} /> Credit request</p>
-                    {status === "pending" && !isMine && (
-                        <div className="mt-2.5 flex gap-2">
-                            <button onClick={() => onCreditDecision(creditId, "approved")} className="flex-1 rounded-lg py-1.5 text-[12px] font-bold text-white" style={{ background: "#7c3aed" }}>Approve</button>
-                            <button onClick={() => onCreditDecision(creditId, "rejected")} className="flex-1 rounded-lg border py-1.5 text-[12px] font-bold" style={{ borderColor: C.hair, color: C.muted }}>Decline</button>
-                        </div>
-                    )}
-                    {status === "pending" && isMine && <p className="mt-1 text-[11.5px] font-medium" style={{ color: C.muted }}>Waiting for the seller to respond.</p>}
-                    {status === "approved" && <p className="mt-1.5 text-[12px] font-bold" style={{ color: "#059669" }}>✅ Approved</p>}
-                    {status === "rejected" && <p className="mt-1.5 text-[12px] font-bold" style={{ color: "#c71f11" }}>❌ Declined</p>}
-                    {status === "revoked" && <p className="mt-1.5 text-[12px] font-bold" style={{ color: C.muted }}>Credit turned off</p>}
+                <div className="flex w-full max-w-[260px] items-center gap-2.5 rounded-2xl border px-3.5 py-3" style={{ borderColor: C.hair, background: "#fff" }}>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                        <CreditCard className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>Credit request</p>
+                        <span className="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>
+                            {statusStyle.label}
+                        </span>
+                    </div>
                 </div>
             </div>
         );
@@ -392,7 +448,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
             <ChatHeader meta={meta} otherPresence={otherPresence} otherTyping={otherTyping} onBack={onBack} />
             <CreditBar
                 credit={credit} viewerRole={viewerRole} otherName={meta?.title || "them"}
-                onRequest={handleRequestCredit} onToggle={toggle} requesting={requestingCredit}
+                onRequest={handleRequestCredit} onToggle={toggle} onDecide={decide} requesting={requestingCredit}
             />
             <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
                 {loadingOlder && (

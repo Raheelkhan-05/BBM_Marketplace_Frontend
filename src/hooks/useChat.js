@@ -71,8 +71,16 @@ export default function useChatMessages(conversationId, otherUserId) {
     const ackRead = useCallback(() => {
         if (!conversationId) return;
         if (socket && connected) socket.emit("read:ack", { conversationId });
-        else markConversationRead(token, conversationId);
+        else markConversationRead(token, conversationId); // <- hits the broken endpoint
     }, [socket, connected, conversationId, token]);
+
+    // MOVED HERE — top level of the hook, alongside ackRead, not inside the effect
+    const ackDelivered = useCallback(() => {
+        if (!conversationId) return;
+        if (socket && connected) socket.emit("delivered:ack", { conversationId });
+    }, [socket, connected, conversationId]);
+
+
 
     const upsert = useCallback((msg) => {
         setMessageMap((prev) => {
@@ -157,7 +165,10 @@ export default function useChatMessages(conversationId, otherUserId) {
         const onNew = (msg) => {
             if (msg.conversation_id !== conversationId) return;
             upsert(msg);
-            if (msg.sender_id !== myId && isOpenRef.current) ackRead();
+            if (msg.sender_id !== myId) {
+                ackDelivered();
+                if (isOpenRef.current) ackRead();
+            }
         };
         const onStatus = ({ conversationId: cid, deliveredAt, readAt }) => {
             if (cid !== conversationId) return;
@@ -191,7 +202,7 @@ export default function useChatMessages(conversationId, otherUserId) {
             socket.off("typing:update", onTyping);
             socket.off("message:deleted", onDeleted);
         };
-    }, [socket, connected, conversationId, myId, otherUserId, upsert, ackRead]);
+    }, [socket, connected, conversationId, myId, otherUserId, upsert, ackRead, ackDelivered]);
 
     // resync on regaining connection — covers "closed laptop, reopened
     // 10 minutes later" without a full page reload
@@ -416,16 +427,28 @@ export function useCredit(otherUserId) {
 
     useEffect(() => {
         if (!socket || !connected) return;
-        const onDecided = ({ creditId, status, cooldownUntil }) => {
-            setCredit((prev) => (prev && prev.id === creditId ? { ...prev, status, cooldown_until: cooldownUntil } : prev));
-        };
-        const onToggled = ({ status }) => {
-            setCredit((prev) => (prev ? { ...prev, status } : prev));
-        };
+
+        const onRequested = () => { load(); };
+
+        // FIX: previously patched `credit` in place only if `prev.id ===
+        // creditId` — if that guard ever missed (stale/null prev on the
+        // buyer's side after a decision came in), the update silently
+        // no-op'd and the UI stayed frozen on the message's original state.
+        // A REST refetch is cheap here (fires once per decision, not per
+        // keystroke) and removes any dependency on local state already
+        // being in the exact right shape — it's just correct.
+        const onDecided = () => { load(); };
+        const onToggled = () => { load(); };
+
+        socket.on("credit:requested", onRequested);
         socket.on("credit:decided", onDecided);
         socket.on("credit:toggled", onToggled);
-        return () => { socket.off("credit:decided", onDecided); socket.off("credit:toggled", onToggled); };
-    }, [socket, connected]);
+        return () => {
+            socket.off("credit:requested", onRequested);
+            socket.off("credit:decided", onDecided);
+            socket.off("credit:toggled", onToggled);
+        };
+    }, [socket, connected, load]);
 
     const request = useCallback(async (conversationId) => {
         const res = await requestCreditApi(token, { sellerUserId: otherUserId });

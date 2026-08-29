@@ -62,6 +62,7 @@ export default function ConversationList({ conversations, loading, activeId, onS
     const [starting, setStarting] = useState(null);
 
     useEffect(() => {
+        if (!token) return;
         let cancelled = false;
         fetchApprovedSellers(token).then((res) => {
             if (cancelled) return;

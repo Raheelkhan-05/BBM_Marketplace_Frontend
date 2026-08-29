@@ -94,6 +94,7 @@ export default function useChatMessages(conversationId, otherUserId) {
             upsert(msg);
             if (msg.sender_id !== myId && isOpenRef.current) markConversationRead(token, conversationId);
         };
+
         const onStatus = ({ conversationId: cid, deliveredAt, readAt }) => {
             if (cid !== conversationId) return;
             setOtherWatermarks((prev) => ({ deliveredAt: deliveredAt || prev.deliveredAt, readAt: readAt || prev.readAt }));

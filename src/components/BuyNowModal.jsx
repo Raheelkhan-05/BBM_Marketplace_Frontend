@@ -1,29 +1,5 @@
 // components/BuyNowModal.jsx — RESTYLED
-//
-// Visual + information-architecture pass to match the seller listing
-// form language (FormPrimitives: C tokens, uppercase caption Labels,
-// rounded-2xl SectionCards, tabular-nums, compact chip toggles) instead
-// of the previous ad-hoc styling. The quote block is rebuilt as a clear
-// step-down breakdown — Subtotal → Discount → Payable → Delivery —
-// instead of everything competing for attention in one dense strip.
-//
-// NEW: delivery estimate uses the same simplified distance/speed model as
-// the backend (see orders.controller.js) — distance in km / 15 km/h ->
-// day range, shown as a single date or a "23 Aug - 25 Aug" range. This
-// client-side version is just an instant, rough preview (it can't call
-// the server's road-distance lookup), and gets replaced a moment later
-// by the authoritative server quote from fetchOrderQuote.
-//
-// UI REPOSITIONING PASS (this revision):
-// - "Buy on credit" is no longer a top-tab alongside Standard/Sample.
-//   Clicking it now places the credit order immediately (no separate
-//   mode toggle step needed) — it lives as its own action button in the
-//   sticky footer, directly above "Place order".
-// - When credit isn't enabled for this buyer/seller pair yet, that same
-//   footer slot instead shows "Request credit from this seller" (or the
-//   pending/cooldown notice), replacing the old mid-form placement.
-//   Functionally this is still the same once-only-until-cooldown request
-//   flow as before — only where it's drawn has changed.
+
 import { useEffect, useState, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import PaymentQRModal from "./PaymentQRModal.jsx";
@@ -1018,11 +994,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </SectionCard>
                             )}
 
-                            <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
-                                <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
-                                <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>Test mode — payment is simulated for now. No real charge will occur.</p>
-                            </div>
-
                             {error && <Notice tone="danger">{error}</Notice>}
                         </div>
 
@@ -1037,11 +1008,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </div>
                             )}
 
-                            {/* Credit slot — sits just above "Place order". Either a one-tap
-                                "Buy on credit" (places the order immediately, no separate
-                                payment step) when credit is already approved for this
-                                buyer/seller pair, or the request flow when it isn't. Hidden
-                                entirely for sample orders. */}
                             {/* Credit slot */}
                             {!isSample && (
                                 canBuyOnCredit ? (
