@@ -106,7 +106,7 @@ export default function HierarchyCombobox({ label, placeholder, value, onSelect,
         setLoading(true);
         const t = setTimeout(async () => {
             const res = await fetcher(q);
-            if (!cancelled) { setItems(res?.success ? res.items || [] : []); setLoading(false); }
+            if (!cancelled) { setItems(res?.success ? res.entries || [] : []); setLoading(false); }
         }, q ? 250 : 0);
         return () => { cancelled = true; clearTimeout(t); };
         // eslint-disable-next-line react-hooks/exhaustive-deps
