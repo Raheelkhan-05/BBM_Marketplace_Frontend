@@ -299,7 +299,7 @@ function AccessGate({ access, navigate }) {
 
 function SubmittedScreen({ shopSlug, isEdit }) {
     return (
-        <div className="mx-auto flex max-w-md flex-col items-center px-6 py-20 text-center">
+        <div className="mx-auto min-h-screen flex max-w-md flex-col items-center px-6 py-20 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}><CheckCircle2 className="h-7 w-7" /></span>
             <h2 className="mt-4 text-[20px] font-extrabold text-slate-900">{isEdit ? "Changes saved" : "Submitted for review"}</h2>
             <p className="mt-2 text-[13.5px] font-medium text-slate-500">{isEdit ? "Your listing has been updated." : "We'll notify you once our team approves it — or let you know what to fix if it's rejected."}</p>

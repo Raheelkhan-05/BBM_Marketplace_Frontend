@@ -106,6 +106,14 @@ function unitBasisLabel(basis, unit) {
     return unit || "Unit";
 }
 
+// Display-only: how many Packs the current MOQ (in sale units) works out
+// to, when the listing has an outer pack. Purely derived — never stored,
+// never fed back into moq itself.
+function moqSaleUnitsToPacks(saleUnitQty, hasOuterPack, masterPackSize) {
+    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+    return hasOuterPack ? Number(saleUnitQty) * master : Number(saleUnitQty);
+}
+
 // sample_quantity is stored in base Units on the backend.
 function toBaseUnitsFromBasis(basis, qty, packSize, masterPackSize) {
     const q = Number(qty) || 0;
@@ -418,138 +426,64 @@ export default function SellerListingForm({
         const gst = Number(form.gstPercent) || 0;
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
+        const saleUnitSize = form.hasOuterPack ? pack * master : pack;
 
-        // Normalise whatever the seller typed into a true per-unit (per Litre /
-        // Piece / Kg …) price so every downstream consumer (moqPreview,
-        // discountedPreview) can simply multiply by totalUnits without caring
-        // which basis was active.
-        //   per_unit        → already the per-unit price, no conversion needed
-        //   per_pack        → divide by pack size  (e.g. ₹100 / 10 L = ₹10/L)
-        //   per_master_pack → divide by master×pack (e.g. ₹300 / 3×10 = ₹10/L)
-        let perUnitPrice = price; // per_unit basis: already correct
-        if (form.priceBasis === "per_pack") perUnitPrice = price / pack;
-        if (form.priceBasis === "per_master_pack") perUnitPrice = price / (master * pack);
+        let perBaseUnit = price;
+        if (form.priceBasis === "per_pack") perBaseUnit = price / pack;
+        if (form.priceBasis === "per_master_pack") perBaseUnit = price / (pack * master);
+        const perSaleUnit = perBaseUnit * saleUnitSize;
 
-        let basePricePerUnit, gstAmount, subtotalAfterGst;
-
+        let basePricePerSaleUnit, gstAmount, subtotalAfterGst;
         if (form.gstInclusive) {
-            // Seller's typed price IS the subtotal (base + GST) — reverse ONLY
-            // GST out of it to recover the base price. Commission is never
-            // reverse-baked in, regardless of this toggle.
-            subtotalAfterGst = round2(perUnitPrice);
-            basePricePerUnit = round2(subtotalAfterGst / (1 + gst / 100));
-            gstAmount = round2(subtotalAfterGst - basePricePerUnit);
+            subtotalAfterGst = round2(perSaleUnit);
+            basePricePerSaleUnit = round2(subtotalAfterGst / (1 + gst / 100));
+            gstAmount = round2(subtotalAfterGst - basePricePerSaleUnit);
         } else {
-            // Entered price excludes GST — this is the base price, shown as-is.
-            basePricePerUnit = round2(perUnitPrice);
-            gstAmount = round2(basePricePerUnit * (gst / 100));
-            subtotalAfterGst = round2(basePricePerUnit + gstAmount);
+            basePricePerSaleUnit = round2(perSaleUnit);
+            gstAmount = round2(basePricePerSaleUnit * (gst / 100));
+            subtotalAfterGst = round2(basePricePerSaleUnit + gstAmount);
         }
 
-        // Commission is always calculated forward, on top of the subtotal
-        // (base + GST) — never reversed out of a typed price.
         const commissionAmount = round2(subtotalAfterGst * (commissionPercent / 100));
-        const finalPricePerUnit = round2(subtotalAfterGst + commissionAmount);
+        const finalPricePerSaleUnit = round2(subtotalAfterGst + commissionAmount);
 
-        return {
-            basePricePerUnit,
-            gstPercent: gst, gstAmount,
-            subtotalAfterGst,
-            commissionPercent, commissionAmount,
-            finalPricePerUnit,
-        };
-    }, [form.basePrice, form.gstPercent, form.packSize, form.masterPackSize, form.gstInclusive, form.priceBasis, commissionPercent]);
+        return { basePricePerSaleUnit, gstPercent: gst, gstAmount, subtotalAfterGst, commissionPercent, commissionAmount, finalPricePerSaleUnit };
+    }, [form.basePrice, form.gstPercent, form.packSize, form.masterPackSize, form.hasOuterPack, form.gstInclusive, form.priceBasis, commissionPercent]);
 
-    // Full price breakdown at MOQ — reuses pricePreview's per-unit figures
-    // (which already account for gstInclusive correctly) and simply scales
-    // them up by the total quantity implied by the current MOQ field.
     const moqPreview = useMemo(() => {
-        const moq = Number(form.moq) || 1;
+        const moqSaleUnits = Number(form.moq) || 1; // already sale-unit qty
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
         const gst = Number(form.gstPercent) || 0;
 
-        const moqPacks = form.hasOuterPack ? moq * master : moq;
-        const totalUnits = round2(moqPacks * pack);
+        const totalUnits = round2(form.hasOuterPack ? moqSaleUnits * master * pack : moqSaleUnits * pack);
+        const grossSubtotal = round2(pricePreview.basePricePerSaleUnit * moqSaleUnits);
 
-        // Gross subtotal at MOQ, before any slab discount.
-        // pricePreview.basePricePerUnit is a true per-unit (per Litre/Piece/…)
-        // value, so multiplying by totalUnits gives the correct order subtotal
-        // regardless of which price basis the seller used.
-        const grossSubtotal = round2(pricePreview.basePricePerUnit * totalUnits);
-
-        // priceSlabs.minQty is always stored in Packs (canonical/backend format)
-        // regardless of the unit currently shown to the seller — so compare
-        // directly against moqPacks.
-        const slab = getApplicableSlab(form.priceSlabs, moqPacks);
+        const slab = getApplicableSlab(form.priceSlabs, moqSaleUnits); // minQty already sale-unit qty, no conversion
         const discountPercent = slab ? Number(slab.discountPercent) : 0;
         const discountAmount = round2(grossSubtotal * (discountPercent / 100));
         const netSubtotal = round2(grossSubtotal - discountAmount);
 
-        // GST calculated on the amount AFTER discount deduction.
         const gstAmount = round2(netSubtotal * (gst / 100));
-        const totalAmount = round2(netSubtotal + gstAmount); // what's shown as "the total amount"
-
-        // Platform commission — shown separately, for reference. The
-        // commission fee itself also attracts GST, so both are combined here.
+        const totalAmount = round2(netSubtotal + gstAmount);
         const commissionAmount = round2(totalAmount * (commissionPercent / 100));
         const commissionGstAmount = round2(commissionAmount * (gst / 100));
         const totalCommissionForReference = round2(commissionAmount + commissionGstAmount);
 
-        return {
-            moqPacks: round2(moqPacks),
-            totalUnits,
-            grossSubtotal,
-            discountPercent,
-            discountAmount,
-            netSubtotal,
-            gstAmount,
-            totalAmount,
-            commissionAmount,
-            commissionGstAmount,
-            totalCommissionForReference,
-        };
+        return { saleUnitQty: moqSaleUnits, totalUnits, grossSubtotal, discountPercent, discountAmount, netSubtotal, gstAmount, totalAmount, commissionAmount, commissionGstAmount, totalCommissionForReference };
     }, [form.moq, form.packSize, form.masterPackSize, form.hasOuterPack, form.priceSlabs, form.gstPercent, pricePreview, commissionPercent]);
 
-    // Discounted price, expressed per Pack or per Master Pack (whichever
-    // basis is currently active) — matches the unit the minQty threshold
-    // is shown in, instead of always returning a per-base-unit figure.
-    //
-    // pricePreview.basePricePerUnit is a true per-UNIT value (e.g. per Litre),
-    // so we must scale back up to Pack / Master Pack for display here.
     const discountedPreview = (slab) => {
         if (!slab?.discountPercent) return null;
-        const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
-        const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
-
-        const discountedPerUnit = pricePreview.basePricePerUnit * (1 - Number(slab.discountPercent) / 100);
-        const discountedPerPack = discountedPerUnit * pack;           // scale up to Pack
-        const discountedPerMaster = discountedPerPack * master;       // scale up to Master Pack
-
-        const value = form.hasOuterPack ? discountedPerMaster : discountedPerPack;
-        return round2(value);
+        return round2(pricePreview.basePricePerSaleUnit * (1 - Number(slab.discountPercent) / 100));
     };
+
+
     // priceSlabs.minQty is ALWAYS stored in Packs — the backend format. When
     // hasOuterPack is on, the seller thinks in Master Packs, so these convert
     // for display only. Discount % never changes in either direction — a 10%
     // break at 3 Master Packs (= 30 Packs) is stored as minQty: 30, and shown
     // back as 3 whenever hasOuterPack is on. Same % either way, by construction.
-    const packSlabsToDisplay = (slabs) => {
-        if (!form.hasOuterPack) return slabs;
-        const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
-        return slabs.map((s) => ({
-            ...s,
-            minQty: s.minQty !== "" && s.minQty != null ? String(round2(Number(s.minQty) / master)) : s.minQty,
-        }));
-    };
-    const displaySlabsToPacks = (slabs) => {
-        if (!form.hasOuterPack) return slabs;
-        const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
-        return slabs.map((s) => ({
-            ...s,
-            minQty: s.minQty !== "" && s.minQty != null ? String(round2(Number(s.minQty) * master)) : s.minQty,
-        }));
-    };
 
     const handleOuterPackToggle = (value) => {
         setForm((f) => ({
@@ -643,7 +577,7 @@ export default function SellerListingForm({
 
         onSubmit({
             ...form,
-            moq: String(moqInPacks),
+            moq: String(round2ToInt(form.moq)),
             sampleQuantity: form.sampleAvailable ? String(sampleQuantityBaseUnits) : form.sampleQuantity,
             stockQuantity: form.stockType === "ready_stock" ? String(stockQuantityPacks) : form.stockQuantity,
             dispatchingLocations,
@@ -897,8 +831,8 @@ export default function SellerListingForm({
                 <RepeatableRows2
                     label="Discount slabs"
                     hint={form.hasOuterPack ? "Extra % off above a quantity threshold, in Master Packs" : "Extra % off above a quantity threshold, in Packs"}
-                    rows={packSlabsToDisplay(form.priceSlabs)}
-                    onChange={(rows) => setField("priceSlabs", displaySlabsToPacks(rows))}
+                    rows={form.priceSlabs}
+                    onChange={(rows) => setField("priceSlabs", rows)}
                     addLabel="Add slab"
                     columns={[
                         {
@@ -923,7 +857,7 @@ export default function SellerListingForm({
                 {form.priceSlabs.some((s) => s.discountPercent) && (
                     <div className="flex flex-col gap-1 rounded-xl border px-3 py-2" style={{ borderColor: C.hairSoft }}>
                         {form.priceSlabs
-                            .map((raw, i) => ({ raw, display: packSlabsToDisplay(form.priceSlabs)[i] }))
+                            .map((raw, i) => ({ raw, display: form.priceSlabs[i] }))
                             .filter(({ raw }) => raw.minQty && raw.discountPercent)
                             .map(({ raw, display }, i) => (
                                 <p key={i} className="text-[12px] font-semibold tabular-nums" style={{ color: C.muted }}>
@@ -954,7 +888,7 @@ export default function SellerListingForm({
                                     <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                         <span>Packs</span>
                                         <span className="tabular-nums font-bold" style={{ color: C.ink }}>
-                                            {moqPreview.moqPacks.toLocaleString("en-IN")} Pack{moqPreview.moqPacks === 1 ? "" : "s"}
+                                            {moqSaleUnitsToPacks(moqPreview.saleUnitQty, form.hasOuterPack, form.masterPackSize).toLocaleString("en-IN")} Pack{moqSaleUnitsToPacks(moqPreview.saleUnitQty, form.hasOuterPack, form.masterPackSize) === 1 ? "" : "s"}
                                         </span>
                                     </div>
                                     {form.hasOuterPack && Number(form.masterPackSize) >= 2 && (
@@ -969,7 +903,7 @@ export default function SellerListingForm({
                             </div>
 
                             <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                <span>Base price</span>
+                                <span>Basic price</span>
                                 <span className="tabular-nums font-bold" style={{ color: C.ink }}>
                                     ₹{moqPreview.grossSubtotal.toLocaleString("en-IN")}
                                 </span>
@@ -985,7 +919,7 @@ export default function SellerListingForm({
                             )}
 
                             <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                <span>GST ({form.gstPercent}%){form.gstInclusive ? " · calculated on discounted price" : ""}</span>
+                                <span>GST ({form.gstPercent}%){form.gstInclusive ? " " : ""}</span>
                                 <span className="tabular-nums font-bold" style={{ color: C.ink }}>
                                     ₹{moqPreview.gstAmount.toLocaleString("en-IN")}
                                 </span>

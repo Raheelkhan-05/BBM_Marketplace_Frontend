@@ -219,40 +219,6 @@ function packagingLabel(packSize, masterPackSize, unit) {
     return `1 Pack = ${pack} ${unit}`;
 }
 
-// ---------------------------------------------------------------------
-// Price breakdown — derives unit / pack / master-pack prices from the
-// single source-of-truth price, and applies the GST toggle.
-//
-// `price` is whatever the seller actually stores: per Pack if
-// masterPackSize < 1, per Master Pack if masterPackSize >= 1 (same
-// convention as priceUnitLabel above). `price` is assumed GST-inclusive
-// at rest — includeGst=false reverses that seller's own gst_percent to
-// get the exclusive figure; includeGst=true returns it unchanged.
-// ---------------------------------------------------------------------
-function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, includeGst }) {
-    const sourcePrice = Number(price);
-    if (!(sourcePrice > 0)) return null;
-
-    const pack = Number(packSize) || 0;
-    const master = Number(masterPackSize) || 0;
-    const hasMasterPack = master >= 1;
-    const gst = Number(gstPercent) || 0;
-
-    // Stored price is GST-inclusive PER UNIT; reverse GST out first, then
-    // scale UP to Pack / Master Pack — never divide down from a larger basis.
-    const unitPrice = includeGst ? sourcePrice : sourcePrice / (1 + gst / 100);
-
-    const packPrice = pack > 0 ? unitPrice * pack : null;
-    const masterPackPrice = hasMasterPack && packPrice != null ? packPrice * master : null;
-
-    return {
-        unitPrice,
-        packPrice,
-        masterPackPrice,
-        hasMasterPack,
-        basis: hasMasterPack ? "master_pack" : "pack",
-    };
-}
 
 // Compact, reusable price-breakdown block — shows whichever of
 // unit/pack/master-pack prices are available, smallest to largest.
@@ -552,58 +518,42 @@ function sellerSaleUnit(seller) {
     return Number(seller.units_per_master_pack) >= 1 ? "Master Pack" : "Pack";
 }
 
-// seller.moq is always stored in Packs — convert to whichever unit this
-// seller actually sells/discounts in (Master Pack or Pack) before it's
-// used anywhere near quantity_discounts, which are denominated in that
-// sale unit, not Packs.
-// seller.moq is stored directly in the seller's own sale unit (Master
-// Pack if this listing sells by master pack, otherwise Pack) — it is
-// NOT always in Packs, despite BuyNowModal's MOQ-display comment. Use
-// it as-is; converting it again here was shrinking MOQs like "3 Master
-// Packs" down below real discount tiers and silently killing discounts
-// that should have applied.
-function moqInSaleUnits(seller) {
-    return Math.max(1, Number(seller.moq) || 1);
+import { deriveDisplayPrices, hasOuterPack, getSaleUnit } from "../../shared/packUnits.js";
+
+function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, includeGst }) {
+    const sourcePrice = Number(price);
+    if (!(sourcePrice > 0)) return null;
+    const gst = Number(gstPercent) || 0;
+    const priceExGst = includeGst ? sourcePrice : sourcePrice / (1 + gst / 100);
+    const { perBaseUnit, perPack, perMasterPack } = deriveDisplayPrices(priceExGst, packSize, masterPackSize);
+    return { unitPrice: perBaseUnit, packPrice: perPack, masterPackPrice: perMasterPack, hasMasterPack: hasOuterPack(masterPackSize), basis: getSaleUnit(masterPackSize) };
 }
 
-// Single source of truth: computes the slab price + quantity-discount at
-// a given sale-unit quantity, ONCE, at the Pack level — then derives
-// unit / pack / master-pack prices from that one resolved number so all
-// three bases are always mutually consistent (no separate re-derivation
-// to drift apart, which was the root cause of MOQ-60 mismatches).
 function computeEffectivePricing(seller, saleQty, includeGst) {
-    const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
-    const master = Number(seller.units_per_master_pack) || 1;
-    const hasMasterPack = sellerSaleUnit(seller) === "Master Pack";
     const gst = Number(seller.gst_percent) || 0;
+    const pricePerSaleUnit = includeGst ? Number(seller.price) : Number(seller.price) / (1 + gst / 100);
+    if (!(pricePerSaleUnit > 0)) return null;
 
-    const unitPriceBase = includeGst ? Number(seller.price) : Number(seller.price) / (1 + gst / 100);
-    if (!(unitPriceBase > 0)) return null;
-
-    const pricePerPack = unitPriceBase * packSize;
-    // price_slabs are keyed by pack-equivalent quantity — convert this
-    // sale-unit qty up to packs ONLY for the slab lookup.
-    const packQtyEquivalent = hasMasterPack ? saleQty * master : saleQty;
-    const slabPricePerPack = resolveSlabUnitPrice(seller.price_slabs, packQtyEquivalent, pricePerPack);
-
-    // quantity_discounts are keyed by the seller's actual sale unit —
-    // saleQty is already in that unit, no conversion here.
+    const slabPricePerSaleUnit = resolveSlabUnitPrice(seller.price_slabs, saleQty, pricePerSaleUnit);
     const discountPercent = resolveDiscountPercent(seller.quantity_discounts, saleQty);
-    const finalPricePerPack = slabPricePerPack * (1 - discountPercent / 100);
+    const finalPricePerSaleUnit = slabPricePerSaleUnit * (1 - discountPercent / 100);
+
+    const orig = deriveDisplayPrices(slabPricePerSaleUnit, seller.pack_size, seller.units_per_master_pack);
+    const fin = deriveDisplayPrices(finalPricePerSaleUnit, seller.pack_size, seller.units_per_master_pack);
+    const outer = hasOuterPack(seller.units_per_master_pack);
 
     return {
-        saleUnit: hasMasterPack ? "Master Pack" : "Pack",
-        saleQty,
-        discountPercent,
-        hasMasterPack,
-        // "original" = after slab, before the quantity-discount % — this
-        // is what gets struck through when a discount applies.
-        unit: { original: slabPricePerPack / packSize, final: finalPricePerPack / packSize },
-        pack: { original: slabPricePerPack, final: finalPricePerPack },
-        masterPack: hasMasterPack
-            ? { original: slabPricePerPack * master, final: finalPricePerPack * master }
-            : null,
+        saleUnit: getSaleUnit(seller.units_per_master_pack), saleQty, discountPercent, hasMasterPack: outer,
+        unit: { original: orig.perBaseUnit, final: fin.perBaseUnit },
+        pack: { original: orig.perPack, final: fin.perPack },
+        masterPack: outer ? { original: orig.perMasterPack, final: fin.perMasterPack } : null,
     };
+}
+
+// This resolves the exact contradiction called out at the top — moq is
+// now unambiguously sale-unit qty, documented in one place only.
+function moqInSaleUnits(seller) {
+    return Math.max(1, Number(seller.moq) || 1);
 }
 
 function bestDiscountTier(seller) {
