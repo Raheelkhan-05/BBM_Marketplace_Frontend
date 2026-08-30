@@ -299,6 +299,7 @@ export default function SellerListingForm({
             ...(locked ? {
                 productName: initialValues?.productName ?? identity?.name ?? identity?.productName ?? "",
                 brandName: initialValues?.brandName ?? identity?.brandName ?? "",
+                brandNotApplicable: !(initialValues?.brandName ?? identity?.brandName),
                 images: initialValues?.images?.length ? initialValues.images : (identity?.image ? [identity.image] : []),
             } : {}),
         };
