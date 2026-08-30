@@ -53,17 +53,7 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate })
                 }),
             match: (p) => p.startsWith("/orders"),
         },
-        // Only show "My Sales" for approved sellers — no fallback
-        // "Start Selling" item for anyone else.
-        isApprovedSeller
-            ? {
-                id: "sales",
-                label: "My Sales",
-                icon: ChartNoAxesCombined,
-                onClick: () => navigate("/seller/orders"),
-                match: (p) => p.startsWith("/seller/orders"),
-            }
-            : null,
+
         isApprovedSeller
             ? {
                 id: "wallet",

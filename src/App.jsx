@@ -27,7 +27,7 @@ import BrandFamilyPage from "./pages/BrandFamilyPage.jsx";
 import PrivacyPolicy from "./pages/legal/PrivacyPolicy.jsx";
 import SellPublishProductPage from "./pages/SellPublishProductPage.jsx";
 import AdminSellerSubmissionsPage from "./pages/admin/AdminSellerSubmissionsPage.jsx";
-import PurchaseOrdersPage from "./pages/PurchaseOrdersPage.jsx";
+import OrdersPage from "./pages/OrdersPage.jsx";
 import SalesOrdersPage from "./pages/SalesOrdersPage.jsx";
 import OrderDetailPage from "./pages/OrderDetailPage.jsx";
 import SellerOrderDetailPage from "./pages/SellerOrderDetailPage.jsx";
@@ -94,7 +94,7 @@ function App() {
               <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
               <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
 
-              <Route path="/orders" element={<PurchaseOrdersPage />} />
+              <Route path="/orders" element={<OrdersPage />} />
               <Route path="/seller/orders" element={<SalesOrdersPage />} />
               <Route path="/orders/:id" element={<OrderDetailPage />} />
               <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
