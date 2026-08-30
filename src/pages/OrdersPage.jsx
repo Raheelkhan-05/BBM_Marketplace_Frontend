@@ -386,12 +386,12 @@ export default function OrdersPage() {
                     <button onClick={() => setActiveTab("purchases")}
                         className="relative rounded-md px-4 py-1.5 text-[13px] font-bold tracking-wide transition-colors"
                         style={{ background: activeTab === "purchases" ? C.primary : "transparent", color: activeTab === "purchases" ? "#fff" : C.muted, boxShadow: activeTab === "purchases" ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
-                        Buying
+                        Purchase Orders
                     </button>
                     <button onClick={() => setActiveTab("sales")}
                         className="relative rounded-md px-4 py-1.5 text-[13px] font-bold tracking-wide transition-colors"
                         style={{ background: activeTab === "sales" ? C.primary : "transparent", color: activeTab === "sales" ? "#fff" : C.muted, boxShadow: activeTab === "sales" ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
-                        Selling
+                        Sales Orders
 
                     </button>
                 </div>
