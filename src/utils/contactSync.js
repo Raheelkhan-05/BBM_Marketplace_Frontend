@@ -1,5 +1,6 @@
 import { Contacts } from '@capacitor-community/contacts';
 import { Preferences } from '@capacitor/preferences';
+import { Capacitor } from '@capacitor/core';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 import { API_BASE } from './api.js';
 import { getDeviceId } from './deviceId.js';
@@ -36,6 +37,15 @@ function normalizeAndDedupeContacts(rawContacts, defaultCountry = 'IN') {
 // pushes the diff to the backend's public pending-sync endpoint —
 // no login required at all.
 export async function ensureDeviceContactsFetchedAndPushed() {
+    // The @capacitor-community/contacts plugin has no web implementation —
+    // calling ANY of its methods (even checkPermissions) throws
+    // "Not implemented on web." Contact sync is a native-only feature by
+    // design, so on web we bail out early instead of letting that throw
+    // go uncaught (which is what was happening before this check existed).
+    if (Capacitor.getPlatform() === 'web') {
+        return { fetched: false, reason: 'Not supported on web' };
+    }
+
     const status = await Contacts.checkPermissions();
 
     if (status.contacts !== 'granted') {
