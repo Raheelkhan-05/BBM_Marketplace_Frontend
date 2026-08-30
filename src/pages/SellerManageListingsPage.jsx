@@ -16,6 +16,48 @@
 //    "Edit listing" action just routes there instead of re-implementing
 //    ~20 fields a second time.
 //
+// SALE-UNIT CONSISTENCY (this revision):
+// Every quantity-and-price-facing number on this page — MOQ, the row's
+// "₹X /unit", "N left" stock label, and the detail modal's MOQ/Stock/
+// Pricing rows — is displayed in the listing's SALE unit: Master Pack
+// when the listing has an outer pack (units_per_master_pack >= 1), Pack
+// otherwise. This matches the convention BuyNowModal.jsx and
+// HomeProductFeed.jsx already use (via shared/packUnits.js).
+//
+// DATA-SOURCE MISMATCH FIX (this revision):
+// fetchMySellerSubmissions() — the light list endpoint this page uses for
+// its rows — does not appear to return `units_per_master_pack` on each
+// row, while fetchSellerSubmissionDetail() (used by the detail modal)
+// does. That's exactly why the detail modal correctly said "Master Pack"
+// while the row above it and the Quick Update panel said "Pack": both
+// were reading a field that simply wasn't present on the light payload,
+// and silently defaulting to "no master pack".
+//   → Ideally, fixed properly, fetchMySellerSubmissions's backend query
+//     should just SELECT units_per_master_pack (and pack_size, unit)
+//     alongside what it already returns — a one-line query change that
+//     removes the need for anything below entirely.
+//   → Until/unless that lands, this file works around it: any row
+//     missing units_per_master_pack gets it filled in lazily via a
+//     capped-concurrency background fetch (see the enrichment effect in
+//     the main component), deduped and cached so each listing is only
+//     ever fetched once. While a row's sale unit is still unknown, its
+//     unit-dependent text (MOQ line, price/unit, stock line) renders a
+//     skeleton instead of guessing — a wrong label shown confidently is
+//     worse than a half-second placeholder.
+// The Quick Update panel already does its own detail fetch (it needs the
+// real base price / GST% / inclusive flag anyway) — it's been fixed to
+// derive its sale-unit label from THAT fetched data, not from the light
+// row prop, so it can never show a stale/wrong unit even before the
+// enrichment pass above has run.
+//
+// GST-AWARE PRICING:
+// The detail modal's "Final price" respects gst_inclusive_input — an
+// inclusive-priced listing's base_price already IS the final price; GST
+// is never added on top of it a second time. The Quick Update panel edits
+// the real (base price, GST%, inclusive toggle) rather than one flattened
+// "price" number, with a live computed final-price preview using the same
+// math.
+//
 // Stock sync: this page re-fetches on window focus/visibility, on the
 // existing subscribeUserEvent("submissions_changed", ...) channel, and on
 // the app's resync handler — the same mechanisms SellerQuickManageListings
@@ -49,6 +91,11 @@ import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import SellerListingForm from "../components/seller/listingForm/SellerListingForm.jsx";
+// Same shared convention BuyNowModal.jsx / HomeProductFeed.jsx already use
+// for "what unit is this listing actually sold and priced in" — imported
+// rather than reimplemented here, so this page can't drift out of sync
+// with the buyer-facing pages again.
+import { saleUnitLabel, round2 } from "../shared/packUnits.js";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -62,6 +109,8 @@ const C = {
 };
 const EASE = [0.16, 1, 0.3, 1];
 const LOW_STOCK_THRESHOLD = 10;
+const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
+const ENRICH_CONCURRENCY = 4;
 
 /* ============================== helpers ============================== */
 
@@ -75,6 +124,44 @@ function summarizeDispatchLocations(locations) {
     return `${country.name}${excludedStates}`;
 }
 
+// Pluralizes a sale-unit label ("Pack" / "Master Pack") against a qty.
+function pluralizeUnit(qty, label) {
+    return `${label}${Number(qty) === 1 ? "" : "s"}`;
+}
+
+function formatMoney(n) {
+    const val = Number(n) || 0;
+    return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+}
+
+// Mirrors SellerListingForm's live price-preview math: when the seller's
+// entered price already includes GST, that number IS the final price —
+// GST is reverse-calculated OUT of it for display, never added on top of
+// it again. Only when the price is entered exclusive-of-GST does GST get
+// added forward.
+function computeFinalPrice(basePrice, gstPercent, gstInclusive) {
+    const price = Number(basePrice) || 0;
+    const gst = Number(gstPercent) || 0;
+    return gstInclusive ? round2(price) : round2(price * (1 + gst / 100));
+}
+function computeGstAmount(basePrice, gstPercent, gstInclusive) {
+    const price = Number(basePrice) || 0;
+    const gst = Number(gstPercent) || 0;
+    if (gstInclusive) {
+        const exclusive = price / (1 + gst / 100);
+        return round2(price - exclusive);
+    }
+    return round2(price * (gst / 100));
+}
+
+// Skeleton bar used wherever a sale-unit-dependent value is still
+// unresolved (row hasn't been enriched with units_per_master_pack yet) —
+// deliberately used INSTEAD OF guessing, so a wrong unit is never shown
+// with false confidence.
+function TextSkeleton({ width = "3.5rem", height = "0.7rem" }) {
+    return <span className="inline-block animate-pulse rounded-full align-middle" style={{ width, height, background: C.hairSoft }} />;
+}
+
 /* ---------------- edit listing modal ---------------- */
 
 // Maps a raw seller_product_submissions row (as returned by
@@ -85,7 +172,7 @@ function summarizeDispatchLocations(locations) {
 function submissionToInitialValues(s) {
     const packSize = Number(s.pack_size) || 1;
     const masterPackSize = Number(s.units_per_master_pack) || 1;
-    const hasOuterPack = masterPackSize > 1;
+    const hasOuterPackLocal = masterPackSize > 1;
 
     return {
         productName: s.product_name || s.brand?.name || "",
@@ -98,14 +185,14 @@ function submissionToInitialValues(s) {
 
         unit: s.unit || "",
         packSize: String(packSize),
-        hasOuterPack,
-        masterPackSize: hasOuterPack ? String(masterPackSize) : "0",
+        hasOuterPack: hasOuterPackLocal,
+        masterPackSize: hasOuterPackLocal ? String(masterPackSize) : "0",
 
         hsnCode: s.hsn_code || "",
         gstPercent: s.gst_percent ?? 18,
 
         basePrice: s.base_price != null ? String(s.base_price) : "",
-        priceBasis: s.price_basis || (hasOuterPack ? "per_master_pack" : "per_pack"),
+        priceBasis: s.price_basis || (hasOuterPackLocal ? "per_master_pack" : "per_pack"),
         gstInclusive: Boolean(s.gst_inclusive_input),
         freightIncluded: Boolean(s.freight_included),
 
@@ -314,73 +401,286 @@ function QuickField({ label, ...props }) {
 
 /* ---------------- inline "quick update" panel (price / stock / MOQ / lead time) ---------------- */
 
-function QuickUpdatePanel({ item, onCancel, onSaved }) {
+// Restock control, split into two clear modes instead of one ambiguous
+// "type a number and hope" field:
+//  - "Set total": type the exact new stock count directly.
+//  - "Quick add": one-tap chips for common restock sizes (+10/+50/+100)
+//    plus a custom-quantity field with explicit Add/Remove buttons, so a
+//    seller who just received "3 more boxes of 20" doesn't have to do that
+//    arithmetic themselves — and always sees a live preview of the
+//    resulting total before it's applied.
+function StockAdjuster({ value, onChange, saleUnit }) {
+    const [mode, setMode] = useState("set");
+    const [delta, setDelta] = useState("");
+
+    const current = Number(value) || 0;
+    const deltaNum = Number(delta) || 0;
+
+    function applyDelta(amount) {
+        onChange(String(Math.max(0, current + amount)));
+        setDelta("");
+    }
+
+    return (
+        <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+                <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
+                    Stock ({pluralizeUnit(2, saleUnit)})
+                </span>
+                <div className="flex gap-1 rounded-full p-0.5" style={{ background: "#fff", border: `1px solid ${C.hair}` }}>
+                    {[["set", "Set total"], ["add", "Quick add"]].map(([key, label]) => (
+                        <button key={key} type="button" onClick={() => { setMode(key); setDelta(""); }}
+                            className="rounded-full px-2 py-1 text-[10px] font-bold tracking-wide transition-colors duration-150"
+                            style={mode === key ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>
+                            {label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {mode === "set" ? (
+                <input
+                    type="number" min="0" step="1" value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="w-full rounded-lg border bg-white px-2.5 py-2 text-[13.5px] font-bold focus:outline-none focus:ring-2"
+                    style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}33` }}
+                />
+            ) : (
+                <div className="flex flex-col gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {[10, 50, 100].map((q) => (
+                            <button key={q} type="button" onClick={() => applyDelta(q)}
+                                className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold"
+                                style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                                <Plus className="h-3 w-3" /> {q}
+                            </button>
+                        ))}
+                        <input
+                            type="number" min="0" step="1" placeholder="Custom qty"
+                            value={delta} onChange={(e) => setDelta(e.target.value)}
+                            className="w-24 rounded-lg border bg-white px-2 py-1.5 text-[12px] font-bold focus:outline-none"
+                            style={{ borderColor: C.hair, color: C.ink }}
+                        />
+                        <button type="button" onClick={() => applyDelta(deltaNum)} disabled={!deltaNum}
+                            className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold disabled:opacity-40"
+                            style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                            <PackagePlus className="h-3 w-3" /> Add
+                        </button>
+                        <button type="button" onClick={() => applyDelta(-deltaNum)} disabled={!deltaNum}
+                            className="rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold disabled:opacity-40"
+                            style={{ background: "rgba(199,31,17,0.08)", color: "#c71f11" }}>
+                            Remove
+                        </button>
+                    </div>
+                    <p className="text-[11px] font-semibold" style={{ color: C.muted }}>
+                        {current} {pluralizeUnit(current, saleUnit)}
+                        {deltaNum > 0 && (
+                            <> → <span style={{ color: C.ink, fontWeight: 800 }}>{current + deltaNum}</span> {pluralizeUnit(current + deltaNum, saleUnit)} once applied</>
+                        )}
+                    </p>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// `item` is the light row object from the list (fast, already on screen —
+// and, per the note at the top of this file, may be MISSING
+// units_per_master_pack). On open, this fetches the full submission so it
+// can edit the real (base price, GST%, GST-inclusive?) inputs instead of a
+// single opaque "price" number, AND so it has an authoritative
+// units_per_master_pack to label everything with — never trusting the
+// light `item` prop for that. `onSave(payload, optimisticPatch)` is called
+// once the seller hits Save; the parent applies `optimisticPatch` to the
+// list immediately (so the UI updates with zero perceived delay) and only
+// sends `payload` to the server in the background, rolling back if it's
+// rejected.
+function QuickUpdatePanel({ item, onCancel, onSave }) {
     const { token } = useAuth();
-    const [form, setForm] = useState({
-        price: item.price ?? "",
-        moq: item.moq ?? "",
-        lead_time: item.lead_time ?? "",
-        stock_quantity: item.stock_quantity ?? "",
-    });
-    const [addQty, setAddQty] = useState("");
+
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState("");
+    const [form, setForm] = useState(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
-    function applyAddToStock() {
-        const delta = Number(addQty);
-        if (!(delta > 0)) return;
-        setForm((f) => ({ ...f, stock_quantity: (Number(f.stock_quantity) || 0) + delta }));
-        setAddQty("");
-    }
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        setLoadError("");
+        fetchSellerSubmissionDetail(token, item.id).then((res) => {
+            if (cancelled) return;
+            if (!res?.success) { setLoadError(res?.message || "Couldn't load pricing details."); setLoading(false); return; }
+            const s = res.submission;
+            setForm({
+                // Authoritative — always from the detail fetch, NEVER from
+                // the light `item` prop. This is the field that was missing
+                // on the list payload and caused "Pack" to show for a
+                // Master-Pack-sold item.
+                unitsPerMasterPack: s.units_per_master_pack ?? 1,
+
+                basePrice: s.base_price != null ? String(s.base_price) : "",
+                gstPercent: s.gst_percent ?? 18,
+                gstInclusive: Boolean(s.gst_inclusive_input),
+                moq: s.moq != null ? String(s.moq) : "",
+                stockType: s.stock_type || "ready_stock",
+                stockQuantity: s.stock_quantity != null ? String(s.stock_quantity) : "",
+                leadTime: String(
+                    s.stock_type === "made_to_order"
+                        ? (s.production_lead_time_days ?? "")
+                        : (s.dispatch_time_days ?? item.lead_time ?? "")
+                ),
+            });
+            setLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, [item.id, item.lead_time, token]);
+
+    // Only ever computed from the fetched, authoritative field — this is
+    // the actual fix for the panel previously showing "Pack" for a
+    // Master-Pack listing.
+    const saleUnit = form ? saleUnitLabel(form.unitsPerMasterPack) : null;
+
+    const finalPrice = form ? computeFinalPrice(form.basePrice, form.gstPercent, form.gstInclusive) : 0;
+    const gstAmount = form ? computeGstAmount(form.basePrice, form.gstPercent, form.gstInclusive) : 0;
+
+    const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
     async function save() {
         setError("");
-        if (!(Number(form.price) > 0)) return setError("Price must be greater than 0.");
+        if (!form) return;
+        if (!(Number(form.basePrice) > 0)) return setError("Price must be greater than 0.");
         if (!(Number(form.moq) > 0)) return setError("MOQ must be greater than 0.");
+        if (form.stockType === "ready_stock" && form.stockQuantity !== "" && Number(form.stockQuantity) < 0) {
+            return setError("Stock can't be negative.");
+        }
+
         setSaving(true);
-        const res = await updateSellerProductSubmission(token, item.id, {
-            price: Number(form.price),
+
+        const payload = {
+            basePrice: Number(form.basePrice),
+            gstPercent: Number(form.gstPercent),
+            gstInclusive: form.gstInclusive,
             moq: Number(form.moq),
-            lead_time: form.lead_time,
-            stock_quantity: form.stock_quantity === "" ? null : Number(form.stock_quantity),
-        });
+            ...(form.stockType === "ready_stock"
+                ? {
+                    stockQuantity: form.stockQuantity === "" ? null : Number(form.stockQuantity),
+                    dispatchTimeDays: form.leadTime === "" ? null : Number(form.leadTime),
+                }
+                : { productionLeadTimeDays: form.leadTime === "" ? null : Number(form.leadTime) }),
+        };
+
+        // Applied to the list row the instant Save is pressed — before the
+        // network call even resolves — so there's no visible lag. Also
+        // carries units_per_master_pack through explicitly: this listing's
+        // authoritative value is now known (we just fetched it), so the row
+        // can stop showing a skeleton for its unit-dependent text right
+        // away, even if the background enrichment pass hasn't reached it.
+        const optimisticPatch = {
+            price: finalPrice,
+            moq: Number(form.moq),
+            lead_time: form.leadTime === "" ? null : Number(form.leadTime),
+            units_per_master_pack: form.unitsPerMasterPack,
+            ...(form.stockType === "ready_stock"
+                ? { stock_quantity: form.stockQuantity === "" ? null : Number(form.stockQuantity) }
+                : {}),
+        };
+
+        await onSave(payload, optimisticPatch);
         setSaving(false);
-        if (res?.success) onSaved(res.submission);
-        else setError(res?.message || "Couldn't save changes.");
+    }
+
+    if (loading) {
+        return (
+            <div className="overflow-hidden px-3 pb-3 sm:px-4">
+                <div className="flex items-center justify-center gap-2 rounded-xl border p-4 text-[12px] font-semibold" style={{ borderColor: C.hair, background: C.hairSoft, color: C.muted }}>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading pricing details…
+                </div>
+            </div>
+        );
+    }
+    if (loadError || !form) {
+        return (
+            <div className="overflow-hidden px-3 pb-3 sm:px-4">
+                <div className="flex items-center justify-between gap-2 rounded-xl border p-3 text-[12px] font-semibold" style={{ borderColor: C.hair, color: "#c71f11" }}>
+                    <span>{loadError || "Something went wrong."}</span>
+                    <button onClick={onCancel} className="shrink-0 rounded-lg border bg-white px-2.5 py-1" style={{ borderColor: C.hair, color: C.muted }}>Close</button>
+                </div>
+            </div>
+        );
     }
 
     return (
         <div className="overflow-hidden px-3 pb-3 sm:px-4">
-            <div className="flex flex-col gap-2.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.hairSoft }}>
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                    <QuickField label="Price (₹)" type="number" min="0" step="0.01"
-                        value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} />
-                    <QuickField label={`Stock (${item.unit || "units"})`} type="number" min="0" step="0.01" placeholder="—"
-                        value={form.stock_quantity} onChange={(e) => setForm((f) => ({ ...f, stock_quantity: e.target.value }))} />
-                    <QuickField label={`MOQ (${item.unit || "units"})`} type="number" min="0" step="0.01"
-                        value={form.moq} onChange={(e) => setForm((f) => ({ ...f, moq: e.target.value }))} />
-                    <QuickField label="Lead time (days)" type="number" min="0" step="1"
-                        value={form.lead_time} onChange={(e) => setForm((f) => ({ ...f, lead_time: e.target.value }))} />
+            <div className="flex flex-col gap-3.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.hairSoft }}>
+
+                {/* ---- Pricing ---- */}
+                {/* ---- Pricing ---- */}
+                <div className="flex flex-col gap-2">
+                    <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>
+                        <IndianRupee className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Pricing · per {saleUnit}
+                    </span>
+
+                    <QuickField
+                        label={`Price entered (₹/${saleUnit})`}
+                        type="number" min="0" step="0.01"
+                        value={form.basePrice}
+                        onChange={(e) => setField("basePrice", e.target.value)}
+                    />
+
+                    <div className="flex items-center justify-between gap-3 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
+                        <div className="flex flex-col gap-0.5">
+                            <span className="text-[12.5px] font-bold" style={{ color: C.ink }}>
+                                {form.gstInclusive ? "Price includes GST ?" : "Price includes GST ?"}
+                            </span>
+                            <span className="text-[10.5px] font-semibold" style={{ color: C.muted }}>
+                                GST ₹{formatMoney(gstAmount)}
+                            </span>
+                        </div>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-checked={form.gstInclusive}
+                            onClick={() => setField("gstInclusive", !form.gstInclusive)}
+                            className="relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200"
+                            style={{ background: form.gstInclusive ? C.secondary : C.hair }}
+                        >
+                            <span
+                                className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200"
+                                style={{ transform: form.gstInclusive ? "translateX(0px)" : "translateX(-20px)" }}
+                            />
+                        </button>
+                    </div>
+
+                    <div className="flex flex-col justify-center gap-0.5 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
+                        <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>Final price</span>
+                        <span className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{formatMoney(finalPrice)}</span>
+                    </div>
                 </div>
 
-                {/* Add-to-stock helper — types a quantity to add on top of
-                    whatever's already in the Stock field above, rather than
-                    making the seller do the arithmetic themselves. */}
-                <div className="flex items-center gap-2">
-                    <PackagePlus className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                    <span className="text-[11px] font-semibold" style={{ color: C.muted }}>Restocked more?</span>
-                    <input
-                        type="number" min="0" step="0.01" placeholder={`+ qty (${item.unit || "units"})`}
-                        value={addQty} onChange={(e) => setAddQty(e.target.value)}
-                        className="w-28 rounded-lg border bg-white px-2 py-1.5 text-[12px] font-bold focus:outline-none"
-                        style={{ borderColor: C.hair, color: C.ink }}
+                {/* ---- Quantity & lead time ---- */}
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                    <QuickField
+                        label={`MOQ (${saleUnit}s)`}
+                        type="number" min="0" step="1"
+                        value={form.moq}
+                        onChange={(e) => setField("moq", e.target.value.replace(/[^\d.]/g, ""))}
                     />
-                    <button type="button" onClick={applyAddToStock}
-                        className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold"
-                        style={{ background: `${C.secondary}14`, color: C.secondary }}>
-                        <Plus className="h-3 w-3" /> Add to stock
-                    </button>
+                    <QuickField
+                        label={form.stockType === "made_to_order" ? "Lead time (days)" : "Dispatch time (days)"}
+                        type="number" min="0" step="1"
+                        value={form.leadTime}
+                        onChange={(e) => setField("leadTime", e.target.value.replace(/[^\d]/g, ""))}
+                    />
                 </div>
+
+                {form.stockType === "ready_stock" && (
+                    <StockAdjuster
+                        value={form.stockQuantity}
+                        onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))}
+                        saleUnit={saleUnit}
+                    />
+                )}
 
                 <p className="text-[10.5px] font-medium leading-relaxed" style={{ color: C.muted }}>
                     Need to change pack size, master pack, quality certificates, dispatch locations, or return/warranty policy?
@@ -439,7 +739,7 @@ function DeactivateConfirm({ busy, onConfirm, onCancel }) {
 
 function ListingRow({
     it, idx, isQuickEditing, isConfirmingDeactivate, togglingId,
-    onOpenDetail, onEdit, onQuickEdit, onCancelQuickEdit, onSaved,
+    onOpenDetail, onEdit, onQuickEdit, onCancelQuickEdit, onQuickSave,
     onAskDeactivate, onCancelDeactivate, onConfirmDeactivate, onActivate,
     onOpenImage,
 }) {
@@ -452,8 +752,20 @@ function ListingRow({
     const sState = stockState(stock);
     const isExpanded = isQuickEditing || isConfirmingDeactivate;
 
+    // Whether this row actually knows its sale unit yet. `units_per_master_pack`
+    // is `undefined` on rows the list endpoint hasn't returned it for and the
+    // background enrichment pass (see main component) hasn't reached yet —
+    // `null` or a real number both count as "known" (null just means "no
+    // master pack", same as the detail modal's own convention).
+    const saleUnitKnown = it.units_per_master_pack !== undefined;
+    const saleUnit = saleUnitKnown ? saleUnitLabel(it.units_per_master_pack) : null;
+
     const statusColor = !isActive ? C.muted : sState === "out" ? "#c71f11" : sState === "low" ? "#b45309" : C.secondary;
-    const stockLabel = sState === "out" ? "Out of stock" : stock != null ? `${stock} ${it.unit || ""} left` : "Stock not set";
+    const stockLabel = sState === "out"
+        ? "Out of stock"
+        : stock != null
+            ? `${stock} ${pluralizeUnit(stock, saleUnit)} left`
+            : "Stock not set";
 
     return (
         <motion.div
@@ -489,7 +801,9 @@ function ListingRow({
                         {isActive && it.review_status === "rejected" && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold" style={{ background: "#fee2e2", color: "#c71f11" }}>Rejected</span>}
                     </div>
                     <p className="mt-0.5 truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
-                        {brandName ? `${brandName} · ` : ""}MOQ {it.moq} {it.unit} · Lead {it.lead_time}
+                        {brandName ? `${brandName} · ` : ""}
+                        MOQ {it.moq} {saleUnitKnown ? pluralizeUnit(it.moq, saleUnit) : <TextSkeleton width="2.5rem" />}
+                        {it.lead_time != null && ` · Lead ${it.lead_time}d`}
                     </p>
                     {it.rejection_reason && it.review_status === "rejected" && (
                         <p className="mt-1 truncate text-[11px] font-semibold" style={{ color: "#c71f11" }}>Rejected: {it.rejection_reason}</p>
@@ -499,11 +813,13 @@ function ListingRow({
                 {!isExpanded && (
                     <div className="hidden shrink-0 flex-col items-end pl-2 text-right sm:flex">
                         <p className="leading-none">
-                            <span className="text-[15.5px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>₹{it.price}</span>
-                            <span className="ml-0.5 text-[10.5px] font-semibold" style={{ color: C.muted }}>/{it.unit}</span>
+                            <span className="text-[15.5px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>₹{formatMoney(it.price)}</span>
+                            <span className="ml-0.5 text-[10.5px] font-semibold" style={{ color: C.muted }}>
+                                /{saleUnitKnown ? saleUnit : <TextSkeleton width="2.5rem" />}
+                            </span>
                         </p>
                         <p className="mt-1 whitespace-nowrap text-[10.5px] font-bold tabular-nums" style={{ color: statusColor }}>
-                            {isActive ? stockLabel : "Hidden from buyers"}
+                            {isActive ? (saleUnitKnown || sState === "out" ? stockLabel : <TextSkeleton width="4.5rem" />) : "Hidden from buyers"}
                         </p>
                     </div>
                 )}
@@ -533,7 +849,11 @@ function ListingRow({
             <AnimatePresence mode="wait">
                 {isQuickEditing && (
                     <motion.div key="quick" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
-                        <QuickUpdatePanel item={it} onCancel={onCancelQuickEdit} onSaved={(sub) => onSaved(it.id, sub)} />
+                        <QuickUpdatePanel
+                            item={it}
+                            onCancel={onCancelQuickEdit}
+                            onSave={(payload, optimisticPatch) => onQuickSave(it.id, payload, optimisticPatch)}
+                        />
                     </motion.div>
                 )}
                 {isConfirmingDeactivate && (
@@ -582,7 +902,19 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
     const images = s?.images?.length ? s.images : (s?.image ? [s.image] : []);
     const name = s?.brand?.name || "Product";
     const brandName = s?.brand?.brand_name;
-    const finalPrice = s ? Math.round(Number(s.base_price || 0) * (1 + Number(s.gst_percent || 0) / 100) * 100) / 100 : 0;
+
+    // The sale unit this listing is priced, MOQ'd, and stocked in.
+    const saleUnit = saleUnitLabel(s?.units_per_master_pack);
+
+    // Respects gst_inclusive_input — an inclusive-priced listing's
+    // base_price already IS the final price; GST must not be added again
+    // on top of it here.
+    const finalPrice = s
+        ? (s.gst_inclusive_input
+            ? round2(Number(s.base_price || 0))
+            : round2(Number(s.base_price || 0) * (1 + Number(s.gst_percent || 0) / 100)))
+        : 0;
+
     const gp = s?.brand?.generic_product;
     const crumb = [gp?.subcategory?.category?.name, gp?.subcategory?.name, gp?.name].filter(Boolean).join(" › ");
 
@@ -644,17 +976,17 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                             )}
 
                             <SectionBlock icon={IndianRupee} title="Pricing">
-                                <ReadRow label="Base price" value={s.base_price != null ? `₹${s.base_price}` : null} />
+                                <ReadRow label={`Price entered (/${saleUnit})`} value={s.base_price != null ? `₹${formatMoney(s.base_price)}` : null} />
                                 <ReadRow label="GST %" value={s.gst_percent != null ? `${s.gst_percent}%` : null} />
-                                <ReadRow label="Final price" value={`₹${finalPrice.toLocaleString("en-IN")}`} />
-                                <ReadRow label="Priced as" value={s.price_basis ? { per_unit: "Per unit", per_pack: "Per pack", per_master_pack: "Per master pack" }[s.price_basis] : null} />
+                                <ReadRow label={`Final price (/${saleUnit})`} value={`₹${formatMoney(finalPrice)}`} />
+                                <ReadRow label="Priced as" value={`Per ${saleUnit}`} />
                                 <ReadRow label="GST" value={s.gst_inclusive_input != null ? (s.gst_inclusive_input ? "Included in entered price" : "Added on top") : null} />
                                 <ReadRow label="Freight" value={s.freight_included != null ? (s.freight_included ? "Included" : "Extra, buyer pays") : null} />
                                 <ReadRow label="Valid till" value={s.price_validity_till} />
                             </SectionBlock>
 
                             <SectionBlock icon={Boxes} title="Quantity">
-                                <ReadRow label="MOQ" value={s.moq != null ? `${s.moq} ${s.unit || ""}` : null} />
+                                <ReadRow label="MOQ" value={s.moq != null ? `${s.moq} ${pluralizeUnit(s.moq, saleUnit)}` : null} />
                                 <ReadRow label="Sample" value={s.sample_available ? `${s.sample_quantity || ""} ${s.sample_unit_basis ? { per_unit: "unit(s)", per_pack: "pack(s)", per_master_pack: "master pack(s)" }[s.sample_unit_basis] : ""}`.trim() || "Available" : "Not available"} />
                             </SectionBlock>
                             {(s.price_slabs?.length > 0 || s.quantity_discounts?.length > 0) && (
@@ -665,14 +997,13 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                             )}
 
                             <SectionBlock icon={Archive} title="Packaging">
-                                <ReadRow label="Pack size" value={s.pack_size} />
+                                <ReadRow label="Selling unit" value={s.unit} />
+                                <ReadRow label="Pack size" value={s.pack_size != null ? `${s.pack_size} ${s.unit || ""}`.trim() : null} />
                                 <ReadRow label="Units/master pack" value={s.units_per_master_pack} />
-                                <ReadRow label="Master pack size" value={s.master_pack_size} />
-                                <ReadRow label="Packaging type" value={s.packaging_type} />
                             </SectionBlock>
 
                             <SectionBlock icon={Boxes} title="Availability">
-                                <ReadRow label="Stock" value={s.stock_quantity} />
+                                <ReadRow label="Stock" value={s.stock_quantity != null ? `${s.stock_quantity} ${pluralizeUnit(s.stock_quantity, saleUnit)}` : "Not set"} />
                                 <ReadRow label="Fulfilment" value={s.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"} />
                             </SectionBlock>
 
@@ -795,6 +1126,76 @@ export default function SellerManageListingsPage() {
         return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); };
     }, [reload]);
 
+    // ---- Background enrichment: fill in units_per_master_pack for any row
+    // the LIST endpoint didn't return it for (see the note at the top of
+    // this file). Runs with a small concurrency cap, dedupes via
+    // in-flight/done caches so each listing id is only ever fetched once
+    // no matter how many times this effect re-fires (e.g. after every
+    // patchItem-triggered items update), and only touches rows that are
+    // genuinely missing the field — it never re-fetches rows that already
+    // have it, including ones already fixed by a previous enrichment pass
+    // or by a quick-edit save.
+    const enrichedIdsRef = useRef(new Set());
+    const inFlightIdsRef = useRef(new Set());
+
+    // One self-contained pass per items-change: grab up to ENRICH_CONCURRENCY
+    // rows that are still missing units_per_master_pack, fetch just those,
+    // merge whatever comes back, and stop. No persistent worker loop, no
+    // manual "how many workers are alive" counter to get out of sync — the
+    // natural items→effect→setItems→items cycle re-triggers the next batch
+    // on its own, throttled to a handful of requests at a time.
+    useEffect(() => {
+        if (!token) return;
+
+        const pending = items
+            .filter((it) => it.units_per_master_pack === undefined
+                && !enrichedIdsRef.current.has(it.id)
+                && !inFlightIdsRef.current.has(it.id))
+            .slice(0, ENRICH_CONCURRENCY);
+
+        if (!pending.length) return;
+
+        let cancelled = false;
+        pending.forEach((it) => inFlightIdsRef.current.add(it.id));
+
+        Promise.allSettled(
+            pending.map((it) =>
+                fetchSellerSubmissionDetail(token, it.id)
+                    .then((res) => ({ it, res }))
+                    .catch(() => ({ it, res: null })) // network errors land here, never throw
+            )
+        ).then((results) => {
+            // Always release locks and mark attempted, whether this effect
+            // instance is still "current" or not — an id must never stay
+            // stuck in inFlightIdsRef forever, that's what caused the hang.
+            for (const outcome of results) {
+                const { it, res } = outcome.value; // allSettled + our own .catch means this is always "fulfilled"
+                inFlightIdsRef.current.delete(it.id);
+                enrichedIdsRef.current.add(it.id); // done trying either way — no infinite retries on a bad row
+            }
+
+            if (cancelled) return; // stale pass — locks are released above, just skip applying to state
+
+            setItems((prev) => {
+                let next = prev;
+                for (const outcome of results) {
+                    const { it, res } = outcome.value;
+                    const s = res?.submission;
+                    if (res?.success && s) {
+                        next = next.map((row) => (
+                            row.id === it.id
+                                ? { ...row, units_per_master_pack: s.units_per_master_pack ?? 1, pack_size: s.pack_size ?? row.pack_size, unit: row.unit ?? s.unit }
+                                : row
+                        ));
+                    }
+                }
+                return next;
+            });
+        });
+
+        return () => { cancelled = true; };
+    }, [items, token]);
+
     const stats = useMemo(() => {
         const total = items.length;
         const live = items.filter((it) => it.is_active !== false && it.review_status === "approved").length;
@@ -843,7 +1244,25 @@ export default function SellerManageListingsPage() {
         if (res?.success) { patchItem(id, res.submission); setConfirmDeactivateId(null); }
     }
 
-
+    // Quick-update save flow: applies the optimistic values to the row
+    // immediately (so the panel closes and the row reflects the new
+    // numbers with no wait), then persists in the background. If the
+    // server rejects the change, the row is rolled back to its previous
+    // state and a toast explains what happened — the seller never has to
+    // sit and stare at a spinner to know their edit "took".
+    async function handleQuickSave(id, payload, optimisticPatch) {
+        const prevItem = items.find((it) => it.id === id);
+        patchItem(id, optimisticPatch);
+        enrichedIdsRef.current.add(id); // panel's own fetch already gave us the authoritative unit — no need to re-fetch it
+        setQuickEditId(null);
+        const res = await updateSellerProductSubmission(token, id, payload);
+        if (res?.success) {
+            patchItem(id, res.submission);
+        } else {
+            if (prevItem) patchItem(id, prevItem);
+            setToastMsg(res?.message || "Couldn't save changes — reverted.");
+        }
+    }
 
     if (!isApprovedSeller) {
         if (profile?.seller_status === "pending_review") {
@@ -986,7 +1405,7 @@ export default function SellerManageListingsPage() {
                                     onOpenDetail={(item) => setViewingId(item.id)}
                                     onQuickEdit={(id) => { setConfirmDeactivateId(null); setQuickEditId(id); }}
                                     onCancelQuickEdit={() => setQuickEditId(null)}
-                                    onSaved={(id, submission) => { patchItem(id, submission); setQuickEditId(null); }}
+                                    onQuickSave={handleQuickSave}
                                     onAskDeactivate={(id) => { setQuickEditId(null); setConfirmDeactivateId(id); }}
                                     onCancelDeactivate={() => setConfirmDeactivateId(null)}
                                     onConfirmDeactivate={confirmDeactivate}
