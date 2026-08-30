@@ -132,7 +132,7 @@ export default function Header({ onOpenRfq }) {
   // after login), etc.
   useEffect(() => {
     if (!rowRef.current || !logoRef.current || !rightRef.current) return;
-    const GAP = 16; // breathing room against whichever side is closer
+    const GAP = 2; // breathing room against whichever side is closer
 
     function recompute() {
       const rowWidth = rowRef.current.offsetWidth;
@@ -141,7 +141,7 @@ export default function Header({ onOpenRfq }) {
       const half = rowWidth / 2;
       const leftSlack = half - logoWidth - GAP;
       const rightSlack = half - rightWidth - GAP;
-      const maxWidth = Math.max(0, 2 * Math.min(leftSlack, rightSlack));
+      const maxWidth = Math.max(0, 1.9 * Math.min(leftSlack, rightSlack));
       setNavMaxWidth(maxWidth);
     }
 

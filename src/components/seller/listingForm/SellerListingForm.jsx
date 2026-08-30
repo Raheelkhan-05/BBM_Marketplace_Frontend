@@ -315,7 +315,7 @@ export default function SellerListingForm({
         }
 
         if (locked) {
-            const hasPackaging = base.unit && Number(base.packSize) > 0 && Number(base.masterPackSize) > 0;
+            const hasPackaging = base.unit && Number(base.packSize) > 0;
             base.brandItemMatch = hasPackaging
                 ? { unit: base.unit, packSize: base.packSize, masterPackSize: base.masterPackSize }
                 : null;
