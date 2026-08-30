@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck,
@@ -27,15 +27,92 @@ const DROPDOWN_ITEM =
 const MOBILE_ROW =
   "flex min-h-[46px] items-center gap-3 rounded-lg px-3 text-[14.5px] font-semibold text-slate-700 transition-colors active:bg-slate-100";
 
+function formatShopName(slug) {
+  if (!slug) return "";
+  return slug
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function ScrollableNav({ navItems, pathname, navMaxWidth }) {
+  const scrollRef = useRef(null);
+  const [showLeftFade, setShowLeftFade] = useState(false);
+  const [showRightFade, setShowRightFade] = useState(false);
+
+  const updateFades = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setShowLeftFade(el.scrollLeft > 4);
+    setShowRightFade(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    updateFades();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", updateFades, { passive: true });
+    const ro = new ResizeObserver(updateFades);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", updateFades); ro.disconnect(); };
+  }, [updateFades, navMaxWidth, navItems.length]);
+
+  return (
+    <div
+      style={{ maxWidth: navMaxWidth != null ? `${navMaxWidth}px` : undefined }}
+      className="absolute left-1/2 hidden -translate-x-1/2 md:block"
+    >
+      <div className="relative">
+        {showLeftFade && (
+          <div className="pointer-events-none absolute left-0 top-0 z-10 h-full w-8 bg-gradient-to-r from-white/95 to-transparent" />
+        )}
+        {showRightFade && (
+          <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-8 bg-gradient-to-l from-white/95 to-transparent" />
+        )}
+        <nav
+          ref={scrollRef}
+          className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] lg:gap-1.5 [&::-webkit-scrollbar]:hidden"
+        >
+          {navItems.map((it) => {
+            const Icon = it.icon;
+            const active = it.match(pathname);
+            return (
+              <button
+                key={it.id}
+                onClick={it.onClick}
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors duration-150 lg:px-4 lg:text-[13px]"
+                style={{
+                  color: active ? "#fff" : C.ink,
+                  background: active ? C.secondary : "transparent",
+                }}
+                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(20,27,34,0.045)"; }}
+                onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+              >
+                <Icon className="h-3.5 w-3.5 lg:h-4 lg:w-4" style={{ color: active ? "#fff" : C.muted }} />
+                {it.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+    </div>
+  );
+}
+
 export default function Header({ onOpenRfq }) {
   const [open, setOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(49);
+  const [navMaxWidth, setNavMaxWidth] = useState(null);
   const { isLoggedIn, profile, signOut } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
   const headerRef = useRef(null);
+  const rowRef = useRef(null);
+  const logoRef = useRef(null);
+  const rightRef = useRef(null);
   const accountRef = useRef(null);
 
   useEffect(() => {
@@ -44,6 +121,35 @@ export default function Header({ onOpenRfq }) {
     update();
     const ro = new ResizeObserver(update);
     ro.observe(headerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  // Nav stays perfectly centered on the whole row, but its max-width is
+  // capped to whatever gap is smaller on either side of center — so it
+  // can shrink but never overlap the logo or the notification bell /
+  // account button, on either side. Recomputes on any resize: viewport
+  // changes, the icon cluster growing/shrinking (e.g. bell appearing
+  // after login), etc.
+  useEffect(() => {
+    if (!rowRef.current || !logoRef.current || !rightRef.current) return;
+    const GAP = 16; // breathing room against whichever side is closer
+
+    function recompute() {
+      const rowWidth = rowRef.current.offsetWidth;
+      const logoWidth = logoRef.current.offsetWidth;
+      const rightWidth = rightRef.current.offsetWidth;
+      const half = rowWidth / 2;
+      const leftSlack = half - logoWidth - GAP;
+      const rightSlack = half - rightWidth - GAP;
+      const maxWidth = Math.max(0, 2 * Math.min(leftSlack, rightSlack));
+      setNavMaxWidth(maxWidth);
+    }
+
+    recompute();
+    const ro = new ResizeObserver(recompute);
+    ro.observe(rowRef.current);
+    ro.observe(logoRef.current);
+    ro.observe(rightRef.current);
     return () => ro.disconnect();
   }, []);
 
@@ -78,7 +184,11 @@ export default function Header({ onOpenRfq }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const displayName = profile?.name?.trim().split(" ")[0] || "Account";
+  const displayName =
+    formatShopName(profile?.shop_slug)
+    || profile?.name?.trim().split(" ")[0]
+    || "Account";
+
   const isAdmin = profile?.role === "admin";
   const isApprovedSeller = profile?.seller_status === "approved";
 
@@ -91,41 +201,22 @@ export default function Header({ onOpenRfq }) {
         className="relative sm:sticky top-0 z-50 border-b bg-white/95 backdrop-blur-md shadow-[0_1px_0_rgba(20,27,34,0.04)] transition-all duration-300"
         style={{ borderColor: C.hair }}
       >
-        <div className="relative mx-auto flex h-14 max-w-7xl items-center justify-between px-4 lg:px-8">
-          <SmartLink to="/" className="flex shrink-0 items-center gap-2">
-            <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
-            <h1
-              className="text-[18px] font-extrabold tracking-wide"
-              style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: C.ink }}
-            >
-              BBM
-            </h1>
-          </SmartLink>
+        <div ref={rowRef} className="relative mx-auto flex h-14 max-w-7xl items-center justify-between px-4 lg:px-8">
+          <div ref={logoRef} className="flex shrink-0 items-center">
+            <SmartLink to="/" className="flex shrink-0 items-center gap-2">
+              <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
+              <h1
+                className="text-[18px] font-extrabold tracking-wide"
+                style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: C.ink }}
+              >
+                BBM
+              </h1>
+            </SmartLink>
+          </div>
 
-          <nav className="absolute left-1/2 hidden max-w-[60%] -translate-x-1/2 items-center gap-1 overflow-x-auto [scrollbar-width:none] md:flex lg:gap-1.5 [&::-webkit-scrollbar]:hidden">
-            {navItems.map((it) => {
-              const Icon = it.icon;
-              const active = it.match(pathname);
-              return (
-                <button
-                  key={it.id}
-                  onClick={it.onClick}
-                  className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors duration-150 lg:px-4 lg:text-[13px]"
-                  style={{
-                    color: active ? "#fff" : C.ink,
-                    background: active ? C.secondary : "transparent",
-                  }}
-                  onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(20,27,34,0.045)"; }}
-                  onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
-                >
-                  <Icon className="h-3.5 w-3.5 lg:h-4 lg:w-4" style={{ color: active ? "#fff" : C.muted }} />
-                  {it.label}
-                </button>
-              );
-            })}
-          </nav>
+          <ScrollableNav navItems={navItems} pathname={pathname} navMaxWidth={navMaxWidth} />
 
-          <div className="flex shrink-0 items-center gap-3">
+          <div ref={rightRef} className="flex shrink-0 items-center gap-3">
             {isLoggedIn ? (
               <>
                 <NotificationBell />
