@@ -913,7 +913,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         )}
                                     </div>
                                 )}
-                                {transportPref && (
+                                {transportPref ? (
                                     <div className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: C.hairSoft }}>
                                         <span className="text-[12px] font-semibold" style={{ color: C.ink }}>
                                             🚚 {transportPref.mode === "bus" ? "Bus" : "Train"}{transportPref.transport_company ? ` · ${transportPref.transport_company}` : ""}
@@ -930,7 +930,24 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                             Change in chat
                                         </button>
                                     </div>
-                                )}
+                                ) : transportSellerUserId ? (
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const res = await getOrCreateDirectConversation(token, transportSellerUserId);
+                                            if (res?.success) { onClose(); navigate(`/chat/${res.conversationId}`); }
+                                        }}
+                                        className="flex w-full items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-left transition-colors duration-150 hover:bg-black/[0.02]"
+                                        style={{ borderColor: `${C.secondary}40` }}
+                                    >
+                                        <span className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: C.muted }}>
+                                            🚚 No transport preference set yet
+                                        </span>
+                                        <span className="shrink-0 text-[11px] font-bold" style={{ color: C.secondary }}>
+                                            Set in chat
+                                        </span>
+                                    </button>
+                                ) : null}
 
                                 <div className="flex flex-col gap-1">
                                     <Label>Note to seller (optional)</Label>
