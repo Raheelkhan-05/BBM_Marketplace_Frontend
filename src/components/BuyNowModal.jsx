@@ -12,7 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi } from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
-import { getOrCreateDirectConversation } from "../utils/chatApi.js";
+import { getOrCreateDirectConversation, fetchTransportPreference } from "../utils/chatApi.js";
 import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
 import { clearPaymentSession } from "../utils/paymentSession.js";
 import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./seller/listingForm/FormPrimitives.jsx";
@@ -305,6 +305,18 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const belowMoq = !isSample && Number(quantity) < minQuantity;
 
+    const [transportPref, setTransportPref] = useState(null);
+    const [transportSellerUserId, setTransportSellerUserId] = useState(null);
+    useEffect(() => {
+        if (!seller?.offerId || !access?.canCheckout) return;
+        fetchTransportPreference(token, { submissionId: seller.offerId }).then((res) => {
+            if (res?.success) {
+                setTransportPref(res.preference?.status === "confirmed" ? res.preference : null);
+                setTransportSellerUserId(res.sellerUserId || null);
+            }
+        });
+    }, [seller?.offerId, access, token]);
+
     useEffect(() => {
         if (!userPickedBasis.current) setBasis(defaultBasis);
     }, [defaultBasis]);
@@ -559,6 +571,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
             orderType: effectiveOrderType,
             shippingAddressId: addressId,
             notes: notes.trim() || undefined,
+            transportMode: transportPref?.mode,
+            transportCompany: transportPref?.transport_company,
+            transportDetails: transportPref?.details,
         });
         setSubmitting(false);
         if (!res?.success) return setError(res?.message || "Couldn't place the order.");
@@ -877,6 +892,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         </button>
                                     </div>
                                 )}
+
                                 {showNewAddress && (
                                     <div className="flex flex-col gap-2.5">
                                         <div className="grid grid-cols-2 gap-2.5">
@@ -895,6 +911,24 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                                 Use a saved address instead
                                             </button>
                                         )}
+                                    </div>
+                                )}
+                                {transportPref && (
+                                    <div className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: C.hairSoft }}>
+                                        <span className="text-[12px] font-semibold" style={{ color: C.ink }}>
+                                            🚚 {transportPref.mode === "bus" ? "Bus" : "Train"}{transportPref.transport_company ? ` · ${transportPref.transport_company}` : ""}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (!transportSellerUserId) return;
+                                                const res = await getOrCreateDirectConversation(token, transportSellerUserId);
+                                                if (res?.success) { onClose(); navigate(`/chat/${res.conversationId}`); }
+                                            }}
+                                            className="text-[11px] font-bold" style={{ color: C.secondary }}
+                                        >
+                                            Change in chat
+                                        </button>
                                     </div>
                                 )}
 

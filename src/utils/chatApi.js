@@ -63,3 +63,26 @@ export async function fetchApprovedSellers(token) {
     const res = await fetch(`${API_BASE}/chat/sellers/approved`, { headers: authed(token) });
     return res.json();
 }
+
+export async function fetchTransportPreference(token, { otherUserId, submissionId } = {}) {
+    const params = new URLSearchParams();
+    if (submissionId) params.set("submissionId", submissionId);
+    else if (otherUserId) params.set("otherUserId", otherUserId);
+    const res = await fetch(`${API_BASE}/transport/preference?${params}`, { headers: authed(token) });
+    return res.json();
+}
+
+export async function proposeTransportApi(token, { otherUserId, conversationId, mode, transportCompany, details }) {
+    const res = await fetch(`${API_BASE}/transport/propose`, {
+        method: "POST", headers: { ...authed(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ otherUserId, conversationId, mode, transportCompany, details }),
+    });
+    return res.json();
+}
+export async function decideTransportApi(token, prefId, decision) {
+    const res = await fetch(`${API_BASE}/transport/${prefId}/decide`, {
+        method: "POST", headers: { ...authed(token), "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+    });
+    return res.json();
+}

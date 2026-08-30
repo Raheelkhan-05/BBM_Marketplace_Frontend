@@ -10,6 +10,7 @@ import { useSocket } from "../context/SocketContext.jsx";
 import {
     fetchMessages, sendChatMessage, markConversationRead,
     deleteChatMessage, fetchConversations,
+    fetchTransportPreference, proposeTransportApi, decideTransportApi,
 } from "../utils/chatApi.js";
 import { fetchCreditStatus, requestCredit as requestCreditApi, decideCredit as decideCreditApi, toggleCredit as toggleCreditApi } from "../utils/api.js";
 
@@ -471,4 +472,37 @@ export function useCredit(otherUserId) {
     }, [token, otherUserId, load]);
 
     return { credit, viewerRole, loading, request, decide, toggle, reload: load };
+}
+
+export function useTransportPreference(otherUserId, conversationId) {
+    const { token } = useAuth();
+    const { socket, connected } = useSocket();
+    const [pref, setPref] = useState(null);
+    const [viewerRole, setViewerRole] = useState(null);
+
+    const load = useCallback(() => {
+        if (!otherUserId || !token) return;
+        fetchTransportPreference(token, { otherUserId }).then((res) => { // was: fetchTransportPreference(token, otherUserId)
+            if (res?.success) { setPref(res.preference); setViewerRole(res.viewerRole); }
+        });
+    }, [otherUserId, token]);
+
+    useEffect(() => { load(); }, [load]);
+
+    useEffect(() => {
+        if (!socket || !connected) return;
+        socket.on("transport:proposed", load);
+        socket.on("transport:decided", load);
+        return () => { socket.off("transport:proposed", load); socket.off("transport:decided", load); };
+    }, [socket, connected, load]);
+
+    const propose = useCallback((mode, transportCompany, details) =>
+        proposeTransportApi(token, { otherUserId, conversationId, mode, transportCompany, details }).then((r) => { if (r?.success) load(); return r; }),
+        [token, otherUserId, conversationId, load]);
+
+    const decide = useCallback((prefId, decision) =>
+        decideTransportApi(token, prefId, decision).then((r) => { if (r?.success) load(); return r; }),
+        [token, load]);
+
+    return { pref, viewerRole, propose, decide };
 }

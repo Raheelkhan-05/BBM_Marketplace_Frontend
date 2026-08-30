@@ -9,10 +9,10 @@
 // only existed inside the messages hook, so every delete threw silently).
 import { useEffect, useRef, useState, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, CreditCard, Loader2, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle } from "lucide-react";
+import { ArrowLeft, CreditCard, Truck, Loader2, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
-import useChatMessages, { usePresence, useCredit } from "../../hooks/useChat.js";
+import useChatMessages, { usePresence, useCredit, useTransportPreference } from "../../hooks/useChat.js";
 
 import { formatLastSeen } from "../../utils/formatLastSeen.js";
 
@@ -51,7 +51,17 @@ function TypingDots({ color = C.secondary, size = "h-1.5 w-1.5" }) {
     );
 }
 
-// ChatWindow.jsx — replace CreditBar entirely
+function TransportBar({ pref, otherName, onOpenPropose }) {
+    if (!pref) return null; // zero visual footprint until something's actually agreed
+    return (
+        <div className="flex items-center justify-between border-b px-4 py-2 text-[12px] font-semibold" style={{ borderColor: C.hair, background: C.hairSoft }}>
+            <span style={{ color: C.ink }}>
+                🚚 Ships via {pref.mode === "bus" ? "Bus" : "Train"}{pref.transport_company ? ` · ${pref.transport_company}` : ""}
+            </span>
+            <button onClick={onOpenPropose} className="text-[11.5px] font-bold" style={{ color: C.secondary }}>Change</button>
+        </div>
+    );
+}
 
 function CreditBar({ credit, viewerRole, otherName, onRequest, onToggle, onDecide, requesting }) {
     if (viewerRole === "buyer") {
@@ -210,6 +220,37 @@ function TypingBubble() {
     );
 }
 
+function TransportProposeSheet({ open, onClose, current, onSubmit }) {
+    const [mode, setMode] = useState(current?.mode || "bus");
+    const [company, setCompany] = useState(current?.transport_company || "");
+    const [details, setDetails] = useState(current?.details || "");
+    if (!open) return null;
+    return (
+        <div className="fixed inset-0 z-[999] flex items-end bg-black/30" onClick={onClose}>
+            <div className="w-full rounded-t-2xl bg-white p-4" onClick={(e) => e.stopPropagation()}>
+                <p className="text-[13px] font-extrabold" style={{ color: C.ink }}>Propose transport</p>
+                <div className="mt-3 flex gap-2">
+                    {["bus", "train", "other"].map((m) => (
+                        <button key={m} onClick={() => setMode(m)}
+                            className="rounded-full border px-3 py-1.5 text-[12px] font-bold capitalize"
+                            style={{ borderColor: mode === m ? C.secondary : C.hair, background: mode === m ? `${C.secondary}12` : "#fff", color: mode === m ? C.secondary : C.muted }}>
+                            {m}
+                        </button>
+                    ))}
+                </div>
+                <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Transport company (optional) — e.g. Patel Transport"
+                    className="mt-3 w-full rounded-lg border px-3 py-2 text-[13px]" style={{ borderColor: C.hair }} />
+                <input value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Notes (optional)"
+                    className="mt-2 w-full rounded-lg border px-3 py-2 text-[13px]" style={{ borderColor: C.hair }} />
+                <button onClick={() => { onSubmit(mode, company.trim() || null, details.trim() || null); onClose(); }}
+                    className="mt-3 w-full rounded-xl py-2.5 text-[13px] font-bold text-white" style={{ background: C.secondary }}>
+                    Send proposal
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ---- message bubble -----------------------------------------------------
 
 function TickIcon({ status, onRetry }) {
@@ -224,7 +265,7 @@ function TickIcon({ status, onRetry }) {
     return <Check className="h-3.5 w-3.5" style={{ color: "rgba(255,255,255,0.7)" }} />;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry, credit, onCreditDecision }) {
+const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry, credit, onCreditDecision, transportPref, onTransportDecision }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef(null);
     useEffect(() => {
@@ -257,6 +298,41 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
                             {statusStyle.label}
                         </span>
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (message.message_type === "transport_proposal") {
+        const p = message.metadata; // { prefId, mode, transportCompany, details, proposedBy }
+        const isCurrent = transportPref?.id === p.prefId;
+        const status = isCurrent ? transportPref.status : null; // 'pending' | 'confirmed' | 'declined' | null (superseded)
+        const statusStyle = {
+            pending: { color: "#a16207", bg: "#fef3c7", label: "Proposed" },
+            confirmed: { color: "#059669", bg: "#EAF7F2", label: "Agreed" },
+            declined: { color: C.muted, bg: C.hairSoft, label: "Declined" },
+        }[status] || { color: C.muted, bg: C.hairSoft, label: "Sent" };
+
+        return (
+            <div className="mb-3 flex justify-center">
+                <div className="flex w-full max-w-[280px] flex-col gap-2 rounded-2xl border px-3.5 py-3" style={{ borderColor: C.hair, background: "#fff" }}>
+                    <div className="flex items-center gap-2">
+                        <Truck className="h-4 w-4" style={{ color: C.secondary }} />
+                        <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>Transport preference</p>
+                    </div>
+                    <p className="text-[13px] font-semibold" style={{ color: C.ink }}>
+                        {p.mode === "bus" ? "Bus" : p.mode === "train" ? "Train" : "Other"}
+                        {p.transportCompany ? ` · ${p.transportCompany}` : ""}
+                    </p>
+                    {p.details && <p className="text-[11.5px]" style={{ color: C.muted }}>{p.details}</p>}
+                    <span className="w-fit rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>{statusStyle.label}</span>
+
+                    {isCurrent && status === "pending" && !isMine && (
+                        <div className="flex gap-1.5">
+                            <button onClick={() => onTransportDecision(p.prefId, "confirmed")} className="flex-1 rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white" style={{ background: "#059669" }}>Agree</button>
+                            <button onClick={() => onTransportDecision(p.prefId, "declined")} className="flex-1 rounded-lg border px-3 py-1.5 text-[11.5px] font-bold" style={{ borderColor: C.hair, color: C.muted }}>Suggest different</button>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -324,7 +400,7 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
 
 // ---- composer -----------------------------------------------------------
 
-function ChatComposer({ onSend, sending, onTypingChange }) {
+function ChatComposer({ onSend, sending, onTypingChange, onOpenTransport }) {
     const [value, setValue] = useState("");
     const textareaRef = useRef(null);
 
@@ -365,6 +441,10 @@ function ChatComposer({ onSend, sending, onTypingChange }) {
             >
                 {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </button>
+            <button onClick={onOpenTransport} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-black/5" title="Propose transport">
+                <Truck className="h-4 w-4" style={{ color: C.muted }} />
+            </button>
+
         </div>
     );
 }
@@ -394,6 +474,9 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     const bottomRef = useRef(null);
     const presence = usePresence(meta?.otherUserId ? [meta.otherUserId] : []);
     const otherPresence = meta?.otherUserId ? presence[meta.otherUserId] : null;
+
+    const { pref: transportPref, propose: proposeTransport, decide: decideTransport } = useTransportPreference(meta?.otherUserId, conversationId);
+    const [transportSheetOpen, setTransportSheetOpen] = useState(false);
 
     const { credit, viewerRole, request, decide, toggle } = useCredit(meta?.otherUserId);
     const [requestingCredit, setRequestingCredit] = useState(false);
@@ -450,6 +533,8 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 credit={credit} viewerRole={viewerRole} otherName={meta?.title || "them"}
                 onRequest={handleRequestCredit} onToggle={toggle} onDecide={decide} requesting={requestingCredit}
             />
+            <TransportBar pref={transportPref?.status === "confirmed" ? transportPref : null} otherName={meta?.title} onOpenPropose={() => setTransportSheetOpen(true)} />
+
             <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-3 py-3 sm:px-4">
                 {loadingOlder && (
                     <div className="flex justify-center py-2"><Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: C.muted }} /></div>
@@ -494,6 +579,8 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                                         onRetry={retry}
                                         credit={credit}
                                         onCreditDecision={decide}
+                                        transportPref={transportPref}
+                                        onTransportDecision={decideTransport}
                                     />
                                 </div>
                             );
@@ -506,7 +593,18 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 <div ref={bottomRef} />
             </div>
 
-            <ChatComposer onSend={send} sending={sending} onTypingChange={notifyTyping} />
+            <ChatComposer
+                onSend={send}
+                sending={sending}
+                onTypingChange={notifyTyping}
+                onOpenTransport={() => setTransportSheetOpen(true)}
+            />
+            <TransportProposeSheet
+                open={transportSheetOpen}
+                onClose={() => setTransportSheetOpen(false)}
+                current={transportPref}
+                onSubmit={(mode, company, details) => proposeTransport(mode, company, details)}
+            />
         </div>
     );
 }
