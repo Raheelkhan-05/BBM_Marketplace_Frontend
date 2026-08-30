@@ -50,6 +50,7 @@ import SellerWalletPage from "./pages/SellerWalletPage.jsx";
 import AdminDatabasePanel from "./pages/admin/AdminDatabasePanel.jsx";
 import AdminProductCommissionsPage from "./pages/admin/AdminProductCommissionsPage.jsx";
 import SellerEditListingPage from "./pages/SellerEditListingPage.jsx";
+import ContactsBootstrapper from "./components/ContactsBootstrapper.jsx";
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -74,6 +75,7 @@ function App() {
         */}
           <PendingSubmissionWatcher />
           <PendingPaymentGate />
+          <ContactsBootstrapper />
           <Routes>
             <Route element={<AuthLayout />}>
               <Route path="/login" element={<AuthPage />} />
