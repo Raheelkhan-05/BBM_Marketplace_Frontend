@@ -341,6 +341,10 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
         item.lowest_price_unit
     );
 
+    const isOutOfStock = item.lowest_price_stock_type === "ready_stock"
+        && item.lowest_price_available_stock != null
+        && Number(item.lowest_price_available_stock) <= 0;
+
     // Recomputed only when the underlying price fields or the GST toggle
     // change — cheap pure arithmetic, so this stays effectively instant.
     const breakdown = useMemo(() => {
@@ -373,6 +377,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             style={{
                 borderColor: C.hairSoft,
                 background: isOpen ? C.hairSoft : "transparent",
+                opacity: isOutOfStock ? 0.5 : 1,
             }}
         >
             {/* COL 1 — IMAGE */}
@@ -463,15 +468,16 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                 aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
                 className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right"
             >
-                {breakdown && (
-                    <span
-                        className="text-[10px] font-semibold uppercase leading-tight tracking-wider"
-                        style={{ color: C.muted }}
-                    >
-                        from
+                {isOutOfStock ? (
+                    <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
+                        OUT OF STOCK
                     </span>
+                ) : (
+                    <>
+                        {breakdown && <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>}
+                        <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
+                    </>
                 )}
-                <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
             </button>
         </motion.div>
     );
@@ -646,18 +652,29 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
                             {sortedItems.map((s) => {
                                 const pricing = sellerPricingForMode(s, sortMode, includeGst);
-                                const hasDiscount = pricing?.discountPercent > 0;
+                                const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
                                 return (
-                                    <button key={s.submission_id} onClick={() => onBuySeller(s)} className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03]">
+                                    <button
+                                        key={s.submission_id}
+                                        onClick={() => !outOfStock && onBuySeller(s)}
+                                        disabled={outOfStock}
+                                        className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] disabled:cursor-not-allowed"
+                                        style={outOfStock ? { opacity: 0.45 } : undefined}
+                                    >
                                         <div className="min-w-0 flex-1">
                                             <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{s.display_name}</p>
                                             <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                 {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
                                                 {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
                                             </p>
-
                                         </div>
-                                        <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                        {outOfStock ? (
+                                            <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
+                                                OUT OF STOCK
+                                            </span>
+                                        ) : (
+                                            <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                        )}
                                     </button>
                                 );
                             })}

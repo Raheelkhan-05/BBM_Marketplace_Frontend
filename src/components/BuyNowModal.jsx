@@ -130,6 +130,7 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
     const moq = Number(seller.moq) || 0;
     const availableStock = seller.availableStock != null ? Number(seller.availableStock) : null;
     const stockShortfall = seller.stockType !== "made_to_order" && availableStock != null && saleQty > availableStock;
+    const outOfStock = seller.stockType !== "made_to_order" && availableStock != null && availableStock <= 0;
 
     const grossSubtotal = round2(slabPrice * saleQty);
     const subtotal = round2(unitPrice * saleQty);
@@ -347,6 +348,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const requestIdRef = useRef(0);
     const pendingQuoteRef = useRef(Promise.resolve());
     const standardBasisRef = useRef(defaultBasis);
+
+    const outOfStock = !isSample && quote?.outOfStock;
 
     // Remember the last basis used for a standard order, so a detour into
     // sample mode (which forces "per_unit") and back restores exactly what
@@ -705,6 +708,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 <Notice tone="warn">This item is short on stock right now — fulfilment may take a little longer than usual.</Notice>
                             </div>
                         )}
+
                         <div className="mt-6 flex w-full gap-2">
                             <button onClick={onClose} className="flex-1 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.ink }}>Keep browsing</button>
                             <button onClick={() => navigate("/orders")} className="flex-1 rounded-xl px-5 py-2.5 text-[13px] font-bold tracking-wide text-white" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>View orders</button>
@@ -812,6 +816,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 )}
                                 {!isSample && quote?.stockShortfall && (
                                     <Notice tone="warn">Only {quote.availableStock} {quote.unit} currently in stock — this order will still be placed, but fulfilment may take a little longer.</Notice>
+                                )}
+                                {!isSample && quote?.outOfStock && (
+                                    <Notice tone="danger">This item is currently out of stock.</Notice>
                                 )}
 
                                 {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
@@ -1011,7 +1018,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                             {/* Credit slot */}
                             {!isSample && (
                                 canBuyOnCredit ? (
-                                    <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq}
+                                    <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq || outOfStock}
                                         className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
                                         style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
                                         <CreditCard className="h-3.5 w-3.5" /> {submitting ? "Placing…" : "Buy on credit"}
@@ -1023,7 +1030,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         <Notice tone="warn">Your last credit request was declined. You can request again after {new Date(creditStatus.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</Notice>
                                     </div>
                                 ) : (
-                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit || belowMoq}
+                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit || belowMoq || outOfStock}
                                         className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-bold tracking-wide disabled:opacity-60"
                                         style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
                                         <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
@@ -1054,7 +1061,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         onClose();
                                         navigate("/cart");
                                     }}
-                                    disabled={submitting || belowMoq}
+                                    disabled={submitting || belowMoq || outOfStock}
                                     className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
                                     style={{ borderColor: C.hair, color: C.ink }}
                                 >
@@ -1062,7 +1069,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </button>
                             )}
 
-                            <button onClick={() => handleSubmit()} disabled={submitting || (!isSample && belowMoq)}
+                            <button onClick={() => handleSubmit()} disabled={submitting || (!isSample && (belowMoq || outOfStock))}
                                 className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[14px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
                                 style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
