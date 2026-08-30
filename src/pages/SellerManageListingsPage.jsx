@@ -16,7 +16,7 @@
 //    "Edit listing" action just routes there instead of re-implementing
 //    ~20 fields a second time.
 //
-// SALE-UNIT CONSISTENCY (this revision):
+// SALE-UNIT CONSISTENCY:
 // Every quantity-and-price-facing number on this page — MOQ, the row's
 // "₹X /unit", "N left" stock label, and the detail modal's MOQ/Stock/
 // Pricing rows — is displayed in the listing's SALE unit: Master Pack
@@ -24,39 +24,24 @@
 // otherwise. This matches the convention BuyNowModal.jsx and
 // HomeProductFeed.jsx already use (via shared/packUnits.js).
 //
-// DATA-SOURCE MISMATCH FIX (this revision):
+// DATA-SOURCE MISMATCH FIX:
 // fetchMySellerSubmissions() — the light list endpoint this page uses for
 // its rows — does not appear to return `units_per_master_pack` on each
 // row, while fetchSellerSubmissionDetail() (used by the detail modal)
-// does. That's exactly why the detail modal correctly said "Master Pack"
-// while the row above it and the Quick Update panel said "Pack": both
-// were reading a field that simply wasn't present on the light payload,
-// and silently defaulting to "no master pack".
-//   → Ideally, fixed properly, fetchMySellerSubmissions's backend query
-//     should just SELECT units_per_master_pack (and pack_size, unit)
-//     alongside what it already returns — a one-line query change that
-//     removes the need for anything below entirely.
-//   → Until/unless that lands, this file works around it: any row
-//     missing units_per_master_pack gets it filled in lazily via a
-//     capped-concurrency background fetch (see the enrichment effect in
-//     the main component), deduped and cached so each listing is only
-//     ever fetched once. While a row's sale unit is still unknown, its
-//     unit-dependent text (MOQ line, price/unit, stock line) renders a
-//     skeleton instead of guessing — a wrong label shown confidently is
-//     worse than a half-second placeholder.
-// The Quick Update panel already does its own detail fetch (it needs the
-// real base price / GST% / inclusive flag anyway) — it's been fixed to
-// derive its sale-unit label from THAT fetched data, not from the light
-// row prop, so it can never show a stale/wrong unit even before the
-// enrichment pass above has run.
+// does. Any row missing units_per_master_pack gets it filled in lazily
+// via a capped-concurrency background fetch (see the enrichment effect in
+// the main component), deduped and cached so each listing is only ever
+// fetched once. While a row's sale unit is still unknown, its
+// unit-dependent text (MOQ line, price/unit, stock line) renders a
+// skeleton instead of guessing.
 //
-// GST-AWARE PRICING:
-// The detail modal's "Final price" respects gst_inclusive_input — an
-// inclusive-priced listing's base_price already IS the final price; GST
-// is never added on top of it a second time. The Quick Update panel edits
-// the real (base price, GST%, inclusive toggle) rather than one flattened
-// "price" number, with a live computed final-price preview using the same
-// math.
+// GST PRICING (simplified):
+// GST is always calculated ON TOP of the entered base price — there is no
+// "price already includes GST" branch anywhere on this page anymore.
+//   final price = base price + (base price * gst% / 100)
+// This applies identically in the Quick Update panel and the read-only
+// Detail modal, via the shared computeGstAmount()/computeFinalPrice()
+// helpers below, so the two surfaces can never disagree with each other.
 //
 // Stock sync: this page re-fetches on window focus/visibility, on the
 // existing subscribeUserEvent("submissions_changed", ...) channel, and on
@@ -134,24 +119,20 @@ function formatMoney(n) {
     return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
-// Mirrors SellerListingForm's live price-preview math: when the seller's
-// entered price already includes GST, that number IS the final price —
-// GST is reverse-calculated OUT of it for display, never added on top of
-// it again. Only when the price is entered exclusive-of-GST does GST get
-// added forward.
-function computeFinalPrice(basePrice, gstPercent, gstInclusive) {
+// GST is ALWAYS added on top of the entered base price — no
+// inclusive/exclusive branching anywhere on this page. These two are the
+// single source of truth; both the Quick Update panel and the read-only
+// Detail modal call these, so they can never disagree with each other.
+//   gstAmount   = basePrice * gst% / 100
+//   finalPrice  = basePrice + gstAmount
+function computeGstAmount(basePrice, gstPercent) {
     const price = Number(basePrice) || 0;
     const gst = Number(gstPercent) || 0;
-    return gstInclusive ? round2(price) : round2(price * (1 + gst / 100));
-}
-function computeGstAmount(basePrice, gstPercent, gstInclusive) {
-    const price = Number(basePrice) || 0;
-    const gst = Number(gstPercent) || 0;
-    if (gstInclusive) {
-        const exclusive = price / (1 + gst / 100);
-        return round2(price - exclusive);
-    }
     return round2(price * (gst / 100));
+}
+function computeFinalPrice(basePrice, gstPercent) {
+    const price = Number(basePrice) || 0;
+    return round2(price + computeGstAmount(price, gstPercent));
 }
 
 // Skeleton bar used wherever a sale-unit-dependent value is still
@@ -193,7 +174,10 @@ function submissionToInitialValues(s) {
 
         basePrice: s.base_price != null ? String(s.base_price) : "",
         priceBasis: s.price_basis || (hasOuterPackLocal ? "per_master_pack" : "per_pack"),
-        gstInclusive: Boolean(s.gst_inclusive_input),
+        // GST is always added on top now — the form no longer has an
+        // inclusive/exclusive choice, so this is always false regardless
+        // of whatever the row previously had stored.
+        gstInclusive: false,
         freightIncluded: Boolean(s.freight_included),
 
         sampleAvailable: Boolean(s.sample_available),
@@ -487,14 +471,13 @@ function StockAdjuster({ value, onChange, saleUnit }) {
 // `item` is the light row object from the list (fast, already on screen —
 // and, per the note at the top of this file, may be MISSING
 // units_per_master_pack). On open, this fetches the full submission so it
-// can edit the real (base price, GST%, GST-inclusive?) inputs instead of a
-// single opaque "price" number, AND so it has an authoritative
-// units_per_master_pack to label everything with — never trusting the
-// light `item` prop for that. `onSave(payload, optimisticPatch)` is called
-// once the seller hits Save; the parent applies `optimisticPatch` to the
-// list immediately (so the UI updates with zero perceived delay) and only
-// sends `payload` to the server in the background, rolling back if it's
-// rejected.
+// can edit the real (base price, GST%) inputs instead of a single opaque
+// "price" number, AND so it has an authoritative units_per_master_pack to
+// label everything with — never trusting the light `item` prop for that.
+// `onSave(payload, optimisticPatch)` is called once the seller hits Save;
+// the parent applies `optimisticPatch` to the list immediately (so the UI
+// updates with zero perceived delay) and only sends `payload` to the
+// server in the background, rolling back if it's rejected.
 function QuickUpdatePanel({ item, onCancel, onSave }) {
     const { token } = useAuth();
 
@@ -521,7 +504,6 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
 
                 basePrice: s.base_price != null ? String(s.base_price) : "",
                 gstPercent: s.gst_percent ?? 18,
-                gstInclusive: Boolean(s.gst_inclusive_input),
                 moq: s.moq != null ? String(s.moq) : "",
                 stockType: s.stock_type || "ready_stock",
                 stockQuantity: s.stock_quantity != null ? String(s.stock_quantity) : "",
@@ -541,8 +523,11 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
     // Master-Pack listing.
     const saleUnit = form ? saleUnitLabel(form.unitsPerMasterPack) : null;
 
-    const finalPrice = form ? computeFinalPrice(form.basePrice, form.gstPercent, form.gstInclusive) : 0;
-    const gstAmount = form ? computeGstAmount(form.basePrice, form.gstPercent, form.gstInclusive) : 0;
+    // GST always added on top of the entered base price — computed off
+    // `form` (this panel's own state), via the same shared helpers the
+    // Detail modal uses, so both surfaces always agree.
+    const gstAmount = form ? computeGstAmount(form.basePrice, form.gstPercent) : 0;
+    const finalPrice = form ? computeFinalPrice(form.basePrice, form.gstPercent) : 0;
 
     const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -560,7 +545,8 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
         const payload = {
             basePrice: Number(form.basePrice),
             gstPercent: Number(form.gstPercent),
-            gstInclusive: form.gstInclusive,
+            // GST is always added on top now — never stored as inclusive.
+            gstInclusive: false,
             moq: Number(form.moq),
             ...(form.stockType === "ready_stock"
                 ? {
@@ -577,7 +563,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
         // can stop showing a skeleton for its unit-dependent text right
         // away, even if the background enrichment pass hasn't reached it.
         const optimisticPatch = {
-            price: finalPrice,
+            price: Number(form.basePrice),   // keep the row showing the seller's entered base price, consistent with how it displays before any edit
             moq: Number(form.moq),
             lead_time: form.leadTime === "" ? null : Number(form.leadTime),
             units_per_master_pack: form.unitsPerMasterPack,
@@ -615,45 +601,27 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             <div className="flex flex-col gap-3.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.hairSoft }}>
 
                 {/* ---- Pricing ---- */}
-                {/* ---- Pricing ---- */}
                 <div className="flex flex-col gap-2">
                     <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>
                         <IndianRupee className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Pricing · per {saleUnit}
                     </span>
 
                     <QuickField
-                        label={`Price entered (₹/${saleUnit})`}
+                        label={`Base Price (₹/${saleUnit})`}
                         type="number" min="0" step="0.01"
                         value={form.basePrice}
                         onChange={(e) => setField("basePrice", e.target.value)}
                     />
 
-                    <div className="flex items-center justify-between gap-3 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
-                        <div className="flex flex-col gap-0.5">
-                            <span className="text-[12.5px] font-bold" style={{ color: C.ink }}>
-                                {form.gstInclusive ? "Price includes GST ?" : "Price includes GST ?"}
-                            </span>
-                            <span className="text-[10.5px] font-semibold" style={{ color: C.muted }}>
-                                GST ₹{formatMoney(gstAmount)}
-                            </span>
+                    <div className="grid grid-cols-2 gap-2.5">
+                        <div className="flex flex-col justify-center gap-0.5 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
+                            <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>GST amount - {form.gstPercent}%</span>
+                            <span className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{formatMoney(gstAmount)}</span>
                         </div>
-                        <button
-                            type="button"
-                            role="switch"
-                            aria-checked={form.gstInclusive}
-                            onClick={() => setField("gstInclusive", !form.gstInclusive)}
-                            className="relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200"
-                            style={{ background: form.gstInclusive ? C.secondary : C.hair }}
-                        >
-                            <span
-                                className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200"
-                                style={{ transform: form.gstInclusive ? "translateX(0px)" : "translateX(-20px)" }}
-                            />
-                        </button>
                     </div>
 
                     <div className="flex flex-col justify-center gap-0.5 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
-                        <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>Final price</span>
+                        <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>Final price (base + GST)</span>
                         <span className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{formatMoney(finalPrice)}</span>
                     </div>
                 </div>
@@ -906,14 +874,11 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
     // The sale unit this listing is priced, MOQ'd, and stocked in.
     const saleUnit = saleUnitLabel(s?.units_per_master_pack);
 
-    // Respects gst_inclusive_input — an inclusive-priced listing's
-    // base_price already IS the final price; GST must not be added again
-    // on top of it here.
-    const finalPrice = s
-        ? (s.gst_inclusive_input
-            ? round2(Number(s.base_price || 0))
-            : round2(Number(s.base_price || 0) * (1 + Number(s.gst_percent || 0) / 100)))
-        : 0;
+    // GST always added on top of the entered base price — same shared
+    // helpers the Quick Update panel uses, so the two views can never
+    // disagree. No inclusive/exclusive branching, no gst_inclusive_input.
+    const gstAmount = s ? computeGstAmount(s.base_price, s.gst_percent) : 0;
+    const finalPrice = s ? computeFinalPrice(s.base_price, s.gst_percent) : 0;
 
     const gp = s?.brand?.generic_product;
     const crumb = [gp?.subcategory?.category?.name, gp?.subcategory?.name, gp?.name].filter(Boolean).join(" › ");
@@ -976,11 +941,10 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                             )}
 
                             <SectionBlock icon={IndianRupee} title="Pricing">
-                                <ReadRow label={`Price entered (/${saleUnit})`} value={s.base_price != null ? `₹${formatMoney(s.base_price)}` : null} />
+                                <ReadRow label={`Base Price (/${saleUnit})`} value={s.base_price != null ? `₹${formatMoney(s.base_price)}` : null} />
                                 <ReadRow label="GST %" value={s.gst_percent != null ? `${s.gst_percent}%` : null} />
+                                <ReadRow label="GST amount" value={`₹${formatMoney(gstAmount)}`} />
                                 <ReadRow label={`Final price (/${saleUnit})`} value={`₹${formatMoney(finalPrice)}`} />
-                                <ReadRow label="Priced as" value={`Per ${saleUnit}`} />
-                                <ReadRow label="GST" value={s.gst_inclusive_input != null ? (s.gst_inclusive_input ? "Included in entered price" : "Added on top") : null} />
                                 <ReadRow label="Freight" value={s.freight_included != null ? (s.freight_included ? "Included" : "Extra, buyer pays") : null} />
                                 <ReadRow label="Valid till" value={s.price_validity_till} />
                             </SectionBlock>
@@ -1075,6 +1039,12 @@ export default function SellerManageListingsPage() {
     const navigate = useNavigate();
 
     const [items, setItems] = useState([]);
+
+    // Separate from `items` on purpose — this state is never touched by
+    // reload()/setItems replacing the list, so a background refresh can
+    // never wipe out what enrichment already learned. Keyed by listing id.
+    const [unitInfoById, setUnitInfoById] = useState({});
+
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [lastSynced, setLastSynced] = useState(null);
@@ -1113,6 +1083,64 @@ export default function SellerManageListingsPage() {
         });
     }, [token, isApprovedSeller]);
 
+    // Single source of truth for "does this row know its sale unit" — prefers
+    // units_per_master_pack directly on the item (when the light endpoint
+    // happens to include it), falling back to whatever enrichment has
+    // separately learned for that id. Since unitInfoById is never cleared by
+    // reload, this can't regress once a row's been enriched.
+    const enrichedItems = useMemo(() => {
+        return items.map((it) => {
+            if (it.units_per_master_pack !== undefined) return it;
+            const known = unitInfoById[it.id];
+            return known ? { ...it, ...known } : it;
+        });
+    }, [items, unitInfoById]);
+
+    useEffect(() => {
+        if (!token) return;
+
+        const pending = items
+            .filter((it) => it.units_per_master_pack === undefined
+                && unitInfoById[it.id] === undefined
+                && !inFlightIdsRef.current.has(it.id))
+            .slice(0, ENRICH_CONCURRENCY);
+
+        if (!pending.length) return;
+
+        let cancelled = false;
+        pending.forEach((it) => inFlightIdsRef.current.add(it.id));
+
+        Promise.allSettled(
+            pending.map((it) =>
+                fetchSellerSubmissionDetail(token, it.id)
+                    .then((res) => ({ it, res }))
+                    .catch(() => ({ it, res: null }))
+            )
+        ).then((results) => {
+            for (const outcome of results) {
+                const { it } = outcome.value;
+                inFlightIdsRef.current.delete(it.id);
+            }
+            if (cancelled) return;
+
+            setUnitInfoById((prev) => {
+                const next = { ...prev };
+                for (const outcome of results) {
+                    const { it, res } = outcome.value;
+                    const s = res?.submission;
+                    next[it.id] = {
+                        units_per_master_pack: res?.success && s ? (s.units_per_master_pack ?? 1) : 1,
+                        pack_size: res?.success && s ? (s.pack_size ?? it.pack_size) : it.pack_size,
+                        unit: res?.success && s ? (s.unit ?? it.unit) : it.unit,
+                    };
+                }
+                return next;
+            });
+        });
+
+        return () => { cancelled = true; };
+    }, [items, unitInfoById, token]);
+
     useEffect(() => { reload(); }, [reload]);
     useEffect(() => subscribeUserEvent?.("submissions_changed", () => reload({ silent: true })), [subscribeUserEvent, reload]);
     useEffect(() => registerResyncHandler?.(() => reload({ silent: true })), [registerResyncHandler, reload]);
@@ -1135,7 +1163,6 @@ export default function SellerManageListingsPage() {
     // genuinely missing the field — it never re-fetches rows that already
     // have it, including ones already fixed by a previous enrichment pass
     // or by a quick-edit save.
-    const enrichedIdsRef = useRef(new Set());
     const inFlightIdsRef = useRef(new Set());
 
     // One self-contained pass per items-change: grab up to ENRICH_CONCURRENCY
@@ -1144,71 +1171,21 @@ export default function SellerManageListingsPage() {
     // manual "how many workers are alive" counter to get out of sync — the
     // natural items→effect→setItems→items cycle re-triggers the next batch
     // on its own, throttled to a handful of requests at a time.
-    useEffect(() => {
-        if (!token) return;
 
-        const pending = items
-            .filter((it) => it.units_per_master_pack === undefined
-                && !enrichedIdsRef.current.has(it.id)
-                && !inFlightIdsRef.current.has(it.id))
-            .slice(0, ENRICH_CONCURRENCY);
-
-        if (!pending.length) return;
-
-        let cancelled = false;
-        pending.forEach((it) => inFlightIdsRef.current.add(it.id));
-
-        Promise.allSettled(
-            pending.map((it) =>
-                fetchSellerSubmissionDetail(token, it.id)
-                    .then((res) => ({ it, res }))
-                    .catch(() => ({ it, res: null })) // network errors land here, never throw
-            )
-        ).then((results) => {
-            // Always release locks and mark attempted, whether this effect
-            // instance is still "current" or not — an id must never stay
-            // stuck in inFlightIdsRef forever, that's what caused the hang.
-            for (const outcome of results) {
-                const { it, res } = outcome.value; // allSettled + our own .catch means this is always "fulfilled"
-                inFlightIdsRef.current.delete(it.id);
-                enrichedIdsRef.current.add(it.id); // done trying either way — no infinite retries on a bad row
-            }
-
-            if (cancelled) return; // stale pass — locks are released above, just skip applying to state
-
-            setItems((prev) => {
-                let next = prev;
-                for (const outcome of results) {
-                    const { it, res } = outcome.value;
-                    const s = res?.submission;
-                    if (res?.success && s) {
-                        next = next.map((row) => (
-                            row.id === it.id
-                                ? { ...row, units_per_master_pack: s.units_per_master_pack ?? 1, pack_size: s.pack_size ?? row.pack_size, unit: row.unit ?? s.unit }
-                                : row
-                        ));
-                    }
-                }
-                return next;
-            });
-        });
-
-        return () => { cancelled = true; };
-    }, [items, token]);
 
     const stats = useMemo(() => {
-        const total = items.length;
-        const live = items.filter((it) => it.is_active !== false && it.review_status === "approved").length;
-        const low = items.filter((it) => stockState(it.stock_quantity) === "low").length;
-        const out = items.filter((it) => stockState(it.stock_quantity) === "out").length;
-        const pending = items.filter((it) => it.review_status === "pending_review").length;
-        const rejected = items.filter((it) => it.review_status === "rejected").length;
-        const paused = items.filter((it) => it.is_active === false).length;
+        const total = enrichedItems.length;
+        const live = enrichedItems.filter((it) => it.is_active !== false && it.review_status === "approved").length;
+        const low = enrichedItems.filter((it) => stockState(it.stock_quantity) === "low").length;
+        const out = enrichedItems.filter((it) => stockState(it.stock_quantity) === "out").length;
+        const pending = enrichedItems.filter((it) => it.review_status === "pending_review").length;
+        const rejected = enrichedItems.filter((it) => it.review_status === "rejected").length;
+        const paused = enrichedItems.filter((it) => it.is_active === false).length;
         return { total, live, low, out, pending, rejected, paused };
-    }, [items]);
+    }, [enrichedItems]);
 
     const filtered = useMemo(() => {
-        let list = items;
+        let list = enrichedItems;
         if (statusFilter === "live") list = list.filter((it) => it.is_active !== false && it.review_status === "approved");
         else if (statusFilter === "paused") list = list.filter((it) => it.is_active === false);
         else if (statusFilter === "pending_review") list = list.filter((it) => it.review_status === "pending_review");
@@ -1225,7 +1202,7 @@ export default function SellerManageListingsPage() {
             });
         }
         return list;
-    }, [items, statusFilter, needsRestockOnly, query]);
+    }, [enrichedItems, statusFilter, needsRestockOnly, query]);
 
     function patchItem(id, patch) {
         setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
@@ -1253,7 +1230,10 @@ export default function SellerManageListingsPage() {
     async function handleQuickSave(id, payload, optimisticPatch) {
         const prevItem = items.find((it) => it.id === id);
         patchItem(id, optimisticPatch);
-        enrichedIdsRef.current.add(id); // panel's own fetch already gave us the authoritative unit — no need to re-fetch it
+        setUnitInfoById((prev) => ({
+            ...prev,
+            [id]: { units_per_master_pack: optimisticPatch.units_per_master_pack, pack_size: prevItem?.pack_size, unit: prevItem?.unit },
+        }));
         setQuickEditId(null);
         const res = await updateSellerProductSubmission(token, id, payload);
         if (res?.success) {
