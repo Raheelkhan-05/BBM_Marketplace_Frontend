@@ -1,39 +1,64 @@
 // components/home/CategoryStrip.jsx
-//
-// No more navigation — tapping a category (or "All") tells HomePage which
-// categoryId to scope the feed to, and the feed re-queries in place.
-// Active state = soft tinted background + solid accent border (not a
-// full-fill pill), matching the page's light, airy feel. Only one accent
-// color does the tinting — no more alternating primary/secondary per
-// index, which was the main source of visual noise before.
-
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Box, LayoutGrid } from "lucide-react";
 import { searchCategories } from "../../utils/api";
+import { resizedImageUrl } from "../../utils/imageUrl";
 
 const C = {
     ink: "#141B22",
     muted: "#5B6672",
     accent: "#ffffff",
-    accentTint: "#D2462B",   // flat, pre-mixed tint — not an alpha overlay
+    accentTint: "#D2462B",
     accentTintIcon: "#ffffff",
     hair: "rgba(20,27,34,0.10)",
     hairSoft: "rgba(20,27,34,0.07)",
 };
 const EASE = [0.16, 1, 0.3, 1];
 
+// Categories change rarely (an admin action, not a per-request thing), so
+// there's no reason to re-fetch and re-download every category thumbnail
+// on every mount of this component — which happens on every "/" -> "/home"
+// visit. Cache the list in sessionStorage for the tab's lifetime; worst
+// case a brand-new category is one refresh away from showing up, which is
+// a fine trade for cutting ~16 requests off every navigation after the
+// first.
+const CACHE_KEY = "bbm_category_strip_cache_v1";
+
+function readCache() {
+    try {
+        const raw = sessionStorage.getItem(CACHE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+function writeCache(items) {
+    try {
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(items));
+    } catch {
+        // storage full/unavailable — just skip caching, not fatal
+    }
+}
+
 export default function CategoryStrip({ activeCategoryId, onSelect }) {
-    const [categories, setCategories] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const cached = readCache();
+    const [categories, setCategories] = useState(cached || []);
+    const [loading, setLoading] = useState(!cached);
 
     useEffect(() => {
+        if (cached) return; // already have a cached list, skip the round trip entirely
         let cancelled = false;
         searchCategories("", 16)
-            .then((res) => { if (!cancelled && res?.success) setCategories(res.items || []); })
+            .then((res) => {
+                if (cancelled || !res?.success) return;
+                setCategories(res.items || []);
+                writeCache(res.items || []);
+            })
             .catch(() => { })
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const allActive = !activeCategoryId;
@@ -85,7 +110,15 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                                 style={{ background: active ? C.accentTintIcon : "#F1F3F4" }}
                             >
                                 {cat.image
-                                    ? <img src={cat.image} alt="" className="h-full w-full object-cover" loading="lazy" />
+                                    ? (
+                                        <img
+                                            src={resizedImageUrl(cat.image, { width: 48 })}
+                                            alt=""
+                                            className="h-full w-full object-cover"
+                                            loading="lazy"
+                                            decoding="async"
+                                        />
+                                    )
                                     : <Box className="h-3 w-3" style={{ color: active ? C.accent : C.muted }} />}
                             </span>
                             <span className="whitespace-nowrap text-[12.5px] font-bold tracking-wide" style={{ color: active ? C.accent : C.ink }}>

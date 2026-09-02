@@ -16,6 +16,19 @@
 //   in the row/seller payload (or, for the feed rows, one added field
 //   `lowest_price_gst_percent` — see catalog_browse SQL), so toggling is
 //   instant with no refetch.
+//
+// DUPLICATE-FETCH GUARD (this revision):
+// - React 18 StrictMode (dev only) intentionally mounts every component
+//   twice — mount, cleanup, mount — to help surface effect bugs. Without a
+//   guard, that means this feed's main fetch effect fires twice back to
+//   back on first load: fetch A starts, then almost immediately fetch B
+//   starts too, setting loading=true again and hiding the rows fetch A
+//   just rendered — visible as a "flicker" a moment after the page loads.
+//   `lastRunRef` remembers the (category, q) key + timestamp of the last
+//   run; if the exact same key shows up again within DUPLICATE_GUARD_MS,
+//   it's treated as a spurious re-invocation and skipped, so only one
+//   request actually goes out. A genuine category/search change always
+//   produces a different key, so this never blocks real navigation.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -27,15 +40,21 @@ import ImageLightbox from "../ImageLightbox.jsx";
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
 import SellThisItemModal from "../catalog/SellThisItemModal";
 import BuyNowModal from "../BuyNowModal";
+import { resizedImageUrl } from "../../utils/imageUrl";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)", imgBg: "#F4F5F6",
 };
 const EASE = [0.16, 1, 0.3, 1];
-const PAGE_SIZE = 24;
+// Fewer rows per page means fewer images requested on first paint (each
+// row can carry a product image + a brand badge). Infinite scroll still
+// tops the list up as the user scrolls.
+const PAGE_SIZE = 12;
 const SELLER_PAGE_SIZE = 30;
 const DEBOUNCE_MS = 250;
+// See "DUPLICATE-FETCH GUARD" note above.
+const DUPLICATE_GUARD_MS = 300;
 
 function inr(n) {
     const val = Number(n) || 0;
@@ -232,8 +251,10 @@ function BrandBadge({ name, image }) {
     const initials = name.trim().slice(0, 2).toUpperCase();
     return image ? (
         <img
-            src={image}
+            src={resizedImageUrl(image, { width: 48 })}
             alt=""
+            loading="lazy"
+            decoding="async"
             className="h-6 w-auto shrink-0 rounded-full object-cover"
         />
     ) : (
@@ -295,15 +316,18 @@ function sortBySellerAvailability(list) {
     });
 }
 
-function ProductImage({ src, alt, onOpen }) {
+function ProductImage({ src, alt, onOpen, priority = false }) {
     const [failed, setFailed] = useState(false);
     if (!src || failed) return <Package className="h-4.5 w-4.5" style={{ color: C.muted }} />;
     return (
         <img
-            src={src}
+            // Displayed at 64px (h-16 w-16) — 128px covers retina without
+            // shipping a multi-megabyte original for a thumbnail.
+            src={resizedImageUrl(src, { width: 128 })}
             alt={alt}
             referrerPolicy="no-referrer"
-            loading="lazy"
+            loading={priority ? "eager" : "lazy"}
+            decoding="async"
             onError={() => setFailed(true)}
             onClick={(e) => { e.stopPropagation(); onOpen(src); }}
             className="h-full w-full object-cover cursor-zoom-in"
@@ -393,6 +417,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                         src={item.image}
                         alt=""
                         onOpen={onImageOpen}
+                        priority={idx < 3}
                     />
                 </span>
             </div>
@@ -759,6 +784,10 @@ export default function HomeProductFeed({ category, q = "" }) {
     // instead of merged — this is what stops a page-2 append from a
     // previous query landing after a page-0 reset from the new query.
     const queryTokenRef = useRef(0);
+    const isFirstRun = useRef(true);
+
+    // See "DUPLICATE-FETCH GUARD" note at the top of the file.
+    const lastRunRef = useRef({ key: null, time: 0 });
 
     const closeDropdown = useCallback(() => {
         sellerAbortRef.current?.abort();
@@ -832,8 +861,23 @@ export default function HomeProductFeed({ category, q = "" }) {
             });
     }, [category?.id, q]);
 
-    const isFirstRun = useRef(true);
     useEffect(() => {
+        // If the exact same (category, q) combination fired within the
+        // last DUPLICATE_GUARD_MS, this is a spurious re-invocation (most
+        // commonly React 18 StrictMode's dev-only mount→cleanup→mount) and
+        // not a real navigation — skip it so we don't kick off a second
+        // request and flash the already-rendering rows back to skeleton.
+        const key = `${category?.id || ""}::${q}`;
+        const now = Date.now();
+        const isDuplicateInvocation =
+            lastRunRef.current.key === key &&
+            (now - lastRunRef.current.time) < DUPLICATE_GUARD_MS;
+
+        if (isDuplicateInvocation) {
+            return;
+        }
+        lastRunRef.current = { key, time: now };
+
         clearTimeout(debounceRef.current);
         queryTokenRef.current += 1; // invalidate any in-flight request from before this change
         closeDropdown(); // the item list underneath is about to change — don't leave a stale accordion open
@@ -874,6 +918,13 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     const buyerSellerPayload = buyState ? toBuyerSellerPayload(buyState.seller) : null;
 
+    // Only show the full skeleton block when there's genuinely nothing on
+    // screen yet. Once items exist, a refetch (real category/search change,
+    // OR a spurious duplicate effect run that slipped past the guard above)
+    // just dims the current rows instead of hiding them entirely — no flash
+    // to an empty skeleton grid.
+    const showFullSkeleton = loading && items.length === 0;
+
     return (
         <div>
             <div className="flex items-center justify-between px-1 pb-2">
@@ -884,7 +935,7 @@ export default function HomeProductFeed({ category, q = "" }) {
             </div>
 
             <div className="rounded-2xl border bg-white" style={{ borderColor: C.hair }}>
-                {loading
+                {showFullSkeleton
                     ? Array.from({ length: 8 }).map((_, i) => <RowSkeleton key={i} />)
                     : items.length === 0 ? (
                         <div className="flex flex-col items-center gap-1.5 px-6 py-16 text-center">
@@ -897,7 +948,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                             </p>
                         </div>
                     ) : (
-                        <>
+                        <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity 0.15s ease" }}>
                             {items.map((item, i) => {
                                 const isOpen = openItemId === item.id;
                                 return (
@@ -928,7 +979,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                                 );
                             })}
                             {loadingMore && <RowSkeleton />}
-                        </>
+                        </div>
                     )}
                 {hasMore && !loading && <div ref={sentinelRef} className="h-1" />}
             </div>

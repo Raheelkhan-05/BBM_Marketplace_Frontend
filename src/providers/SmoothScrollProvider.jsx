@@ -13,27 +13,45 @@ export function SmoothScrollProvider({ children }) {
         ).matches;
         if (prefersReduced) return; // respect a11y setting, skip smoothing entirely
 
-        const instance = new Lenis({
-            duration: 1.15,
-            easing: (t) => 1 - Math.pow(1 - t, 3), // easeOutCubic
-            smoothWheel: true,
-            wheelMultiplier: 1,
-            touchMultiplier: 1.4,
-            syncTouch: false, // native touch scroll already feels good on mobile
-        });
-
-        setLenis(instance);
-
+        let instance;
         let rafId;
-        function raf(time) {
-            instance.raf(time);
+        let idleId;
+
+        function start() {
+            instance = new Lenis({
+                duration: 1.15,
+                easing: (t) => 1 - Math.pow(1 - t, 3), // easeOutCubic
+                smoothWheel: true,
+                wheelMultiplier: 1,
+                touchMultiplier: 1.4,
+                syncTouch: false, // native touch scroll already feels good on mobile
+            });
+            setLenis(instance);
+            function raf(time) {
+                instance.raf(time);
+                rafId = requestAnimationFrame(raf);
+            }
             rafId = requestAnimationFrame(raf);
         }
-        rafId = requestAnimationFrame(raf);
+
+        // Smooth scroll is a nice-to-have, not something the page needs to
+        // be usable — native scroll works fine until this kicks in. Starting
+        // it on idle instead of on mount keeps it off the critical path
+        // while the page's real data/images are still loading.
+        if ("requestIdleCallback" in window) {
+            idleId = window.requestIdleCallback(start, { timeout: 1500 });
+        } else {
+            idleId = setTimeout(start, 300);
+        }
 
         return () => {
+            if ("cancelIdleCallback" in window && typeof idleId === "number") {
+                window.cancelIdleCallback(idleId);
+            } else {
+                clearTimeout(idleId);
+            }
             cancelAnimationFrame(rafId);
-            instance.destroy();
+            instance?.destroy();
             setLenis(null);
         };
     }, []);

@@ -1,61 +1,76 @@
 // src/App.jsx
 import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
+import { lazy, Suspense } from "react";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { RequireAuth, RequireGuest, RequireAdmin } from "./components/RouteGuards.jsx";
 import ScrollToTop from "./lib/ScrollToTop.jsx";
 import Layout from "./components/Layout.jsx";
-import LandingPage from "./pages/LandingPage";
-import SearchResultsPage from "./pages/SearchResultsPage";
-import HomePage from "./pages/HomePage.jsx";
-import CatalogLevelPage from "./pages/CatalogLevelPage.jsx";
 import AuthLayout from "./components/AuthLayout.jsx";
-import AuthPage from "./pages/AuthPage.jsx";
-import SellerOnboardingPage from "./pages/SellerOnboardingPage.jsx";
-import SellerStatusPage from "./pages/SellerStatusPage.jsx";
-import AdminSellersPage from "./pages/admin/AdminSellersPage.jsx";
-import AdminSellerDetailPage from "./pages/admin/AdminSellerDetailPage.jsx";
-import AdminManageAdminsPage from "./pages/admin/AdminManageAdminsPage.jsx";
-import ShopPage from "./pages/ShopPage.jsx";
-import ShopRoute from "./pages/ShopRoute.jsx";
-import ProductDetailPage from "./pages/ProductDetailPage.jsx";
-import CategoryLandingPage from "./pages/CategoryLandingPage.jsx";
-import SubcategoryLandingPage from "./pages/SubcategoryLandingPage.jsx";
-import AdminCatalogReviewPage from "./pages/admin/AdminCatalogReviewPage.jsx";
-import AdminCatalogDetailPage from "./pages/admin/AdminCatalogDetailPage.jsx";
-import BrandDetailPage from "./pages/BrandDetailPage.jsx";
-import BrandFamilyPage from "./pages/BrandFamilyPage.jsx";
-import PrivacyPolicy from "./pages/legal/PrivacyPolicy.jsx";
-import SellPublishProductPage from "./pages/SellPublishProductPage.jsx";
-import AdminSellerSubmissionsPage from "./pages/admin/AdminSellerSubmissionsPage.jsx";
-import OrdersPage from "./pages/OrdersPage.jsx";
-import SalesOrdersPage from "./pages/SalesOrdersPage.jsx";
-import OrderDetailPage from "./pages/OrderDetailPage.jsx";
-import SellerOrderDetailPage from "./pages/SellerOrderDetailPage.jsx";
-import BrowsePage from "./pages/BrowsePage.jsx";
-import GenericProductSellersPage from "./pages/GenericProductSellersPage.jsx";
-import CategoryProductsPage from "./pages/CategoryProductsPage.jsx";
-import GenericProductBrandsPage from "./pages/GenericProductBrandsPage.jsx";
-import BrandItemSellersPage from "./pages/BrandItemSellersPage.jsx";
-import SellerManageListingsPage from "./pages/SellerManageListingsPage.jsx";
 import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
 import PendingSubmissionWatcher from "./components/PendingSubmissionWatcher.jsx";
-import ChatPage from "./pages/ChatPage.jsx";
 import { SocketProvider } from "./context/SocketContext.jsx";
-import PaymentVerificationPage from './pages/admin/PaymentVerificationPage.jsx';
 import PendingPaymentGate from './components/PendingPaymentGate.jsx';
-import AdminFullCatalogUploadPage from './pages/admin/AdminFullCatalogUploadPage.jsx';
-import CartPage from "./pages/CartPage.jsx";
-import AdminWalletSellersPage from "./pages/admin/AdminWalletSellersPage.jsx";
-import SellerWalletPage from "./pages/SellerWalletPage.jsx";
-import AdminDatabasePanel from "./pages/admin/AdminDatabasePanel.jsx";
-import AdminProductCommissionsPage from "./pages/admin/AdminProductCommissionsPage.jsx";
-import SellerEditListingPage from "./pages/SellerEditListingPage.jsx";
 import ContactsBootstrapper from "./components/ContactsBootstrapper.jsx";
+import DeferredMount from "./components/DeferredMount.jsx";
 
+// Every page below is now its own JS chunk instead of one bundle that
+// includes admin/seller/chat/catalog-review code on a first-time
+// visitor's home-page load. This is the single biggest lever on slow
+// connections: it shrinks the JS the browser must download + parse +
+// execute before ANYTHING paints, from "the whole app" down to "just the
+// page being visited".
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const SearchResultsPage = lazy(() => import("./pages/SearchResultsPage"));
+const HomePage = lazy(() => import("./pages/HomePage.jsx"));
+const CatalogLevelPage = lazy(() => import("./pages/CatalogLevelPage.jsx"));
+const AuthPage = lazy(() => import("./pages/AuthPage.jsx"));
+const SellerOnboardingPage = lazy(() => import("./pages/SellerOnboardingPage.jsx"));
+const SellerStatusPage = lazy(() => import("./pages/SellerStatusPage.jsx"));
+const AdminSellersPage = lazy(() => import("./pages/admin/AdminSellersPage.jsx"));
+const AdminSellerDetailPage = lazy(() => import("./pages/admin/AdminSellerDetailPage.jsx"));
+const AdminManageAdminsPage = lazy(() => import("./pages/admin/AdminManageAdminsPage.jsx"));
+const ShopRoute = lazy(() => import("./pages/ShopRoute.jsx"));
+const ProductDetailPage = lazy(() => import("./pages/ProductDetailPage.jsx"));
+const CategoryLandingPage = lazy(() => import("./pages/CategoryLandingPage.jsx"));
+const SubcategoryLandingPage = lazy(() => import("./pages/SubcategoryLandingPage.jsx"));
+const AdminCatalogReviewPage = lazy(() => import("./pages/admin/AdminCatalogReviewPage.jsx"));
+const AdminCatalogDetailPage = lazy(() => import("./pages/admin/AdminCatalogDetailPage.jsx"));
+const BrandDetailPage = lazy(() => import("./pages/BrandDetailPage.jsx"));
+const BrandFamilyPage = lazy(() => import("./pages/BrandFamilyPage.jsx"));
+const PrivacyPolicy = lazy(() => import("./pages/legal/PrivacyPolicy.jsx"));
+const SellPublishProductPage = lazy(() => import("./pages/SellPublishProductPage.jsx"));
+const AdminSellerSubmissionsPage = lazy(() => import("./pages/admin/AdminSellerSubmissionsPage.jsx"));
+const OrdersPage = lazy(() => import("./pages/OrdersPage.jsx"));
+const SalesOrdersPage = lazy(() => import("./pages/SalesOrdersPage.jsx"));
+const OrderDetailPage = lazy(() => import("./pages/OrderDetailPage.jsx"));
+const SellerOrderDetailPage = lazy(() => import("./pages/SellerOrderDetailPage.jsx"));
+const BrowsePage = lazy(() => import("./pages/BrowsePage.jsx"));
+const GenericProductSellersPage = lazy(() => import("./pages/GenericProductSellersPage.jsx"));
+const CategoryProductsPage = lazy(() => import("./pages/CategoryProductsPage.jsx"));
+const GenericProductBrandsPage = lazy(() => import("./pages/GenericProductBrandsPage.jsx"));
+const BrandItemSellersPage = lazy(() => import("./pages/BrandItemSellersPage.jsx"));
+const SellerManageListingsPage = lazy(() => import("./pages/SellerManageListingsPage.jsx"));
+const ChatPage = lazy(() => import("./pages/ChatPage.jsx"));
+const PaymentVerificationPage = lazy(() => import('./pages/admin/PaymentVerificationPage.jsx'));
+const AdminFullCatalogUploadPage = lazy(() => import('./pages/admin/AdminFullCatalogUploadPage.jsx'));
+const CartPage = lazy(() => import("./pages/CartPage.jsx"));
+const AdminWalletSellersPage = lazy(() => import("./pages/admin/AdminWalletSellersPage.jsx"));
+const SellerWalletPage = lazy(() => import("./pages/SellerWalletPage.jsx"));
+const AdminDatabasePanel = lazy(() => import("./pages/admin/AdminDatabasePanel.jsx"));
+const AdminProductCommissionsPage = lazy(() => import("./pages/admin/AdminProductCommissionsPage.jsx"));
+const SellerEditListingPage = lazy(() => import("./pages/SellerEditListingPage.jsx"));
 
 function CatalogLevelPageWithKey({ configKey }) {
   const { idOrSlug } = useParams();
   return <CatalogLevelPage key={idOrSlug || "root"} configKey={configKey} />;
+}
+
+// Deliberately blank: any visible fallback here would itself flash before
+// a route's own (much cheaper) internal skeleton takes over, on every
+// single navigation. A blank frame for the ~100-300ms a chunk takes to
+// fetch beats a layout jump on every nav.
+function RouteFallback() {
+  return null;
 }
 
 function App() {
@@ -64,85 +79,94 @@ function App() {
       <SocketProvider>
         <BrowserRouter>
           <ScrollToTop />
-          <InstallAppPrompt />
+
           {/*
-          Runs on every page, app-wide. If the user has a product listing
-          draft cached locally (because they tried to submit before being
-          an approved seller), this silently checks seller access and
-          auto-submits that draft the moment they become approved —
-          e.g. right after finishing onboarding, or once admin approves
-          their shop — without requiring them to revisit the listing form.
-        */}
-          <PendingSubmissionWatcher />
-          <PendingPaymentGate />
-          <ContactsBootstrapper />
-          <Routes>
-            <Route element={<AuthLayout />}>
-              <Route path="/login" element={<AuthPage />} />
-            </Route>
+            InstallAppPrompt, PendingSubmissionWatcher, PendingPaymentGate and
+            ContactsBootstrapper are app-wide background features unrelated
+            to the page currently on screen. Mounting them immediately means
+            their fetches compete on the network with the requests the
+            visible page actually needs — on a slow connection that's the
+            difference between "product images show up" and "everything
+            crawls together". DeferredMount holds them off until the browser
+            reports idle (or ~2.5s pass), after the above-the-fold content
+            has had first crack at the network.
+          */}
+          <DeferredMount>
+            <InstallAppPrompt />
+            <PendingSubmissionWatcher />
+            <PendingPaymentGate />
+            <ContactsBootstrapper />
+          </DeferredMount>
 
-            <Route element={<Layout />}>
-              <Route path="/" element={<RequireGuest><LandingPage /></RequireGuest>} />
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route element={<AuthLayout />}>
+                <Route path="/login" element={<AuthPage />} />
+              </Route>
 
-              <Route path="/search" element={<SearchResultsPage />} />
-              <Route path="/home" element={<HomePage />} />
-              <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
-              <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
+              <Route element={<Layout />}>
+                <Route path="/" element={<RequireGuest><LandingPage /></RequireGuest>} />
 
-              <Route path="/category/:idOrSlug/browse" element={<BrowsePage />} />
-              <Route path="/browse" element={<BrowsePage />} />
+                <Route path="/search" element={<SearchResultsPage />} />
+                <Route path="/home" element={<HomePage />} />
+                <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
+                <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
 
-              <Route path="/category/:idOrSlug/products" element={<CategoryProductsPage />} />
-              <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
-              <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
+                <Route path="/category/:idOrSlug/browse" element={<BrowsePage />} />
+                <Route path="/browse" element={<BrowsePage />} />
 
-              <Route path="/orders" element={<OrdersPage />} />
-              <Route path="/seller/orders" element={<SalesOrdersPage />} />
-              <Route path="/orders/:id" element={<OrderDetailPage />} />
-              <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
-              <Route path="/seller/listings" element={<SellerManageListingsPage />} />
+                <Route path="/category/:idOrSlug/products" element={<CategoryProductsPage />} />
+                <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
+                <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
 
-              <Route path="/admin/payments" element={<PaymentVerificationPage />} />
+                <Route path="/orders" element={<OrdersPage />} />
+                <Route path="/seller/orders" element={<SalesOrdersPage />} />
+                <Route path="/orders/:id" element={<OrderDetailPage />} />
+                <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
+                <Route path="/seller/listings" element={<SellerManageListingsPage />} />
 
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/chat/:conversationId" element={<ChatPage />} />
+                <Route path="/admin/payments" element={<PaymentVerificationPage />} />
 
-              {/* <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} /> */}
-              <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/chat/:conversationId" element={<ChatPage />} />
 
-              <Route path="/seller/sell" element={<SellPublishProductPage />} />
-              <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />
+                {/* <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} /> */}
+                <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
 
-              <Route path="/cart" element={<CartPage />} />
+                <Route path="/seller/sell" element={<SellPublishProductPage />} />
+                <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />
 
-              <Route path="/admin/wallets" element={<AdminWalletSellersPage />} />
+                <Route path="/cart" element={<CartPage />} />
 
-              <Route path="/seller/wallet" element={<SellerWalletPage />} />
+                <Route path="/admin/wallets" element={<AdminWalletSellersPage />} />
 
-              <Route path="/admin/database" element={<AdminDatabasePanel />} />
+                <Route path="/seller/wallet" element={<SellerWalletPage />} />
 
-              <Route path="/admin/product-commisions" element={<AdminProductCommissionsPage />} />
+                <Route path="/admin/database" element={<AdminDatabasePanel />} />
 
-              <Route path="/admin/catalog/bulk-upload" element={<AdminFullCatalogUploadPage />} />
+                <Route path="/admin/product-commisions" element={<AdminProductCommissionsPage />} />
 
-              <Route path="/admin/listings" element={<RequireAdmin><AdminSellerSubmissionsPage /></RequireAdmin>} />
-              <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
-              <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
-              <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
-              <Route path="/shop/:slug" element={<ShopRoute />} />
-              <Route path="/product/:id" element={<ProductDetailPage />} />
+                <Route path="/admin/catalog/bulk-upload" element={<AdminFullCatalogUploadPage />} />
 
-              <Route path="/admin/catalog" element={<RequireAdmin><AdminCatalogReviewPage /></RequireAdmin>} />
-              <Route path="/admin/catalog/:level/:id" element={<RequireAdmin><AdminCatalogDetailPage /></RequireAdmin>} />
+                <Route path="/admin/listings" element={<RequireAdmin><AdminSellerSubmissionsPage /></RequireAdmin>} />
+                <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
+                <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
+                <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
+                <Route path="/shop/:slug" element={<ShopRoute />} />
+                <Route path="/product/:id" element={<ProductDetailPage />} />
 
-              <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
-              <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
-              <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
-              <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} />
+                <Route path="/admin/catalog" element={<RequireAdmin><AdminCatalogReviewPage /></RequireAdmin>} />
+                <Route path="/admin/catalog/:level/:id" element={<RequireAdmin><AdminCatalogDetailPage /></RequireAdmin>} />
 
-              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-            </Route>
-          </Routes>
+                <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
+                <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
+                <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
+                <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} />
+
+                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              </Route>
+            </Routes>
+          </Suspense>
         </BrowserRouter>
       </SocketProvider>
     </AuthProvider>
