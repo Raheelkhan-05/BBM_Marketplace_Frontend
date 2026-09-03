@@ -62,26 +62,16 @@ export default function useChatMessages(conversationId, otherUserId) {
     const typingTimeoutRef = useRef(null);
     const isOpenRef = useRef(true);
 
-    // FIX: acknowledging "read" used to always go over REST, which adds a
-    // full request/response hop in front of the socket push that carries
-    // the receipt back to the sender. When the socket is live (the normal
-    // case for someone actively looking at the thread), send the
-    // acknowledgment straight over it instead — same server-side effect,
-    // one less hop. REST stays as the fallback for when the socket isn't
-    // connected yet.
     const ackRead = useCallback(() => {
         if (!conversationId) return;
         if (socket && connected) socket.emit("read:ack", { conversationId });
-        else markConversationRead(token, conversationId); // <- hits the broken endpoint
+        else markConversationRead(token, conversationId);
     }, [socket, connected, conversationId, token]);
 
-    // MOVED HERE — top level of the hook, alongside ackRead, not inside the effect
     const ackDelivered = useCallback(() => {
         if (!conversationId) return;
         if (socket && connected) socket.emit("delivered:ack", { conversationId });
     }, [socket, connected, conversationId]);
-
-
 
     const upsert = useCallback((msg) => {
         setMessageMap((prev) => {
@@ -231,10 +221,26 @@ export default function useChatMessages(conversationId, otherUserId) {
         return () => { isOpenRef.current = false; };
     }, [conversationId, token, ackRead]);
 
+    // ---------------------------------------------------------------
+    // UI-STABILITY FIX: this used to unconditionally spread every message
+    // into a brand-new object on every recompute — `{ ...m, status }` ran
+    // for ALL messages any time `otherWatermarks` changed, even though a
+    // watermark update only ever changes the status of messages sent by
+    // the CURRENT user, and typically only the most recent one or two.
+    // Every message therefore got a new object identity on every read/
+    // delivered receipt, which defeats MessageBubble's React.memo() and
+    // forces the whole thread to re-render (and, previously, replay its
+    // layout animation) on every tick update. Now a message keeps its
+    // exact previous reference when its derived status hasn't changed,
+    // so memo() actually works and only the bubble(s) that changed re-render.
+    // ---------------------------------------------------------------
     const messages = useMemo(
         () => Array.from(messageMap.values())
             .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-            .map((m) => ({ ...m, status: statusFromWatermarks(m, myId, otherWatermarks) })),
+            .map((m) => {
+                const status = statusFromWatermarks(m, myId, otherWatermarks);
+                return m.status === status ? m : { ...m, status };
+            }),
         [messageMap, myId, otherWatermarks],
     );
 
@@ -252,9 +258,9 @@ export default function useChatMessages(conversationId, otherUserId) {
                 next.delete(tempId);
                 next.set(res.message.id, res.message);
             } else {
-                // BUG FIX (was: silently dropped): keep the bubble but mark it
-                // failed so the person can see the send didn't go through and
-                // retry it, instead of the message just vanishing.
+                // keep the bubble but mark it failed so the person can see the
+                // send didn't go through and retry it, instead of the message
+                // just vanishing.
                 const existing = next.get(tempId);
                 if (existing) next.set(tempId, { ...existing, status: "failed" });
             }
@@ -269,11 +275,6 @@ export default function useChatMessages(conversationId, otherUserId) {
         send(existing.body);
     }, [messageMap, send]);
 
-    // BUG FIX: this used to live in ChatWindow.jsx and called
-    // `setMessageMap`, a piece of state that only ever existed inside
-    // *this* hook — it threw a ReferenceError the moment anyone tried to
-    // delete a message. Delete now lives where the state actually is,
-    // with optimistic update + rollback on failure.
     const deleteMessage = useCallback(async (messageId, scope) => {
         const previous = messageMap.get(messageId);
         if (!previous) return;
@@ -310,18 +311,23 @@ export default function useChatMessages(conversationId, otherUserId) {
 // ---------------------------------------------------------------------
 // Conversation list
 // ---------------------------------------------------------------------
+let conversationsCache = null; // { list } — module-level, survives remounts within the session
+
 export function useConversations() {
     const { token, profile } = useAuth();
     const { socket } = useSocket();
     const myId = profile?.id;
-    const [conversations, setConversations] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [conversations, setConversations] = useState(conversationsCache?.list || []);
+    const [loading, setLoading] = useState(!conversationsCache);
     const reloadTimerRef = useRef(null);
 
     const reload = useCallback(() => {
         if (!token) return;
         fetchConversations(token).then((res) => {
-            if (res?.success) setConversations(res.conversations);
+            if (res?.success) {
+                setConversations(res.conversations);
+                conversationsCache = { list: res.conversations };
+            }
             setLoading(false);
         });
     }, [token]);
@@ -336,13 +342,6 @@ export function useConversations() {
     useEffect(() => {
         if (!socket) return;
 
-        // PERFORMANCE FIX: this used to reload the *entire* conversation
-        // list from the network on every single "message:new" — a full
-        // round trip just to bump one row's preview text and timestamp.
-        // Now it patches the affected row in place from the socket
-        // payload itself (which already has everything needed) and only
-        // falls back to a real reload for the rare case of a brand-new
-        // conversation that isn't in the list yet.
         const onMessage = (payload) => {
             setConversations((prev) => {
                 const idx = prev.findIndex((c) => c.id === payload.conversation_id);
@@ -354,7 +353,9 @@ export function useConversations() {
                     lastMessageAt: payload.created_at,
                     unread: payload.sender_id !== myId ? true : prev[idx].unread,
                 };
-                return [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
+                const nextList = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
+                conversationsCache = { list: nextList };
+                return nextList;
             });
         };
         socket.on("message:new", onMessage);
@@ -369,7 +370,11 @@ export function useConversations() {
     // lets the chat screen clear a conversation's unread dot the instant
     // it's opened, rather than waiting on the next list refresh
     const markLocalRead = useCallback((conversationId) => {
-        setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, unread: false } : c)));
+        setConversations((prev) => {
+            const nextList = prev.map((c) => (c.id === conversationId ? { ...c, unread: false } : c));
+            conversationsCache = { list: nextList };
+            return nextList;
+        });
     }, []);
 
     return { conversations, loading, unreadTotal: conversations.filter((c) => c.unread).length, reload, markLocalRead };
@@ -430,14 +435,6 @@ export function useCredit(otherUserId) {
         if (!socket || !connected) return;
 
         const onRequested = () => { load(); };
-
-        // FIX: previously patched `credit` in place only if `prev.id ===
-        // creditId` — if that guard ever missed (stale/null prev on the
-        // buyer's side after a decision came in), the update silently
-        // no-op'd and the UI stayed frozen on the message's original state.
-        // A REST refetch is cheap here (fires once per decision, not per
-        // keystroke) and removes any dependency on local state already
-        // being in the exact right shape — it's just correct.
         const onDecided = () => { load(); };
         const onToggled = () => { load(); };
 
@@ -482,7 +479,7 @@ export function useTransportPreference(otherUserId, conversationId) {
 
     const load = useCallback(() => {
         if (!otherUserId || !token) return;
-        fetchTransportPreference(token, { otherUserId }).then((res) => { // was: fetchTransportPreference(token, otherUserId)
+        fetchTransportPreference(token, { otherUserId }).then((res) => {
             if (res?.success) { setPref(res.preference); setViewerRole(res.viewerRole); }
         });
     }, [otherUserId, token]);
