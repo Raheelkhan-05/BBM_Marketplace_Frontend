@@ -635,7 +635,18 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     // at the bottom once (new sends/receives while the chat is open) —
     // the initial "opening a chat" placement above is handled separately,
     // so this only ever fires for genuinely new activity.
-    useEffect(() => {
+    //
+    // NEW (fix #6) — this MUST be useLayoutEffect, not useEffect. A new
+    // message mounting extends the container's scrollHeight immediately
+    // on commit, but plain useEffect only runs AFTER the browser paints.
+    // That gap meant every send/receive painted one real frame with the
+    // new bubble sitting at its unscrolled position (often half-clipped
+    // at the bottom edge) before this effect fired and snapped scrollTop
+    // down — which is exactly the "jumps for a second, then settles"
+    // flash being reported. useLayoutEffect runs synchronously after the
+    // DOM mutation but before paint, so the scroll correction is applied
+    // before the browser ever shows the unscrolled frame.
+    useLayoutEffect(() => {
         if (!scrollStateRef.current.placedAtBottom) return;
         const last = messages[messages.length - 1];
         if (!last) return;
@@ -652,7 +663,9 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         }
     }, [messages, isNearBottom, profile?.id, jumpToBottom]);
 
-    useEffect(() => {
+    // same reasoning as above — the typing bubble also grows content
+    // height, so this needs to resolve before paint too.
+    useLayoutEffect(() => {
         if (otherTyping && isNearBottom) jumpToBottom(false);
     }, [otherTyping, isNearBottom, jumpToBottom]);
 

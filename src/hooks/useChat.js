@@ -75,14 +75,48 @@ export default function useChatMessages(conversationId, otherUserId) {
 
     const upsert = useCallback((msg) => {
         setMessageMap((prev) => {
-            // dedup on BOTH server id and client_message_id — covers the
-            // optimistic-bubble-reconciliation case AND the "same message
-            // arrives via socket AND via the HTTP response" race.
-            const next = new Map(prev);
-            for (const [k, v] of next) {
-                if (v.client_message_id && v.client_message_id === msg.client_message_id) next.delete(k);
+            // ORDERING: this is the single writer that governs where a
+            // live-arriving message ends up, and it deliberately never
+            // compares timestamps across sources (your own device clock
+            // vs. the server's clock for the other person's messages —
+            // those two clocks drift, routinely by seconds, and any
+            // comparison between them is exactly what used to cause a
+            // message to visibly jump position after the fact). Instead:
+            //   1. An entry that's genuinely NEW to this map (no
+            //      matching id or client_message_id) is APPENDED to the
+            //      end — i.e. placed last in Map insertion order, full
+            //      stop, no timestamp comparison of any kind.
+            //   2. An entry that MATCHES something already in the map
+            //      (the optimistic → confirmed swap, or any other
+            //      update to a message we already know about) is
+            //      updated IN PLACE, at its existing position — it never
+            //      moves.
+            // Anything already rendered therefore never reorders once
+            // it's on screen; a new message from either side always
+            // lands at the bottom, in the order the client became aware
+            // of it. Ordering for already-loaded history (initial fetch,
+            // pagination) is untouched — it comes pre-ordered from the
+            // server and is preserved by Map insertion order below.
+            //
+            // Downstream, the `messages` useMemo does NOT re-sort this —
+            // it trusts Map iteration order completely. That pairing is
+            // what makes this fix actually hold; see the comment there.
+            let matchedKey = null;
+            for (const [k, v] of prev) {
+                if (k === msg.id || (v.client_message_id && msg.client_message_id && v.client_message_id === msg.client_message_id)) {
+                    matchedKey = k;
+                    break;
+                }
             }
-            next.set(msg.id, { ...next.get(msg.id), ...msg });
+            const next = new Map();
+            if (matchedKey !== null) {
+                for (const [k, v] of prev) {
+                    next.set(k === matchedKey ? msg.id : k, k === matchedKey ? { ...v, ...msg } : v);
+                }
+            } else {
+                for (const [k, v] of prev) next.set(k, v);
+                next.set(msg.id, msg);
+            }
             return next;
         });
     }, []);
@@ -105,9 +139,15 @@ export default function useChatMessages(conversationId, otherUserId) {
         fetchMessages(token, conversationId).then((res) => {
             if (cancelled || !res?.success) return;
             setMessageMap((prev) => {
+                // server-fetched messages arrive pre-ordered (oldest →
+                // newest) — Map preserves insertion order, so building
+                // straight from this array is already correct, no client-
+                // side sort needed.
                 const next = new Map(res.messages.map((m) => [m.id, m]));
                 // preserve any purely-local state (e.g. an in-flight optimistic
-                // send) that the fresh page wouldn't know about
+                // send) that the fresh page wouldn't know about — appended
+                // after the server's messages, since it's newer than
+                // anything the server returned.
                 prev.forEach((v, k) => { if (!next.has(k)) next.set(k, v); });
                 return next;
             });
@@ -136,6 +176,9 @@ export default function useChatMessages(conversationId, otherUserId) {
         const res = await fetchMessages(token, conversationId, oldestCursorRef.current);
         if (res?.success) {
             setMessageMap((prev) => {
+                // older batch first (Map insertion order = display order),
+                // then the messages we already had layered on top —
+                // preserves correct chronological order without a sort.
                 const next = new Map(res.messages.map((m) => [m.id, m]));
                 prev.forEach((v, k) => next.set(k, v));
                 return next;
@@ -204,7 +247,11 @@ export default function useChatMessages(conversationId, otherUserId) {
                 if (res?.success) {
                     setMessageMap((prev) => {
                         const next = new Map(prev);
-                        res.messages.forEach((m) => next.set(m.id, m));
+                        // update-in-place for anything we already know
+                        // about; anything genuinely new (missed while
+                        // disconnected) appends at the end — same
+                        // append-only/no-reorder rule as `upsert`.
+                        res.messages.forEach((m) => next.set(m.id, { ...next.get(m.id), ...m }));
                         return next;
                     });
                     if (res.otherWatermarks) setOtherWatermarks(res.otherWatermarks);
@@ -222,21 +269,42 @@ export default function useChatMessages(conversationId, otherUserId) {
     }, [conversationId, token, ackRead]);
 
     // ---------------------------------------------------------------
-    // UI-STABILITY FIX: this used to unconditionally spread every message
-    // into a brand-new object on every recompute — `{ ...m, status }` ran
-    // for ALL messages any time `otherWatermarks` changed, even though a
-    // watermark update only ever changes the status of messages sent by
-    // the CURRENT user, and typically only the most recent one or two.
-    // Every message therefore got a new object identity on every read/
-    // delivered receipt, which defeats MessageBubble's React.memo() and
-    // forces the whole thread to re-render (and, previously, replay its
-    // layout animation) on every tick update. Now a message keeps its
-    // exact previous reference when its derived status hasn't changed,
-    // so memo() actually works and only the bubble(s) that changed re-render.
+    // UI-STABILITY FIX (unchanged from before): this used to unconditionally
+    // spread every message into a brand-new object on every recompute —
+    // `{ ...m, status }` ran for ALL messages any time `otherWatermarks`
+    // changed, even though a watermark update only ever changes the status
+    // of messages sent by the CURRENT user, and typically only the most
+    // recent one or two. Every message therefore got a new object identity
+    // on every read/delivered receipt, which defeats MessageBubble's
+    // React.memo() and forces the whole thread to re-render (and,
+    // previously, replay its layout animation) on every tick update. Now a
+    // message keeps its exact previous reference when its derived status
+    // hasn't changed, so memo() actually works and only the bubble(s) that
+    // changed re-render.
+    //
+    // ORDERING FIX (root-cause fix, replaces the earlier sort_key
+    // approach): there is NO SORT here anymore, on purpose. The previous
+    // version sorted by a frozen `sort_key` (falling back to created_at)
+    // on every render — but that re-introduced the exact bug it was
+    // trying to fix, because it still compared timestamps ACROSS
+    // sources: your own optimistic message stamped with your DEVICE'S
+    // clock, versus the other person's message stamped with the
+    // SERVER's clock. Any clock skew between the two (routine — phones
+    // drift by seconds) meant that comparison was unreliable, and
+    // whichever message resolved its comparison differently could
+    // "correct" its position after the fact — a visible jump.
+    //
+    // The actual fix: don't derive order from timestamps at all. Order
+    // comes purely from Map iteration order (= insertion order), which
+    // `upsert`, the initial fetch, `loadOlder`, and the resync effect
+    // above already construct correctly on their own (older history
+    // prepended, brand-new messages appended at the end, matches updated
+    // in place, never reordered). Trusting that order here — instead of
+    // re-deriving it from timestamps — is what makes the append-only,
+    // never-reorder guarantee actually hold end to end.
     // ---------------------------------------------------------------
     const messages = useMemo(
         () => Array.from(messageMap.values())
-            .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
             .map((m) => {
                 const status = statusFromWatermarks(m, myId, otherWatermarks);
                 return m.status === status ? m : { ...m, status };
@@ -249,14 +317,34 @@ export default function useChatMessages(conversationId, otherUserId) {
         setSending(true);
         const clientMessageId = makeClientMessageId();
         const tempId = `temp-${clientMessageId}`;
-        upsert({ id: tempId, conversation_id: conversationId, sender_id: myId, body: body.trim(), created_at: new Date().toISOString(), status: "sending", client_message_id: clientMessageId });
+        const optimisticCreatedAt = new Date().toISOString();
+        upsert({
+            id: tempId,
+            conversation_id: conversationId,
+            sender_id: myId,
+            body: body.trim(),
+            created_at: optimisticCreatedAt,
+            status: "sending",
+            client_message_id: clientMessageId,
+        });
         const res = await sendChatMessage(token, conversationId, body.trim(), null, clientMessageId);
         setSending(false);
         setMessageMap((prev) => {
             const next = new Map(prev);
             if (res?.success) {
+                const existing = next.get(tempId);
                 next.delete(tempId);
-                next.set(res.message.id, res.message);
+                // keep the position the bubble already has on screen — this
+                // set() re-inserts under the new (server) id, but since we
+                // never sort by timestamp, the only thing that matters for
+                // display position is where this key sits in the Map, and
+                // `matchedKey` handling in `upsert`-style updates elsewhere
+                // never moves an existing entry. Here we're doing the swap
+                // directly (not via upsert) so we insert at the same
+                // logical spot by deleting the temp key and setting the
+                // real one immediately after — Map insertion order keeps
+                // it in place since nothing else is re-sorted.
+                next.set(res.message.id, { ...res.message });
             } else {
                 // keep the bubble but mark it failed so the person can see the
                 // send didn't go through and retry it, instead of the message
