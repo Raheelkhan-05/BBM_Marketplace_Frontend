@@ -17,10 +17,35 @@ const EVENTS = ["new_notification", "submissions_changed", "orders_changed"];
 const RESUBSCRIBE_BASE_DELAY_MS = 1500;
 const RESUBSCRIBE_MAX_DELAY_MS = 15000;
 
+// Reads whichever session token is in localStorage, synchronously, with
+// no async work at all. Used as AuthProvider's INITIAL state (see
+// useState below) — not inside an effect — so "is this person logged
+// in" is known the instant this component first renders, before the
+// browser has even painted anything. This is what removes the
+// spinner-while-we-check-auth gap: there's nothing to wait for, because
+// a value already sitting in localStorage doesn't need a network round
+// trip to read.
+function readStoredSession() {
+  if (typeof window === "undefined") return null;
+  const authToken = localStorage.getItem(AUTH_TOKEN_KEY);
+  if (authToken) return { access_token: authToken };
+  const devToken = localStorage.getItem(DEV_TOKEN_KEY);
+  if (devToken) return { access_token: devToken, dev_bypass: true };
+  return null;
+}
+
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
+  // Lazy initializer — runs once, synchronously, on first render.
+  const [session, setSession] = useState(readStoredSession);
   const [profile, setProfile] = useState(null);
-  const [initializing, setInitializing] = useState(true);
+
+  // Renamed in spirit (kept as `initializing` for anything already
+  // reading it) — this now ONLY tracks whether the PROFILE fetch for an
+  // already-known session is still in flight. It never gates whether we
+  // know if someone is logged in, since that's resolved synchronously
+  // above. A guest (no stored token) starts with this already false —
+  // there is nothing to wait for.
+  const [profileLoading, setProfileLoading] = useState(!!session);
 
   // Single shared realtime channel per user. Multiple components want
   // events off the SAME `user-<token>` topic (bell, quick-manage
@@ -120,7 +145,6 @@ export function AuthProvider({ children }) {
     if (!chanToken) return;
 
     channelRef.current = openChannel(chanToken);
-    console.log("chanToken", chanToken)
 
     return () => {
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
@@ -212,21 +236,16 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
+    // The token (if any) was already read synchronously into `session`
+    // by readStoredSession() above, before this component's first
+    // render — so there's no "figuring out if you're logged in" step
+    // left here. The only genuinely async part is fetching the PROFILE
+    // for an existing session, which route guards no longer block on.
     async function init() {
-      const devToken = localStorage.getItem(DEV_TOKEN_KEY);
-      const authToken = localStorage.getItem(AUTH_TOKEN_KEY);
-
-      if (authToken) {
-        setSession({ access_token: authToken });
-        await loadProfile(authToken);
-      } else if (devToken) {
-        setSession({ access_token: devToken, dev_bypass: true });
-        await loadProfile(devToken);
-      } else {
-        setSession(null);
+      if (session?.access_token) {
+        await loadProfile(session.access_token);
       }
-
-      if (mounted) setInitializing(false);
+      if (mounted) setProfileLoading(false);
     }
     init();
 
@@ -249,7 +268,8 @@ export function AuthProvider({ children }) {
       mounted = false;
       sub.subscription.unsubscribe();
     };
-  }, [loadProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isLoggedIn = !!session?.access_token;
 
@@ -259,7 +279,11 @@ export function AuthProvider({ children }) {
         session,
         token: session?.access_token,
         profile,
-        initializing,
+        // Kept under the same name so nothing else calling useAuth()
+        // needs to change — but it now only reflects "is the profile
+        // for an already-known session still loading", never "do we
+        // know yet whether this person is logged in at all".
+        initializing: profileLoading,
         isLoggedIn,
         signOut,
         clearSession,
