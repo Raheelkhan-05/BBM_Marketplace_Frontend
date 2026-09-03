@@ -1,6 +1,6 @@
 // src/App.jsx
 import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { RequireAuth, RequireGuest, RequireAdmin } from "./components/RouteGuards.jsx";
 import ScrollToTop from "./lib/ScrollToTop.jsx";
@@ -12,16 +12,16 @@ import { SocketProvider } from "./context/SocketContext.jsx";
 import PendingPaymentGate from './components/PendingPaymentGate.jsx';
 import ContactsBootstrapper from "./components/ContactsBootstrapper.jsx";
 import DeferredMount from "./components/DeferredMount.jsx";
+import { routeImports, preloadRoutesWhenIdle } from "./routePreload.js";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
-// visitor's home-page load. This is the single biggest lever on slow
-// connections: it shrinks the JS the browser must download + parse +
-// execute before ANYTHING paints, from "the whole app" down to "just the
-// page being visited".
+// visitor's home-page load. Pages registered in routeImports use that
+// SAME import function here, so a prefetch triggered from routePreload.js
+// (hover, idle) warms exactly the chunk this lazy() will resolve from.
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const SearchResultsPage = lazy(() => import("./pages/SearchResultsPage"));
-const HomePage = lazy(() => import("./pages/HomePage.jsx"));
+const HomePage = lazy(routeImports["/home"]);
 const CatalogLevelPage = lazy(() => import("./pages/CatalogLevelPage.jsx"));
 const AuthPage = lazy(() => import("./pages/AuthPage.jsx"));
 const SellerOnboardingPage = lazy(() => import("./pages/SellerOnboardingPage.jsx"));
@@ -38,9 +38,9 @@ const AdminCatalogDetailPage = lazy(() => import("./pages/admin/AdminCatalogDeta
 const BrandDetailPage = lazy(() => import("./pages/BrandDetailPage.jsx"));
 const BrandFamilyPage = lazy(() => import("./pages/BrandFamilyPage.jsx"));
 const PrivacyPolicy = lazy(() => import("./pages/legal/PrivacyPolicy.jsx"));
-const SellPublishProductPage = lazy(() => import("./pages/SellPublishProductPage.jsx"));
+const SellPublishProductPage = lazy(routeImports["/seller/sell"]);
 const AdminSellerSubmissionsPage = lazy(() => import("./pages/admin/AdminSellerSubmissionsPage.jsx"));
-const OrdersPage = lazy(() => import("./pages/OrdersPage.jsx"));
+const OrdersPage = lazy(routeImports["/orders"]);
 const SalesOrdersPage = lazy(() => import("./pages/SalesOrdersPage.jsx"));
 const OrderDetailPage = lazy(() => import("./pages/OrderDetailPage.jsx"));
 const SellerOrderDetailPage = lazy(() => import("./pages/SellerOrderDetailPage.jsx"));
@@ -49,13 +49,13 @@ const GenericProductSellersPage = lazy(() => import("./pages/GenericProductSelle
 const CategoryProductsPage = lazy(() => import("./pages/CategoryProductsPage.jsx"));
 const GenericProductBrandsPage = lazy(() => import("./pages/GenericProductBrandsPage.jsx"));
 const BrandItemSellersPage = lazy(() => import("./pages/BrandItemSellersPage.jsx"));
-const SellerManageListingsPage = lazy(() => import("./pages/SellerManageListingsPage.jsx"));
-const ChatPage = lazy(() => import("./pages/ChatPage.jsx"));
+const SellerManageListingsPage = lazy(routeImports["/seller/listings"]);
+const ChatPage = lazy(routeImports["/chat"]);
 const PaymentVerificationPage = lazy(() => import('./pages/admin/PaymentVerificationPage.jsx'));
 const AdminFullCatalogUploadPage = lazy(() => import('./pages/admin/AdminFullCatalogUploadPage.jsx'));
-const CartPage = lazy(() => import("./pages/CartPage.jsx"));
+const CartPage = lazy(routeImports["/cart"]);
 const AdminWalletSellersPage = lazy(() => import("./pages/admin/AdminWalletSellersPage.jsx"));
-const SellerWalletPage = lazy(() => import("./pages/SellerWalletPage.jsx"));
+const SellerWalletPage = lazy(routeImports["/seller/wallet"]);
 const AdminDatabasePanel = lazy(() => import("./pages/admin/AdminDatabasePanel.jsx"));
 const AdminProductCommissionsPage = lazy(() => import("./pages/admin/AdminProductCommissionsPage.jsx"));
 const SellerEditListingPage = lazy(() => import("./pages/SellerEditListingPage.jsx"));
@@ -68,12 +68,25 @@ function CatalogLevelPageWithKey({ configKey }) {
 // Deliberately blank: any visible fallback here would itself flash before
 // a route's own (much cheaper) internal skeleton takes over, on every
 // single navigation. A blank frame for the ~100-300ms a chunk takes to
-// fetch beats a layout jump on every nav.
+// fetch beats a layout jump on every nav — and with the prefetching below,
+// most navigations won't even hit this path, since the chunk is usually
+// already warm by the time the person clicks.
 function RouteFallback() {
   return null;
 }
 
 function App() {
+  // The primary bottom-nav destinations (Home, Seller Listing, Chat, Cart,
+  // Orders, Wallet) are reachable from almost every screen in the app —
+  // so once the CURRENT page has had first crack at the network, warm all
+  // of them in the background. By the time someone taps any nav tab, that
+  // page's code is very likely already sitting in the browser's cache —
+  // this is what makes tab switches feel instant/native instead of
+  // "tap, then wait."
+  useEffect(() => {
+    preloadRoutesWhenIdle(Object.keys(routeImports));
+  }, []);
+
   return (
     <AuthProvider>
       <SocketProvider>

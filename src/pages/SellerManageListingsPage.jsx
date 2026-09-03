@@ -24,16 +24,17 @@
 // otherwise. This matches the convention BuyNowModal.jsx and
 // HomeProductFeed.jsx already use (via shared/packUnits.js).
 //
-// DATA-SOURCE MISMATCH FIX:
-// fetchMySellerSubmissions() — the light list endpoint this page uses for
-// its rows — does not appear to return `units_per_master_pack` on each
-// row, while fetchSellerSubmissionDetail() (used by the detail modal)
-// does. Any row missing units_per_master_pack gets it filled in lazily
-// via a capped-concurrency background fetch (see the enrichment effect in
-// the main component), deduped and cached so each listing is only ever
-// fetched once. While a row's sale unit is still unknown, its
-// unit-dependent text (MOQ line, price/unit, stock line) renders a
-// skeleton instead of guessing.
+// PERFORMANCE FIX (this pass): fetchMySellerSubmissions() now returns
+// pack_size and units_per_master_pack directly (see the backend
+// controller's SUBMISSION_LIST_COLUMNS) — every row already carries what
+// it needs from the very first response. The background "enrichment"
+// pass that used to live here (a capped-concurrency loop firing one
+// fetchSellerSubmissionDetail() PER LISTING just to learn its sale unit)
+// has been removed entirely: it was turning "load my listings" into
+// "load my listings, then N more full-detail round trips," which was the
+// single biggest source of both request count and load time on this
+// page. A seller with 20 listings previously triggered 21 requests on
+// open; now it's 1.
 //
 // GST PRICING (simplified):
 // GST is always calculated ON TOP of the entered base price — there is no
@@ -53,6 +54,15 @@
 // to reflect it the instant it happens (rather than on next focus/visit),
 // wire a notifySellerSubmissionsChanged(sellerId) call into placeOrder's
 // success path too.
+//
+// LOADING STATES (this pass): the three in-modal/panel loading states
+// (QuickUpdatePanel, ListingDetailModal, EditListingModal) previously
+// showed a centered Loader2 spinner while fetchSellerSubmissionDetail()
+// was in flight. They now show a skeleton shaped like the real content
+// (same section layout, same row heights) and crossfade into the real
+// content via AnimatePresence the moment it's ready, instead of a hard
+// spinner→content swap. Loader2 is still used for the small inline
+// button spinners (Save / Activate / Deactivate).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -81,6 +91,7 @@ import SellerListingForm from "../components/seller/listingForm/SellerListingFor
 // rather than reimplemented here, so this page can't drift out of sync
 // with the buyer-facing pages again.
 import { saleUnitLabel, round2 } from "../shared/packUnits.js";
+import { resizedImageUrl } from "../utils/imageUrl.js";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -95,7 +106,6 @@ const C = {
 const EASE = [0.16, 1, 0.3, 1];
 const LOW_STOCK_THRESHOLD = 10;
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
-const ENRICH_CONCURRENCY = 4;
 
 /* ============================== helpers ============================== */
 
@@ -135,12 +145,83 @@ function computeFinalPrice(basePrice, gstPercent) {
     return round2(price + computeGstAmount(price, gstPercent));
 }
 
-// Skeleton bar used wherever a sale-unit-dependent value is still
-// unresolved (row hasn't been enriched with units_per_master_pack yet) —
-// deliberately used INSTEAD OF guessing, so a wrong unit is never shown
-// with false confidence.
-function TextSkeleton({ width = "3.5rem", height = "0.7rem" }) {
-    return <span className="inline-block animate-pulse rounded-full align-middle" style={{ width, height, background: C.hairSoft }} />;
+/* ---------------- skeletons ---------------- */
+
+// Base shimmer block for skeletons. `w`/`h` are Tailwind width/height
+// classes so each call site can shape it to whatever it's standing in for.
+function Skeleton({ w = "w-full", h = "h-3", className = "" }) {
+    return (
+        <span
+            className={`inline-block animate-pulse rounded-md ${w} ${h} ${className}`}
+            style={{ background: C.hairSoft }}
+        />
+    );
+}
+
+// Mirrors QuickUpdatePanel's real layout (pricing block + qty/lead-time
+// grid + stock adjuster) so the swap-in doesn't visually "jump".
+function QuickUpdatePanelSkeleton() {
+    return (
+        <div className="flex flex-col gap-3.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.hairSoft }}>
+            <div className="flex flex-col gap-2">
+                <Skeleton w="w-28" h="h-3" />
+                <div>
+                    <Skeleton w="w-24" h="h-2.5" className="mb-1.5" />
+                    <Skeleton h="h-9" />
+                </div>
+                <Skeleton h="h-11" />
+                <Skeleton h="h-12" />
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                <div><Skeleton w="w-16" h="h-2.5" className="mb-1.5" /><Skeleton h="h-9" /></div>
+                <div><Skeleton w="w-20" h="h-2.5" className="mb-1.5" /><Skeleton h="h-9" /></div>
+            </div>
+            <Skeleton h="h-16" />
+            <div className="flex gap-2 pt-0.5">
+                <Skeleton h="h-9" className="flex-1 sm:flex-none sm:w-28" />
+                <Skeleton w="w-10" h="h-9" />
+            </div>
+        </div>
+    );
+}
+
+// Mirrors ListingDetailModal's section-by-section layout.
+function ListingDetailModalSkeleton() {
+    return (
+        <div className="flex flex-col gap-5 px-5 py-4">
+            <Skeleton w="w-20" h="h-5" className="rounded-full" />
+            {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="border-t pt-3 first:border-t-0 first:pt-0" style={{ borderColor: C.hairSoft }}>
+                    <Skeleton w="w-24" h="h-2.5" className="mb-2.5" />
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                        <Skeleton h="h-3" />
+                        <Skeleton h="h-3" />
+                        <Skeleton h="h-3" w="w-2/3" />
+                        <Skeleton h="h-3" w="w-2/3" />
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// Mirrors EditListingModal's form field stack while SellerListingForm's
+// initial values are still loading.
+function EditListingModalSkeleton() {
+    return (
+        <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+                <Skeleton w="w-14" h="h-14" className="rounded-xl" />
+                <div className="flex-1"><Skeleton w="w-2/5" h="h-3.5" className="mb-1.5" /><Skeleton w="w-1/4" h="h-2.5" /></div>
+            </div>
+            {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i}>
+                    <Skeleton w="w-24" h="h-2.5" className="mb-1.5" />
+                    <Skeleton h="h-9" />
+                </div>
+            ))}
+        </div>
+    );
 }
 
 /* ---------------- edit listing modal ---------------- */
@@ -250,25 +331,39 @@ function EditListingModal({ token, submissionId, onClose, onSaved }) {
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-5 py-4" style={{ minHeight: 0, overscrollBehavior: "contain" }}>
-                    {loading && <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>}
-                    {!loading && error && <p className="py-8 text-center text-[13px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
-
-                    {!loading && !error && submitError && (
-                        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{submitError}</p>
-                    )}
-
-                    {!loading && !error && initialValues && (
-                        <SellerListingForm
-                            mode="edit"
-                            identityReadOnly
-                            brandDisplay={brandDisplay}
-                            initialValues={initialValues}
-                            onSubmit={handleSubmit}
-                            submitting={submitting}
-                            submitLabel="Save & resubmit for review"
-                            stickyBottomClassName="-bottom-4"
-                        />
-                    )}
+                    <AnimatePresence mode="wait" initial={false}>
+                        {loading ? (
+                            <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                                <EditListingModalSkeleton />
+                            </motion.div>
+                        ) : error ? (
+                            <motion.p
+                                key="error"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="py-8 text-center text-[13px] font-semibold"
+                                style={{ color: "#c71f11" }}
+                            >
+                                {error}
+                            </motion.p>
+                        ) : initialValues ? (
+                            <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
+                                {submitError && (
+                                    <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{submitError}</p>
+                                )}
+                                <SellerListingForm
+                                    mode="edit"
+                                    identityReadOnly
+                                    brandDisplay={brandDisplay}
+                                    initialValues={initialValues}
+                                    onSubmit={handleSubmit}
+                                    submitting={submitting}
+                                    submitLabel="Save & resubmit for review"
+                                    stickyBottomClassName="-bottom-4"
+                                />
+                            </motion.div>
+                        ) : null}
+                    </AnimatePresence>
                 </div>
             </div>
         </div>
@@ -468,16 +563,15 @@ function StockAdjuster({ value, onChange, saleUnit }) {
     );
 }
 
-// `item` is the light row object from the list (fast, already on screen —
-// and, per the note at the top of this file, may be MISSING
-// units_per_master_pack). On open, this fetches the full submission so it
-// can edit the real (base price, GST%) inputs instead of a single opaque
-// "price" number, AND so it has an authoritative units_per_master_pack to
-// label everything with — never trusting the light `item` prop for that.
-// `onSave(payload, optimisticPatch)` is called once the seller hits Save;
-// the parent applies `optimisticPatch` to the list immediately (so the UI
-// updates with zero perceived delay) and only sends `payload` to the
-// server in the background, rolling back if it's rejected.
+// `item` is the light row object from the list (fast, already on screen,
+// and — since the backend fix — already carries units_per_master_pack).
+// On open, this still fetches the full submission because it needs the
+// real (base price, GST%) inputs to edit, not just the single opaque
+// "price" number. `onSave(payload, optimisticPatch)` is called once the
+// seller hits Save; the parent applies `optimisticPatch` to the list
+// immediately (so the UI updates with zero perceived delay) and only
+// sends `payload` to the server in the background, rolling back if it's
+// rejected.
 function QuickUpdatePanel({ item, onCancel, onSave }) {
     const { token } = useAuth();
 
@@ -496,11 +590,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             if (!res?.success) { setLoadError(res?.message || "Couldn't load pricing details."); setLoading(false); return; }
             const s = res.submission;
             setForm({
-                // Authoritative — always from the detail fetch, NEVER from
-                // the light `item` prop. This is the field that was missing
-                // on the list payload and caused "Pack" to show for a
-                // Master-Pack-sold item.
-                unitsPerMasterPack: s.units_per_master_pack ?? 1,
+                unitsPerMasterPack: s.units_per_master_pack ?? item.units_per_master_pack ?? 1,
 
                 basePrice: s.base_price != null ? String(s.base_price) : "",
                 gstPercent: s.gst_percent ?? 18,
@@ -516,11 +606,8 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             setLoading(false);
         });
         return () => { cancelled = true; };
-    }, [item.id, item.lead_time, token]);
+    }, [item.id, item.lead_time, item.units_per_master_pack, token]);
 
-    // Only ever computed from the fetched, authoritative field — this is
-    // the actual fix for the panel previously showing "Pack" for a
-    // Master-Pack listing.
     const saleUnit = form ? saleUnitLabel(form.unitsPerMasterPack) : null;
 
     // GST always added on top of the entered base price — computed off
@@ -557,11 +644,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
         };
 
         // Applied to the list row the instant Save is pressed — before the
-        // network call even resolves — so there's no visible lag. Also
-        // carries units_per_master_pack through explicitly: this listing's
-        // authoritative value is now known (we just fetched it), so the row
-        // can stop showing a skeleton for its unit-dependent text right
-        // away, even if the background enrichment pass hasn't reached it.
+        // network call even resolves — so there's no visible lag.
         const optimisticPatch = {
             price: Number(form.basePrice),   // keep the row showing the seller's entered base price, consistent with how it displays before any edit
             moq: Number(form.moq),
@@ -576,101 +659,106 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
         setSaving(false);
     }
 
-    if (loading) {
-        return (
-            <div className="overflow-hidden px-3 pb-3 sm:px-4">
-                <div className="flex items-center justify-center gap-2 rounded-xl border p-4 text-[12px] font-semibold" style={{ borderColor: C.hair, background: C.hairSoft, color: C.muted }}>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading pricing details…
-                </div>
-            </div>
-        );
-    }
-    if (loadError || !form) {
-        return (
-            <div className="overflow-hidden px-3 pb-3 sm:px-4">
-                <div className="flex items-center justify-between gap-2 rounded-xl border p-3 text-[12px] font-semibold" style={{ borderColor: C.hair, color: "#c71f11" }}>
-                    <span>{loadError || "Something went wrong."}</span>
-                    <button onClick={onCancel} className="shrink-0 rounded-lg border bg-white px-2.5 py-1" style={{ borderColor: C.hair, color: C.muted }}>Close</button>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="overflow-hidden px-3 pb-3 sm:px-4">
-            <div className="flex flex-col gap-3.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.hairSoft }}>
+            <AnimatePresence mode="wait" initial={false}>
+                {loading ? (
+                    <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                        <QuickUpdatePanelSkeleton />
+                    </motion.div>
+                ) : loadError || !form ? (
+                    <motion.div
+                        key="error"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="flex items-center justify-between gap-2 rounded-xl border p-3 text-[12px] font-semibold"
+                        style={{ borderColor: C.hair, color: "#c71f11" }}
+                    >
+                        <span>{loadError || "Something went wrong."}</span>
+                        <button onClick={onCancel} className="shrink-0 rounded-lg border bg-white px-2.5 py-1" style={{ borderColor: C.hair, color: C.muted }}>Close</button>
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        key="form"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.18 }}
+                        className="flex flex-col gap-3.5 rounded-xl border p-3"
+                        style={{ borderColor: C.hair, background: C.hairSoft }}
+                    >
+                        {/* ---- Pricing ---- */}
+                        <div className="flex flex-col gap-2">
+                            <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>
+                                <IndianRupee className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Pricing · per {saleUnit}
+                            </span>
 
-                {/* ---- Pricing ---- */}
-                <div className="flex flex-col gap-2">
-                    <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>
-                        <IndianRupee className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Pricing · per {saleUnit}
-                    </span>
+                            <QuickField
+                                label={`Base Price (₹/${saleUnit})`}
+                                type="number" min="0" step="0.01"
+                                value={form.basePrice}
+                                onChange={(e) => setField("basePrice", e.target.value)}
+                            />
 
-                    <QuickField
-                        label={`Base Price (₹/${saleUnit})`}
-                        type="number" min="0" step="0.01"
-                        value={form.basePrice}
-                        onChange={(e) => setField("basePrice", e.target.value)}
-                    />
+                            <div className="grid grid-cols-2 gap-2.5">
+                                <div className="flex flex-col justify-center gap-0.5 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
+                                    <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>GST amount - {form.gstPercent}%</span>
+                                    <span className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{formatMoney(gstAmount)}</span>
+                                </div>
+                            </div>
 
-                    <div className="grid grid-cols-2 gap-2.5">
-                        <div className="flex flex-col justify-center gap-0.5 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
-                            <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>GST amount - {form.gstPercent}%</span>
-                            <span className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{formatMoney(gstAmount)}</span>
+                            <div className="flex flex-col justify-center gap-0.5 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
+                                <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>Final price (base + GST)</span>
+                                <span className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{formatMoney(finalPrice)}</span>
+                            </div>
                         </div>
-                    </div>
 
-                    <div className="flex flex-col justify-center gap-0.5 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
-                        <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>Final price (base + GST)</span>
-                        <span className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{formatMoney(finalPrice)}</span>
-                    </div>
-                </div>
+                        {/* ---- Quantity & lead time ---- */}
+                        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                            <QuickField
+                                label={`MOQ (${saleUnit}s)`}
+                                type="number" min="0" step="1"
+                                value={form.moq}
+                                onChange={(e) => setField("moq", e.target.value.replace(/[^\d.]/g, ""))}
+                            />
+                            <QuickField
+                                label={form.stockType === "made_to_order" ? "Lead time (days)" : "Dispatch time (days)"}
+                                type="number" min="0" step="1"
+                                value={form.leadTime}
+                                onChange={(e) => setField("leadTime", e.target.value.replace(/[^\d]/g, ""))}
+                            />
+                        </div>
 
-                {/* ---- Quantity & lead time ---- */}
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                    <QuickField
-                        label={`MOQ (${saleUnit}s)`}
-                        type="number" min="0" step="1"
-                        value={form.moq}
-                        onChange={(e) => setField("moq", e.target.value.replace(/[^\d.]/g, ""))}
-                    />
-                    <QuickField
-                        label={form.stockType === "made_to_order" ? "Lead time (days)" : "Dispatch time (days)"}
-                        type="number" min="0" step="1"
-                        value={form.leadTime}
-                        onChange={(e) => setField("leadTime", e.target.value.replace(/[^\d]/g, ""))}
-                    />
-                </div>
+                        {form.stockType === "ready_stock" && (
+                            <StockAdjuster
+                                value={form.stockQuantity}
+                                onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))}
+                                saleUnit={saleUnit}
+                            />
+                        )}
 
-                {form.stockType === "ready_stock" && (
-                    <StockAdjuster
-                        value={form.stockQuantity}
-                        onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))}
-                        saleUnit={saleUnit}
-                    />
+                        <p className="text-[10.5px] font-medium leading-relaxed" style={{ color: C.muted }}>
+                            Need to change pack size, master pack, quality certificates, dispatch locations, or return/warranty policy?
+                            Use <span className="font-bold" style={{ color: C.ink }}>Edit listing</span> for the full form.
+                        </p>
+
+                        {error && <p className="text-[11.5px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
+
+                        <div className="flex gap-2 pt-0.5">
+                            <button onClick={save} disabled={saving}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-50 sm:flex-none sm:px-6"
+                                style={{ background: C.secondary }}>
+                                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                                {item.review_status === "rejected" ? "Resubmit" : "Save"}
+                            </button>
+                            <button onClick={onCancel}
+                                className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03]"
+                                style={{ borderColor: C.hair }}>
+                                <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
+                            </button>
+                        </div>
+                    </motion.div>
                 )}
-
-                <p className="text-[10.5px] font-medium leading-relaxed" style={{ color: C.muted }}>
-                    Need to change pack size, master pack, quality certificates, dispatch locations, or return/warranty policy?
-                    Use <span className="font-bold" style={{ color: C.ink }}>Edit listing</span> for the full form.
-                </p>
-
-                {error && <p className="text-[11.5px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
-
-                <div className="flex gap-2 pt-0.5">
-                    <button onClick={save} disabled={saving}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-50 sm:flex-none sm:px-6"
-                        style={{ background: C.secondary }}>
-                        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                        {item.review_status === "rejected" ? "Resubmit" : "Save"}
-                    </button>
-                    <button onClick={onCancel}
-                        className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03]"
-                        style={{ borderColor: C.hair }}>
-                        <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
-                    </button>
-                </div>
-            </div>
+            </AnimatePresence>
         </div>
     );
 }
@@ -720,13 +808,10 @@ function ListingRow({
     const sState = stockState(stock);
     const isExpanded = isQuickEditing || isConfirmingDeactivate;
 
-    // Whether this row actually knows its sale unit yet. `units_per_master_pack`
-    // is `undefined` on rows the list endpoint hasn't returned it for and the
-    // background enrichment pass (see main component) hasn't reached yet —
-    // `null` or a real number both count as "known" (null just means "no
-    // master pack", same as the detail modal's own convention).
-    const saleUnitKnown = it.units_per_master_pack !== undefined;
-    const saleUnit = saleUnitKnown ? saleUnitLabel(it.units_per_master_pack) : null;
+    // units_per_master_pack now arrives directly on every row from the
+    // list endpoint (see backend PERFORMANCE FIX note) — no more waiting
+    // on a background enrichment pass to learn it.
+    const saleUnit = saleUnitLabel(it.units_per_master_pack);
 
     const statusColor = !isActive ? C.muted : sState === "out" ? "#c71f11" : sState === "low" ? "#b45309" : C.secondary;
     const stockLabel = sState === "out"
@@ -755,7 +840,9 @@ function ListingRow({
                 <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.hairSoft }}
                     onClick={(e) => { e.stopPropagation(); if (gallery.length) onOpenImage({ images: gallery, index: 0, alt: name }); }}
                 >
-                    {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : <ImageIcon className="m-auto h-5 w-5" style={{ color: C.hair }} />}
+                    {image
+                        ? <img src={resizedImageUrl(image, { width: 75 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                        : <ImageIcon className="m-auto h-5 w-5" style={{ color: C.hair }} />}
                     {gallery.length > 1 && (
                         <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 px-1 text-[8.5px] font-bold text-white">+{gallery.length - 1}</span>
                     )}
@@ -770,7 +857,7 @@ function ListingRow({
                     </div>
                     <p className="mt-0.5 truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
                         {brandName ? `${brandName} · ` : ""}
-                        MOQ {it.moq} {saleUnitKnown ? pluralizeUnit(it.moq, saleUnit) : <TextSkeleton width="2.5rem" />}
+                        MOQ {it.moq} {pluralizeUnit(it.moq, saleUnit)}
                         {it.lead_time != null && ` · Lead ${it.lead_time}d`}
                     </p>
                     {it.rejection_reason && it.review_status === "rejected" && (
@@ -782,12 +869,10 @@ function ListingRow({
                     <div className="hidden shrink-0 flex-col items-end pl-2 text-right sm:flex">
                         <p className="leading-none">
                             <span className="text-[15.5px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>₹{formatMoney(it.price)}</span>
-                            <span className="ml-0.5 text-[10.5px] font-semibold" style={{ color: C.muted }}>
-                                /{saleUnitKnown ? saleUnit : <TextSkeleton width="2.5rem" />}
-                            </span>
+                            <span className="ml-0.5 text-[10.5px] font-semibold" style={{ color: C.muted }}>/{saleUnit}</span>
                         </p>
                         <p className="mt-1 whitespace-nowrap text-[10.5px] font-bold tabular-nums" style={{ color: statusColor }}>
-                            {isActive ? (saleUnitKnown || sState === "out" ? stockLabel : <TextSkeleton width="4.5rem" />) : "Hidden from buyers"}
+                            {isActive ? stockLabel : "Hidden from buyers"}
                         </p>
                     </div>
                 )}
@@ -896,120 +981,140 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                     </button>
                 </div>
 
-                {loading && <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>}
-                {!loading && error && <p className="flex-1 px-5 py-8 text-center text-[13px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
-
-                {!loading && s && (
-                    <div className="flex-1 overflow-y-auto px-5 py-3.5" style={{ minHeight: 0, overscrollBehavior: "contain" }}>
-                        <div className="flex flex-wrap items-center gap-1.5 pb-3">
-                            <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{
-                                background: s.review_status === "approved" ? "#dcfce7" : s.review_status === "rejected" ? "#fee2e2" : "#fef3c7",
-                                color: s.review_status === "approved" ? "#15803d" : s.review_status === "rejected" ? "#b91c1c" : "#a16207",
-                            }}>
-                                {s.review_status === "approved" ? "Approved" : s.review_status === "rejected" ? "Rejected" : "Pending review"}
-                            </span>
-                            {s.is_active === false && <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: C.hairSoft, color: C.muted }}>Hidden from buyers</span>}
-                        </div>
-                        {s.rejection_reason && <p className="mb-3 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ background: "rgba(199,31,17,0.08)", color: "#c71f11" }}>Rejected: {s.rejection_reason}</p>}
-                        {crumb && (
-                            <div className="mb-3 rounded-lg px-3 py-2" style={{ background: C.hairSoft }}>
-                                <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Catalog mapping</p>
-                                <p className="text-[12px] font-bold break-words" style={{ color: C.ink }}>{crumb}</p>
+                <AnimatePresence mode="wait" initial={false}>
+                    {loading ? (
+                        <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="flex-1 overflow-y-auto">
+                            <ListingDetailModalSkeleton />
+                        </motion.div>
+                    ) : error ? (
+                        <motion.p
+                            key="error"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="flex-1 px-5 py-8 text-center text-[13px] font-semibold"
+                            style={{ color: "#c71f11" }}
+                        >
+                            {error}
+                        </motion.p>
+                    ) : s ? (
+                        <motion.div
+                            key="content"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ duration: 0.18 }}
+                            className="flex-1 overflow-y-auto px-5 py-3.5"
+                            style={{ minHeight: 0, overscrollBehavior: "contain" }}
+                        >
+                            <div className="flex flex-wrap items-center gap-1.5 pb-3">
+                                <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{
+                                    background: s.review_status === "approved" ? "#dcfce7" : s.review_status === "rejected" ? "#fee2e2" : "#fef3c7",
+                                    color: s.review_status === "approved" ? "#15803d" : s.review_status === "rejected" ? "#b91c1c" : "#a16207",
+                                }}>
+                                    {s.review_status === "approved" ? "Approved" : s.review_status === "rejected" ? "Rejected" : "Pending review"}
+                                </span>
+                                {s.is_active === false && <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: C.hairSoft, color: C.muted }}>Hidden from buyers</span>}
                             </div>
-                        )}
-
-                        <div className="flex flex-col gap-1 pt-1">
-                            <SectionBlock icon={Package} title="Product">
-                                <ReadRow label="Manufacturer" value={s.manufacturer} />
-                                <ReadRow label="Model / Part No." value={s.model_no} />
-                                <ReadRow label="Grade / Variant" value={s.grade_variant} />
-                            </SectionBlock>
-                            {(s.specifications?.length > 0 || images.length > 0) && (
-                                <div className="-mt-1">
-                                    {s.specifications?.length > 0 && <ReadRowsList rows={s.specifications} columns={[{ key: "key" }, { key: "value" }]} />}
-                                    {images.length > 0 && (
-                                        <div className="mt-2 flex flex-wrap gap-1.5">
-                                            {images.map((src, i) => (
-                                                <button key={src + i} onClick={() => onImageClick?.({ images, index: i, alt: name })} className="relative h-14 w-14">
-                                                    <img src={src} alt="" className="h-full w-full rounded-md border object-cover" style={{ borderColor: C.hair }} />
-                                                    {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-md bg-black/60 py-0.5 text-center text-[7.5px] font-bold text-white">Cover</span>}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
+                            {s.rejection_reason && <p className="mb-3 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ background: "rgba(199,31,17,0.08)", color: "#c71f11" }}>Rejected: {s.rejection_reason}</p>}
+                            {crumb && (
+                                <div className="mb-3 rounded-lg px-3 py-2" style={{ background: C.hairSoft }}>
+                                    <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Catalog mapping</p>
+                                    <p className="text-[12px] font-bold break-words" style={{ color: C.ink }}>{crumb}</p>
                                 </div>
                             )}
 
-                            <SectionBlock icon={IndianRupee} title="Pricing">
-                                <ReadRow label={`Base Price (/${saleUnit})`} value={s.base_price != null ? `₹${formatMoney(s.base_price)}` : null} />
-                                <ReadRow label="GST %" value={s.gst_percent != null ? `${s.gst_percent}%` : null} />
-                                <ReadRow label="GST amount" value={`₹${formatMoney(gstAmount)}`} />
-                                <ReadRow label={`Final price (/${saleUnit})`} value={`₹${formatMoney(finalPrice)}`} />
-                                <ReadRow label="Freight" value={s.freight_included != null ? (s.freight_included ? "Included" : "Extra, buyer pays") : null} />
-                                <ReadRow label="Valid till" value={s.price_validity_till} />
-                            </SectionBlock>
-
-                            <SectionBlock icon={Boxes} title="Quantity">
-                                <ReadRow label="MOQ" value={s.moq != null ? `${s.moq} ${pluralizeUnit(s.moq, saleUnit)}` : null} />
-                                <ReadRow label="Sample" value={s.sample_available ? `${s.sample_quantity || ""} ${s.sample_unit_basis ? { per_unit: "unit(s)", per_pack: "pack(s)", per_master_pack: "master pack(s)" }[s.sample_unit_basis] : ""}`.trim() || "Available" : "Not available"} />
-                            </SectionBlock>
-                            {(s.price_slabs?.length > 0 || s.quantity_discounts?.length > 0) && (
-                                <div className="-mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                    <ReadRowsList rows={s.price_slabs} columns={[{ key: "minQty" }, { key: "maxQty" }, { key: "price" }]} />
-                                    <ReadRowsList rows={s.quantity_discounts} columns={[{ key: "minQty" }, { key: "discountPercent" }]} />
-                                </div>
-                            )}
-
-                            <SectionBlock icon={Archive} title="Packaging">
-                                <ReadRow label="Selling unit" value={s.unit} />
-                                <ReadRow label="Pack size" value={s.pack_size != null ? `${s.pack_size} ${s.unit || ""}`.trim() : null} />
-                                <ReadRow label="Units/master pack" value={s.units_per_master_pack} />
-                            </SectionBlock>
-
-                            <SectionBlock icon={Boxes} title="Availability">
-                                <ReadRow label="Stock" value={s.stock_quantity != null ? `${s.stock_quantity} ${pluralizeUnit(s.stock_quantity, saleUnit)}` : "Not set"} />
-                                <ReadRow label="Fulfilment" value={s.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"} />
-                            </SectionBlock>
-
-                            <SectionBlock icon={Truck} title="Delivery">
-                                <ReadRow label="Dispatch pincode" value={s.dispatch_pincode} />
-                                <ReadRow label="Dispatch district" value={s.dispatch_district} />
-                                <ReadRow label="Dispatch state" value={s.dispatch_state} />
-                                <ReadRow label="Lead time" value={s.stock_type === "made_to_order" ? (s.production_lead_time_days != null ? `${s.production_lead_time_days}d` : null) : (s.dispatch_time_days != null ? `${s.dispatch_time_days}d` : null)} />
-                            </SectionBlock>
-                            {summarizeDispatchLocations(s.dispatching_locations) && <ReadRow label="Delivers to" value={summarizeDispatchLocations(s.dispatching_locations)} />}
-                            <ReadRow label="Seller location" value={s.seller_location} />
-                            <ReadRow label="Freight terms" value={s.freight_terms} />
-
-                            <SectionBlock icon={FileText} title="Tax & Legal">
-                                <ReadRow label="HSN Code" value={s.hsn_code} />
-                                <ReadRow label="GST status" value={s.gst_registration_status} />
-                                <ReadRow label="Tax invoice" value={s.tax_invoice_available != null ? (s.tax_invoice_available ? "Yes" : "No") : null} />
-                            </SectionBlock>
-
-                            <SectionBlock icon={Handshake} title="Commercial Terms" />
-                            <ReadRow label="Warranty" value={s.warranty} />
-                            <ReadRow label="Payment terms" value={s.payment_terms} />
-                            <ReadRow label="Return policy" value={s.return_policy} />
-                            {s.note_to_admin && (
-                                <div className="border-t pt-3" style={{ borderColor: C.hairSoft }}>
-                                    <p className="mb-1 text-[11.5px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Your note to admin</p>
-                                    <p className="text-[12px] font-medium leading-relaxed" style={{ color: C.ink }}>{s.note_to_admin}</p>
-                                </div>
-                            )}
-
-                            {(s.quality_certificates?.length > 0 || s.tds_msds_coa?.length > 0 || s.other_certifications?.length > 0) && (
-                                <SectionBlock icon={ShieldCheck} title="Quality & Certifications">
-                                    <div className="col-span-2 flex flex-col gap-1.5">
-                                        <ReadRowsList rows={s.quality_certificates} columns={[{ key: "name" }, { key: "url" }]} />
-                                        <ReadRowsList rows={s.tds_msds_coa} columns={[{ key: "type" }, { key: "url" }]} />
-                                        <ReadRowsList rows={s.other_certifications} columns={[{ key: "name" }, { key: "url" }]} />
-                                    </div>
+                            <div className="flex flex-col gap-1 pt-1">
+                                <SectionBlock icon={Package} title="Product">
+                                    <ReadRow label="Manufacturer" value={s.manufacturer} />
+                                    <ReadRow label="Model / Part No." value={s.model_no} />
+                                    <ReadRow label="Grade / Variant" value={s.grade_variant} />
                                 </SectionBlock>
-                            )}
-                        </div>
-                    </div>
-                )}
+                                {(s.specifications?.length > 0 || images.length > 0) && (
+                                    <div className="-mt-1">
+                                        {s.specifications?.length > 0 && <ReadRowsList rows={s.specifications} columns={[{ key: "key" }, { key: "value" }]} />}
+                                        {images.length > 0 && (
+                                            <div className="mt-2 flex flex-wrap gap-1.5">
+                                                {images.map((src, i) => (
+                                                    <button key={src + i} onClick={() => onImageClick?.({ images, index: i, alt: name })} className="relative h-14 w-14">
+                                                        <img src={resizedImageUrl(src, { width: 75 })} alt="" loading="lazy" decoding="async" className="h-full w-full rounded-md border object-cover" style={{ borderColor: C.hair }} />
+                                                        {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-md bg-black/60 py-0.5 text-center text-[7.5px] font-bold text-white">Cover</span>}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                <SectionBlock icon={IndianRupee} title="Pricing">
+                                    <ReadRow label={`Base Price (/${saleUnit})`} value={s.base_price != null ? `₹${formatMoney(s.base_price)}` : null} />
+                                    <ReadRow label="GST %" value={s.gst_percent != null ? `${s.gst_percent}%` : null} />
+                                    <ReadRow label="GST amount" value={`₹${formatMoney(gstAmount)}`} />
+                                    <ReadRow label={`Final price (/${saleUnit})`} value={`₹${formatMoney(finalPrice)}`} />
+                                    <ReadRow label="Freight" value={s.freight_included != null ? (s.freight_included ? "Included" : "Extra, buyer pays") : null} />
+                                    <ReadRow label="Valid till" value={s.price_validity_till} />
+                                </SectionBlock>
+
+                                <SectionBlock icon={Boxes} title="Quantity">
+                                    <ReadRow label="MOQ" value={s.moq != null ? `${s.moq} ${pluralizeUnit(s.moq, saleUnit)}` : null} />
+                                    <ReadRow label="Sample" value={s.sample_available ? `${s.sample_quantity || ""} ${s.sample_unit_basis ? { per_unit: "unit(s)", per_pack: "pack(s)", per_master_pack: "master pack(s)" }[s.sample_unit_basis] : ""}`.trim() || "Available" : "Not available"} />
+                                </SectionBlock>
+                                {(s.price_slabs?.length > 0 || s.quantity_discounts?.length > 0) && (
+                                    <div className="-mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        <ReadRowsList rows={s.price_slabs} columns={[{ key: "minQty" }, { key: "maxQty" }, { key: "price" }]} />
+                                        <ReadRowsList rows={s.quantity_discounts} columns={[{ key: "minQty" }, { key: "discountPercent" }]} />
+                                    </div>
+                                )}
+
+                                <SectionBlock icon={Archive} title="Packaging">
+                                    <ReadRow label="Selling unit" value={s.unit} />
+                                    <ReadRow label="Pack size" value={s.pack_size != null ? `${s.pack_size} ${s.unit || ""}`.trim() : null} />
+
+                                </SectionBlock>
+
+                                <SectionBlock icon={Boxes} title="Availability">
+                                    <ReadRow label="Stock" value={s.stock_quantity != null ? `${s.stock_quantity} ${pluralizeUnit(s.stock_quantity, saleUnit)}` : "Not set"} />
+                                    <ReadRow label="Fulfilment" value={s.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"} />
+                                </SectionBlock>
+
+                                <SectionBlock icon={Truck} title="Delivery">
+                                    <ReadRow label="Dispatch pincode" value={s.dispatch_pincode} />
+                                    <ReadRow label="Dispatch district" value={s.dispatch_district} />
+                                    <ReadRow label="Dispatch state" value={s.dispatch_state} />
+                                    <ReadRow label="Lead time" value={s.stock_type === "made_to_order" ? (s.production_lead_time_days != null ? `${s.production_lead_time_days}d` : null) : (s.dispatch_time_days != null ? `${s.dispatch_time_days}d` : null)} />
+                                </SectionBlock>
+                                {summarizeDispatchLocations(s.dispatching_locations) && <ReadRow label="Delivers to" value={summarizeDispatchLocations(s.dispatching_locations)} />}
+                                <ReadRow label="Seller location" value={s.seller_location} />
+                                <ReadRow label="Freight terms" value={s.freight_terms} />
+
+                                <SectionBlock icon={FileText} title="Tax & Legal">
+                                    <ReadRow label="HSN Code" value={s.hsn_code} />
+                                    <ReadRow label="GST status" value={s.gst_registration_status} />
+                                    <ReadRow label="Tax invoice" value={s.tax_invoice_available != null ? (s.tax_invoice_available ? "Yes" : "No") : null} />
+                                </SectionBlock>
+
+                                <SectionBlock icon={Handshake} title="Commercial Terms" />
+                                <ReadRow label="Warranty" value={s.warranty} />
+                                <ReadRow label="Payment terms" value={s.payment_terms} />
+                                <ReadRow label="Return policy" value={s.return_policy} />
+                                {s.note_to_admin && (
+                                    <div className="border-t pt-3" style={{ borderColor: C.hairSoft }}>
+                                        <p className="mb-1 text-[11.5px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Your note to admin</p>
+                                        <p className="text-[12px] font-medium leading-relaxed" style={{ color: C.ink }}>{s.note_to_admin}</p>
+                                    </div>
+                                )}
+
+                                {(s.quality_certificates?.length > 0 || s.tds_msds_coa?.length > 0 || s.other_certifications?.length > 0) && (
+                                    <SectionBlock icon={ShieldCheck} title="Quality & Certifications">
+                                        <div className="col-span-2 flex flex-col gap-1.5">
+                                            <ReadRowsList rows={s.quality_certificates} columns={[{ key: "name" }, { key: "url" }]} />
+                                            <ReadRowsList rows={s.tds_msds_coa} columns={[{ key: "type" }, { key: "url" }]} />
+                                            <ReadRowsList rows={s.other_certifications} columns={[{ key: "name" }, { key: "url" }]} />
+                                        </div>
+                                    </SectionBlock>
+                                )}
+                            </div>
+                        </motion.div>
+                    ) : null}
+                </AnimatePresence>
 
                 {!loading && s && (
                     <div className="flex shrink-0 items-center justify-end gap-2 border-t px-5 py-3" style={{ borderColor: C.hairSoft }}>
@@ -1040,11 +1145,6 @@ export default function SellerManageListingsPage() {
 
     const [items, setItems] = useState([]);
 
-    // Separate from `items` on purpose — this state is never touched by
-    // reload()/setItems replacing the list, so a background refresh can
-    // never wipe out what enrichment already learned. Keyed by listing id.
-    const [unitInfoById, setUnitInfoById] = useState({});
-
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [lastSynced, setLastSynced] = useState(null);
@@ -1074,6 +1174,9 @@ export default function SellerManageListingsPage() {
 
     const isApprovedSeller = profile?.seller_status === "approved";
 
+    // This is now the ONLY network request the page needs on open — see
+    // the "PERFORMANCE FIX" note at the top of this file for what used to
+    // fire alongside it.
     const reload = useCallback(({ silent } = {}) => {
         if (!token || !isApprovedSeller) { setLoading(false); return; }
         if (!silent) setLoading(true); else setRefreshing(true);
@@ -1082,64 +1185,6 @@ export default function SellerManageListingsPage() {
             setLoading(false); setRefreshing(false);
         });
     }, [token, isApprovedSeller]);
-
-    // Single source of truth for "does this row know its sale unit" — prefers
-    // units_per_master_pack directly on the item (when the light endpoint
-    // happens to include it), falling back to whatever enrichment has
-    // separately learned for that id. Since unitInfoById is never cleared by
-    // reload, this can't regress once a row's been enriched.
-    const enrichedItems = useMemo(() => {
-        return items.map((it) => {
-            if (it.units_per_master_pack !== undefined) return it;
-            const known = unitInfoById[it.id];
-            return known ? { ...it, ...known } : it;
-        });
-    }, [items, unitInfoById]);
-
-    useEffect(() => {
-        if (!token) return;
-
-        const pending = items
-            .filter((it) => it.units_per_master_pack === undefined
-                && unitInfoById[it.id] === undefined
-                && !inFlightIdsRef.current.has(it.id))
-            .slice(0, ENRICH_CONCURRENCY);
-
-        if (!pending.length) return;
-
-        let cancelled = false;
-        pending.forEach((it) => inFlightIdsRef.current.add(it.id));
-
-        Promise.allSettled(
-            pending.map((it) =>
-                fetchSellerSubmissionDetail(token, it.id)
-                    .then((res) => ({ it, res }))
-                    .catch(() => ({ it, res: null }))
-            )
-        ).then((results) => {
-            for (const outcome of results) {
-                const { it } = outcome.value;
-                inFlightIdsRef.current.delete(it.id);
-            }
-            if (cancelled) return;
-
-            setUnitInfoById((prev) => {
-                const next = { ...prev };
-                for (const outcome of results) {
-                    const { it, res } = outcome.value;
-                    const s = res?.submission;
-                    next[it.id] = {
-                        units_per_master_pack: res?.success && s ? (s.units_per_master_pack ?? 1) : 1,
-                        pack_size: res?.success && s ? (s.pack_size ?? it.pack_size) : it.pack_size,
-                        unit: res?.success && s ? (s.unit ?? it.unit) : it.unit,
-                    };
-                }
-                return next;
-            });
-        });
-
-        return () => { cancelled = true; };
-    }, [items, unitInfoById, token]);
 
     useEffect(() => { reload(); }, [reload]);
     useEffect(() => subscribeUserEvent?.("submissions_changed", () => reload({ silent: true })), [subscribeUserEvent, reload]);
@@ -1154,38 +1199,19 @@ export default function SellerManageListingsPage() {
         return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); };
     }, [reload]);
 
-    // ---- Background enrichment: fill in units_per_master_pack for any row
-    // the LIST endpoint didn't return it for (see the note at the top of
-    // this file). Runs with a small concurrency cap, dedupes via
-    // in-flight/done caches so each listing id is only ever fetched once
-    // no matter how many times this effect re-fires (e.g. after every
-    // patchItem-triggered items update), and only touches rows that are
-    // genuinely missing the field — it never re-fetches rows that already
-    // have it, including ones already fixed by a previous enrichment pass
-    // or by a quick-edit save.
-    const inFlightIdsRef = useRef(new Set());
-
-    // One self-contained pass per items-change: grab up to ENRICH_CONCURRENCY
-    // rows that are still missing units_per_master_pack, fetch just those,
-    // merge whatever comes back, and stop. No persistent worker loop, no
-    // manual "how many workers are alive" counter to get out of sync — the
-    // natural items→effect→setItems→items cycle re-triggers the next batch
-    // on its own, throttled to a handful of requests at a time.
-
-
     const stats = useMemo(() => {
-        const total = enrichedItems.length;
-        const live = enrichedItems.filter((it) => it.is_active !== false && it.review_status === "approved").length;
-        const low = enrichedItems.filter((it) => stockState(it.stock_quantity) === "low").length;
-        const out = enrichedItems.filter((it) => stockState(it.stock_quantity) === "out").length;
-        const pending = enrichedItems.filter((it) => it.review_status === "pending_review").length;
-        const rejected = enrichedItems.filter((it) => it.review_status === "rejected").length;
-        const paused = enrichedItems.filter((it) => it.is_active === false).length;
+        const total = items.length;
+        const live = items.filter((it) => it.is_active !== false && it.review_status === "approved").length;
+        const low = items.filter((it) => stockState(it.stock_quantity) === "low").length;
+        const out = items.filter((it) => stockState(it.stock_quantity) === "out").length;
+        const pending = items.filter((it) => it.review_status === "pending_review").length;
+        const rejected = items.filter((it) => it.review_status === "rejected").length;
+        const paused = items.filter((it) => it.is_active === false).length;
         return { total, live, low, out, pending, rejected, paused };
-    }, [enrichedItems]);
+    }, [items]);
 
     const filtered = useMemo(() => {
-        let list = enrichedItems;
+        let list = items;
         if (statusFilter === "live") list = list.filter((it) => it.is_active !== false && it.review_status === "approved");
         else if (statusFilter === "paused") list = list.filter((it) => it.is_active === false);
         else if (statusFilter === "pending_review") list = list.filter((it) => it.review_status === "pending_review");
@@ -1202,7 +1228,7 @@ export default function SellerManageListingsPage() {
             });
         }
         return list;
-    }, [enrichedItems, statusFilter, needsRestockOnly, query]);
+    }, [items, statusFilter, needsRestockOnly, query]);
 
     function patchItem(id, patch) {
         setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
@@ -1230,10 +1256,6 @@ export default function SellerManageListingsPage() {
     async function handleQuickSave(id, payload, optimisticPatch) {
         const prevItem = items.find((it) => it.id === id);
         patchItem(id, optimisticPatch);
-        setUnitInfoById((prev) => ({
-            ...prev,
-            [id]: { units_per_master_pack: optimisticPatch.units_per_master_pack, pack_size: prevItem?.pack_size, unit: prevItem?.unit },
-        }));
         setQuickEditId(null);
         const res = await updateSellerProductSubmission(token, id, payload);
         if (res?.success) {
@@ -1298,7 +1320,7 @@ export default function SellerManageListingsPage() {
                             style={{ borderColor: C.hair, color: C.muted }}
                         >
                             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                            {lastSynced ? `Synced ${timeAgo(lastSynced)}` : "Sync"}
+                            {lastSynced ? `Sync` : "Sync"}
                         </button>
                     </div>
 

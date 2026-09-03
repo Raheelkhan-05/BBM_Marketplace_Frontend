@@ -12,6 +12,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
 import SmartLink from "./SmartLink.jsx";
 import { NAV_ITEMS } from "./navItems.js";
+import { preloadRoute } from "../routePreload.js";
 
 const C = {
   ink: "#141B22",
@@ -81,12 +82,22 @@ function ScrollableNav({ navItems, pathname, navMaxWidth }) {
               <button
                 key={it.id}
                 onClick={it.onClick}
+                // Prefetches this tab's page code the moment the cursor
+                // arrives (desktop) or the finger touches down (mobile) —
+                // typically 100-300ms before the click/tap itself actually
+                // registers. By the time onClick fires, the chunk is
+                // usually already cached, so the route switch renders
+                // immediately instead of waiting on a network fetch.
+                onMouseEnter={(e) => {
+                  if (it.to) preloadRoute(it.to);
+                  if (!active) e.currentTarget.style.background = "rgba(20,27,34,0.045)";
+                }}
+                onTouchStart={() => { if (it.to) preloadRoute(it.to); }}
                 className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors duration-150 lg:px-4 lg:text-[13px]"
                 style={{
                   color: active ? "#fff" : C.ink,
                   background: active ? C.secondary : "transparent",
                 }}
-                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(20,27,34,0.045)"; }}
                 onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
               >
                 <Icon className="h-3.5 w-3.5 lg:h-4 lg:w-4" style={{ color: active ? "#fff" : C.muted }} />

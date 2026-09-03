@@ -53,6 +53,7 @@ export default function HomePage() {
                     <HomeProductFeed category={activeCategory} q={query} />
                 </main>
             </SmoothScrollProvider>
+
             <FloatingSellButton to="/seller/sell" label="Sell" />
         </div>
     );
