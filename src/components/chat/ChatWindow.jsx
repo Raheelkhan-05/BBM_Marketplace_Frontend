@@ -27,27 +27,42 @@
 //    bottom (or it's your own message)" — otherwise a quiet "N new
 //    messages" pill offers to jump down, same as any mature chat product.
 //
-// 4. NEW — CreditBar / TransportBar (and the composer's growing textarea)
-//    sit ABOVE the scrollable message list as flex siblings. When one of
-//    them mounts late (after its own async fetch resolves) or unmounts,
-//    the scroll container's clientHeight changes on its own, with no
-//    change to `messages` at all — so none of the scroll-anchoring logic
-//    above ever saw it happen. scrollTop stayed fixed while clientHeight
+// 4. CreditBar / TransportBar (and the composer's growing textarea) sit
+//    ABOVE the scrollable message list as flex siblings. When one of them
+//    mounts late (after its own async fetch resolves) or unmounts, the
+//    scroll container's clientHeight changes on its own, with no change
+//    to `messages` at all — so none of the scroll-anchoring logic above
+//    ever saw it happen. scrollTop stayed fixed while clientHeight
 //    shrank/grew, and the thread visibly slid to make room. Fixed with a
 //    ResizeObserver on the scroll container itself: if the user was
 //    pinned to the bottom, any resize re-pins them, regardless of why the
 //    container resized.
 //
-// 5. NEW — Lenis (or any similar smooth-scroll library attached at the
+// 5. Lenis (or any similar smooth-scroll library attached at the
 //    window/body level) was intercepting wheel/touch events before they
 //    reached this thread's own `overflow-y-auto` div, hijacking scroll
 //    for the whole page instead of letting the message list scroll
 //    natively. Fixed by stopping wheel/touch propagation at the scroll
 //    container so Lenis's window-level listener never sees the event,
 //    plus a `data-lenis-prevent` attribute for setups that check for it.
+//
+// 6. UX PASS (this version):
+//    - Transport mode selector uses icons + explicit choice (no silent
+//      default) via the shared TRANSPORT_MODES / modeMeta table, used
+//      identically by TransportBar and the transport_proposal bubble so
+//      the two can never show mismatched labels for the same mode again.
+//    - Every async decision button (credit approve/decline, credit
+//      on/off toggle, transport agree/suggest-different) now shows its
+//      own inline spinner and disables its sibling while in flight,
+//      instead of giving zero feedback on a slow network.
+//    - "Suggest different" on a transport proposal now declines AND
+//      immediately reopens the propose sheet, instead of leaving the
+//      person to hunt for the truck icon again.
+//    - A transport proposal you sent that got declined shows an inline
+//      "Propose again" action right on the bubble.
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowDown, CreditCard, Truck, Loader2, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle } from "lucide-react";
+import { ArrowLeft, ArrowDown, CreditCard, Truck, Loader2, Pencil, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, Bus, TrainFront, Package, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
 import useChatMessages, { usePresence, useCredit, useTransportPreference } from "../../hooks/useChat.js";
@@ -75,6 +90,18 @@ const prefersReducedMotion =
 
 function initials(name) {
     return (name || "?").trim().split(" ").slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
+}
+
+// shared source of truth for mode display — used by TransportBar AND
+// the transport_proposal bubble, so they can never show different
+// labels/icons for the same mode again.
+const TRANSPORT_MODES = {
+    bus: { label: "Bus", Icon: Bus },
+    train: { label: "Train", Icon: TrainFront },
+    other: { label: "Other", Icon: Package },
+};
+function modeMeta(mode) {
+    return TRANSPORT_MODES[mode] || TRANSPORT_MODES.other;
 }
 
 function dayLabel(iso) {
@@ -108,98 +135,117 @@ function TypingDots({ color = C.secondary, size = "h-1.5 w-1.5" }) {
     );
 }
 
-function TransportBar({ pref, otherName, onOpenPropose }) {
-    if (!pref) return null;
-    return (
-        <div className="flex items-center justify-between border-b px-4 py-2 text-[12px] font-semibold" style={{ borderColor: C.hair, background: C.hairSoft }}>
-            <span className="flex items-center gap-1.5" style={{ color: C.ink }}>
-                <Truck className="h-3.5 w-3.5" style={{ color: C.secondary }} />
-                Ships via {pref.mode === "bus" ? "Bus" : "Train"}{pref.transport_company ? ` · ${pref.transport_company}` : ""}
-            </span>
-            <button onClick={onOpenPropose} className="text-[11.5px] font-bold" style={{ color: C.secondary }}>Change</button>
-        </div>
-    );
-}
+function StatusStrip({
+    credit, viewerRole, otherName,
+    onRequestCredit, onToggleCredit, onDecideCredit, requestingCredit,
+    transportPref, onOpenTransportSheet,
+}) {
+    const [decidingCredit, setDecidingCredit] = useState(null); // 'approved' | 'rejected' | null
+    const [togglingCredit, setTogglingCredit] = useState(false);
 
-function CreditBar({ credit, viewerRole, otherName, onRequest, onToggle, onDecide, requesting }) {
+    const handleDecideCredit = async (id, decision) => {
+        setDecidingCredit(decision);
+        await onDecideCredit(id, decision);
+        setDecidingCredit(null);
+    };
+    const handleToggleCredit = async (enabled) => {
+        setTogglingCredit(true);
+        await onToggleCredit(enabled);
+        setTogglingCredit(false);
+    };
+
+    // ---- credit chip ----
+    let creditCell = null;
     if (viewerRole === "buyer") {
         const cooldownActive = credit?.status === "rejected" && credit.cooldown_until && new Date(credit.cooldown_until) > new Date();
         if (!credit || credit.status === "revoked" || (credit.status === "rejected" && !cooldownActive)) {
-            return (
-                <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: `${C.secondary}08` }}>
-                    <span className="flex items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: C.ink }}>
-                        <CreditCard className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Buy on credit from {otherName}
-                    </span>
-                    <button onClick={onRequest} disabled={requesting}
-                        className="shrink-0 rounded-lg px-3.5 py-1.5 text-[11.5px] font-bold text-white transition-opacity disabled:opacity-60"
-                        style={{ background: C.secondary }}>
-                        {requesting ? "Requesting…" : "Request credit"}
-                    </button>
-                </div>
+            creditCell = (
+                <button onClick={onRequestCredit} disabled={requestingCredit}
+                    className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-60"
+                    style={{ background: `${C.secondary}10`, color: C.secondary }}>
+                    {requestingCredit ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
+                    {requestingCredit ? "Requesting…" : "Buy on credit"}
+                </button>
             );
-        }
-        if (credit.status === "pending") {
-            return (
-                <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: C.warnBg }}>
-                    <Clock3 className="h-3.5 w-3.5 shrink-0" style={{ color: C.warn }} />
-                    <span className="text-[12px] font-semibold" style={{ color: C.warn }}>Credit request pending {otherName}'s approval.</span>
-                </div>
-            );
-        }
-        if (credit.status === "approved") {
-            return (
-                <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: C.okBg }}>
-                    <Check className="h-3.5 w-3.5 shrink-0" style={{ color: C.ok }} />
-                    <span className="text-[12px] font-bold" style={{ color: C.ok }}>Credit approved — you can buy on credit from {otherName}.</span>
-                </div>
-            );
-        }
-        if (cooldownActive) {
-            return (
-                <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: C.hairSoft }}>
-                    <span className="text-[12px] font-semibold" style={{ color: C.muted }}>
-                        Credit request declined. You can request again after {new Date(credit.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.
-                    </span>
-                </div>
-            );
-        }
-        return null;
-    }
-
-    if (viewerRole === "seller" && credit?.status === "pending") {
-        return (
-            <div className="flex items-center justify-between gap-3 border-b px-4 py-2.5" style={{ borderColor: C.hair, background: C.warnBg }}>
-                <span className="flex items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: C.warn }}>
-                    <CreditCard className="h-3.5 w-3.5" /> {otherName} requested to buy on credit
+        } else if (credit.status === "pending") {
+            creditCell = (
+                <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: C.warnBg, color: C.warn }} title={`Waiting for ${otherName}'s approval`}>
+                    <Clock3 className="h-3 w-3" /> Credit pending
                 </span>
-                <div className="flex shrink-0 gap-1.5">
-                    <button onClick={() => onDecide(credit.id, "approved")}
-                        className="rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white transition-transform active:scale-95" style={{ background: C.ok }}>
-                        Approve
-                    </button>
-                    <button onClick={() => onDecide(credit.id, "rejected")}
-                        className="rounded-lg border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-black/[0.03]" style={{ borderColor: C.hair, color: C.muted, background: "#fff" }}>
-                        Decline
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    if (viewerRole === "seller" && credit && (credit.status === "approved" || credit.status === "revoked")) {
-        const on = credit.status === "approved";
-        return (
-            <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: C.hair, background: on ? C.okBg : "#FAFAFA" }}>
-                <span className="text-[12.5px] font-bold" style={{ color: C.ink }}>
-                    Credit for {otherName}: <span style={{ color: on ? C.ok : C.muted }}>{on ? "Enabled" : "Off"}</span>
+            );
+        } else if (credit.status === "approved") {
+            creditCell = (
+                <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: C.okBg, color: C.ok }} title={`Approved by ${otherName} — you can buy on credit`}>
+                    <Check className="h-3 w-3" /> Credit approved
                 </span>
-                <button onClick={() => onToggle(!on)} className="relative h-6 w-11 shrink-0 rounded-full transition-colors" style={{ background: on ? C.ok : "#CBD2D6" }}>
-                    <span className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-all" style={{ left: on ? "22px" : "2px" }} />
+            );
+        } else if (cooldownActive) {
+            const retryDate = new Date(credit.cooldown_until);
+            creditCell = (
+                <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: C.hairSoft, color: C.muted }}
+                    title={`Declined — you can request again after ${retryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`}>
+                    Credit declined · retry {retryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                </span>
+            );
+        }
+    } else if (viewerRole === "seller" && credit?.status === "pending") {
+        creditCell = (
+            <div className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1" style={{ background: C.warnBg }} title={`${otherName} requested to buy on credit`}>
+                <CreditCard className="h-3 w-3 shrink-0" style={{ color: C.warn }} />
+                <span className="text-[11px] font-bold" style={{ color: C.warn }}>Credit request</span>
+                <button onClick={() => handleDecideCredit(credit.id, "approved")} disabled={!!decidingCredit}
+                    className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold text-white transition-transform active:scale-95 disabled:opacity-60" style={{ background: C.ok }}>
+                    {decidingCredit === "approved" && <Loader2 className="h-2.5 w-2.5 animate-spin" />} Approve
+                </button>
+                <button onClick={() => handleDecideCredit(credit.id, "rejected")} disabled={!!decidingCredit}
+                    className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-bold transition-colors hover:bg-black/[0.03] disabled:opacity-60" style={{ borderColor: C.hair, color: C.muted, background: "#fff" }}>
+                    {decidingCredit === "rejected" && <Loader2 className="h-2.5 w-2.5 animate-spin" />} Decline
                 </button>
             </div>
         );
+    } else if (viewerRole === "seller" && credit && (credit.status === "approved" || credit.status === "revoked")) {
+        const on = credit.status === "approved";
+        creditCell = (
+            <button onClick={() => handleToggleCredit(!on)} disabled={togglingCredit}
+                className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-bold transition-colors disabled:opacity-60"
+                style={{ background: on ? C.okBg : C.hairSoft, color: on ? C.ok : C.muted }}
+                title={on ? `Credit enabled for ${otherName}` : `Credit off for ${otherName}`}>
+                <CreditCard className="h-3 w-3" /> Credit: {on ? "On" : "Off"}
+                {togglingCredit ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                    <span className="relative ml-0.5 h-4 w-7 rounded-full transition-colors" style={{ background: on ? C.ok : "#CBD2D6" }}>
+                        <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-all" style={{ left: on ? "14px" : "2px" }} />
+                    </span>
+                )}
+            </button>
+        );
     }
-    return null;
+
+    // ---- transport chip ----
+    let transportCell = null;
+    if (transportPref?.status === "confirmed") {
+        const { label, Icon } = modeMeta(transportPref.mode);
+        transportCell = (
+            <button onClick={onOpenTransportSheet}
+                className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-bold transition-colors hover:opacity-80"
+                style={{ background: C.hairSoft, color: C.ink }}
+                title="Tap to change transport preference">
+                <Icon className="h-3 w-3 shrink-0" style={{ color: C.secondary }} />
+                <span className="max-w-[140px] truncate">{label}{transportPref.transport_company ? ` · ${transportPref.transport_company}` : ""}</span>
+                <Pencil className="h-2.5 w-2.5 shrink-0" style={{ color: C.muted }} />
+            </button>
+        );
+    }
+
+    if (!creditCell && !transportCell) return null;
+
+    return (
+        <div className="flex flex-wrap items-center gap-1.5 border-b px-3 py-1.5" style={{ borderColor: C.hair, background: C.surface }}>
+            {creditCell}
+            {transportCell}
+        </div>
+    );
 }
 
 function ChatHeader({ meta, otherPresence, otherTyping, onBack }) {
@@ -268,9 +314,29 @@ function TypingBubble() {
 }
 
 function TransportProposeSheet({ open, onClose, current, onSubmit }) {
-    const [mode, setMode] = useState(current?.mode || "bus");
+    const [mode, setMode] = useState(current?.mode || null);
     const [company, setCompany] = useState(current?.transport_company || "");
     const [details, setDetails] = useState(current?.details || "");
+    const [submitting, setSubmitting] = useState(false);
+
+    // re-seed from `current` each time the sheet is (re)opened, so
+    // re-opening after a decline/change starts from the latest state
+    // instead of stale values from the previous open.
+    useEffect(() => {
+        if (open) {
+            setMode(current?.mode || null);
+            setCompany(current?.transport_company || "");
+            setDetails(current?.details || "");
+        }
+    }, [open, current]);
+
+    const handleSubmit = async () => {
+        if (!mode || submitting) return;
+        setSubmitting(true);
+        await onSubmit(mode, company.trim() || null, details.trim() || null);
+        setSubmitting(false);
+        onClose();
+    };
 
     return (
         <AnimatePresence>
@@ -285,23 +351,43 @@ function TransportProposeSheet({ open, onClose, current, onSubmit }) {
                         initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.2, ease: EASE }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <p className="text-[13px] font-extrabold" style={{ color: C.ink }}>Propose transport</p>
-                        <div className="mt-3 flex gap-2">
-                            {["bus", "train", "other"].map((m) => (
-                                <button key={m} onClick={() => setMode(m)}
-                                    className="rounded-full border px-3 py-1.5 text-[12px] font-bold capitalize transition-colors"
-                                    style={{ borderColor: mode === m ? C.secondary : C.hair, background: mode === m ? `${C.secondary}12` : "#fff", color: mode === m ? C.secondary : C.muted }}>
-                                    {m}
+                        <div className="flex items-center justify-between">
+                            <p className="text-[14px] font-extrabold" style={{ color: C.ink }}>Propose transport</p>
+                            <button onClick={onClose} className="rounded-full p-1 transition-colors hover:bg-black/5">
+                                <X className="h-4 w-4" style={{ color: C.muted }} />
+                            </button>
+                        </div>
+                        <p className="mt-1 text-[11.5px] font-medium" style={{ color: C.muted }}>
+                            They'll see this as a card in the chat and can agree or suggest a different one.
+                        </p>
+
+                        {current?.status === "pending" && (
+                            <p className="mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: C.warnBg, color: C.warn }}>
+                                There's already a pending proposal — sending a new one replaces it.
+                            </p>
+                        )}
+
+                        <div className="mt-3.5 grid grid-cols-3 gap-2">
+                            {Object.entries(TRANSPORT_MODES).map(([key, { label, Icon }]) => (
+                                <button key={key} onClick={() => setMode(key)}
+                                    className="flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition-colors"
+                                    style={{ borderColor: mode === key ? C.secondary : C.hair, background: mode === key ? `${C.secondary}0f` : "#fff" }}>
+                                    <Icon className="h-4.5 w-4.5" style={{ color: mode === key ? C.secondary : C.muted }} />
+                                    <span className="text-[11.5px] font-bold" style={{ color: mode === key ? C.secondary : C.ink }}>{label}</span>
                                 </button>
                             ))}
                         </div>
+
                         <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Transport company (optional) — e.g. Patel Transport"
                             className="mt-3 w-full rounded-lg border px-3 py-2 text-[13px] outline-none transition-colors focus:border-[#006F83]" style={{ borderColor: C.hair }} />
-                        <input value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Notes (optional)"
-                            className="mt-2 w-full rounded-lg border px-3 py-2 text-[13px] outline-none transition-colors focus:border-[#006F83]" style={{ borderColor: C.hair }} />
-                        <button onClick={() => { onSubmit(mode, company.trim() || null, details.trim() || null); onClose(); }}
-                            className="mt-3 w-full rounded-xl py-2.5 text-[13px] font-bold text-white transition-transform active:scale-[0.98]" style={{ background: C.secondary }}>
-                            Send proposal
+                        <textarea value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Notes (optional) — pickup point, timing, etc." rows={2}
+                            className="mt-2 w-full resize-none rounded-lg border px-3 py-2 text-[13px] outline-none transition-colors focus:border-[#006F83]" style={{ borderColor: C.hair }} />
+
+                        <button onClick={handleSubmit} disabled={!mode || submitting}
+                            className="mt-3.5 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13px] font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
+                            style={{ background: C.secondary }}>
+                            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                            {submitting ? "Sending…" : "Send proposal"}
                         </button>
                     </motion.div>
                 </motion.div>
@@ -324,8 +410,9 @@ function TickIcon({ status, onRetry }) {
     return <Check className="h-3.5 w-3.5" style={{ color: "rgba(255,255,255,0.7)" }} />;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry, credit, transportPref, onTransportDecision }) {
+const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry, credit, transportPref, onTransportDecision, onOpenTransportSheet }) {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [decidingAction, setDecidingAction] = useState(null); // 'confirmed' | 'declined' | null
     const menuRef = useRef(null);
     useEffect(() => {
         if (!menuOpen) return;
@@ -366,31 +453,53 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
         const p = message.metadata;
         const isCurrent = transportPref?.id === p.prefId;
         const status = isCurrent ? transportPref.status : null;
+        const { label, Icon } = modeMeta(p.mode);
         const statusStyle = {
             pending: { color: C.warn, bg: C.warnBg, label: "Proposed" },
             confirmed: { color: C.ok, bg: C.okBg, label: "Agreed" },
             declined: { color: C.muted, bg: C.hairSoft, label: "Declined" },
         }[status] || { color: C.muted, bg: C.hairSoft, label: "Sent" };
 
+        const handleDecision = async (decision) => {
+            setDecidingAction(decision);
+            await onTransportDecision(p.prefId, decision);
+            setDecidingAction(null);
+            if (decision === "declined") onOpenTransportSheet?.();
+        };
+
         return (
             <div className="mb-3 flex justify-center">
                 <div className="flex w-full max-w-[280px] flex-col gap-2 rounded-2xl border px-3.5 py-3" style={{ borderColor: C.hair, background: C.surface }}>
                     <div className="flex items-center gap-2">
-                        <Truck className="h-4 w-4" style={{ color: C.secondary }} />
+                        <Icon className="h-4 w-4" style={{ color: C.secondary }} />
                         <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>Transport preference</p>
                     </div>
                     <p className="text-[13px] font-semibold" style={{ color: C.ink }}>
-                        {p.mode === "bus" ? "Bus" : p.mode === "train" ? "Train" : "Other"}
-                        {p.transportCompany ? ` · ${p.transportCompany}` : ""}
+                        {label}{p.transportCompany ? ` · ${p.transportCompany}` : ""}
                     </p>
                     {p.details && <p className="text-[11.5px]" style={{ color: C.muted }}>{p.details}</p>}
                     <span className="w-fit rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>{statusStyle.label}</span>
 
                     {isCurrent && status === "pending" && !isMine && (
                         <div className="flex gap-1.5">
-                            <button onClick={() => onTransportDecision(p.prefId, "confirmed")} className="flex-1 rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white transition-transform active:scale-95" style={{ background: C.ok }}>Agree</button>
-                            <button onClick={() => onTransportDecision(p.prefId, "declined")} className="flex-1 rounded-lg border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-black/[0.03]" style={{ borderColor: C.hair, color: C.muted }}>Suggest different</button>
+                            <button onClick={() => handleDecision("confirmed")} disabled={!!decidingAction}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white transition-transform active:scale-95 disabled:opacity-60" style={{ background: C.ok }}>
+                                {decidingAction === "confirmed" && <Loader2 className="h-3 w-3 animate-spin" />}
+                                Agree
+                            </button>
+                            <button onClick={() => handleDecision("declined")} disabled={!!decidingAction}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-black/[0.03] disabled:opacity-60" style={{ borderColor: C.hair, color: C.muted }}>
+                                {decidingAction === "declined" && <Loader2 className="h-3 w-3 animate-spin" />}
+                                Suggest different
+                            </button>
                         </div>
+                    )}
+
+                    {isCurrent && status === "declined" && isMine && (
+                        <button onClick={() => onOpenTransportSheet?.()}
+                            className="rounded-lg border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-black/[0.03]" style={{ borderColor: C.secondary, color: C.secondary }}>
+                            Propose again
+                        </button>
                     )}
                 </div>
             </div>
@@ -471,7 +580,8 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
     prev.isMine === next.isMine &&
     prev.groupPos === next.groupPos &&
     prev.credit === next.credit &&
-    prev.transportPref === next.transportPref
+    prev.transportPref === next.transportPref &&
+    prev.onOpenTransportSheet === next.onOpenTransportSheet
 ));
 
 // ---- composer -----------------------------------------------------------
@@ -550,6 +660,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
 
     const { pref: transportPref, propose: proposeTransport, decide: decideTransport } = useTransportPreference(meta?.otherUserId, conversationId);
     const [transportSheetOpen, setTransportSheetOpen] = useState(false);
+    const openTransportSheet = useCallback(() => setTransportSheetOpen(true), []);
 
     const { credit, viewerRole, request, decide, toggle } = useCredit(meta?.otherUserId);
     const [requestingCredit, setRequestingCredit] = useState(false);
@@ -636,16 +747,16 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     // the initial "opening a chat" placement above is handled separately,
     // so this only ever fires for genuinely new activity.
     //
-    // NEW (fix #6) — this MUST be useLayoutEffect, not useEffect. A new
-    // message mounting extends the container's scrollHeight immediately
-    // on commit, but plain useEffect only runs AFTER the browser paints.
-    // That gap meant every send/receive painted one real frame with the
-    // new bubble sitting at its unscrolled position (often half-clipped
-    // at the bottom edge) before this effect fired and snapped scrollTop
-    // down — which is exactly the "jumps for a second, then settles"
-    // flash being reported. useLayoutEffect runs synchronously after the
-    // DOM mutation but before paint, so the scroll correction is applied
-    // before the browser ever shows the unscrolled frame.
+    // This MUST be useLayoutEffect, not useEffect. A new message mounting
+    // extends the container's scrollHeight immediately on commit, but
+    // plain useEffect only runs AFTER the browser paints. That gap meant
+    // every send/receive painted one real frame with the new bubble
+    // sitting at its unscrolled position (often half-clipped at the
+    // bottom edge) before this effect fired and snapped scrollTop down —
+    // which is exactly the "jumps for a second, then settles" flash being
+    // reported. useLayoutEffect runs synchronously after the DOM mutation
+    // but before paint, so the scroll correction is applied before the
+    // browser ever shows the unscrolled frame.
     useLayoutEffect(() => {
         if (!scrollStateRef.current.placedAtBottom) return;
         const last = messages[messages.length - 1];
@@ -669,23 +780,23 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         if (otherTyping && isNearBottom) jumpToBottom(false);
     }, [otherTyping, isNearBottom, jumpToBottom]);
 
-    // NEW (fix #4) — keep a ref mirror of `isNearBottom` so the
-    // ResizeObserver callback below (which fires outside React's render
-    // cycle) always reads the latest "was the user pinned to the bottom"
-    // value without needing to be re-subscribed on every change.
+    // keep a ref mirror of `isNearBottom` so the ResizeObserver callback
+    // below (which fires outside React's render cycle) always reads the
+    // latest "was the user pinned to the bottom" value without needing to
+    // be re-subscribed on every change.
     const pinnedRef = useRef(true);
     useEffect(() => { pinnedRef.current = isNearBottom; }, [isNearBottom]);
 
-    // NEW (fix #4) — re-pin to the bottom whenever the scroll container's
-    // own box size changes for reasons that have nothing to do with new
-    // messages: CreditBar / TransportBar mounting once their async fetch
-    // resolves (or unmounting when a credit is revoked / transport is
-    // cleared), or the composer's textarea growing/shrinking. None of
-    // these change `messages`, so the effects above never fire for them —
-    // scrollTop stays fixed while clientHeight shifts under it, which is
-    // exactly what reads as "the thread slid to make room". This only
-    // re-pins if the user was already at the bottom; if they'd scrolled
-    // up to read history, a layout shift elsewhere won't yank them down.
+    // re-pin to the bottom whenever the scroll container's own box size
+    // changes for reasons that have nothing to do with new messages:
+    // CreditBar / TransportBar mounting once their async fetch resolves
+    // (or unmounting when a credit is revoked / transport is cleared), or
+    // the composer's textarea growing/shrinking. None of these change
+    // `messages`, so the effects above never fire for them — scrollTop
+    // stays fixed while clientHeight shifts under it, which is exactly
+    // what reads as "the thread slid to make room". This only re-pins if
+    // the user was already at the bottom; if they'd scrolled up to read
+    // history, a layout shift elsewhere won't yank them down.
     useEffect(() => {
         const el = scrollRef.current;
         if (!el || typeof ResizeObserver === "undefined") return;
@@ -711,11 +822,11 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         setNewIncoming(0);
     };
 
-    // NEW (fix #5) — Lenis (or any similar window/body-level smooth-scroll
-    // library) attaches its own wheel/touch listeners further up the DOM
-    // tree and calls preventDefault() there to drive its virtual scroll.
-    // Because those events bubble up from this div, Lenis was seeing them
-    // before this container's native scroll ever got a chance to run,
+    // Lenis (or any similar window/body-level smooth-scroll library)
+    // attaches its own wheel/touch listeners further up the DOM tree and
+    // calls preventDefault() there to drive its virtual scroll. Because
+    // those events bubble up from this div, Lenis was seeing them before
+    // this container's native scroll ever got a chance to run,
     // effectively hijacking scroll for the whole page instead of letting
     // the thread scroll on its own. Stopping propagation here (NOT
     // preventDefault — we still want the browser's native scroll on this
@@ -738,11 +849,11 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
             )}
 
             <ChatHeader meta={meta} otherPresence={otherPresence} otherTyping={otherTyping} onBack={onBack} />
-            <CreditBar
+            <StatusStrip
                 credit={credit} viewerRole={viewerRole} otherName={meta?.otherShopName || meta?.title || "them"}
-                onRequest={handleRequestCredit} onToggle={toggle} onDecide={decide} requesting={requestingCredit}
+                onRequestCredit={handleRequestCredit} onToggleCredit={toggle} onDecideCredit={decide} requestingCredit={requestingCredit}
+                transportPref={transportPref} onOpenTransportSheet={openTransportSheet}
             />
-            <TransportBar pref={transportPref?.status === "confirmed" ? transportPref : null} otherName={meta?.otherShopName || meta?.title} onOpenPropose={() => setTransportSheetOpen(true)} />
 
             <div className="relative min-h-0 flex-1">
                 <div
@@ -798,6 +909,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                                             credit={credit}
                                             transportPref={transportPref}
                                             onTransportDecision={decideTransport}
+                                            onOpenTransportSheet={openTransportSheet}
                                         />
                                     </div>
                                 );
@@ -828,7 +940,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 onSend={send}
                 sending={sending}
                 onTypingChange={notifyTyping}
-                onOpenTransport={() => setTransportSheetOpen(true)}
+                onOpenTransport={openTransportSheet}
             />
             <TransportProposeSheet
                 open={transportSheetOpen}

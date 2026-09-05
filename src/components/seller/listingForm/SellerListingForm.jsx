@@ -11,6 +11,30 @@
 // and never read `initialValues`, so the edit route never prefilled the
 // form. Now accepts `mode`, `identityReadOnly`, `brandDisplay`, and
 // `initialValues` (aliases kept for back-compat).
+//
+// BUGFIX (this pass): `moq` and `stock_quantity` are both persisted on
+// the backend in the listing's canonical SALE UNIT — Master Pack when
+// the listing has an outer pack (units_per_master_pack >= 2), Pack
+// otherwise (see the backend controller's toListingRow(), which tags
+// both fields "already sale-unit qty"). Two places in this file
+// disagreed with that:
+//   1. The old `toPacksFromBasis`/`fromPacksToBasis` helpers converted
+//      the Stock field to literal Packs instead of the sale unit, so
+//      switching the stock unit dropdown to "Master Pack" and entering
+//      e.g. 600 got multiplied by units_per_master_pack before saving
+//      (600 → 1800 for a 1-Master-Pack-=-3-Packs listing).
+//   2. The initial-values loader divided an already-correct sale-unit
+//      MOQ by masterPackSize on open, based on a stale "MOQ is stored
+//      in Packs" assumption — so Edit showed a different (wrong,
+//      smaller) MOQ than the read-only Detail view, and saving from
+//      Edit without touching MOQ would silently overwrite the correct
+//      value in the database with the wrong one.
+// Both are fixed below by routing stock through the actual sale unit
+// (not literal Packs), and by no longer re-deriving MOQ on load since
+// it already arrives in the unit the field expects. Sample quantity
+// (stored in base units) had the same class of bug on the initial-load
+// side — see the fix in SellerManageListingsPage.jsx's
+// submissionToInitialValues().
 import { useEffect, useMemo, useState } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
@@ -164,21 +188,27 @@ function fromBaseUnitsToBasis(basis, baseUnits, packSize, masterPackSize) {
     return baseUnits; // per_unit
 }
 
-// stock_quantity is stored in Packs on the backend.
-function toPacksFromBasis(basis, qty, packSize, masterPackSize) {
-    const q = Number(qty) || 0;
+// stock_quantity is stored on the backend as the listing's canonical
+// SALE UNIT quantity — Master Pack when the listing has an outer pack
+// (masterPackSize > 1), Pack otherwise. It is NOT always literal Packs.
+// (The previous toPacksFromBasis/fromPacksToBasis pair assumed "Packs"
+// unconditionally, which is what silently multiplied entered Master
+// Pack quantities by masterPackSize before saving — see the file header
+// note.) Routing through base units and then through whichever unit is
+// ACTUALLY the sale unit fixes that, and keeps this in lockstep with how
+// `moq` is already handled everywhere else on this page.
+function saleUnitSizeInBaseUnits(packSize, masterPackSize) {
     const pack = Number(packSize) > 0 ? Number(packSize) : 1;
     const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
-    if (basis === "per_unit") return q / pack;
-    if (basis === "per_master_pack") return q * master;
-    return q; // per_pack
+    return Number(masterPackSize) > 1 ? pack * master : pack;
 }
-function fromPacksToBasis(basis, packs, packSize, masterPackSize) {
-    const pack = Number(packSize) > 0 ? Number(packSize) : 1;
-    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
-    if (basis === "per_unit") return packs * pack;
-    if (basis === "per_master_pack") return packs / master;
-    return packs; // per_pack
+function toSaleUnitQtyFromBasis(basis, qty, packSize, masterPackSize) {
+    const baseUnits = toBaseUnitsFromBasis(basis, qty, packSize, masterPackSize);
+    return baseUnits / saleUnitSizeInBaseUnits(packSize, masterPackSize);
+}
+function fromSaleUnitQtyToBasis(basis, saleUnitQty, packSize, masterPackSize) {
+    const baseUnits = (Number(saleUnitQty) || 0) * saleUnitSizeInBaseUnits(packSize, masterPackSize);
+    return fromBaseUnitsToBasis(basis, baseUnits, packSize, masterPackSize);
 }
 
 // New helper functions — dynamic labels for Pack size / Master pack size
@@ -307,13 +337,15 @@ export default function SellerListingForm({
         base.hasOuterPack = Number(base.masterPackSize) > 1;
         if (!base.hasOuterPack) base.masterPackSize = "0";
 
-        // incoming moq (from initialValues / backend) is always in Packs —
-        // convert it to Master Packs for display if this listing has one, so
-        // the field shows the same number of physical units the seller
-        // originally intended, in whichever unit is currently displayed.
-        if (base.hasOuterPack && Number(base.moq) > 0 && Number(base.masterPackSize) > 0) {
-            base.moq = String(Math.round(Number(base.moq) / Number(base.masterPackSize)) || "");
-        }
+        // NOTE: incoming moq (from initialValues / backend) already arrives
+        // in the listing's canonical SALE UNIT — Master Packs when this
+        // listing has an outer pack, Packs otherwise — which is exactly
+        // the unit the MOQ field above is labeled in (see getMoqLabel).
+        // No conversion is needed here. (This used to divide by
+        // masterPackSize under a stale "MOQ is stored in Packs"
+        // assumption, which showed a different, wrong MOQ in this form
+        // than the read-only Detail view, and would silently persist
+        // that wrong value if the seller saved without touching MOQ.)
 
         if (locked) {
             const hasPackaging = base.unit && Number(base.packSize) > 0;
@@ -340,8 +372,8 @@ export default function SellerListingForm({
     };
     const changeStockBasis = (newBasis) => {
         setForm((f) => {
-            const packs = toPacksFromBasis(f.stockQuantityBasis, f.stockQuantity, f.packSize, f.masterPackSize);
-            const display = fromPacksToBasis(newBasis, packs, f.packSize, f.masterPackSize);
+            const saleUnitQty = toSaleUnitQtyFromBasis(f.stockQuantityBasis, f.stockQuantity, f.packSize, f.masterPackSize);
+            const display = fromSaleUnitQtyToBasis(newBasis, saleUnitQty, f.packSize, f.masterPackSize);
             return { ...f, stockQuantityBasis: newBasis, stockQuantity: f.stockQuantity !== "" ? String(round2(display)) : f.stockQuantity };
         });
     };
@@ -582,13 +614,16 @@ export default function SellerListingForm({
         }
         setError(null);
 
-        // MOQ is always persisted in Packs. If the seller entered it in
-        // Master Packs (hasOuterPack on), convert up before it leaves this
-        // component — every downstream consumer (backend validation,
-        // place_order math, BuyNowModal's computeMinQuantity) assumes Packs.
-        const moqInPacks = form.hasOuterPack
-            ? round2ToInt(Number(form.moq) * Number(form.masterPackSize))
-            : Number(form.moq);
+        // NOTE: form.moq is already the listing's canonical SALE UNIT
+        // quantity (Master Packs when hasOuterPack, Packs otherwise) — the
+        // same unit the backend stores it in (see toListingRow's "already
+        // sale-unit qty" comment) — so it's sent through as-is below, only
+        // rounded to a whole number. (A previous, unused `moqInPacks`
+        // conversion used to live here under a stale "MOQ is always
+        // persisted in Packs" assumption; it never actually reached
+        // onSubmit's payload, but its presence is exactly what led the
+        // initial-values loader above to wrongly divide MOQ on Edit — both
+        // are removed now to stop that confusion from recurring.)
 
         const dl = form.dispatchingLocations;
         let dispatchingLocations = [];
@@ -612,15 +647,17 @@ export default function SellerListingForm({
             ? round2(toBaseUnitsFromBasis(form.sampleUnitBasis, form.sampleQuantity, form.packSize, form.masterPackSize))
             : form.sampleQuantity;
 
-        const stockQuantityPacks = form.stockType === "ready_stock"
-            ? round2(toPacksFromBasis(form.stockQuantityBasis, form.stockQuantity, form.packSize, form.masterPackSize))
+        // Stock, like MOQ, is persisted in the listing's canonical SALE
+        // UNIT — not literal Packs. See toSaleUnitQtyFromBasis above.
+        const stockQuantitySaleUnits = form.stockType === "ready_stock"
+            ? round2(toSaleUnitQtyFromBasis(form.stockQuantityBasis, form.stockQuantity, form.packSize, form.masterPackSize))
             : form.stockQuantity;
 
         onSubmit({
             ...form,
             moq: String(round2ToInt(form.moq)),
             sampleQuantity: form.sampleAvailable ? String(sampleQuantityBaseUnits) : form.sampleQuantity,
-            stockQuantity: form.stockType === "ready_stock" ? String(stockQuantityPacks) : form.stockQuantity,
+            stockQuantity: form.stockType === "ready_stock" ? String(stockQuantitySaleUnits) : form.stockQuantity,
             dispatchingLocations,
         });
     };

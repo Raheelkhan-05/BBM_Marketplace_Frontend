@@ -1,68 +1,23 @@
 // src/pages/SellerManageListingsPage.jsx
 //
-// Full-page listing manager — the standalone counterpart to the compact
-// SellerQuickManageListings home-widget. Same visual language as
-// HomePage/CategoryStrip/HomeProductFeed (same C tokens, card shapes,
-// mask-faded scroll lists, framer-motion), but built for actually running
-// a catalog rather than a quick glance from the home feed.
+// ... (all header comments unchanged from the previous version) ...
 //
-// What lives on THIS page vs. the existing edit form:
-//  - Quick, high-frequency updates (price, stock on hand, MOQ, lead time,
-//    activate/deactivate) happen inline, right on the row — no navigation.
-//  - Everything else a listing can have (pack size, master pack, discount
-//    slabs, quality certificates, dispatching locations, return/warranty
-//    policy, tax & legal, etc.) is already fully editable on the existing
-//    /seller/sell/:id/edit screen (SellerListingForm) — this page's
-//    "Edit listing" action just routes there instead of re-implementing
-//    ~20 fields a second time.
-//
-// SALE-UNIT CONSISTENCY:
-// Every quantity-and-price-facing number on this page — MOQ, the row's
-// "₹X /unit", "N left" stock label, and the detail modal's MOQ/Stock/
-// Pricing rows — is displayed in the listing's SALE unit: Master Pack
-// when the listing has an outer pack (units_per_master_pack >= 1), Pack
-// otherwise. This matches the convention BuyNowModal.jsx and
-// HomeProductFeed.jsx already use (via shared/packUnits.js).
-//
-// PERFORMANCE FIX (this pass): fetchMySellerSubmissions() now returns
-// pack_size and units_per_master_pack directly (see the backend
-// controller's SUBMISSION_LIST_COLUMNS) — every row already carries what
-// it needs from the very first response. The background "enrichment"
-// pass that used to live here (a capped-concurrency loop firing one
-// fetchSellerSubmissionDetail() PER LISTING just to learn its sale unit)
-// has been removed entirely: it was turning "load my listings" into
-// "load my listings, then N more full-detail round trips," which was the
-// single biggest source of both request count and load time on this
-// page. A seller with 20 listings previously triggered 21 requests on
-// open; now it's 1.
-//
-// GST PRICING (simplified):
-// GST is always calculated ON TOP of the entered base price — there is no
-// "price already includes GST" branch anywhere on this page anymore.
-//   final price = base price + (base price * gst% / 100)
-// This applies identically in the Quick Update panel and the read-only
-// Detail modal, via the shared computeGstAmount()/computeFinalPrice()
-// helpers below, so the two surfaces can never disagree with each other.
-//
-// Stock sync: this page re-fetches on window focus/visibility, on the
-// existing subscribeUserEvent("submissions_changed", ...) channel, and on
-// the app's resync handler — the same mechanisms SellerQuickManageListings
-// already relies on. NOTE: placeOrder() in orders.controller.js currently
-// only calls notifyUserOrdersChanged() for the seller, not
-// notifySellerSubmissionsChanged(). Stock still updates correctly in the
-// database the moment an order is placed — but for this page's live badge
-// to reflect it the instant it happens (rather than on next focus/visit),
-// wire a notifySellerSubmissionsChanged(sellerId) call into placeOrder's
-// success path too.
-//
-// LOADING STATES (this pass): the three in-modal/panel loading states
-// (QuickUpdatePanel, ListingDetailModal, EditListingModal) previously
-// showed a centered Loader2 spinner while fetchSellerSubmissionDetail()
-// was in flight. They now show a skeleton shaped like the real content
-// (same section layout, same row heights) and crossfade into the real
-// content via AnimatePresence the moment it's ready, instead of a hard
-// spinner→content swap. Loader2 is still used for the small inline
-// button spinners (Save / Activate / Deactivate).
+// BUGFIX (this pass): submissionToInitialValues() had two unit-conversion
+// bugs that only showed up in the Edit form (the read-only Detail modal
+// was always correct, which is why the two disagreed):
+//   1. stockQuantityBasis was hardcoded to "per_pack" even though
+//      stock_quantity is stored in the listing's canonical SALE UNIT
+//      (Master Pack when the listing has an outer pack). That mismatched
+//      label/number combination is also what SellerListingForm.jsx's
+//      unit-basis converter multiplied out incorrectly on save — see the
+//      fix there.
+//   2. sample_quantity is stored in BASE UNITS regardless of which basis
+//      it was entered in, but was being handed to the edit form
+//      unconverted and paired with the original entry basis — so the
+//      field showed the raw base-unit count mislabeled as Packs/Master
+//      Packs, and every re-save would multiply it again.
+// Both are fixed below; the Detail modal's Sample row had the same
+// display bug and is fixed too.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -122,6 +77,21 @@ function summarizeDispatchLocations(locations) {
 // Pluralizes a sale-unit label ("Pack" / "Master Pack") against a qty.
 function pluralizeUnit(qty, label) {
     return `${label}${Number(qty) === 1 ? "" : "s"}`;
+}
+
+// sample_quantity is persisted on the backend in BASE UNITS (Pieces/Kg/
+// etc.) regardless of which basis (Unit/Pack/Master Pack) it was
+// originally entered in — sample_unit_basis just records which of those
+// three to display it back as. This converts a raw base-unit count back
+// into that basis, so it's never shown (or, worse, re-saved) as if the
+// base-unit number were already a Pack/Master-Pack count.
+function baseUnitsToBasisQty(baseUnits, basis, packSize, masterPackSize) {
+    const units = Number(baseUnits) || 0;
+    const pack = Number(packSize) > 0 ? Number(packSize) : 1;
+    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+    if (basis === "per_pack") return round2(units / pack);
+    if (basis === "per_master_pack") return round2(units / (pack * master));
+    return round2(units); // per_unit
 }
 
 function formatMoney(n) {
@@ -235,6 +205,7 @@ function submissionToInitialValues(s) {
     const packSize = Number(s.pack_size) || 1;
     const masterPackSize = Number(s.units_per_master_pack) || 1;
     const hasOuterPackLocal = masterPackSize > 1;
+    const sampleBasis = s.sample_unit_basis || "per_unit";
 
     return {
         productName: s.product_name || s.brand?.name || "",
@@ -262,14 +233,30 @@ function submissionToInitialValues(s) {
         freightIncluded: Boolean(s.freight_included),
 
         sampleAvailable: Boolean(s.sample_available),
-        sampleQuantity: s.sample_quantity != null ? String(s.sample_quantity) : "",
-        sampleUnitBasis: s.sample_unit_basis || "per_unit",
+        // sample_quantity is stored in BASE UNITS, not in sampleBasis —
+        // convert back to sampleBasis here so the edit form shows the
+        // real quantity the seller meant (e.g. "2 Packs"), not the raw
+        // base-unit count mislabeled as Packs (e.g. "20 Packs"), which
+        // would also get re-multiplied on every subsequent save.
+        sampleQuantity: s.sample_quantity != null
+            ? String(baseUnitsToBasisQty(s.sample_quantity, sampleBasis, packSize, masterPackSize))
+            : "",
+        sampleUnitBasis: sampleBasis,
 
         priceSlabs: s.quantity_discounts || [],
 
         stockType: s.stock_type || "ready_stock",
+        // stock_quantity is stored in the listing's canonical SALE UNIT
+        // (Master Pack when this listing has an outer pack, Pack
+        // otherwise) — the same convention MOQ uses. The number itself
+        // needs no conversion; the basis just has to match what it's
+        // already denominated in, or the unit-toggle math in
+        // SellerListingForm ends up converting a correct number into a
+        // wrong one the moment the seller touches the dropdown (or saves
+        // without touching it, on a listing whose sale unit is Master
+        // Pack but the basis here was left at "per_pack").
         stockQuantity: s.stock_quantity != null ? String(s.stock_quantity) : "",
-        stockQuantityBasis: "per_pack",
+        stockQuantityBasis: hasOuterPackLocal ? "per_master_pack" : "per_pack",
         productionLeadTimeDays: s.production_lead_time_days != null ? String(s.production_lead_time_days) : "",
 
         moq: s.moq != null ? String(s.moq) : "",
@@ -1055,7 +1042,7 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
 
                                 <SectionBlock icon={Boxes} title="Quantity">
                                     <ReadRow label="MOQ" value={s.moq != null ? `${s.moq} ${pluralizeUnit(s.moq, saleUnit)}` : null} />
-                                    <ReadRow label="Sample" value={s.sample_available ? `${s.sample_quantity || ""} ${s.sample_unit_basis ? { per_unit: "unit(s)", per_pack: "pack(s)", per_master_pack: "master pack(s)" }[s.sample_unit_basis] : ""}`.trim() || "Available" : "Not available"} />
+                                    <ReadRow label="Sample" value={s.sample_available ? `${baseUnitsToBasisQty(s.sample_quantity, s.sample_unit_basis, s.pack_size, s.units_per_master_pack) || ""} ${s.sample_unit_basis ? { per_unit: "unit(s)", per_pack: "pack(s)", per_master_pack: "master pack(s)" }[s.sample_unit_basis] : ""}`.trim() || "Available" : "Not available"} />
                                 </SectionBlock>
                                 {(s.price_slabs?.length > 0 || s.quantity_discounts?.length > 0) && (
                                     <div className="-mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">

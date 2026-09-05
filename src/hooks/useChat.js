@@ -574,20 +574,35 @@ export function useTransportPreference(otherUserId, conversationId) {
 
     useEffect(() => { load(); }, [load]);
 
+    // Apply the row the server pushes directly — this is what makes the
+    // other person's screen update instantly and reliably, instead of
+    // depending on a second fetch (and its buyer/seller direction
+    // resolution) landing correctly after the fact. `load()` is only a
+    // fallback for a payload that's missing the row for some reason.
     useEffect(() => {
         if (!socket || !connected) return;
-        socket.on("transport:proposed", load);
-        socket.on("transport:decided", load);
-        return () => { socket.off("transport:proposed", load); socket.off("transport:decided", load); };
+        const applyOrReload = (payload) => {
+            if (payload?.preference) setPref(payload.preference);
+            else load();
+        };
+        socket.on("transport:proposed", applyOrReload);
+        socket.on("transport:decided", applyOrReload);
+        return () => { socket.off("transport:proposed", applyOrReload); socket.off("transport:decided", applyOrReload); };
     }, [socket, connected, load]);
 
     const propose = useCallback((mode, transportCompany, details) =>
-        proposeTransportApi(token, { otherUserId, conversationId, mode, transportCompany, details }).then((r) => { if (r?.success) load(); return r; }),
-        [token, otherUserId, conversationId, load]);
+        proposeTransportApi(token, { otherUserId, conversationId, mode, transportCompany, details }).then((r) => {
+            if (r?.success && r.preference) setPref(r.preference);
+            else if (r?.success) load();
+            return r;
+        }), [token, otherUserId, conversationId, load]);
 
     const decide = useCallback((prefId, decision) =>
-        decideTransportApi(token, prefId, decision).then((r) => { if (r?.success) load(); return r; }),
-        [token, load]);
+        decideTransportApi(token, prefId, decision).then((r) => {
+            if (r?.success && r.preference) setPref(r.preference);
+            else if (r?.success) load();
+            return r;
+        }), [token, load]);
 
     return { pref, viewerRole, propose, decide };
 }
