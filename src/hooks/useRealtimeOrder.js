@@ -1,7 +1,29 @@
+// hooks/useRealtimeOrder.js
+//
+// FIX: this used to subscribe to a Supabase Realtime broadcast channel
+// (`supabase.channel('order-' + orderId)`), but nothing on the backend
+// ever publishes to Supabase Realtime — every order-status push goes out
+// through this app's own Socket.IO server instead (see
+// realtimeBroadcast.js's notifyOrderChanged/notifyUserOrdersChanged,
+// which both call getIO().to(...).emit(...)). Those are two completely
+// separate pub/sub systems that don't talk to each other, on top of which
+// the channel names didn't even match ("order-123" vs "order:123") — so
+// this listener was subscribed to a channel nothing could ever reach.
+//
+// Fix: use subscribeUserEvent from AuthContext — this app's existing,
+// already-working wrapper around that same Socket.IO connection (the
+// same one SellerManageListingsPage already relies on for
+// "submissions_changed"). The backend already emits "orders_changed" to
+// the buyer's and seller's own user-channel on every order transition
+// (place, cancel, confirm/reject/process/ship/deliver) — this just needed
+// to listen on the right transport. Reloading this one order on any
+// "orders_changed" event is cheap and avoids needing a separate
+// per-order Socket.IO room with its own explicit join/leave lifecycle.
 import { useEffect, useCallback, useState } from "react";
-import { supabase } from "../utils/supabaseClient.js";
+import { useAuth } from "../context/AuthContext.jsx";
 
 export default function useRealtimeOrder({ orderId, fetcher }) {
+    const { subscribeUserEvent } = useAuth();
     const [order, setOrder] = useState(null);
     const [events, setEvents] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -18,17 +40,7 @@ export default function useRealtimeOrder({ orderId, fetcher }) {
 
     useEffect(() => { load(); }, [load]);
 
-    // Both buyer and seller land on the same order-scoped channel, regardless
-    // of role — the UUID itself is the access boundary here, same idea as
-    // channelToken but scoped to one order instead of one user.
-    useEffect(() => {
-        if (!orderId) return;
-        const channel = supabase
-            .channel(`order-${orderId}`)
-            .on("broadcast", { event: "order_updated" }, () => load())
-            .subscribe();
-        return () => { supabase.removeChannel(channel); };
-    }, [orderId, load]);
+    useEffect(() => subscribeUserEvent?.("orders_changed", () => load()), [subscribeUserEvent, load]);
 
     return { order, events, loading, reload: load };
 }

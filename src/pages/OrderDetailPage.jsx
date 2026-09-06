@@ -1,12 +1,14 @@
-// pages/OrderDetailPage.jsx — RESTYLED to match SellerListingForm's type
-// scale and card language. Also adds what was missing for the buyer's own
-// view: seller/shop info, delivery estimate, sample badge, and a
-// stock-shortfall note (the list page already had these; the detail page
-// didn't). Keeps this page buyer-relevant only — no platform fee or
-// seller payout figures, since those aren't the buyer's concern.
+// pages/OrderDetailPage.jsx — merges PurchaseOrdersPage + SalesOrdersPage into one
+// route with a top-level tab switcher. "Sales" tab is only shown/rendered
+// when the current user is an approved seller.
+//
+// NEW (this pass): shows the transport preference (mode/company/details)
+// that was agreed with the seller, if one was snapshotted onto this order
+// at placement time (orders.transport_mode, set by place_order when
+// BuyNowModal forwards a confirmed buyer_seller_transport_prefs row).
 import { useCallback } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Package, MapPin, Loader2, CheckCircle2, Circle, XCircle, Radio, Store } from "lucide-react";
+import { ArrowLeft, Package, MapPin, Loader2, CheckCircle2, Circle, XCircle, Radio, Store, Truck } from "lucide-react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchOrderById, cancelMyOrder } from "../utils/api.js";
@@ -65,6 +67,17 @@ function saleUnitLabelFromBasis(basis) {
     if (basis === "per_master_pack") return "Master Pack";
     if (basis === "per_pack") return "Pack";
     return null;
+}
+
+// Turns the raw orders.transport_mode value ("bus"/"train"/"other"/…)
+// into a display label. Falls back to a capitalized version of whatever
+// string is there so an unrecognized future mode still shows something
+// sensible instead of nothing.
+function transportModeLabel(mode) {
+    if (!mode) return null;
+    if (mode === "bus") return "Bus";
+    if (mode === "train") return "Train";
+    return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
 function deriveOrderTotals(order) {
@@ -181,6 +194,22 @@ export default function OrderDetailPage() {
                         )}
                         {shouldShowShortfall(order) && <StockShortfallNote audience="buyer" />}
                     </div>
+                </Card>
+            )}
+
+            {order.transport_mode && (
+                <Card title="Transport">
+                    <p className="flex items-center gap-1.5 text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>
+                        <Truck className="h-4 w-4" style={{ color: C.secondary }} />
+                        {transportModeLabel(order.transport_mode)}
+                        {order.transport_company ? ` · ${order.transport_company}` : ""}
+                    </p>
+                    {order.transport_details && (
+                        <p className="mt-1.5 text-[12px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>{order.transport_details}</p>
+                    )}
+                    <p className="mt-1.5 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                        Agreed with the seller in chat before this order was placed.
+                    </p>
                 </Card>
             )}
 

@@ -5,9 +5,14 @@
 // handling. Keeps this page seller-relevant only — buyer contact +
 // address + GST verification (their concern), payout breakdown (their
 // concern) — no buyer-side navigation chrome.
+//
+// NEW (this pass): shows the transport preference (mode/company/details)
+// agreed with the buyer, if one was snapshotted onto this order at
+// placement time (orders.transport_mode) — mirrors the same card added
+// to OrderDetailPage.jsx (the buyer's view of the same order).
 import { useCallback, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Package, User, Phone, Mail, ShieldCheck, Loader2, MapPin, IndianRupee, Radio, CheckCircle2, Circle, XCircle } from "lucide-react";
+import { ArrowLeft, Package, User, Phone, Mail, ShieldCheck, Loader2, MapPin, IndianRupee, Radio, CheckCircle2, Circle, XCircle, Truck } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchSellerOrderById, confirmSellerOrder, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder } from "../utils/api.js";
@@ -30,6 +35,17 @@ function inr(n) {
 
 function round2(n) {
     return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+// Turns the raw orders.transport_mode value ("bus"/"train"/"other"/…)
+// into a display label. Falls back to a capitalized version of whatever
+// string is there so an unrecognized future mode still shows something
+// sensible instead of nothing.
+function transportModeLabel(mode) {
+    if (!mode) return null;
+    if (mode === "bus") return "Bus";
+    if (mode === "train") return "Train";
+    return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
 function Timeline({ status, events }) {
@@ -135,6 +151,22 @@ export default function SellerOrderDetailPage() {
                             <DeliveryEstimate order={order} item={firstItem} deliveredAt={deliveredEvent?.created_at} label="Buyer's est. delivery" />
                         )}
                     </div>
+                </Card>
+            )}
+
+            {order.transport_mode && (
+                <Card title="Transport">
+                    <p className="flex items-center gap-1.5 text-[13.5px] font-bold tracking-wider" style={{ color: C.ink }}>
+                        <Truck className="h-4 w-4" style={{ color: C.secondary }} />
+                        {transportModeLabel(order.transport_mode)}
+                        {order.transport_company ? ` · ${order.transport_company}` : ""}
+                    </p>
+                    {order.transport_details && (
+                        <p className="mt-1.5 text-[12px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>{order.transport_details}</p>
+                    )}
+                    <p className="mt-1.5 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                        Agreed with the buyer in chat before this order was placed.
+                    </p>
                 </Card>
             )}
 
