@@ -829,12 +829,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         Below the seller's MOQ of {formatMoqForBasis(quote.moq, seller)}.
                                     </Notice>
                                 )}
-                                {!isSample && quote?.stockShortfall && (
+                                {/* {!isSample && quote?.stockShortfall && (
                                     <Notice tone="warn">Only {quote.availableStock} {quote.unit} currently in stock — this order will still be placed, but fulfilment may take a little longer.</Notice>
                                 )}
                                 {!isSample && quote?.outOfStock && (
                                     <Notice tone="danger">This item is currently out of stock.</Notice>
-                                )}
+                                )} */}
 
                                 {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
                                     <div className="flex flex-col gap-1.5">

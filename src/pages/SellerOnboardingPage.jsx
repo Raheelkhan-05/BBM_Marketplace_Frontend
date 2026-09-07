@@ -6,62 +6,64 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
-  fetchSellerOnboarding, saveSellerProgress, submitSellerOnboarding, uploadSellerFile,
+  saveSellerProgress, submitSellerOnboarding, uploadSellerFile,
   requestSellerWhatsappOtp, verifySellerWhatsappOtp,
 } from "../utils/api.js";
+import useSellerProfileStatus from "../hooks/useSellerProfileStatus.js";
 import { extractColorsFromImage } from "../utils/colorExtract.js";
 import { STEPS, BUSINESS_TYPES, WEEKDAYS, guessBusinessType } from "../components/seller/fieldConfigs.js";
 import { readPendingProductSubmission } from "./SellPublishProductPage.jsx";
 
-// SellerOnboardingForm is a plain form component (no route/navigation
-// assumptions beyond the redirect-back-to-listing-form case below) so it
-// can be mounted directly inside SellerManageListingsPage when the seller
-// hasn't onboarded yet, instead of living on its own page. Pass
-// onSubmitted to react once the application has been submitted (e.g. to
-// refetch the auth profile so the parent page can update immediately).
 export function SellerOnboardingForm({ onSubmitted }) {
   const { token } = useAuth();
   const navigate = useNavigate();
 
-  const [loaded, setLoaded] = useState(false);
+  const { profile: fetchedProfile, business: gstData, seller: liveSeller, loading: sellerStatusLoading } = useSellerProfileStatus(token);
+
   const [stepIndex, setStepIndex] = useState(0);
   const [form, setForm] = useState({
     country: "India", primary_color: "#047084", secondary_color: "#d2462b",
     working_days: [],
   });
-  const [gstData, setGstData] = useState(null);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
 
+  // Populates local form state from the hook's data whenever it lands —
+  // on first load AND whenever a live "seller_profile_changed" refetch
+  // brings in fresher data (e.g. an admin approving this seller while
+  // this tab is still open on the onboarding form).
   useEffect(() => {
-    if (!token) return;
-    (async () => {
-      const res = await fetchSellerOnboarding(token);
-      if (res?.success) {
-        setGstData(res.business);
-        const seller = res.seller || {};
-        setForm((f) => ({
-          ...f,
-          contact_person: res.profile?.name || "",
-          whatsapp_number: res.profile?.phone || "",
-          whatsapp_verified: !!res.profile?.phone_verified,
-          original_verified_number: res.profile?.phone_verified ? res.profile.phone : null,
-          address: res.business?.registered_address || "",
-          pincode: res.business?.pincode || "",
-          city: res.business?.district || "",
-          state: res.business?.state || "",
-          pan: res.business?.pan || "",
-          display_name: res.business?.trade_name || res.business?.legal_name || "",
-          business_type: guessBusinessType(res.business?.nature_of_business),
-          ...seller,
-        }));
-      }
-      setLoaded(true);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (sellerStatusLoading) return;
+    setForm((f) => ({
+      ...f,
+      contact_person: fetchedProfile?.name || f.contact_person || "",
+      whatsapp_number: fetchedProfile?.phone || f.whatsapp_number || "",
+      whatsapp_verified: !!fetchedProfile?.phone_verified,
+      original_verified_number: fetchedProfile?.phone_verified ? fetchedProfile.phone : null,
+      address: gstData?.registered_address || f.address || "",
+      pincode: gstData?.pincode || f.pincode || "",
+      city: gstData?.district || f.city || "",
+      state: gstData?.state || f.state || "",
+      pan: gstData?.pan || f.pan || "",
+      display_name: gstData?.trade_name || gstData?.legal_name || f.display_name || "",
+      business_type: f.business_type || guessBusinessType(gstData?.nature_of_business),
+      ...(liveSeller || {}),
+    }));
+  }, [sellerStatusLoading, fetchedProfile, gstData, liveSeller]);
+
+  // If this seller's status flips to "approved" while they're sitting on
+  // the onboarding form — most commonly via the live socket event above —
+  // there's nothing left to onboard. Bounce straight to the real
+  // dashboard instead of leaving a stale form an admin's approval could
+  // otherwise get overwritten by on next save.
+  useEffect(() => {
+    if (liveSeller?.status === "approved") {
+      onSubmitted?.(liveSeller);
+      navigate("/seller/listings", { replace: true });
+    }
+  }, [liveSeller?.status, liveSeller, onSubmitted, navigate]);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -93,14 +95,6 @@ export function SellerOnboardingForm({ onSubmitted }) {
 
       onSubmitted?.(res.seller);
 
-      // If the seller had a product listing waiting because they weren't
-      // onboarded yet, send them straight back to the listing form instead
-      // of showing the generic "submitted" screen — SellPublishProductPage
-      // reads the same cached draft and prefills the form automatically.
-      // We deliberately do NOT clear the draft here: it's only cleared once
-      // that actual product submission succeeds, so if the shop is still
-      // pending review, the draft survives and <PendingSubmissionWatcher />
-      // (mounted in App.jsx) auto-submits it later once approved.
       const pending = readPendingProductSubmission();
       if (pending?.form) {
         navigate("/seller/sell", { replace: true });
@@ -113,7 +107,7 @@ export function SellerOnboardingForm({ onSubmitted }) {
     }
   };
 
-  if (!loaded) {
+  if (sellerStatusLoading) {
     return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#047084]" /></div>;
   }
   if (submitted) return <SubmittedScreen />;
@@ -121,6 +115,7 @@ export function SellerOnboardingForm({ onSubmitted }) {
   const progress = ((stepIndex + 1) / STEPS.length) * 100;
 
   return (
+
     <div className="mx-auto max-w-3xl min-h-screen px-4 pb-16 pt-6 sm:px-6">
       <h1 className="text-[clamp(1.5rem,3.5vw,1.9rem)] font-bold tracking-wide text-slate-900">
         Set up your seller shop
