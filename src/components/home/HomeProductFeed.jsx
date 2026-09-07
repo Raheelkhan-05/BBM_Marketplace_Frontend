@@ -106,29 +106,6 @@ function SellerSortToggle({ value, onChange }) {
     );
 }
 
-// The number that actually answers "who's cheaper": per-Pack price paid
-// if the buyer commits to exactly this seller's own MOQ, after their
-// slab price AND any quantity-discount tier that MOQ unlocks.
-// seller.price is per base-UNIT (same convention as elsewhere in this
-// file) — scale up to per-Pack first, same anchor-then-scale direction
-// used in computePriceBreakdown.
-function effectivePricePerPackAtMoq(seller) {
-    const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
-    const pricePerPack = Number(seller.price) * packSize;
-    if (!(pricePerPack > 0)) return null;
-
-    const qty = moqInPacks(seller);
-    const slabPrice = resolveSlabUnitPrice(seller.price_slabs, qty, pricePerPack);
-    const discountPercent = resolveDiscountPercent(seller.quantity_discounts, qty);
-
-    return {
-        unitPrice: slabPrice * (1 - discountPercent / 100),
-        moqQty: qty,
-        discountPercent,
-        basis: Number(seller.units_per_master_pack) >= 1 ? "Master Pack" : "Pack",
-    };
-}
-
 function SellerPriceBlock({ pricing, unit }) {
     if (!pricing) return null;
     const { discountPercent, hasMasterPack, unit: u, pack, masterPack } = pricing;
@@ -342,16 +319,52 @@ function GstToggle({ includeGst, onChange }) {
     return (
         <button
             type="button"
+            role="switch"
+            aria-checked={includeGst}
+            aria-label={`GST ${includeGst ? "included" : "excluded"}`}
             onClick={() => onChange(!includeGst)}
-            className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10.5px] font-bold tracking-wide transition-colors duration-150"
+            className="group inline-flex items-center gap-2.5 rounded-full border px-1.5 py-1.5 transition-all duration-200 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
             style={{
-                borderColor: includeGst ? `${C.secondary}40` : C.hair,
-                background: includeGst ? `${C.secondary}0f` : "transparent",
-                color: includeGst ? C.secondary : C.muted,
+                borderColor: C.hair,
+                backgroundColor: "#FFFFFF",
+                focusRingColor: C.secondary,
             }}
         >
-            <ShieldCheck className="h-3 w-3" />
-            {includeGst ? "Incl. GST" : "Excl. GST"}
+            {/* Switch */}
+            <span
+                className="relative flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-all duration-200"
+                style={{
+                    backgroundColor: includeGst ? C.secondary : "#D9DEE2",
+                }}
+            >
+                <span
+                    className="h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-transform duration-200"
+                    style={{
+                        transform: includeGst
+                            ? "translateX(16px)"
+                            : "translateX(0px)",
+                    }}
+                />
+            </span>
+
+            {/* Label */}
+            <span className="flex min-w-[48px] flex-col items-start leading-none">
+                <span
+                    className="text-[11px] font-bold tracking-[0.02em]"
+                    style={{ color: C.ink }}
+                >
+                    GST
+                </span>
+
+                <span
+                    className="mt-0.5 text-[9.5px] font-medium"
+                    style={{
+                        color: includeGst ? C.secondary : "#7B858C",
+                    }}
+                >
+                    {includeGst ? "Included" : "Excluded"}
+                </span>
+            </span>
         </button>
     );
 }
@@ -507,10 +520,6 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
     );
 }
 
-function sellerSaleUnit(seller) {
-    return Number(seller.units_per_master_pack) >= 1 ? "Master Pack" : "Pack";
-}
-
 import { deriveDisplayPrices, hasOuterPack, getSaleUnit } from "../../shared/packUnits.js";
 
 function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, includeGst }) {
@@ -522,6 +531,13 @@ function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, in
     return { unitPrice: perBaseUnit, packPrice: perPack, masterPackPrice: perMasterPack, hasMasterPack: hasOuterPack(masterPackSize), basis: getSaleUnit(masterPackSize) };
 }
 
+// REMOVE these two — dead/legacy, superseded below:
+// function moqInPacks(seller) { ... }
+// function effectivePricePerPackAtMoq(seller) { ... }
+// (also remove unused `sellerSaleUnit` — getSaleUnit from packUnits.js already covers this)
+
+// Single source of truth for "what does this seller actually charge at qty X",
+// used by BOTH tabs so there's never a second, diverging implementation.
 function computeEffectivePricing(seller, saleQty, includeGst) {
     const gst = Number(seller.gst_percent) || 0;
     const pricePerSaleUnit = includeGst ? Number(seller.price) : Number(seller.price) / (1 + gst / 100);
@@ -543,42 +559,29 @@ function computeEffectivePricing(seller, saleQty, includeGst) {
     };
 }
 
-// This resolves the exact contradiction called out at the top — moq is
-// now unambiguously sale-unit qty, documented in one place only.
 function moqInSaleUnits(seller) {
     return Math.max(1, Number(seller.moq) || 1);
 }
 
-// All quantity thresholds worth checking for this seller: their MOQ,
-// plus every price-slab and quantity-discount minQty at or above MOQ
-// (a threshold below MOQ isn't purchasable, so it's excluded).
+// Min MOQ tab: price is locked to what the seller charges at THEIR MOQ —
+// slab + quantity-discount applied only if MOQ itself clears the threshold.
+// Best Price tab: search every real breakpoint (MOQ + every slab/discount
+// minQty at or above it) and surface whichever gives the lowest actual price.
 function candidateSaleQuantities(seller) {
     const moq = moqInSaleUnits(seller);
     const quantities = new Set([moq]);
-    (seller.price_slabs || []).forEach((s) => {
-        const q = Number(s.minQty);
-        if (q >= moq) quantities.add(q);
-    });
-    (seller.quantity_discounts || []).forEach((d) => {
-        const q = Number(d.minQty);
-        if (q >= moq) quantities.add(q);
-    });
+    (seller.price_slabs || []).forEach((s) => { const q = Number(s.minQty); if (q >= moq) quantities.add(q); });
+    (seller.quantity_discounts || []).forEach((d) => { const q = Number(d.minQty); if (q >= moq) quantities.add(q); });
     return Array.from(quantities).sort((a, b) => a - b);
 }
 
-// The genuinely lowest price this seller can offer, checked across every
-// quantity breakpoint they have — not just their MOQ. A higher-quantity
-// slab or discount tier can beat the MOQ price per unit, and this is what
-// surfaces that instead of hiding it behind "best price at MOQ" framing.
 function bestAchievablePricing(seller, includeGst) {
     const quantities = candidateSaleQuantities(seller);
     let best = null;
     for (const qty of quantities) {
         const pricing = computeEffectivePricing(seller, qty, includeGst);
         if (!pricing) continue;
-        if (!best || pricing.pack.final < best.pack.final) {
-            best = pricing;
-        }
+        if (!best || pricing.pack.final < best.pack.final) best = pricing;
     }
     return best || computeEffectivePricing(seller, moqInSaleUnits(seller), includeGst);
 }
@@ -690,6 +693,9 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                             <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                 {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
                                                 {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
+                                                {pricing?.discountPercent > 0
+                                                    ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
+                                                    : ""}
                                             </p>
                                         </div>
                                         {outOfStock ? (
