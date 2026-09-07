@@ -96,6 +96,21 @@ export const DEFAULT_LISTING_FORM = {
     returnPolicyKey: "", warrantyKey: "",
 };
 
+// Maps each section to the field keys computeMissing() can flag for it —
+// lets the header show a live "X left" count without opening the section.
+const SECTION_FIELD_MAP = {
+    product: ["productName", "brandName", "images"],
+    packaging: ["unit", "packSize", "masterPackSize", "moq", "sampleQuantity"],
+    pricing: ["gstPercent", "basePrice"],
+    fulfilment: ["stockQuantity", "productionLeadTimeDays"],
+    terms: ["returnPolicyKey", "warrantyKey"],
+    delivery: ["dispatchPincode", "dispatchingLocations"],
+};
+const FIELD_TO_SECTION = Object.entries(SECTION_FIELD_MAP).reduce((acc, [section, fields]) => {
+    fields.forEach((f) => { acc[f] = section; });
+    return acc;
+}, {});
+
 // Dynamic MOQ label/hint — mirrors whichever basis the seller is
 // currently thinking in. When there's an outer pack, MOQ is asked for in
 // Master Packs (the unit sellers actually reason in for bulk orders);
@@ -363,6 +378,27 @@ export default function SellerListingForm({
     const [touched, setTouched] = useState({});
     const [checkingBrandMatch, setCheckingBrandMatch] = useState(false);
 
+    // Only one section open at a time; "Product" is open by default since
+    // it's the first thing a seller needs to fill in.
+    const [openSection, setOpenSection] = useState("product");
+    const toggleSection = (key) => setOpenSection((cur) => (cur === key ? null : key));
+
+    const missing = useMemo(() => computeMissing(form), [form]);
+    const missingKeys = useMemo(() => new Set(missing.map((m) => m.key)), [missing]);
+    const isErr = (key) => touched[key] && missingKeys.has(key);
+    const totalRequired = useMemo(() => computeMissing(DEFAULT_LISTING_FORM).length, []);
+    const percentComplete = totalRequired > 0 ? Math.round(((totalRequired - missing.length) / totalRequired) * 100) : 100;
+
+
+    const missingCountBySection = useMemo(() => {
+        const counts = Object.fromEntries(Object.keys(SECTION_FIELD_MAP).map((k) => [k, 0]));
+        missing.forEach((m) => {
+            const section = FIELD_TO_SECTION[m.key];
+            if (section) counts[section] += 1;
+        });
+        return counts;
+    }, [missing]);
+
     const changeSampleBasis = (newBasis) => {
         setForm((f) => {
             const baseUnits = toBaseUnitsFromBasis(f.sampleUnitBasis, f.sampleQuantity, f.packSize, f.masterPackSize);
@@ -573,12 +609,6 @@ export default function SellerListingForm({
         setTouched((t) => (t.moq ? { ...t, moq: false } : t));
     };
 
-    const missing = useMemo(() => computeMissing(form), [form]);
-    const missingKeys = useMemo(() => new Set(missing.map((m) => m.key)), [missing]);
-    const isErr = (key) => touched[key] && missingKeys.has(key);
-    const totalRequired = useMemo(() => computeMissing(DEFAULT_LISTING_FORM).length, []);
-    const percentComplete = totalRequired > 0 ? Math.round(((totalRequired - missing.length) / totalRequired) * 100) : 100;
-
     const handleImageFiles = async (e) => {
         const files = Array.from(e.target.files || []);
         if (!files.length) return;
@@ -596,13 +626,19 @@ export default function SellerListingForm({
     const removeImageAt = (i) => setForm((f) => ({ ...f, images: f.images.filter((_, idx) => idx !== i) }));
 
     function jumpToError(firstMissing) {
-        requestAnimationFrame(() => {
+        const section = FIELD_TO_SECTION[firstMissing.key];
+        const needsSwitch = section && section !== openSection;
+        if (needsSwitch) setOpenSection(section);
+
+        // Wait for the open animation to finish before measuring/scrolling,
+        // otherwise scrollIntoView runs against a 0-height container.
+        setTimeout(() => {
             const target = document.getElementById(`field-${firstMissing.key}`);
             if (!target) return;
             target.scrollIntoView({ behavior: "smooth", block: "center" });
             target.style.boxShadow = "0 0 0 3px rgba(199,31,17,0.35)";
             setTimeout(() => { target.style.boxShadow = ""; }, 1600);
-        });
+        }, needsSwitch ? 260 : 0);
     }
 
     const handleSubmit = () => {
@@ -671,7 +707,8 @@ export default function SellerListingForm({
             )}
 
             {/* ---------------- Product ---------------- */}
-            <SectionCard icon={Package} title="Product" subtitle={locked ? "Already approved · locked" : "Name, brand, images & documents"} alwaysOpen>
+            <SectionCard icon={Package} title="Product" subtitle={locked ? "Already approved · locked" : "Name, brand, images & documents"}
+                open={openSection === "product"} onOpenChange={(v) => setOpenSection(v ? "product" : null)} missingCount={missingCountBySection.product}>
                 {locked ? (
                     <div className="flex items-center gap-3 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
                         {form.images?.[0] && <img src={form.images[0]} alt="" className="h-12 w-12 shrink-0 rounded-lg border object-cover" style={{ borderColor: C.hair }} />}
@@ -728,7 +765,8 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Packaging ---------------- */}
-            <SectionCard icon={Boxes} title="Packaging" alwaysOpen>
+            <SectionCard icon={Boxes} title="Packaging"
+                open={openSection === "packaging"} onOpenChange={(v) => setOpenSection(v ? "packaging" : null)} missingCount={missingCountBySection.packaging}>
                 {checkingBrandMatch && (
                     <p className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.muted }}>
                         <Loader2 className="h-3 w-3 animate-spin" /> Checking if this product already exists…
@@ -828,7 +866,8 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Pricing ---------------- */}
-            <SectionCard icon={IndianRupee} title="Tax & Pricing" alwaysOpen>
+            <SectionCard icon={IndianRupee} title="Tax & Pricing"
+                open={openSection === "pricing"} onOpenChange={(v) => setOpenSection(v ? "pricing" : null)} missingCount={missingCountBySection.pricing}>
                 <ChipToggleGroup dense label="Applicable GST % for this Product" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
                 {(() => {
                     const showMaster = form.hasOuterPack && Number(form.masterPackSize) >= 2;
@@ -1031,7 +1070,8 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Fulfilment ---------------- */}
-            <SectionCard icon={Truck} title="Fulfilment" alwaysOpen>
+            <SectionCard icon={Truck} title="Fulfilment"
+                open={openSection === "fulfilment"} onOpenChange={(v) => setOpenSection(v ? "fulfilment" : null)} missingCount={missingCountBySection.fulfilment}>
                 <ChipToggleGroup label="Fulfilment" value={form.stockType} onChange={(v) => setField("stockType", v)}
                     options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
                 {form.stockType === "ready_stock" ? (
@@ -1057,7 +1097,8 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Terms ---------------- */}
-            <SectionCard icon={FileText} title="Terms" alwaysOpen>
+            <SectionCard icon={FileText} title="Terms"
+                open={openSection === "terms"} onOpenChange={(v) => setOpenSection(v ? "terms" : null)} missingCount={missingCountBySection.terms}>
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="returnPolicyKey">
                         <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => setField("returnPolicyKey", v)} error={isErr("returnPolicyKey")} />
@@ -1069,7 +1110,8 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Delivery ---------------- */}
-            <SectionCard icon={Truck} title="Delivery">
+            <SectionCard icon={Truck} title="Delivery"
+                open={openSection === "delivery"} onOpenChange={(v) => setOpenSection(v ? "delivery" : null)} missingCount={missingCountBySection.delivery}>
                 <FieldAnchor fieldKey="dispatchPincode">
                     <div className="flex flex-col gap-1">
                         <TextField required dense label="Dispatch pincode" value={form.dispatchPincode}

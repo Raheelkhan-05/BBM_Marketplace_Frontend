@@ -4,8 +4,7 @@
 // rounded-2xl cards, hairline borders, tabular-nums, framer-motion entrance.
 import { useState, useRef, useId, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Plus, Trash2, Info, Check, X } from "lucide-react";
-
+import { ChevronDown, Plus, Trash2, Info, Check, X, CheckCircle2 } from "lucide-react";
 import { createPortal } from "react-dom";
 
 export const C = {
@@ -738,7 +737,7 @@ export function RepeatableRows2({ label, hint, rows, columns, onChange, addLabel
 
 // SectionCard — pass `alwaysOpen` for a card that's never collapsible
 // (no chevron, no click target, content always rendered).
-export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, children, open, onOpenChange, id, alwaysOpen }) {
+export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, missingCount, children, open, onOpenChange, id, alwaysOpen }) {
     const [internalOpen, setInternalOpen] = useState(!!defaultOpen);
     const isControlled = open !== undefined;
     const isOpen = alwaysOpen ? true : (isControlled ? open : internalOpen);
@@ -747,6 +746,12 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
         if (isControlled) onOpenChange?.(!isOpen);
         else setInternalOpen((o) => !o);
     };
+
+    // Only meaningful when the caller passes a real number (i.e. wired up
+    // to computeMissing) — sections without it render exactly as before.
+    const showStatus = typeof missingCount === "number";
+    const isComplete = missingCount === 0;
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -754,15 +759,35 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
             transition={{ duration: 0.24, ease: EASE }}
             id={id}
             className="overflow-hidden rounded-2xl border bg-white"
-            style={{ borderColor: C.hair }}
+            style={{ borderColor: C.hair, boxShadow: isOpen ? "0 1px 4px rgba(11,17,22,0.06)" : "none" }}
         >
             <div className="flex w-full items-center gap-2.5 px-3.5 py-3 sm:px-4">
                 <button type="button" onClick={toggle} disabled={alwaysOpen} className="flex min-w-0 flex-1 items-center gap-2.5 text-left disabled:cursor-default">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                    <span
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
+                        style={{
+                            background: showStatus && isComplete ? `${C.secondary}14` : showStatus ? `${C.primary}12` : `${C.secondary}14`,
+                            color: showStatus && !isComplete ? C.primary : C.secondary,
+                        }}
+                    >
                         <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
-                        <span className="block text-[15.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{title}</span>
+                        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                            <span className="block text-[15.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{title}</span>
+                            {showStatus && (
+                                isComplete ? (
+                                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                ) : (
+                                    <span
+                                        className="shrink-0 rounded-full px-1.5 py-0.5 text-[9.5px] font-extrabold tabular-nums tracking-wide"
+                                        style={{ background: `${C.primary}12`, color: C.primary }}
+                                    >
+                                        {missingCount} Incomplete
+                                    </span>
+                                )
+                            )}
+                        </span>
                         {subtitle && <span className="mt-0 block truncate text-[12.5px] tracking-wide font-semibold" style={{ color: C.muted }}>{subtitle}</span>}
                     </span>
                 </button>
