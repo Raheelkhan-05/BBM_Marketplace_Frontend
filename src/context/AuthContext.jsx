@@ -6,16 +6,34 @@ const AuthContext = createContext(null);
 const DEV_TOKEN_KEY = "bbm_dev_bypass_token";
 const AUTH_TOKEN_KEY = "bbm_auth_token";
 
-// Every event that can arrive on a user's own realtime channel. Adding a
-// new one here (and to the .on(...) chain in openChannel) is the ONLY
-// thing a new feature should ever need to do — nobody should open their
-// own supabase.channel() for a per-user topic again. That's what caused
-// the double-notification bug: a second channel subscribed to the same
-// topic + event as this one, so every broadcast fired twice.
-const EVENTS = ["new_notification", "submissions_changed", "orders_changed"];
-
-const RESUBSCRIBE_BASE_DELAY_MS = 1500;
-const RESUBSCRIBE_MAX_DELAY_MS = 15000;
+// REMOVED (this pass): the EVENTS list + channelRef/listenersRef/
+// openChannel/scheduleResubscribe/subscribeUserEvent machinery that used
+// to live here. It opened a Supabase Realtime broadcast channel
+// (`supabase.channel(\`user-${chanToken}\`)`) — but nothing in this app's
+// backend has ever published to Supabase Realtime. Every real-time push
+// (notifications, submissions_changed, orders_changed) goes out through
+// this app's own Socket.IO server instead (see services/realtimeBroadcast.js
+// -> getIO().to(`user:${userId}`).emit(...), and socket/chatSocket.js,
+// which is what actually joins `user:${userId}` on connect).
+//
+// That mismatch meant every consumer of subscribeUserEvent
+// (useRealtimeOrder.js, useRealtimeOrders.js, and
+// SellerManageListingsPage's "submissions_changed" listener) was
+// subscribed to a channel nothing could ever reach — updates only ever
+// appeared after a manual refresh or after the tab-visibility resync
+// safety net below happened to fire.
+//
+// The fix is NOT here: real-time order/listing updates now go through
+// useSocket() (context/SocketContext.jsx) directly, the same connection
+// useRealtimeNotifications.js already used successfully. If you have any
+// other call site still destructuring `subscribeUserEvent` from
+// useAuth(), migrate it to `useSocket()` the same way.
+//
+// KEPT: registerResyncHandler/runResync. That part was never broken —
+// it's a plain in-memory callback registry (no channel involved) used as
+// a safety net for "the tab regained focus/visibility, re-fetch in case
+// something was missed while it was backgrounded." Multiple pages
+// (SellerManageListingsPage, and now the order hooks) still rely on it.
 
 // Reads whichever session token is in localStorage, synchronously, with
 // no async work at all. Used as AuthProvider's INITIAL state (see
@@ -47,30 +65,14 @@ export function AuthProvider({ children }) {
   // there is nothing to wait for.
   const [profileLoading, setProfileLoading] = useState(!!session);
 
-  // Single shared realtime channel per user. Multiple components want
-  // events off the SAME `user-<token>` topic (bell, quick-manage
-  // listings, orders, etc). Everyone registers a callback here instead
-  // of opening their own channel — see EVENTS comment above.
-  const channelRef = useRef(null);
-  const listenersRef = useRef(Object.fromEntries(EVENTS.map((e) => [e, new Set()])));
-
-  // Consumers can also register a "catch up" refetch that runs whenever
-  // the channel comes back after being dropped, or the tab regains focus.
-  // Broadcasts are fire-and-forget over a websocket: they WILL occasionally
-  // be missed (backgrounded tab, laptop sleep, brief network loss). Push
-  // gives the instant feel; this is the safety net that guarantees the UI
-  // is never more than a reconnect/focus away from correct.
+  // Consumers can register a "catch up" refetch that runs whenever the
+  // tab regains focus/visibility, or comes back online. Real-time pushes
+  // over a websocket are fire-and-forget: they WILL occasionally be
+  // missed (backgrounded tab, laptop sleep, brief network loss). This is
+  // the safety net that guarantees the UI is never more than a
+  // reconnect/focus away from correct — independent of whichever
+  // transport a given page's live updates use.
   const resyncRef = useRef(new Set());
-
-  const retryTimerRef = useRef(null);
-  const retryAttemptRef = useRef(0);
-  const chanTokenRef = useRef(null);
-
-  const subscribeUserEvent = useCallback((event, callback) => {
-    if (!listenersRef.current[event]) listenersRef.current[event] = new Set();
-    listenersRef.current[event].add(callback);
-    return () => listenersRef.current[event]?.delete(callback);
-  }, []);
 
   const registerResyncHandler = useCallback((callback) => {
     resyncRef.current.add(callback);
@@ -83,82 +85,8 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
-  const scheduleResubscribe = useCallback((chanToken) => {
-    if (retryTimerRef.current) return; // already scheduled
-    const attempt = retryAttemptRef.current + 1;
-    retryAttemptRef.current = attempt;
-    const delay = Math.min(RESUBSCRIBE_BASE_DELAY_MS * 2 ** (attempt - 1), RESUBSCRIBE_MAX_DELAY_MS);
-    retryTimerRef.current = setTimeout(() => {
-      retryTimerRef.current = null;
-      if (chanTokenRef.current !== chanToken) return; // profile/channel changed meanwhile, abandon
-      if (channelRef.current) supabase.removeChannel(channelRef.current);
-      // eslint-disable-next-line no-use-before-define
-      channelRef.current = openChannel(chanToken);
-    }, delay);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const openChannel = useCallback((chanToken) => {
-    const channel = supabase
-      .channel(`user-${chanToken}`)
-      .on("broadcast", { event: "new_notification" }, ({ payload }) => {
-        listenersRef.current.new_notification.forEach((cb) => cb(payload));
-      })
-      .on("broadcast", { event: "submissions_changed" }, ({ payload }) => {
-        listenersRef.current.submissions_changed.forEach((cb) => cb(payload));
-      })
-      .on("broadcast", { event: "orders_changed" }, ({ payload }) => {
-        listenersRef.current.orders_changed.forEach((cb) => cb(payload));
-      })
-      .subscribe((status, err) => {
-        if (status === "SUBSCRIBED") {
-          const wasRecovering = retryAttemptRef.current > 0;
-          retryAttemptRef.current = 0;
-          if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
-          // We just (re)connected after having been down — catch up on
-          // anything broadcast while we were disconnected.
-          if (wasRecovering) runResync();
-          return;
-        }
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          if (err) console.error(`[AuthContext] realtime channel ${status}:`, err.message || err);
-          if (channelRef.current === channel && chanTokenRef.current === chanToken) {
-            scheduleResubscribe(chanToken);
-          }
-        }
-      });
-    return channel;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runResync, scheduleResubscribe]);
-
-  useEffect(() => {
-    const chanToken = profile?.notificationChannel;
-
-    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
-    retryAttemptRef.current = 0;
-    chanTokenRef.current = chanToken || null;
-
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
-    if (!chanToken) return;
-
-    channelRef.current = openChannel(chanToken);
-
-    return () => {
-      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
-      }
-    };
-
-  }, [profile?.notificationChannel, openChannel]);
-
-  // Treat "tab became visible/focused again" the same as a reconnect —
-  // background tabs are the most common way a websocket quietly dies
-  // without any of our error handlers ever firing.
+  // Treat "tab became visible/focused again" (or came back online) as a
+  // reconnect signal for anything registered via registerResyncHandler.
   useEffect(() => {
     function onVisible() {
       if (document.visibilityState === "visible") runResync();
@@ -289,7 +217,6 @@ export function AuthProvider({ children }) {
         clearSession,
         setDevSession,
         setAuthSession,
-        subscribeUserEvent,
         registerResyncHandler,
         refreshProfile: () => loadProfile(session?.access_token),
       }}

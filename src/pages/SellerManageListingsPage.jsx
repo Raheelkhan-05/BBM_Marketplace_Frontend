@@ -18,6 +18,16 @@
 //      Packs, and every re-save would multiply it again.
 // Both are fixed below; the Detail modal's Sample row had the same
 // display bug and is fixed too.
+//
+// FIX (this pass): the live "submissions_changed" listener used to go
+// through useAuth().subscribeUserEvent, which was wired to a Supabase
+// Realtime broadcast channel that nothing on the backend ever publishes
+// to (every real push goes out via this app's Socket.IO server — see
+// AuthContext.jsx's removal notes). That meant this page only ever
+// appeared to update live because of the tab-visibility resync effect
+// further below — never from the actual broadcast. Now subscribes
+// directly on the real socket.io-client connection (same one
+// useRealtimeNotifications.js already uses successfully).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -31,6 +41,7 @@ import {
     PackagePlus, Lock, Clock,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useSocket } from "../context/SocketContext.jsx";
 import { useLenis } from "../providers/SmoothScrollProvider.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider.jsx";
 import {
@@ -1127,7 +1138,8 @@ const STATUS_FILTERS = [
 ];
 
 export default function SellerManageListingsPage() {
-    const { token, profile, subscribeUserEvent, registerResyncHandler } = useAuth();
+    const { token, profile, registerResyncHandler } = useAuth();
+    const { socket } = useSocket();
     const navigate = useNavigate();
 
     const [items, setItems] = useState([]);
@@ -1174,7 +1186,22 @@ export default function SellerManageListingsPage() {
     }, [token, isApprovedSeller]);
 
     useEffect(() => { reload(); }, [reload]);
-    useEffect(() => subscribeUserEvent?.("submissions_changed", () => reload({ silent: true })), [subscribeUserEvent, reload]);
+
+    // FIX (this pass): was `subscribeUserEvent?.("submissions_changed", ...)`
+    // from useAuth() — that's wired to a Supabase Realtime broadcast
+    // channel nothing on the backend ever publishes to (see
+    // AuthContext.jsx's removal notes). This page only ever appeared to
+    // update live because of the tab-visibility resync effect further
+    // below, not because the broadcast was actually received. Now
+    // listens directly on the real socket.io-client connection, same as
+    // useRealtimeNotifications.js already does successfully.
+    useEffect(() => {
+        if (!socket) return;
+        const onSubmissionsChanged = () => reload({ silent: true });
+        socket.on("submissions_changed", onSubmissionsChanged);
+        return () => socket.off("submissions_changed", onSubmissionsChanged);
+    }, [socket, reload]);
+
     useEffect(() => registerResyncHandler?.(() => reload({ silent: true })), [registerResyncHandler, reload]);
 
     // Safety net — catches stock/order changes that happened while this
