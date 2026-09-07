@@ -226,6 +226,18 @@ export default function useChatMessages(conversationId, otherUserId) {
             }
         };
 
+        const onMessageUpdated = ({ conversationId: cid, messageId, metadataPatch }) => {
+            if (cid !== conversationId) return;
+            setMessageMap((prev) => {
+                const m = prev.get(messageId);
+                if (!m) return prev;
+                const next = new Map(prev);
+                next.set(messageId, { ...m, metadata: { ...m.metadata, ...metadataPatch } });
+                return next;
+            });
+        };
+        socket.on("message:updated", onMessageUpdated);
+
         socket.on("message:new", onNew);
         socket.on("message:status", onStatus);
         socket.on("typing:update", onTyping);
@@ -235,6 +247,7 @@ export default function useChatMessages(conversationId, otherUserId) {
             socket.off("message:status", onStatus);
             socket.off("typing:update", onTyping);
             socket.off("message:deleted", onDeleted);
+            socket.off("message:updated", onMessageUpdated);
         };
     }, [socket, connected, conversationId, myId, otherUserId, upsert, ackRead, ackDelivered]);
 
@@ -567,10 +580,10 @@ export function useTransportPreference(otherUserId, conversationId) {
 
     const load = useCallback(() => {
         if (!otherUserId || !token) return;
-        fetchTransportPreference(token, { otherUserId }).then((res) => {
+        fetchTransportPreference(token, { otherUserId, conversationId }).then((res) => {
             if (res?.success) { setPref(res.preference); setViewerRole(res.viewerRole); }
         });
-    }, [otherUserId, token]);
+    }, [otherUserId, token, conversationId]);
 
     useEffect(() => { load(); }, [load]);
 

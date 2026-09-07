@@ -64,10 +64,11 @@ export async function fetchApprovedSellers(token) {
     return res.json();
 }
 
-export async function fetchTransportPreference(token, { otherUserId, submissionId } = {}) {
+export async function fetchTransportPreference(token, { otherUserId, submissionId, conversationId } = {}) {
     const params = new URLSearchParams();
     if (submissionId) params.set("submissionId", submissionId);
     else if (otherUserId) params.set("otherUserId", otherUserId);
+    if (conversationId) params.set("conversationId", conversationId);
     const res = await fetch(`${API_BASE}/transport/preference?${params}`, { headers: authed(token) });
     return res.json();
 }

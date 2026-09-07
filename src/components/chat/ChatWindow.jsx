@@ -46,7 +46,7 @@
 //    container so Lenis's window-level listener never sees the event,
 //    plus a `data-lenis-prevent` attribute for setups that check for it.
 //
-// 6. UX PASS (this version):
+// 6. UX PASS:
 //    - Transport mode selector uses icons + explicit choice (no silent
 //      default) via the shared TRANSPORT_MODES / modeMeta table, used
 //      identically by TransportBar and the transport_proposal bubble so
@@ -60,6 +60,22 @@
 //      person to hunt for the truck icon again.
 //    - A transport proposal you sent that got declined shows an inline
 //      "Propose again" action right on the bubble.
+//
+// 7. BUGFIX (this pass):
+//    - The transport_proposal bubble's Agree / Suggest-different / Propose
+//      again buttons were gated on a variable called `isCurrent`. That
+//      name was only ever declared with `const` inside the *separate*
+//      `credit_request` branch above (block-scoped to that `if`), so it
+//      did not exist in the `transport_proposal` branch at all. Rendering
+//      any transport proposal bubble threw `ReferenceError: isCurrent is
+//      not defined` and crashed the whole message list. The correct,
+//      already-in-scope variable for "is this bubble the message backing
+//      the current live transport preference" is `isLiveProposal`
+//      (defined a few lines above and already used to compute `status`),
+//      so both gates now use that instead.
+//    - Removed two leftover placeholder lines
+//      (`{ isLiveProposal && ... && ( /* comment */ ) }`) that evaluated
+//      to `undefined` and rendered nothing — dead code from drafting.
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, ArrowDown, CreditCard, Truck, Loader2, Pencil, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, Bus, TrainFront, Package, X } from "lucide-react";
@@ -432,17 +448,24 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
             revoked: { color: C.muted, bg: C.hairSoft, label: "Turned off" },
         }[status] || { color: C.muted, bg: C.hairSoft, label: "Sent" };
 
+        const time = new Date(message.created_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+        const senderLabel = isMine ? "You requested" : "They requested";
+
         return (
-            <div className="mb-3 flex justify-center">
+            <div className={`mb-3 flex ${isMine ? "justify-end" : "justify-start"}`}>
                 <div className="flex w-full max-w-[260px] items-center gap-2.5 rounded-2xl border px-3.5 py-3" style={{ borderColor: C.hair, background: C.surface }}>
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}14`, color: C.secondary }}>
                         <CreditCard className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1">
+                        <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{senderLabel}</p>
                         <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>Credit request</p>
-                        <span className="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>
-                            {statusStyle.label}
-                        </span>
+                        <div className="mt-0.5 flex items-center justify-between gap-2">
+                            <span className="inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>
+                                {statusStyle.label}
+                            </span>
+                            <span className="text-[10px] font-semibold" style={{ color: C.muted }}>{time}</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -451,14 +474,23 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
 
     if (message.message_type === "transport_proposal") {
         const p = message.metadata;
-        const isCurrent = transportPref?.id === p.prefId;
-        const status = isCurrent ? transportPref.status : null;
+        // Whether THIS bubble is the message backing the conversation's
+        // current live transport-preference row (as opposed to an older,
+        // superseded proposal). This is the correct scope for gating the
+        // action buttons below — it's already used to compute `status`.
+        const isLiveProposal = transportPref?.request_message_id === message.id;
+        const status = p.finalStatus || (isLiveProposal ? transportPref.status : null);
+
         const { label, Icon } = modeMeta(p.mode);
         const statusStyle = {
             pending: { color: C.warn, bg: C.warnBg, label: "Proposed" },
             confirmed: { color: C.ok, bg: C.okBg, label: "Agreed" },
             declined: { color: C.muted, bg: C.hairSoft, label: "Declined" },
+            superseded: { color: C.muted, bg: C.hairSoft, label: "Replaced" },
         }[status] || { color: C.muted, bg: C.hairSoft, label: "Sent" };
+
+        const time = new Date(message.created_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
+        const senderLabel = isMine ? "You proposed" : "They proposed";
 
         const handleDecision = async (decision) => {
             setDecidingAction(decision);
@@ -468,19 +500,23 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
         };
 
         return (
-            <div className="mb-3 flex justify-center">
+            <div className={`mb-3 flex ${isMine ? "justify-end" : "justify-start"}`}>
                 <div className="flex w-full max-w-[280px] flex-col gap-2 rounded-2xl border px-3.5 py-3" style={{ borderColor: C.hair, background: C.surface }}>
                     <div className="flex items-center gap-2">
                         <Icon className="h-4 w-4" style={{ color: C.secondary }} />
                         <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>Transport preference</p>
                     </div>
+                    <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{senderLabel}</p>
                     <p className="text-[13px] font-semibold" style={{ color: C.ink }}>
                         {label}{p.transportCompany ? ` · ${p.transportCompany}` : ""}
                     </p>
                     {p.details && <p className="text-[11.5px]" style={{ color: C.muted }}>{p.details}</p>}
-                    <span className="w-fit rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>{statusStyle.label}</span>
+                    <div className="flex items-center justify-between">
+                        <span className="w-fit rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>{statusStyle.label}</span>
+                        <span className="text-[10px] font-semibold" style={{ color: C.muted }}>{time}</span>
+                    </div>
 
-                    {isCurrent && status === "pending" && !isMine && (
+                    {isLiveProposal && status === "pending" && !isMine && (
                         <div className="flex gap-1.5">
                             <button onClick={() => handleDecision("confirmed")} disabled={!!decidingAction}
                                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white transition-transform active:scale-95 disabled:opacity-60" style={{ background: C.ok }}>
@@ -495,7 +531,7 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
                         </div>
                     )}
 
-                    {isCurrent && status === "declined" && isMine && (
+                    {isLiveProposal && status === "declined" && isMine && (
                         <button onClick={() => onOpenTransportSheet?.()}
                             className="rounded-lg border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-black/[0.03]" style={{ borderColor: C.secondary, color: C.secondary }}>
                             Propose again
