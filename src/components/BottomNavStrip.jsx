@@ -23,7 +23,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
             className="fixed inset-x-0 bottom-0 z-40 border-t bg-white backdrop-blur-md md:hidden"
             style={{ borderColor: C.hair, paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-            <div className="flex gap-1.5 overflow-x-auto px-3 py-2 pb-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-1.5 overflow-x-auto px-3 py-2 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {items.map((it) => {
                     const Icon = it.icon;
                     const active = it.match(pathname);

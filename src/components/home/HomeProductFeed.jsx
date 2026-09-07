@@ -356,7 +356,7 @@ function GstToggle({ includeGst, onChange }) {
     );
 }
 
-function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst }) {
+function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
 
     const packaging = packagingLabel(
@@ -390,11 +390,11 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 6 }}
+            initial={animateEntrance ? { opacity: 0, y: 6 } : false}
             animate={{ opacity: 1, y: 0 }}
             transition={{
                 duration: 0.2,
-                delay: Math.min(idx * 0.012, 0.18),
+                delay: animateEntrance ? Math.min(idx * 0.012, 0.18) : 0,
                 ease: EASE,
             }}
             className="grid w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 border-b px-3 py-3 sm:px-4"
@@ -435,29 +435,28 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                 tabIndex={0}
                 className="min-w-0 cursor-pointer text-left"
             >
-                <div className="flex min-w-0 items-center gap-1">
-                    <p
-                        className="min-w-0 text-[14px] font-bold leading-tight tracking-wide"
-                        style={{ color: C.ink }}
-                    >
-                        {item.name}
-                    </p>
-
+                <p
+                    className="min-w-0 text-[14px] font-bold leading-tight tracking-wide"
+                    style={{ color: C.ink }}
+                >
+                    {item.name}
+                    {/* Rendered INLINE inside the title text — not as a flex
+                        sibling — so it always sits right after the last
+                        word, on whichever line that lands on. A flex
+                        sibling centers against the whole (possibly 2-line)
+                        block, which is what made it look off-kilter on
+                        longer names. */}
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
                             onInfo();
                         }}
                         aria-label="Product details"
-                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/[0.05]"
+                        className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 -translate-y-px items-center justify-center rounded-full align-middle transition-colors hover:bg-black/[0.05]"
                     >
-                        <Info
-                            className="h-3.5 w-3.5"
-                            style={{ color: C.muted }}
-                        />
+                        <Info className="h-3 w-3" style={{ color: C.muted }} />
                     </button>
-                </div>
-
+                </p>
                 <p
                     className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[11.5px] font-bold tracking-wider"
                     style={{ color: C.primary }}
@@ -749,6 +748,18 @@ function RowSkeleton() {
 export default function HomeProductFeed({ category, q = "" }) {
     const navigate = useNavigate();
     const [items, setItems] = useState([]);
+    // Root cause of the "rows re-bounce on load" bug: a row's fade/slide-in
+    // only fires on mount, and a legitimate re-query (e.g. CategoryStrip
+    // auto-selecting its default tab right after this feed's first paint)
+    // swaps in a mostly-different set of item ids almost immediately after
+    // the first render — so most rows genuinely remount and replay their
+    // entrance animation, while any id that happens to repeat (often the
+    // very top result) doesn't. That's exactly the "first row stays put,
+    // the rest bounce back in" symptom. Fix: only the FIRST time an id is
+    // ever rendered in this feed session does it get an entrance
+    // animation — a later re-render of that same id (whatever caused it)
+    // is treated as a quiet update, not a fresh arrival.
+    const seenItemIdsRef = useRef(new Set());
     const [total, setTotal] = useState(null);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -924,6 +935,14 @@ export default function HomeProductFeed({ category, q = "" }) {
     // just dims the current rows instead of hiding them entirely — no flash
     // to an empty skeleton grid.
     const showFullSkeleton = loading && items.length === 0;
+    const newlyAppearedIds = useMemo(() => {
+        const fresh = new Set();
+        for (const it of items) {
+            if (!seenItemIdsRef.current.has(it.id)) fresh.add(it.id);
+        }
+        fresh.forEach((id) => seenItemIdsRef.current.add(id));
+        return fresh;
+    }, [items]);
 
     return (
         <div>
@@ -961,6 +980,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                                             onInfo={() => setInfoItemId(item.id)}
                                             onImageOpen={setLightboxSrc}
                                             includeGst={includeGst}
+                                            animateEntrance={newlyAppearedIds.has(item.id)}
                                         />
                                         <AnimatePresence initial={false}>
                                             {isOpen && (

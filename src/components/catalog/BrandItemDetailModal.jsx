@@ -5,6 +5,7 @@ import {
     X, Loader2, Package, Info, ArrowRight, Sparkles, ShieldCheck,
     ChevronLeft, ChevronRight, ChevronDown, Maximize2,
 } from "lucide-react";
+import { inr, priceUnitLabel, packagingLabel } from "../../utils/priceFormat.js";
 import { fetchBrandItemDetail } from "../../utils/api";
 
 const C = { ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83", hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)" };
@@ -392,6 +393,11 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
     const images = item ? (item.images?.length ? item.images : (item.image ? [item.image] : [])) : [];
     const lowestPrice = item ? get(item, "lowest_price", "lowestPrice") : null;
     const highestPrice = item ? get(item, "highest_price", "highestPrice") : null;
+    const priceUnit = item ? get(item, "unit", "lowest_price_unit", "lowestPriceUnit") : null;
+    const priceMasterPackSize = item ? get(item, "units_per_master_pack", "unitsPerMasterPack", "lowest_price_master_pack_size", "lowestPriceMasterPackSize") : null;
+    const pricePackSize = item ? get(item, "pack_size", "packSize", "lowest_price_pack_size", "lowestPricePackSize") : null;
+    const priceSuffix = priceUnitLabel(priceMasterPackSize);
+    const packaging = packagingLabel(pricePackSize, priceMasterPackSize, priceUnit);
     const description = item ? get(item, "description") : null;
     const manufacturingDetails = item ? get(item, "manufacturing_details", "manufacturingDetails") : null;
     const brandImage = item ? get(item, "brand_image", "brandImage") : null;
@@ -537,19 +543,37 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                             </div>
                                         )}
 
-                                        <div className="mt-4 flex items-center justify-between rounded-xl border p-3.5" style={{ borderColor: C.hair }}>
-                                            <div>
-                                                <p className="text-[11px] font-semibold" style={{ color: C.muted }}>Price range</p>
-                                                <p className="text-[16px] font-extrabold" style={{ color: C.ink }}>
-                                                    {lowestPrice != null ? (
-                                                        lowestPrice === highestPrice ? `₹${lowestPrice}` : `₹${lowestPrice} – ₹${highestPrice}`
-                                                    ) : "Ask sellers"}
+                                        <div className="mt-4 rounded-xl border p-3.5" style={{ borderColor: C.hair }}>
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-[11px] font-semibold" style={{ color: C.muted }}>Price range</p>
+                                                    <p className="text-[16px] font-extrabold" style={{ color: C.ink }}>
+                                                        {lowestPrice != null ? (
+
+                                                            lowestPrice === highestPrice
+                                                                ? `₹${inr(lowestPrice)}`
+                                                                : `₹${inr(lowestPrice)} – ₹${inr(highestPrice)}`
+                                                        ) : "Ask sellers"}
+                                                        {lowestPrice != null && (
+                                                            <span className="ml-1 text-[11px] font-bold" style={{ color: C.muted }}>/{priceSuffix}</span>
+                                                        )}
+                                                    </p>
+                                                    {lowestPrice != null && (
+                                                        <p className="mt-0.5 text-[10px] font-semibold" style={{ color: C.muted }}>
+                                                            GST-inclusive, as listed by each seller
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-[11px] font-semibold" style={{ color: C.muted }}>Sellers</p>
+                                                    <p className="text-[16px] font-extrabold" style={{ color: C.secondary }}>{sellerCount}</p>
+                                                </div>
+                                            </div>
+                                            {packaging && (
+                                                <p className="mt-2.5 border-t pt-2.5 text-[11.5px] font-semibold" style={{ borderColor: C.hairSoft, color: C.secondary }}>
+                                                    {packaging}
                                                 </p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-[11px] font-semibold" style={{ color: C.muted }}>Sellers</p>
-                                                <p className="text-[16px] font-extrabold" style={{ color: C.secondary }}>{sellerCount}</p>
-                                            </div>
+                                            )}
                                         </div>
                                     </div>
 
