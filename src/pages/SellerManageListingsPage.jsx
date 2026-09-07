@@ -1317,37 +1317,8 @@ export default function SellerManageListingsPage() {
             <SmoothScrollProvider>
                 <main className="mx-auto max-w-5xl px-2.5 pb-24 pt-5 sm:px-4 lg:px-6">
 
-                    {/* header */}
-                    <div className="flex items-start justify-between gap-3 px-1">
-                        <div>
-                            <h1 className="font-extrabold leading-tight tracking-[-0.01em]" style={{ color: C.ink, fontSize: "clamp(20px, 2vw, 28px)" }}>
-                                Your listings
-                            </h1>
-                            <p className="mt-1 max-w-md text-[12.5px] font-medium leading-relaxed" style={{ color: C.muted }}>
-                                Stock updates the moment an order is placed or cancelled. Prices, MOQ, and lead time update instantly for buyers.
-                            </p>
-                        </div>
-                        <button
-                            onClick={() => reload({ silent: true })}
-                            disabled={refreshing}
-                            className="flex shrink-0 items-center gap-1.5 rounded-full border bg-white px-3 py-1.5 text-[11.5px] font-bold transition-colors duration-150 hover:bg-black/[0.02] disabled:opacity-60"
-                            style={{ borderColor: C.hair, color: C.muted }}
-                        >
-                            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
-                            {lastSynced ? `Sync` : "Sync"}
-                        </button>
-                    </div>
-
-                    {/* stats */}
-                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        <StatTile icon={Package} label="Listings" value={stats.total} tone="ink" />
-                        <StatTile icon={CheckCircle2} label="Live to buyers" value={stats.live} tone="secondary" />
-                        <StatTile icon={TrendingDown} label="Low stock" value={stats.low} tone="primary" />
-                        <StatTile icon={PackageX} label="Out of stock" value={stats.out} tone="primary" />
-                    </div>
-
                     {/* search + filters */}
-                    <div className="mt-5 flex flex-col gap-3">
+                    <div className="mt-0 flex flex-col gap-3">
                         <div className="relative">
                             <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: C.muted }} />
                             <input
