@@ -196,7 +196,12 @@ export default function AdminSellerSubmissionsPage() {
         if (res?.success) { load(); return res; }
         if (res?.code === "NOT_MAPPED") {
             const it = items.find((i) => i.id === id);
-            setCompleting({ id, brandItemId: it?.brand?.id, productName: it?.product_name || it?.brand?.name || "Listing" });
+            setCompleting({
+                id,
+                brandItemId: it?.brand?.id,
+                productName: it?.product_name || it?.brand?.name || "Listing",
+                suggestedManufacturer: it?.suggested_manufacturer || null,
+            });
             return res;
         }
         window.alert(res?.message || "Couldn't approve this listing.");
@@ -339,6 +344,7 @@ export default function AdminSellerSubmissionsPage() {
                     submissionId={completing.id}
                     brandItemId={completing.brandItemId}
                     productName={completing.productName}
+                    suggestedManufacturer={completing.suggestedManufacturer}
                     onClose={() => setCompleting(null)}
                     onApproved={approve}
                 />
@@ -639,6 +645,7 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
     const [saving, setSaving] = useState(false);
     const [approving, setApproving] = useState(false);
     const [error, setError] = useState("");
+    const [manufacturerAutoFilled, setManufacturerAutoFilled] = useState(false);
     const [brandItemId, setBrandItemId] = useState(null);
     const [reviewStatus, setReviewStatus] = useState(null);
     const [gp, setGp] = useState(null);
@@ -650,11 +657,12 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
         adminGetSellerSubmission(token, submissionId).then((res) => {
             if (res?.success) {
                 const s = res.submission;
+                const manufacturerValue = s.manufacturer || s.suggested_manufacturer || "";
                 setForm({
                     productName: s.product_name || "",
                     brandName: s.brand_name || "",
                     brandNotApplicable: !!s.brand_not_applicable,
-                    manufacturer: s.manufacturer || "",
+                    manufacturer: manufacturerValue,
                     modelNo: s.model_no || "",
                     gradeVariant: s.grade_variant || "",
                     description: s.description || "",
@@ -665,7 +673,6 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
                     unit: s.unit || "",
                     packSize: s.pack_size ?? "",
                     masterPackSize: s.units_per_master_pack ?? "",
-                    // hsnCode: s.hsn_code || "",
                     gstPercent: s.gst_percent ?? 18,
 
                     basePrice: s.base_price ?? "",
@@ -693,6 +700,7 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
 
                     qualityCertificates: s.quality_certificates || [],
                 });
+                setManufacturerAutoFilled(!s.manufacturer?.trim() && !!s.suggested_manufacturer);
                 setImages(s.images?.length ? s.images : (s.image ? [s.image] : []));
                 setDispatchingLocations(unflattenDispatchingLocations(s.dispatching_locations));
                 setBrandItemId(s.brand?.id || s.generic_product_brand_id || null);
@@ -704,6 +712,7 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
             setLoading(false);
         });
     }
+
     useEffect(() => { load(); /* eslint-disable-next-line */ }, [token, submissionId]);
 
     const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
@@ -861,7 +870,19 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
 
                             <SectionCard icon={FileText} title="Admin-only details" subtitle="Shared across every seller listing this item">
                                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                                    <TextField label="Manufacturer" value={form.manufacturer} onChange={(v) => set("manufacturer", v)} />
+                                    {manufacturerAutoFilled ? (
+                                        <div className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                                            <div className="min-w-0">
+                                                <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Manufacturer</p>
+                                                <p className="truncate text-[13px] font-bold" style={{ color: C.ink }}>{form.manufacturer}</p>
+                                            </div>
+                                            <button type="button" onClick={() => setManufacturerAutoFilled(false)} className="shrink-0 text-[11px] font-bold" style={{ color: C.secondary }}>
+                                                Edit
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <TextField label="Manufacturer" value={form.manufacturer} onChange={(v) => set("manufacturer", v)} />
+                                    )}
                                     <TextField label="Model / Part No." value={form.modelNo} onChange={(v) => set("modelNo", v)} />
                                 </div>
                                 <TextField label="Grade / Variant" value={form.gradeVariant} onChange={(v) => set("gradeVariant", v)} />

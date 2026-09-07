@@ -7,7 +7,7 @@
 // description, manufacturing details, specifications) in one flow, then
 // re-attempts approve. All fields here are skippable except the mapping.
 import { useState, useEffect, useRef } from "react";
-import { Loader2, CheckCircle2, X, SkipForward } from "lucide-react";
+import { Loader2, CheckCircle2, X, SkipForward, Check } from "lucide-react";
 import { adminUpdateCatalogEntry, adminListCatalog, adminCreateCatalogEntry, adminUpdateSellerSubmission } from "../../utils/api.js";
 import HierarchyCombobox from "../seller/listingForm/HierarchyCombobox.jsx";
 import { C, TextField, TextAreaField, RepeatableRows, SectionCard } from "../seller/listingForm/FormPrimitives.jsx";
@@ -30,10 +30,10 @@ function useLenisModalLock(active) {
     }, [active]);
 }
 
-export default function CompleteListingModal({ token, submissionId, brandItemId, productName, onClose, onApproved }) {
+export default function CompleteListingModal({ token, submissionId, brandItemId, productName, suggestedManufacturer, onClose, onApproved }) {
     useLenisModalLock(true);
 
-    const [step, setStep] = useState("mapping"); // "mapping" | "details"
+    const [step, setStep] = useState("mapping");
     const [categoryEntry, setCategoryEntry] = useState(null);
     const [subcategoryEntry, setSubcategoryEntry] = useState(null);
     const [genericProductEntry, setGenericProductEntry] = useState(null);
@@ -41,9 +41,10 @@ export default function CompleteListingModal({ token, submissionId, brandItemId,
     const [mappingError, setMappingError] = useState("");
 
     const [details, setDetails] = useState({
-        manufacturer: "", modelNo: "", gradeVariant: "",
+        manufacturer: suggestedManufacturer || "", modelNo: "", gradeVariant: "",
         description: "", manufacturingDetails: "", specifications: [],
     });
+    const [manufacturerAutoFilled, setManufacturerAutoFilled] = useState(!!suggestedManufacturer);
     const [finishing, setFinishing] = useState(false);
     const [finishError, setFinishError] = useState("");
 
@@ -131,14 +132,74 @@ export default function CompleteListingModal({ token, submissionId, brandItemId,
                             </p>
                             <SectionCard icon={Package} title="Identity" alwaysOpen>
                                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                                    <TextField label="Manufacturer" value={details.manufacturer} onChange={(v) => setDetails((d) => ({ ...d, manufacturer: v }))} />
-                                    <TextField label="Model / Part No." value={details.modelNo} onChange={(v) => setDetails((d) => ({ ...d, modelNo: v }))} />
+                                    {manufacturerAutoFilled ? (
+                                        <div
+                                            className="relative rounded-lg border bg-white px-3 py-2.5 transition-colors"
+                                            style={{ borderColor: C.hair }}
+                                        >
+                                            {/* Label */}
+                                            <div className="mb-1 flex items-center justify-between gap-2">
+                                                <p
+                                                    className="text-[11px] font-extrabold uppercase tracking-[1.15px]"
+                                                    style={{ color: C.muted }}
+                                                >
+                                                    Manufacturer
+                                                </p>
+
+                                                <span
+                                                    className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[8px] font-bold tracking-wider"
+                                                    style={{
+                                                        background: `${C.secondary}10`,
+                                                        color: C.secondary,
+                                                    }}
+                                                >
+                                                    <Check className="h-2.5 w-2.5" strokeWidth={2.5} />
+                                                    Auto-filled
+                                                </span>
+                                            </div>
+
+                                            {/* Value + Edit */}
+                                            <div className="flex items-center gap-2">
+                                                <p
+                                                    className="min-w-0 flex-1 truncate text-[13px] font-bold tracking-wide"
+                                                    style={{ color: C.ink }}
+                                                >
+                                                    {details.manufacturer || "—"}
+                                                </p>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setManufacturerAutoFilled(false)}
+                                                    className="shrink-0 rounded-md px-1.5 py-1 text-[10px] font-bold transition-colors duration-150 hover:bg-black/[0.04] tracking-wider"
+                                                    style={{ color: C.secondary }}
+                                                >
+                                                    Edit
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <TextField
+                                            label="Manufacturer"
+                                            value={details.manufacturer}
+                                            onChange={(v) =>
+                                                setDetails((d) => ({ ...d, manufacturer: v }))
+                                            }
+                                        />
+                                    )}
+
+                                    <TextField
+                                        label="Model / Part No."
+                                        value={details.modelNo}
+                                        onChange={(v) =>
+                                            setDetails((d) => ({ ...d, modelNo: v }))
+                                        }
+                                    />
                                 </div>
                                 <TextField label="Grade / Variant" value={details.gradeVariant} onChange={(v) => setDetails((d) => ({ ...d, gradeVariant: v }))} />
                             </SectionCard>
                             <SectionCard icon={FileText} title="Description" alwaysOpen>
                                 <TextAreaField label="Description" value={details.description} onChange={(v) => setDetails((d) => ({ ...d, description: v }))} rows={3} />
-                                <TextAreaField label="Manufacturing details" value={details.manufacturingDetails} onChange={(v) => setDetails((d) => ({ ...d, manufacturingDetails: v }))} rows={2} />
+                                {/* <TextAreaField label="Manufacturing details" value={details.manufacturingDetails} onChange={(v) => setDetails((d) => ({ ...d, manufacturingDetails: v }))} rows={2} /> */}
                                 <RepeatableRows label="Specifications" rows={details.specifications} onChange={(rows) => setDetails((d) => ({ ...d, specifications: rows }))} addLabel="Add specification"
                                     columns={[{ key: "key", placeholder: "Attribute" }, { key: "value", placeholder: "Value" }]} />
                             </SectionCard>
