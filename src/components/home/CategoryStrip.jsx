@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Box, LayoutGrid } from "lucide-react";
 import { searchCategories } from "../../utils/api";
 import { resizedImageUrl } from "../../utils/imageUrl";
+import { supabase } from "../../utils/supabaseClient"; // adjust to your actual frontend client path
 
 const C = {
     ink: "#141B22",
@@ -16,13 +17,6 @@ const C = {
 };
 const EASE = [0.16, 1, 0.3, 1];
 
-// Categories change rarely (an admin action, not a per-request thing), so
-// there's no reason to re-fetch and re-download every category thumbnail
-// on every mount of this component — which happens on every "/" -> "/home"
-// visit. Cache the list in sessionStorage for the tab's lifetime; worst
-// case a brand-new category is one refresh away from showing up, which is
-// a fine trade for cutting ~16 requests off every navigation after the
-// first.
 const CACHE_KEY = "bbm_category_strip_cache_v1";
 
 function readCache() {
@@ -41,13 +35,30 @@ function writeCache(items) {
     }
 }
 
+// Inserts/updates one category into an already name-sorted list, keeping
+// it sorted — same order the backend query uses (.order("name")) — so a
+// live-added category lands in its correct alphabetical slot instead of
+// just being appended at the end.
+function upsertSorted(list, category) {
+    const withoutExisting = list.filter((c) => c.id !== category.id);
+    const idx = withoutExisting.findIndex(
+        (c) => c.name.localeCompare(category.name, undefined, { sensitivity: "base" }) > 0
+    );
+    if (idx === -1) return [...withoutExisting, category];
+    return [...withoutExisting.slice(0, idx), category, ...withoutExisting.slice(idx)];
+}
+
 export default function CategoryStrip({ activeCategoryId, onSelect }) {
     const cached = readCache();
     const [categories, setCategories] = useState(cached || []);
     const [loading, setLoading] = useState(!cached);
 
     useEffect(() => {
-        if (cached) return; // already have a cached list, skip the round trip entirely
+        // Always revalidate against the network, even when a cached list
+        // exists — the cache is only there to avoid an empty/loading flash
+        // on first paint, not to skip fetching forever. Without this, a
+        // category added after the cache was written never appears until
+        // the tab is closed, since sessionStorage survives normal reloads.
         let cancelled = false;
         searchCategories("", 16)
             .then((res) => {
@@ -59,6 +70,57 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
             .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // ...realtime useEffect stays exactly as-is below this
+
+    // Live updates — a category being inserted, or an existing one
+    // flipping to/from review_status = 'approved', is reflected in the
+    // strip immediately without a refetch or page reload. Runs once per
+    // mount; cleaned up on unmount so switching pages doesn't leak
+    // subscriptions.
+    useEffect(() => {
+        const channel = supabase
+            .channel("category-strip-live")
+            .on(
+                "postgres_changes",
+                { event: "INSERT", schema: "public", table: "hs_categories" },
+                (payload) => {
+                    console.log("[CategoryStrip] INSERT received:", payload.new);
+                    const row = payload.new;
+                    if (row.review_status !== "approved") return;
+                    setCategories((prev) => {
+                        const next = upsertSorted(prev, { id: row.id, name: row.name, slug: row.slug, image: row.image });
+                        writeCache(next);
+                        return next;
+                    });
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "UPDATE", schema: "public", table: "hs_categories" },
+                (payload) => {
+                    console.log("[CategoryStrip] UPDATE received:", payload.new);
+                    const row = payload.new;
+                    setCategories((prev) => {
+                        let next;
+                        if (row.review_status === "approved") {
+                            next = upsertSorted(prev, { id: row.id, name: row.name, slug: row.slug, image: row.image });
+                        } else {
+                            next = prev.filter((c) => c.id !== row.id);
+                        }
+                        writeCache(next);
+                        return next;
+                    });
+                }
+            )
+            .subscribe((status, err) => {
+                console.log("[CategoryStrip] channel status:", status, err || "");
+            });
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     const allActive = !activeCategoryId;
@@ -95,6 +157,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                         <motion.button
                             key={cat.id}
                             onClick={() => onSelect(active ? null : cat)}
+                            layout
                             initial={{ opacity: 0, x: 8 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ duration: 0.25, delay: Math.min(i * 0.02, 0.2), ease: EASE }}

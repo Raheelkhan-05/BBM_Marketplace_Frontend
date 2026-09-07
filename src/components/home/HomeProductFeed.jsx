@@ -824,7 +824,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         // (product -> subcategory -> category matches, in that order) —
         // global across categories, not filtered by the active category tab.
         const request = trimmed
-            ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, signal: controller.signal })
+            ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, categoryId: category?.id || null, signal: controller.signal })
             : fetchBrandItemsFeed({ categoryId: category?.id || null, q: "", limit: PAGE_SIZE, offset, signal: controller.signal });
 
         request
@@ -867,6 +867,13 @@ export default function HomeProductFeed({ category, q = "" }) {
         clearTimeout(debounceRef.current);
         queryTokenRef.current += 1;
         closeDropdown();
+
+        // Cut the previous request loose and show loading right away — a
+        // rapid category switch used to leave the OLD category's results on
+        // screen at full opacity for the whole debounce window, which read as
+        // "stuck on old records" even though a fresh fetch was about to fire.
+        abortRef.current?.abort();
+        setLoading(true);
 
         if (isFirstRun.current) {
             isFirstRun.current = false;
