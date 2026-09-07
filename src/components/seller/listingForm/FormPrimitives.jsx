@@ -737,7 +737,7 @@ export function RepeatableRows2({ label, hint, rows, columns, onChange, addLabel
 
 // SectionCard — pass `alwaysOpen` for a card that's never collapsible
 // (no chevron, no click target, content always rendered).
-export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, missingCount, children, open, onOpenChange, id, alwaysOpen }) {
+export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, missingCount, totalCount, children, open, onOpenChange, id, alwaysOpen }) {
     const [internalOpen, setInternalOpen] = useState(!!defaultOpen);
     const isControlled = open !== undefined;
     const isOpen = alwaysOpen ? true : (isControlled ? open : internalOpen);
@@ -747,10 +747,10 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
         else setInternalOpen((o) => !o);
     };
 
-    // Only meaningful when the caller passes a real number (i.e. wired up
-    // to computeMissing) — sections without it render exactly as before.
-    const showStatus = typeof missingCount === "number";
-    const isComplete = missingCount === 0;
+    const showStatus = typeof missingCount === "number" && typeof totalCount === "number" && totalCount > 0;
+    const filledCount = showStatus ? totalCount - missingCount : 0;
+    const isComplete = showStatus && missingCount === 0;
+    const fillPercent = showStatus ? Math.round((filledCount / totalCount) * 100) : 0;
 
     return (
         <motion.div
@@ -763,29 +763,75 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
         >
             <div className="flex w-full items-center gap-2.5 px-3.5 py-3 sm:px-4">
                 <button type="button" onClick={toggle} disabled={alwaysOpen} className="flex min-w-0 flex-1 items-center gap-2.5 text-left disabled:cursor-default">
-                    <span
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl"
-                        style={{
-                            background: showStatus && isComplete ? `${C.secondary}14` : showStatus ? `${C.primary}12` : `${C.secondary}14`,
-                            color: showStatus && !isComplete ? C.primary : C.secondary,
-                        }}
-                    >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: `${C.secondary}14`, color: C.secondary }}>
                         <Icon className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1">
-                        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                        <span className="flex items-center gap-2">
                             <span className="block text-[15.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{title}</span>
                             {showStatus && (
-                                isComplete ? (
-                                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                                ) : (
-                                    <span
-                                        className="shrink-0 rounded-full px-1.5 py-0.5 text-[9.5px] font-extrabold tabular-nums tracking-wide"
-                                        style={{ background: `${C.primary}12`, color: C.primary }}
-                                    >
-                                        {missingCount} Incomplete
-                                    </span>
-                                )
+                                <span
+                                    className="ml-auto inline-flex shrink-0 items-center justify-center"
+                                    title={`${filledCount} of ${totalCount} fields completed`}
+                                    aria-label={
+                                        isComplete
+                                            ? "Section complete"
+                                            : `${filledCount} of ${totalCount} fields completed`
+                                    }
+                                >
+                                    {isComplete ? (
+                                        <span
+                                            className="flex h-7 w-7 items-center justify-center rounded-full"
+                                            style={{
+                                                background: `${C.secondary}12`,
+                                                color: C.secondary,
+                                            }}
+                                        >
+                                            <Check
+                                                className="h-3.5 w-3.5"
+                                                strokeWidth={2.5}
+                                            />
+                                        </span>
+                                    ) : (
+                                        <span className="relative h-7 w-7">
+                                            {/* Background ring */}
+                                            <svg
+                                                viewBox="0 0 36 36"
+                                                className="h-7 w-7 -rotate-90"
+                                            >
+                                                <circle
+                                                    cx="18"
+                                                    cy="18"
+                                                    r="15"
+                                                    fill="none"
+                                                    stroke={C.hairSoft}
+                                                    strokeWidth="3"
+                                                />
+
+                                                {/* Progress ring */}
+                                                <circle
+                                                    cx="18"
+                                                    cy="18"
+                                                    r="15"
+                                                    fill="none"
+                                                    stroke={C.secondary}
+                                                    strokeWidth="3"
+                                                    strokeLinecap="round"
+                                                    strokeDasharray={`${fillPercent * 0.9425} 94.25`}
+                                                    className="transition-all duration-300 ease-out"
+                                                />
+                                            </svg>
+
+                                            {/* Count */}
+                                            <span
+                                                className="absolute inset-0 flex items-center justify-center text-[8px] font-extrabold tabular-nums"
+                                                style={{ color: C.ink }}
+                                            >
+                                                {filledCount}/{totalCount}
+                                            </span>
+                                        </span>
+                                    )}
+                                </span>
                             )}
                         </span>
                         {subtitle && <span className="mt-0 block truncate text-[12.5px] tracking-wide font-semibold" style={{ color: C.muted }}>{subtitle}</span>}
