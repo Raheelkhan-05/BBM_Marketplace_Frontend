@@ -34,7 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Package, Info, Store, ShieldCheck } from "lucide-react";
-import { fetchBrandItemsFeed, fetchBrandItemSellers } from "../../utils/api";
+import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
@@ -77,10 +77,6 @@ function resolveDiscountPercent(quantityDiscounts, quantity) {
         .filter((d) => Number(d.minQty) > 0 && quantity >= Number(d.minQty))
         .sort((a, b) => Number(b.minQty) - Number(a.minQty));
     return applicable.length ? Number(applicable[0].discountPercent) || 0 : 0;
-}
-
-function moqInPacks(seller) {
-    return Math.max(1, Number(seller.moq) || 1);
 }
 
 const SELLER_SORT_OPTIONS = [
@@ -323,25 +319,21 @@ function GstToggle({ includeGst, onChange }) {
             aria-checked={includeGst}
             aria-label={`GST ${includeGst ? "included" : "excluded"}`}
             onClick={() => onChange(!includeGst)}
-            className="group inline-flex items-center gap-2.5 rounded-full border px-1.5 py-1.5 transition-all duration-200 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1"
-            style={{
-                borderColor: C.hair,
-                backgroundColor: "#FFFFFF",
-                focusRingColor: C.secondary,
-            }}
+            className="group inline-flex items-center gap-2.5 rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer"
+
         >
             {/* Switch */}
             <span
-                className="relative flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 transition-all duration-200"
+                className="relative flex h-5 w-10 shrink-0 items-center rounded-full p-0.5 transition-all duration-200"
                 style={{
                     backgroundColor: includeGst ? C.secondary : "#D9DEE2",
                 }}
             >
                 <span
-                    className="h-5 w-5 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-transform duration-200"
+                    className="h-4 w-4 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-transform duration-200"
                     style={{
                         transform: includeGst
-                            ? "translateX(16px)"
+                            ? "translateX(20px)"
                             : "translateX(0px)",
                     }}
                 />
@@ -357,7 +349,7 @@ function GstToggle({ includeGst, onChange }) {
                 </span>
 
                 <span
-                    className="mt-0.5 text-[9.5px] font-medium"
+                    className="mt-0.5 text-[10px] font-medium tracking-wide"
                     style={{
                         color: includeGst ? C.secondary : "#7B858C",
                     }}
@@ -754,17 +746,6 @@ function RowSkeleton() {
 export default function HomeProductFeed({ category, q = "" }) {
     const navigate = useNavigate();
     const [items, setItems] = useState([]);
-    // Root cause of the "rows re-bounce on load" bug: a row's fade/slide-in
-    // only fires on mount, and a legitimate re-query (e.g. CategoryStrip
-    // auto-selecting its default tab right after this feed's first paint)
-    // swaps in a mostly-different set of item ids almost immediately after
-    // the first render — so most rows genuinely remount and replay their
-    // entrance animation, while any id that happens to repeat (often the
-    // very top result) doesn't. That's exactly the "first row stays put,
-    // the rest bounce back in" symptom. Fix: only the FIRST time an id is
-    // ever rendered in this feed session does it get an entrance
-    // animation — a later re-render of that same id (whatever caused it)
-    // is treated as a quiet update, not a fresh arrival.
     const seenItemIdsRef = useRef(new Set());
     const [total, setTotal] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -775,16 +756,8 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     const [sellerSortMode, setSellerSortMode] = useState("best_price");
 
-    // GST view toggle — defaults to inclusive, since that's what the
-    // stored price already represents. Purely client-side; no refetch
-    // needed on flip, every price is re-derived instantly via useMemo.
     const [includeGst, setIncludeGst] = useState(true);
 
-    // Inline seller accordion state — only ONE item id can be open at
-    // once. sellerState is keyed by item id so a previous item's
-    // fetched sellers stay cached if the user re-opens it later in the
-    // same session (re-opening re-fetches fresh below, but this avoids
-    // a flash of nothing while that request is in flight).
     const [openItemId, setOpenItemId] = useState(null);
     const [sellerState, setSellerState] = useState({});
     const sellerAbortRef = useRef(null);
@@ -794,16 +767,8 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     const abortRef = useRef(null);
     const debounceRef = useRef(null);
-    // Bumped on every reset (category/query change). Each in-flight
-    // request captures the value current at the time it was fired; if
-    // that value no longer matches when the response lands, the
-    // response is stale (a reset happened in between) and gets dropped
-    // instead of merged — this is what stops a page-2 append from a
-    // previous query landing after a page-0 reset from the new query.
     const queryTokenRef = useRef(0);
     const isFirstRun = useRef(true);
-
-    // See "DUPLICATE-FETCH GUARD" note at the top of the file.
     const lastRunRef = useRef({ key: null, time: 0 });
 
     const closeDropdown = useCallback(() => {
@@ -845,6 +810,8 @@ export default function HomeProductFeed({ category, q = "" }) {
             });
     }, [openItemId, closeDropdown]);
 
+    // Single runQuery — the primary feed fetch, with tiered fallback
+    // (subcategory, then category) when a live search comes up empty.
     const runQuery = useCallback((offset, { append }) => {
         abortRef.current?.abort();
         const controller = new AbortController();
@@ -852,22 +819,31 @@ export default function HomeProductFeed({ category, q = "" }) {
         const token = queryTokenRef.current;
         (append ? setLoadingMore : setLoading)(true);
 
-        fetchBrandItemsFeed({
-            categoryId: category?.id || null,
-            q,
-            limit: PAGE_SIZE,
-            offset,
-            signal: controller.signal,
-        })
+        const trimmed = q.trim();
+        // A live search term always goes through the merged, tiered search
+        // (product -> subcategory -> category matches, in that order) —
+        // global across categories, not filtered by the active category tab.
+        const request = trimmed
+            ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, signal: controller.signal })
+            : fetchBrandItemsFeed({ categoryId: category?.id || null, q: "", limit: PAGE_SIZE, offset, signal: controller.signal });
+
+        request
             .then((res) => {
                 if (!res?.success) return;
-                if (token !== queryTokenRef.current) return; // stale response, a reset happened after this was fired
-                setItems((prev) =>
-                    sortBySellerAvailability(
-                        append ? mergeUnique(prev, res.items || []) : res.items || []
-                    )
-                );
-                setTotal(res.total ?? null);
+                if (token !== queryTokenRef.current) return;
+
+                const incoming = res.items || [];
+                setItems((prev) => {
+                    if (trimmed) {
+                        // Preserve the backend's tier order exactly — sorting by
+                        // seller availability here would undercut "exact match
+                        // stays on top" by promoting a subcategory-tier item
+                        // with sellers above a product-tier item without any.
+                        return append ? mergeUnique(prev, incoming) : incoming;
+                    }
+                    return sortBySellerAvailability(append ? mergeUnique(prev, incoming) : incoming);
+                });
+                setTotal(res.total ?? incoming.length ?? null);
                 setHasMore(!!res.hasMore);
             })
             .catch((err) => { if (err?.name !== "AbortError") setHasMore(false); })
@@ -879,25 +855,18 @@ export default function HomeProductFeed({ category, q = "" }) {
     }, [category?.id, q]);
 
     useEffect(() => {
-        // If the exact same (category, q) combination fired within the
-        // last DUPLICATE_GUARD_MS, this is a spurious re-invocation (most
-        // commonly React 18 StrictMode's dev-only mount→cleanup→mount) and
-        // not a real navigation — skip it so we don't kick off a second
-        // request and flash the already-rendering rows back to skeleton.
         const key = `${category?.id || ""}::${q}`;
         const now = Date.now();
         const isDuplicateInvocation =
             lastRunRef.current.key === key &&
             (now - lastRunRef.current.time) < DUPLICATE_GUARD_MS;
 
-        if (isDuplicateInvocation) {
-            return;
-        }
+        if (isDuplicateInvocation) return;
         lastRunRef.current = { key, time: now };
 
         clearTimeout(debounceRef.current);
-        queryTokenRef.current += 1; // invalidate any in-flight request from before this change
-        closeDropdown(); // the item list underneath is about to change — don't leave a stale accordion open
+        queryTokenRef.current += 1;
+        closeDropdown();
 
         if (isFirstRun.current) {
             isFirstRun.current = false;
@@ -915,7 +884,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [category?.id, q]);
 
-    useEffect(() => () => sellerAbortRef.current?.abort(), []); // unmount cleanup
+    useEffect(() => () => sellerAbortRef.current?.abort(), []);
 
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && runQuery(items.length, { append: true }),
@@ -935,11 +904,6 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     const buyerSellerPayload = buyState ? toBuyerSellerPayload(buyState.seller) : null;
 
-    // Only show the full skeleton block when there's genuinely nothing on
-    // screen yet. Once items exist, a refetch (real category/search change,
-    // OR a spurious duplicate effect run that slipped past the guard above)
-    // just dims the current rows instead of hiding them entirely — no flash
-    // to an empty skeleton grid.
     const showFullSkeleton = loading && items.length === 0;
     const newlyAppearedIds = useMemo(() => {
         const fresh = new Set();
@@ -960,6 +924,7 @@ export default function HomeProductFeed({ category, q = "" }) {
             </div>
 
             <div className="rounded-2xl border bg-white" style={{ borderColor: C.hair }}>
+
                 {showFullSkeleton
                     ? Array.from({ length: 8 }).map((_, i) => <RowSkeleton key={i} />)
                     : items.length === 0 ? (

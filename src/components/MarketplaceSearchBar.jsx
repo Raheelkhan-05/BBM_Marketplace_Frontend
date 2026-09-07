@@ -161,8 +161,14 @@ export default function MarketplaceSearchBar({
         const trimmed = term.trim();
         if (!trimmed) return;
         setShowSuggestions(false);
-        suppressNextFetchRef.current = true;
-        if (clearOnSubmit) onChange("");
+        if (clearOnSubmit) {
+            // Only suppress the next fetch when we're about to blank the input
+            // via onChange("") below — there's no upcoming value change to
+            // suppress otherwise, and leaving this flag set would wrongly
+            // skip the very next keystroke's suggestion fetch.
+            suppressNextFetchRef.current = true;
+            onChange("");
+        }
         onSubmit(trimmed);
     };
 

@@ -83,11 +83,13 @@ export async function resolveSearchRoute(trimmedQuery) {
 
 export async function performSearchNavigation(navigate, rawQuery) {
     const term = rawQuery.trim();
-    if (!term) return;
+    if (!term) return false;
     const route = await resolveSearchRoute(term);
     if (route) {
         navigate(route.pathname, { state: route.state });
-        return;
+        return true;
     }
-    navigate(`/browse?q=${encodeURIComponent(term)}`); // fixed: was /browse-search
+    // No confident match — caller stays on the current page and handles
+    // showing fallback results inline instead of being redirected.
+    return false;
 }

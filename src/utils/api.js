@@ -389,6 +389,12 @@ export async function fetchAutocomplete(q, limit = 8, signal) {
   return res.json();
 }
 
+export async function fetchProductSearchMerged(q, { limit = 20, offset = 0, signal } = {}) {
+  const params = new URLSearchParams({ q, limit, offset });
+  const res = await fetch(`${API_BASE}/catalog-search/products-merged?${params}`, { signal });
+  return res.json();
+}
+
 export async function fetchProductDetail(id) {
   const res = await fetch(`${API_BASE}/search/products/${id}`);
   return res.json();

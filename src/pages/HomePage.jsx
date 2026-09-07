@@ -6,14 +6,13 @@ import CategoryStrip from "../components/home/CategoryStrip.jsx";
 import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
-import { performSearchNavigation } from "../utils/searchResolve.js";
 
 const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
 export default function HomePage() {
-    const [isRfqOpen, setIsRfqOpen] = useState(false); // kept for NavStrip's Post RFQ tab — modal itself lives outside this file
+    const [isRfqOpen, setIsRfqOpen] = useState(false);
     const [query, setQuery] = useState("");
-    const [activeCategory, setActiveCategory] = useState(null); // { id, name, slug } | null
+    const [activeCategory, setActiveCategory] = useState(null);
     const navigate = useNavigate();
 
     const handleSuggestionSelect = (s) => {
@@ -24,16 +23,13 @@ export default function HomePage() {
         setQuery(s.name);
     };
 
-    const handleSubmit = (trimmedQuery) => performSearchNavigation(navigate, trimmedQuery);
+    // Typing already filters the feed live via `q`. Submitting (Enter or
+    // the search button) no longer navigates anywhere — it just confirms
+    // the current text; MarketplaceSearchBar closes its own suggestions.
+    const handleSubmit = (trimmedQuery) => setQuery(trimmedQuery);
+
     const handleImageResolved = (result) => navigate("/browse", { state: { imageResult: result } });
 
-    // No artificial "ready" gate here anymore. By the time this component
-    // mounts, its own JS chunk (and App.jsx's route-level Suspense) has
-    // already resolved, and every child below shows its own lightweight
-    // skeleton while its data loads — CategoryStrip shows pill shimmers,
-    // HomeProductFeed shows row shimmers. Gating the whole page behind one
-    // more requestAnimationFrame + a full-page skeleton (that no longer
-    // even matched this layout) only delayed first paint for nothing.
     return (
         <div className="min-h-screen bg-[#FCFBF9] text-slate-900 antialiased overflow-x-hidden" style={{ fontFamily: FONT_BODY }}>
             <SmoothScrollProvider>
@@ -46,6 +42,7 @@ export default function HomePage() {
                         onImageResolved={handleImageResolved}
                         showMediaButtons={false}
                         onSuggestionSelect={handleSuggestionSelect}
+                        clearOnSubmit={false}
                     />
 
                     <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
