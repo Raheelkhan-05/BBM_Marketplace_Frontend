@@ -223,9 +223,10 @@ export default function OrderDetailPage() {
                             <div className="min-w-0 flex-1">
                                 <p className="truncate text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>{item.product_name_snapshot}</p>
                                 <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                    {/* <ItemQuantityLine item={item} mutedColor={C.muted} /> × {displayAmount(item.unit_price, { isSample })} */}
+                                    <ItemQuantityLine item={item} mutedColor={C.muted} /> × {displayAmount(item.unit_price, { isSample })}
                                 </p>
                             </div>
+                            <p className="text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p>
                             {/* <p className="text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p> */}
                         </div>
                     ))}

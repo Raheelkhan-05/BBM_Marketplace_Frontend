@@ -183,6 +183,7 @@ export default function SellerOrderDetailPage() {
                                     <ItemQuantityLine item={item} mutedColor={C.muted} /> × {displayAmount(item.unit_price, { isSample })}
                                 </p>
                             </div>
+                            <p className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p>
                             {/* <p className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p> */}
                         </div>
                     ))}
