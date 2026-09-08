@@ -260,7 +260,7 @@ export default function SellPublishProductPage() {
                     initialValues={isEdit ? rowToFormValues(editRecord) : pendingDraft?.form}
                     onSubmit={handleSubmit}
                     submitting={submitting}
-                    submitLabel={isEdit ? "Save changes" : "Submit for review"}
+                    submitLabel={isEdit ? "Save changes" : "Submit"}
                 />
             </div>
 

@@ -14,12 +14,20 @@ export const EMPLOYEE_RANGES = ["1-10", "11-50", "51-200", "201-500", "500+"];
 //   { key: "review", title: "Review & Submit" },
 // ];
 
+// export const STEPS = [
+//   { key: "basics", title: "Business Basics" },
+//   { key: "contact", title: "Contact & WhatsApp" },
+//   { key: "address", title: "Address" },
+//   { key: "operations", title: "Operations & Availability" },
+//   { key: "identity", title: "Shop Identity" },
+//   { key: "review", title: "Review & Submit" },
+// ];
+
+// components/seller/fieldConfigs.js
 export const STEPS = [
-  { key: "basics", title: "Business Basics" },
-  { key: "contact", title: "Contact & WhatsApp" },
-  { key: "address", title: "Address" },
-  { key: "operations", title: "Operations & Availability" },
-  { key: "identity", title: "Shop Identity" },
+  { key: "operations", title: "Order Timing" },
+  { key: "bank", title: "Bank Details" },   // NEW — see section 4
+  { key: "identity", title: "Shop Logo" },
   { key: "review", title: "Review & Submit" },
 ];
 

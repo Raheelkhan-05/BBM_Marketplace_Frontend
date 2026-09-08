@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import {
   saveSellerProgress, submitSellerOnboarding, uploadSellerFile,
   requestSellerWhatsappOtp, verifySellerWhatsappOtp,
+  saveSellerBankDetails, fetchSellerBankDetails
 } from "../utils/api.js";
 import useSellerProfileStatus from "../hooks/useSellerProfileStatus.js";
 import { extractColorsFromImage } from "../utils/colorExtract.js";
@@ -53,6 +54,19 @@ export function SellerOnboardingForm({ onSubmitted }) {
     }));
   }, [sellerStatusLoading, fetchedProfile, gstData, liveSeller]);
 
+  useEffect(() => {
+    if (!token) return;
+    fetchSellerBankDetails(token).then((res) => {
+      if (res?.success && res.bank) {
+        setForm((f) => ({
+          ...f,
+          bank_account_number: f.bank_account_number || res.bank.account_number || "",
+          bank_ifsc_code: f.bank_ifsc_code || res.bank.ifsc_code || "",
+        }));
+      }
+    });
+  }, [token]);
+
   // If this seller's status flips to "approved" while they're sitting on
   // the onboarding form — most commonly via the live socket event above —
   // there's nothing left to onboard. Bounce straight to the real
@@ -81,15 +95,40 @@ export function SellerOnboardingForm({ onSubmitted }) {
     setError(null);
     const missing = requiredMissing(STEPS[stepIndex].key, form);
     if (missing.length) return setError(`Please fill: ${missing.join(", ")}`);
-    await persist();
+
+    if (STEPS[stepIndex].key === "bank") {
+      setSaving(true);
+      try {
+        const res = await saveSellerBankDetails(token, {
+          account_number: form.bank_account_number,
+          ifsc_code: form.bank_ifsc_code,
+        });
+        if (!res?.success) {
+          setError(res?.message || "Couldn't save bank details.");
+          return;
+        }
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      await persist();
+    }
+
     if (stepIndex < STEPS.length - 1) setStepIndex((i) => i + 1);
   };
+
   const goBack = () => setStepIndex((i) => Math.max(0, i - 1));
 
   const handleSubmit = async () => {
     setError(null);
     setSubmitting(true);
     try {
+      const bankRes = await saveSellerBankDetails(token, {
+        account_number: form.bank_account_number,
+        ifsc_code: form.bank_ifsc_code,
+      });
+      if (!bankRes?.success) return setError(bankRes?.message || "Couldn't save bank details.");
+
       const res = await submitSellerOnboarding(token, form);
       if (!res?.success) return setError(res?.message || "Couldn't submit. Please check required fields.");
 
@@ -160,7 +199,7 @@ export function SellerOnboardingForm({ onSubmitted }) {
             <button type="button" onClick={handleSubmit} disabled={submitting}
               className="flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-[14.5px] font-bold tracking-wide text-white shadow-[0_12px_24px_-10px_rgba(199,31,17,0.55)]"
               style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit for review <CheckCircle2 className="h-4 w-4" /></>}
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit <CheckCircle2 className="h-4 w-4" /></>}
             </button>
           )}
         </div>
@@ -178,26 +217,21 @@ export default function SellerOnboardingPage() {
 
 function requiredMissing(stepKey, f) {
   const REQ = {
-    basics: ["display_name", "business_type"],
-    contact: ["contact_person", "whatsapp_number"],
     operations: ["order_acceptance_start", "order_acceptance_end"],
+    bank: ["bank_account_number", "bank_ifsc_code"],
     identity: ["logo_url"],
   }[stepKey] || [];
-  const missing = REQ.filter((k) => {
+  return REQ.filter((k) => {
     const v = f[k];
     return v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0);
   }).map((k) => k.replace(/_/g, " "));
-  if (stepKey === "contact" && !f.whatsapp_verified) missing.push("WhatsApp number verification");
-  return missing;
 }
 
 /* ---------- Step bodies ---------- */
 function StepBody(props) {
   const { stepKey } = props;
-  if (stepKey === "basics") return <BasicsStep {...props} />;
-  if (stepKey === "contact") return <ContactStep {...props} />;
-  if (stepKey === "address") return <AddressStep {...props} />;
   if (stepKey === "operations") return <OperationsStep {...props} />;
+  if (stepKey === "bank") return <BankStep {...props} />;
   if (stepKey === "identity") return <IdentityStep {...props} />;
   if (stepKey === "review") return <ReviewStep {...props} />;
   return null;
@@ -462,35 +496,50 @@ function IdentityStep({ form, update, token }) {
   );
 }
 
+function BankStep({ form, update }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-[13px] font-medium leading-snug text-slate-500">
+        This is the account where your order payouts will be sent.
+      </p>
+      <TextField
+        label="Account number"
+        value={form.bank_account_number}
+        onChange={(v) => update("bank_account_number", v.replace(/\D/g, ""))}
+        inputMode="numeric"
+      />
+      <TextField
+        label="IFSC code"
+        value={form.bank_ifsc_code}
+        onChange={(v) => update("bank_ifsc_code", v.toUpperCase())}
+        placeholder="e.g. HDFC0001234"
+      />
+    </div>
+  );
+}
+
 function ReviewStep({ form }) {
   const sections = [
     {
-      title: "Business Basics",
-      rows: [
-        ["Display name", form.display_name],
-        ["Business type", form.business_type],
-      ],
-    },
-    {
-      title: "Contact",
-      rows: [
-        ["Contact person", form.contact_person],
-        ["WhatsApp", form.whatsapp_verified ? `+91 ${form.whatsapp_number} — verified` : form.whatsapp_number],
-        ["Website", form.website],
-      ],
-    },
-    {
-      title: "Operations",
+      title: "Order Timing",
       rows: [
         ["Working days", (form.working_days || []).join(", ")],
-        ["Order hours", form.order_acceptance_start && form.order_acceptance_end ? `${form.order_acceptance_start} – ${form.order_acceptance_end}` : ""],
+        ["Order hours", form.order_acceptance_start && form.order_acceptance_end
+          ? `${form.order_acceptance_start} – ${form.order_acceptance_end}`
+          : ""],
+      ],
+    },
+    {
+      title: "Bank Details (for payouts)",
+      rows: [
+        ["Account number", form.bank_account_number ? `••••${form.bank_account_number.slice(-4)}` : ""],
+        ["IFSC code", form.bank_ifsc_code],
       ],
     },
   ];
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-[14.5px] font-medium tracking-wide text-slate-600">Review your details below. Once submitted, our team typically reviews within 24–48 hours.</p>
 
       <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-3">
         {form.logo_url ? (

@@ -158,6 +158,20 @@ export async function submitSellerOnboarding(token, payload) {
   return res.json();
 }
 
+
+export async function fetchSellerBankDetails(token) {
+  const res = await fetch(`${API_BASE}/seller/bank-details`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+export async function saveSellerBankDetails(token, payload) {
+  const res = await fetch(`${API_BASE}/seller/bank-details`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
 function getAnonUploadId() {
   let id = localStorage.getItem("bbm_anon_upload_id");
   if (!id) {
