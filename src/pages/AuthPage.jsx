@@ -299,7 +299,7 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
           >
             <p className="flex items-start gap-2 text-[12.5px] font-semibold leading-relaxed text-slate-700">
               <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#047084]" />
-              You'll receive a call on +91 {value} with your one-time code. Make sure you can pick up.
+              You'll receive a call from BBM's System on +91 {value} with your one-time code.
             </p>
           </motion.div>
         )}
