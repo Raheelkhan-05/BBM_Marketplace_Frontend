@@ -169,6 +169,17 @@ function computeFinalPrice(basePrice, gstPercent) {
     return round2(price + computeGstAmount(price, gstPercent));
 }
 
+// Reverse of computeFinalPrice — given a target final (GST-inclusive)
+// price, backs out the base price that produces it. Kept alongside
+// computeGstAmount/computeFinalPrice since all three must always agree
+// with each other, and both the Quick Update panel and Detail modal
+// import these same functions.
+function computeBasePriceFromFinal(finalPrice, gstPercent) {
+    const final = Number(finalPrice) || 0;
+    const gst = Number(gstPercent) || 0;
+    return round2(final / (1 + gst / 100));
+}
+
 /* ---------------- skeletons ---------------- */
 
 // Base shimmer block for skeletons. `w`/`h` are Tailwind width/height
@@ -540,7 +551,7 @@ function QuickField({ label, ...props }) {
 //    arithmetic themselves — and always sees a live preview of the
 //    resulting total before it's applied.
 function StockAdjuster({ value, onChange, saleUnit }) {
-    const [mode, setMode] = useState("set");
+    const [mode, setMode] = useState("add");
     const [delta, setDelta] = useState("");
 
     const current = Number(value) || 0;
@@ -632,6 +643,21 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
+    // Tracks which of the two price fields the seller is actively typing
+    // in, so the OTHER one always shows the live-derived value instead of
+    // both fields fighting to "own" form.basePrice.
+    const [priceEditSource, setPriceEditSource] = useState("base"); // "base" | "final"
+
+    // Holds EXACTLY what the seller typed into Final Price, verbatim —
+    // never re-derived from basePrice. Re-deriving it (finalPrice =
+    // basePrice * (1 + gst/100)) after basePrice was itself derived FROM
+    // a rounded final price loses precision on every round-trip (typing
+    // 6 → basePrice rounds to 5.08 → re-deriving final from 5.08 gives
+    // 5.99, not 6). Displaying this raw string instead avoids that
+    // entirely — the derived basePrice is still what actually gets sent
+    // to the backend on save, this is purely a display fix.
+    const [finalPriceInput, setFinalPriceInput] = useState("");
+
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
@@ -640,9 +666,8 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             if (cancelled) return;
             if (!res?.success) { setLoadError(res?.message || "Couldn't load pricing details."); setLoading(false); return; }
             const s = res.submission;
-            setForm({
+            const nextForm = {
                 unitsPerMasterPack: s.units_per_master_pack ?? item.units_per_master_pack ?? 1,
-
                 basePrice: s.base_price != null ? String(s.base_price) : "",
                 gstPercent: s.gst_percent ?? 18,
                 moq: s.moq != null ? String(s.moq) : "",
@@ -653,21 +678,62 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                         ? (s.production_lead_time_days ?? "")
                         : (s.dispatch_time_days ?? item.lead_time ?? "")
                 ),
-            });
+            };
+            setForm(nextForm);
+            // Seed the Final Price display from whatever's actually
+            // stored, computed once on load — after this, it only ever
+            // changes from direct typing or from Base Price edits below.
+            setFinalPriceInput(
+                nextForm.basePrice ? String(computeFinalPrice(nextForm.basePrice, nextForm.gstPercent)) : ""
+            );
             setLoading(false);
         });
         return () => { cancelled = true; };
     }, [item.id, item.lead_time, item.units_per_master_pack, token]);
 
     const saleUnit = form ? saleUnitLabel(form.unitsPerMasterPack) : null;
-
-    // GST always added on top of the entered base price — computed off
-    // `form` (this panel's own state), via the same shared helpers the
-    // Detail modal uses, so both surfaces always agree.
     const gstAmount = form ? computeGstAmount(form.basePrice, form.gstPercent) : 0;
+    // No longer used for the Final Price field's displayed value (see
+    // finalPriceInput) — kept only for the GST-amount box above, which
+    // is fine to re-derive since it isn't what the seller is typing into.
     const finalPrice = form ? computeFinalPrice(form.basePrice, form.gstPercent) : 0;
 
     const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
+
+    // Typing in Base Price: store it directly, and re-derive what Final
+    // Price should show from it. This direction has no precision loss
+    // (base → final is a single multiply, not a round-trip).
+    const handleBasePriceChange = (value) => {
+        setPriceEditSource("base");
+        setField("basePrice", value);
+        setFinalPriceInput(value === "" ? "" : String(computeFinalPrice(value, form.gstPercent)));
+    };
+
+    // Typing in Final Price: show EXACTLY what was typed (no re-deriving,
+    // no rounding it through basePrice and back) — and separately compute
+    // basePrice in the background so there's a correct number to save.
+    const handleFinalPriceChange = (value) => {
+        setPriceEditSource("final");
+        setFinalPriceInput(value);
+        const derivedBase = value === "" ? "" : String(computeBasePriceFromFinal(value, form.gstPercent));
+        setField("basePrice", derivedBase);
+    };
+
+    // If GST% changes while the seller was last typing into Final Price,
+    // keep the Final Price text exactly as typed and only re-derive
+    // basePrice behind it — never touch finalPriceInput here.
+    const handleGstPercentChange = (value) => {
+        setForm((f) => {
+            if (priceEditSource === "final" && finalPriceInput !== "") {
+                const derivedBase = computeBasePriceFromFinal(finalPriceInput, value);
+                return { ...f, gstPercent: value, basePrice: String(derivedBase) };
+            }
+            if (priceEditSource === "base" && f.basePrice !== "") {
+                setFinalPriceInput(String(computeFinalPrice(f.basePrice, value)));
+            }
+            return { ...f, gstPercent: value };
+        });
+    };
 
     async function save() {
         setError("");
@@ -747,20 +813,24 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                                 label={`Base Price (₹/${saleUnit})`}
                                 type="number" min="0" step="0.01"
                                 value={form.basePrice}
-                                onChange={(e) => setField("basePrice", e.target.value)}
+                                onChange={(e) => handleBasePriceChange(e.target.value)}
                             />
 
-                            <div className="grid grid-cols-2 gap-2.5">
-                                <div className="flex flex-col justify-center gap-0.5 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
-                                    <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>GST amount - {form.gstPercent}%</span>
-                                    <span className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{formatMoney(gstAmount)}</span>
-                                </div>
+                            {/* Read-only — deliberately no border/input chrome (unlike
+                                QuickField above/below) so it can never be mistaken for an
+                                editable field. Sits between the two prices since it's the
+                                thing that connects them: Base Price + this = Final Price. */}
+                            <div className="flex items-center justify-between px-0.5 text-[11.5px] font-semibold" style={{ color: C.muted }}>
+                                <span>+ GST ({form.gstPercent}%)</span>
+                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>₹{formatMoney(gstAmount)}</span>
                             </div>
 
-                            <div className="flex flex-col justify-center gap-0.5 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair, background: "#fff" }}>
-                                <span className="font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>Final price (base + GST)</span>
-                                <span className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{formatMoney(finalPrice)}</span>
-                            </div>
+                            <QuickField
+                                label={`Final Price (₹/${saleUnit})`}
+                                type="number" min="0" step="0.01"
+                                value={finalPriceInput}
+                                onChange={(e) => handleFinalPriceChange(e.target.value)}
+                            />
                         </div>
 
                         {/* ---- Quantity & lead time ---- */}
