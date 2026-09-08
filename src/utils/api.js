@@ -158,14 +158,32 @@ export async function submitSellerOnboarding(token, payload) {
   return res.json();
 }
 
+function getAnonUploadId() {
+  let id = localStorage.getItem("bbm_anon_upload_id");
+  if (!id) {
+    id = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem("bbm_anon_upload_id", id);
+  }
+  return id;
+}
+
 export async function uploadSellerFile(token, file, folder, bucket = "seller-assets") {
   const form = new FormData();
   form.append("file", file);
   form.append("folder", folder);
   form.append("bucket", bucket);
+
+  if (!token) {
+    form.append("anonId", getAnonUploadId());
+  }
+
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
   const res = await fetch(`${API_BASE}/seller/upload`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` }, // no Content-Type — browser sets multipart boundary
+    headers,
     body: form,
   });
   return res.json();
