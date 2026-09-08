@@ -841,7 +841,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                         // with sellers above a product-tier item without any.
                         return append ? mergeUnique(prev, incoming) : incoming;
                     }
-                    return sortBySellerAvailability(append ? mergeUnique(prev, incoming) : incoming);
+                    return append ? mergeUnique(prev, incoming) : incoming;
                 });
                 setTotal(res.total ?? incoming.length ?? null);
                 setHasMore(!!res.hasMore);
