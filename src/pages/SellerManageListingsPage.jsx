@@ -28,6 +28,32 @@
 // further below — never from the actual broadcast. Now subscribes
 // directly on the real socket.io-client connection (same one
 // useRealtimeNotifications.js already uses successfully).
+//
+// SCROLL-LOCK FIX (this pass): useLockBodyScroll() called lenis?.stop()
+// and set document.body.style.overflow = "hidden", but background
+// scrolling still leaked through with both modals open. Root cause:
+// lenis.stop() only pauses LENIS'S OWN smooth-scroll tracking/animation —
+// it does not call preventDefault() on the wheel/touch events that drive
+// it, so once "stopped", Lenis just steps out of the way and lets the
+// browser's native scroll take over on whatever it's controlling
+// (window, or an internal transform-based wrapper, depending on how
+// SmoothScrollProvider sets it up). document.body.style.overflow =
+// "hidden" doesn't help either if the actual scrolling Lenis does isn't
+// native body/document scroll to begin with.
+//
+// Replaced with useLenisScrollLock(): still calls lenis.stop()/start()
+// (so Lenis's internal state stays correct and doesn't jump on resume),
+// but the actual hijack is a set of window-level, capture-phase
+// wheel/touchmove/keydown listeners that call preventDefault() before
+// the event ever reaches Lenis or the browser's native scroll handling.
+// That blocks scrolling everywhere on the page EXCEPT wherever the
+// cursor/touch actually is — an event's target is whatever DOM element
+// is literally under the pointer, so checking `event.target.closest(
+// "[data-scroll-lock-allow]")` and skipping preventDefault there is
+// exactly "scroll the foreground modal if the cursor is inside it,
+// otherwise don't scroll the background". Both ListingDetailModal's and
+// EditListingModal's own scrollable content areas are marked with
+// data-scroll-lock-allow so scrolling inside them still works normally.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -42,8 +68,19 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
+// NOTE: SmoothScrollProvider itself is NOT imported/used here anymore —
+// main.jsx already wraps the whole app in exactly one global instance.
+// This page used to ALSO wrap its own content in a second, local
+// <SmoothScrollProvider>, which creates a second independent Lenis
+// instance (it has no `wrapper`/`content` option, so it defaults to
+// controlling `window` scroll directly — same target as the outer one).
+// useLenis() resolves to the NEAREST provider in the tree, so
+// useLenisScrollLock below was only ever stopping that second, redundant
+// instance while the real, page-driving instance from main.jsx kept
+// running untouched — which is why background scroll kept leaking
+// through no matter what the lock did. Only useLenis (the hook) is
+// needed here; it now finds the single global provider from main.jsx.
 import { useLenis } from "../providers/SmoothScrollProvider.jsx";
-import { SmoothScrollProvider } from "../providers/SmoothScrollProvider.jsx";
 import {
     fetchMySellerSubmissions, updateSellerProductSubmission,
     setSellerSubmissionActive, fetchSellerSubmissionDetail,
@@ -72,6 +109,12 @@ const C = {
 const EASE = [0.16, 1, 0.3, 1];
 const LOW_STOCK_THRESHOLD = 10;
 const GST_OPTIONS = [0, 0.25, 3, 5, 12, 18, 28];
+
+// Attribute used to mark "this element is allowed to scroll while a
+// modal-scroll-lock is active" — see useLenisScrollLock() below. Kept as
+// a constant so the hook and every modal that opts in reference the same
+// string instead of retyping it.
+const SCROLL_LOCK_ALLOW_ATTR = "data-scroll-lock-allow";
 
 /* ============================== helpers ============================== */
 
@@ -283,7 +326,7 @@ function submissionToInitialValues(s) {
 }
 
 function EditListingModal({ token, submissionId, onClose, onSaved }) {
-    useLockBodyScroll();
+    useLenisScrollLock();
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [initialValues, setInitialValues] = useState(null);
@@ -328,7 +371,16 @@ function EditListingModal({ token, submissionId, onClose, onSaved }) {
                     </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-5 py-4" style={{ minHeight: 0, overscrollBehavior: "contain" }}>
+                {/* data-scroll-lock-allow: this is the ONE element inside this
+                    modal the global scroll-lock listener (see
+                    useLenisScrollLock below) treats as "cursor is inside the
+                    foreground modal" — wheel/touch here scrolls this div,
+                    everything else on the page stays locked. */}
+                <div
+                    className="flex-1 overflow-y-auto px-5 py-4"
+                    style={{ minHeight: 0, overscrollBehavior: "contain" }}
+                    data-scroll-lock-allow=""
+                >
                     <AnimatePresence mode="wait" initial={false}>
                         {loading ? (
                             <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
@@ -921,19 +973,116 @@ function ListingRow({
 
 /* ============================ detail modal ============================ */
 
-function useLockBodyScroll() {
+// Hijacks scroll away from Lenis (and native scroll) while a modal is
+// mounted, and hands it back to the foreground modal's own content.
+//
+// HOW THIS WORKS, and the two bugs already found while getting here:
+//
+// Bug #1 (fixed by removing this page's redundant local
+// <SmoothScrollProvider> — see the import comment above): useLenis() was
+// resolving to a second, decoy Lenis instance, so lenis.stop() was
+// pausing an instance that wasn't actually driving page scroll. The real
+// instance (from main.jsx) kept running untouched, which is why
+// background scroll kept leaking through no matter what the lock did.
+//
+// Bug #2 (this pass): with the duplicate gone, lenis.stop() now DOES
+// target the real instance — but Lenis (configured with no `wrapper` in
+// SmoothScrollProvider.jsx, so it controls `window` globally) listens
+// for wheel/touch events EVERYWHERE on the page and calls
+// preventDefault() on them itself, independent of our own listeners.
+// That includes wheel events over the modal's own inner scrollable div —
+// Lenis has no idea that div is supposed to be exempt, so it was
+// swallowing that scroll too, which is why scrolling stopped completely,
+// including inside the modal. Lenis's documented escape hatch for this
+// is the `data-lenis-prevent` attribute: any element carrying it is left
+// alone by Lenis's own listeners. Both modals' scrollable containers now
+// carry it (see ListingDetailModal / EditListingModal below).
+//
+// Our OWN window-level, capture-phase wheel/touchmove/keydown listeners
+// are still layered on top as a second, independent safety net — for
+// whatever native browser scroll fallback happens on stopped-Lenis
+// elements that AREN'T marked data-lenis-prevent (i.e. the actual
+// background). They use the exact same selector so the two layers never
+// disagree about what's "inside" vs "outside" the modal.
+//
+// Every decision point below logs to the console (grouped/throttled so a
+// scroll gesture doesn't spam thousands of lines) — open devtools while
+// reproducing and check for:
+//   [useLenisScrollLock] lenis instance: <object|null>
+//   [useLenisScrollLock] marked allow-list elements found: <N>
+//   [useLenisScrollLock] wheel target=... allowed=true/false
+// If `lenis instance` logs null, useLenis() still isn't finding the
+// provider. If "marked allow-list elements found" is 0, the attribute
+// isn't rendering where expected. If wheel events over the modal log
+// allowed=false, the selector/DOM nesting is the remaining problem.
+const SCROLL_LOCK_ALLOW_SELECTOR = "[data-lenis-prevent], [data-scroll-lock-allow]";
+
+let __scrollLockLastLogAt = 0;
+function scrollLockLog(...args) {
+    const now = Date.now();
+    if (now - __scrollLockLastLogAt < 200) return; // throttle — wheel fires very fast
+    __scrollLockLastLogAt = now;
+    // eslint-disable-next-line no-console
+    console.log("[useLenisScrollLock]", ...args);
+}
+
+function useLenisScrollLock() {
     const lenis = useLenis();
+
     useEffect(() => {
-        const { overflow } = document.body.style;
-        document.body.style.overflow = "hidden";
-        lenis?.stop();
-        return () => { document.body.style.overflow = overflow; lenis?.start(); };
+        // eslint-disable-next-line no-console
+        console.log("[useLenisScrollLock] MOUNT — lenis instance:", lenis, "stop() available:", typeof lenis?.stop === "function");
+        // eslint-disable-next-line no-console
+        console.log("[useLenisScrollLock] allow-list elements currently in DOM:", document.querySelectorAll(SCROLL_LOCK_ALLOW_SELECTOR).length);
+
+        if (lenis) {
+            // eslint-disable-next-line no-console
+            console.log("[useLenisScrollLock] calling lenis.stop()");
+            lenis.stop();
+        } else {
+            // eslint-disable-next-line no-console
+            console.warn("[useLenisScrollLock] no lenis instance from context — only the window-level event blocking below will apply, and Lenis itself (if it exists elsewhere) is NOT stopped.");
+        }
+
+        const isInsideAllowedArea = (e) => !!e.target?.closest?.(SCROLL_LOCK_ALLOW_SELECTOR);
+
+        const blockScroll = (e) => {
+            const allowed = isInsideAllowedArea(e);
+            scrollLockLog(e.type, "target=", e.target?.tagName, e.target?.className || "", "allowed=", allowed);
+            if (!allowed) e.preventDefault();
+        };
+
+        const SCROLL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "];
+        const blockKeyScroll = (e) => {
+            if (!SCROLL_KEYS.includes(e.key)) return;
+            const allowed = isInsideAllowedArea(e);
+            // eslint-disable-next-line no-console
+            console.log("[useLenisScrollLock] keydown", e.key, "target=", e.target?.tagName, "allowed=", allowed);
+            if (allowed) return;
+            const tag = e.target?.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return;
+            e.preventDefault();
+        };
+
+        window.addEventListener("wheel", blockScroll, { passive: false, capture: true });
+        window.addEventListener("touchmove", blockScroll, { passive: false, capture: true });
+        window.addEventListener("keydown", blockKeyScroll, { passive: false, capture: true });
+
+        return () => {
+            // eslint-disable-next-line no-console
+            console.log("[useLenisScrollLock] UNMOUNT — restoring scroll, lenis.start() available:", typeof lenis?.start === "function");
+            if (lenis) lenis.start();
+
+            window.removeEventListener("wheel", blockScroll, { capture: true });
+            window.removeEventListener("touchmove", blockScroll, { capture: true });
+            window.removeEventListener("keydown", blockKeyScroll, { capture: true });
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lenis]);
 }
 
 function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick }) {
-    useLockBodyScroll();
+    useLenisScrollLock();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
     const [error, setError] = useState("");
@@ -981,7 +1130,13 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
 
                 <AnimatePresence mode="wait" initial={false}>
                     {loading ? (
-                        <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }} className="flex-1 overflow-y-auto">
+                        <motion.div
+                            key="skeleton"
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                            className="flex-1 overflow-y-auto"
+                            data-scroll-lock-allow=""
+                        >
                             <ListingDetailModalSkeleton />
                         </motion.div>
                     ) : error ? (
@@ -1002,6 +1157,7 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                             transition={{ duration: 0.18 }}
                             className="flex-1 overflow-y-auto px-5 py-3.5"
                             style={{ minHeight: 0, overscrollBehavior: "contain" }}
+                            data-scroll-lock-allow=""
                         >
                             <div className="flex flex-wrap items-center gap-1.5 pb-3">
                                 <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{
@@ -1314,126 +1470,128 @@ export default function SellerManageListingsPage() {
 
     return (
         <div className="min-h-screen bg-[#FCFBF9] text-slate-900 antialiased">
-            <SmoothScrollProvider>
-                <main className="mx-auto max-w-5xl px-2.5 pb-24 pt-5 sm:px-4 lg:px-6">
+            {/* No local <SmoothScrollProvider> here anymore — see import
+                comment above. This page just renders under the single
+                global instance main.jsx already provides. */}
+            <main className="mx-auto max-w-5xl px-2.5 pb-24 pt-5 sm:px-4 lg:px-6">
 
-                    {/* search + filters */}
-                    <div className="mt-0 flex flex-col gap-3">
-                        <div className="relative">
-                            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: C.muted }} />
-                            <input
-                                value={query}
-                                onChange={(e) => setQuery(e.target.value)}
-                                placeholder="Search your listings by product or brand…"
-                                className="w-full rounded-full border bg-white py-2.5 pl-10 pr-4 text-[13px] font-medium focus:outline-none focus:ring-2"
-                                style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }}
-                            />
-                        </div>
+                {/* search + filters */}
+                <div className="mt-0 flex flex-col gap-3">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: C.muted }} />
+                        <input
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            placeholder="Search your listings by product or brand…"
+                            className="w-full rounded-full border bg-white py-2.5 pl-10 pr-4 text-[13px] font-medium focus:outline-none focus:ring-2"
+                            style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }}
+                        />
+                    </div>
 
-                        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                            {STATUS_FILTERS.map((f) => (
-                                <FilterChip
-                                    key={f.key}
-                                    label={f.label}
-                                    active={statusFilter === f.key}
-                                    onClick={() => setStatusFilter(f.key)}
-                                    count={f.key === "all" ? stats.total : f.key === "live" ? stats.live : f.key === "paused" ? stats.paused : f.key === "pending_review" ? stats.pending : stats.rejected}
-                                />
-                            ))}
-                            <span className="mx-1 h-4 w-px shrink-0" style={{ background: C.hair }} />
+                    <div className="flex items-center gap-2 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {STATUS_FILTERS.map((f) => (
                             <FilterChip
-                                label="Needs restock"
-                                active={needsRestockOnly}
-                                onClick={() => setNeedsRestockOnly((v) => !v)}
-                                count={stats.low + stats.out}
+                                key={f.key}
+                                label={f.label}
+                                active={statusFilter === f.key}
+                                onClick={() => setStatusFilter(f.key)}
+                                count={f.key === "all" ? stats.total : f.key === "live" ? stats.live : f.key === "paused" ? stats.paused : f.key === "pending_review" ? stats.pending : stats.rejected}
                             />
-                        </div>
-                    </div>
-
-                    {/* list */}
-                    <div className="mt-4 overflow-hidden rounded-[20px] border bg-white" style={{ borderColor: C.hair }}>
-                        {loading && Array.from({ length: 5 }).map((_, i) => (
-                            <div key={i} className="flex items-center gap-3 border-b px-3 py-3.5 sm:px-4" style={{ borderColor: C.hairSoft }}>
-                                <div className="h-14 w-14 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
-                                <div className="flex-1 space-y-2">
-                                    <div className="h-3.5 w-2/5 animate-pulse rounded" style={{ background: C.hairSoft }} />
-                                    <div className="h-2.5 w-3/5 animate-pulse rounded" style={{ background: C.hairSoft }} />
-                                </div>
-                            </div>
                         ))}
-
-                        {!loading && filtered.length === 0 && (
-                            <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
-                                <Package className="h-6 w-6" style={{ color: C.hair }} />
-                                <p className="text-[13.5px] font-bold" style={{ color: C.ink }}>
-                                    {items.length === 0 ? "You haven't listed anything yet" : "Nothing matches these filters"}
-                                </p>
-                                <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
-                                    {items.length === 0 ? "List your first product to start selling." : "Try a different search or filter."}
-                                </p>
-                                {items.length === 0 && (
-                                    <button onClick={() => navigate("/seller/sell")}
-                                        className="mt-2 rounded-xl px-4 py-2 text-[12.5px] font-bold text-white" style={{ background: C.secondary }}>
-                                        List a product
-                                    </button>
-                                )}
-                            </div>
-                        )}
-
-                        <AnimatePresence initial={false}>
-                            {!loading && filtered.map((it, i) => (
-                                <ListingRow
-                                    key={it.id}
-                                    it={it}
-                                    idx={i}
-                                    isQuickEditing={quickEditId === it.id}
-                                    isConfirmingDeactivate={confirmDeactivateId === it.id}
-                                    togglingId={togglingId}
-                                    onOpenDetail={(item) => setViewingId(item.id)}
-                                    onQuickEdit={(id) => { setConfirmDeactivateId(null); setQuickEditId(id); }}
-                                    onCancelQuickEdit={() => setQuickEditId(null)}
-                                    onQuickSave={handleQuickSave}
-                                    onAskDeactivate={(id) => { setQuickEditId(null); setConfirmDeactivateId(id); }}
-                                    onCancelDeactivate={() => setConfirmDeactivateId(null)}
-                                    onConfirmDeactivate={confirmDeactivate}
-                                    onActivate={activateListing}
-                                    onOpenImage={setLightboxImage}
-                                />
-                            ))}
-                        </AnimatePresence>
+                        <span className="mx-1 h-4 w-px shrink-0" style={{ background: C.hair }} />
+                        <FilterChip
+                            label="Needs restock"
+                            active={needsRestockOnly}
+                            onClick={() => setNeedsRestockOnly((v) => !v)}
+                            count={stats.low + stats.out}
+                        />
                     </div>
-                </main>
+                </div>
 
-                {lightboxImage && createPortal(
-                    <ImageLightbox images={lightboxImage.images} initialIndex={lightboxImage.index} alt={lightboxImage.alt} onClose={() => setLightboxImage(null)} />,
-                    document.body
-                )}
+                {/* list */}
+                <div className="mt-4 overflow-hidden rounded-[20px] border bg-white" style={{ borderColor: C.hair }}>
+                    {loading && Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-3 border-b px-3 py-3.5 sm:px-4" style={{ borderColor: C.hairSoft }}>
+                            <div className="h-14 w-14 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
+                            <div className="flex-1 space-y-2">
+                                <div className="h-3.5 w-2/5 animate-pulse rounded" style={{ background: C.hairSoft }} />
+                                <div className="h-2.5 w-3/5 animate-pulse rounded" style={{ background: C.hairSoft }} />
+                            </div>
+                        </div>
+                    ))}
 
-                {viewingId && createPortal(
-                    <ListingDetailModal
-                        token={token}
-                        submissionId={viewingId}
-                        onClose={() => setViewingId(null)}
-                        onImageClick={setLightboxImage}
-                        onEdit={() => { const id = viewingId; setViewingId(null); setEditingId(id); }}
-                    />,
-                    document.body
-                )}
+                    {!loading && filtered.length === 0 && (
+                        <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+                            <Package className="h-6 w-6" style={{ color: C.hair }} />
+                            <p className="text-[13.5px] font-bold" style={{ color: C.ink }}>
+                                {items.length === 0 ? "You haven't listed anything yet" : "Nothing matches these filters"}
+                            </p>
+                            <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
+                                {items.length === 0 ? "List your first product to start selling." : "Try a different search or filter."}
+                            </p>
+                            {items.length === 0 && (
+                                <button onClick={() => navigate("/seller/sell")}
+                                    className="mt-2 rounded-xl px-4 py-2 text-[12.5px] font-bold text-white" style={{ background: C.secondary }}>
+                                    List a product
+                                </button>
+                            )}
+                        </div>
+                    )}
 
-                {editingId && createPortal(
-                    <EditListingModal
-                        token={token}
-                        submissionId={editingId}
-                        onClose={() => setEditingId(null)}
-                        onSaved={(id, submission, message) => {
-                            patchItem(id, submission);
-                            setEditingId(null);
-                            setToastMsg(message);
-                        }}
-                    />,
-                    document.body
-                )}
-            </SmoothScrollProvider>
+                    <AnimatePresence initial={false}>
+                        {!loading && filtered.map((it, i) => (
+                            <ListingRow
+                                key={it.id}
+                                it={it}
+                                idx={i}
+                                isQuickEditing={quickEditId === it.id}
+                                isConfirmingDeactivate={confirmDeactivateId === it.id}
+                                togglingId={togglingId}
+                                onOpenDetail={(item) => setViewingId(item.id)}
+                                onQuickEdit={(id) => { setConfirmDeactivateId(null); setQuickEditId(id); }}
+                                onCancelQuickEdit={() => setQuickEditId(null)}
+                                onQuickSave={handleQuickSave}
+                                onAskDeactivate={(id) => { setQuickEditId(null); setConfirmDeactivateId(id); }}
+                                onCancelDeactivate={() => setConfirmDeactivateId(null)}
+                                onConfirmDeactivate={confirmDeactivate}
+                                onActivate={activateListing}
+                                onOpenImage={setLightboxImage}
+                            />
+                        ))}
+                    </AnimatePresence>
+                </div>
+            </main>
+
+            {lightboxImage && createPortal(
+                <ImageLightbox images={lightboxImage.images} initialIndex={lightboxImage.index} alt={lightboxImage.alt} onClose={() => setLightboxImage(null)} />,
+                document.body
+            )}
+
+            {viewingId && createPortal(
+                <ListingDetailModal
+                    token={token}
+                    submissionId={viewingId}
+                    onClose={() => setViewingId(null)}
+                    onImageClick={setLightboxImage}
+                    onEdit={() => { const id = viewingId; setViewingId(null); setEditingId(id); }}
+                />,
+                document.body
+            )}
+
+            {editingId && createPortal(
+                <EditListingModal
+                    token={token}
+                    submissionId={editingId}
+                    onClose={() => setEditingId(null)}
+                    onSaved={(id, submission, message) => {
+                        patchItem(id, submission);
+                        setEditingId(null);
+                        setToastMsg(message);
+                    }}
+                />,
+                document.body
+            )}
+
             <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
             <FloatingSellButton to="/seller/sell" label="Sell" />
         </div>

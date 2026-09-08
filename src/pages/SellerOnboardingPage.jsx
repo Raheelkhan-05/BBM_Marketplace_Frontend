@@ -381,16 +381,40 @@ function AddressStep({ gstData }) {
 }
 
 function OperationsStep({ form, update }) {
+  const selected = form.working_days || [];
+  const isAllWeek = WEEKDAYS.length === selected.length && WEEKDAYS.every((d) => selected.includes(d));
+  const weekdaysOnly = WEEKDAYS.filter((d) => d !== "Sun");
+  const isWeekdaysOnly = weekdaysOnly.length === selected.length && weekdaysOnly.every((d) => selected.includes(d));
+
+  const presetBtnClass = (active) =>
+    `rounded-full border px-3 py-1 text-[12.5px] font-bold tracking-wide transition-colors ${active
+      ? "border-[#047084] bg-[#047084] text-white"
+      : "border-slate-200 bg-white text-slate-500 hover:border-[#047084]/40 hover:text-[#047084]"
+    }`;
+
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <Label>Working days</Label>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
+        <div className="flex items-center justify-between">
+          <Label>Working days</Label>
+          <div className="flex gap-1.5">
+            <button type="button" onClick={() => update("working_days", [...WEEKDAYS])} className={presetBtnClass(isAllWeek)}>
+              All days
+            </button>
+            <button type="button" onClick={() => update("working_days", weekdaysOnly)} className={presetBtnClass(isWeekdaysOnly)}>
+              Sun off
+            </button>
+            <button type="button" onClick={() => update("working_days", [])} className={presetBtnClass(selected.length === 0)}>
+              Clear
+            </button>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
           {WEEKDAYS.map((d) => {
-            const active = (form.working_days || []).includes(d);
+            const active = selected.includes(d);
             return (
               <button key={d} type="button"
-                onClick={() => update("working_days", active ? form.working_days.filter((x) => x !== d) : [...(form.working_days || []), d])}
+                onClick={() => update("working_days", active ? selected.filter((x) => x !== d) : [...selected, d])}
                 className="rounded-lg border-2 px-3 py-1.5 text-[13.5px] font-bold tracking-wide"
                 style={{ borderColor: active ? "#047084" : "#e5e9ea", color: active ? "#047084" : "#64748b", background: active ? "#04708410" : "white" }}>
                 {d}

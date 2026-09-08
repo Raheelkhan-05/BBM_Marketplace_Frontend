@@ -197,10 +197,14 @@ export default function AuthPage() {
 // ---------------------------------------------------------------------------
 // Step 1: identifier
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Step 1: identifier
+// ---------------------------------------------------------------------------
 function IdentifierPanel({ onSubmit, loading, serverError }) {
   const [value, setValue] = useState("");
   const [touched, setTouched] = useState(false);
   const [focused, setFocused] = useState(false);
+  const [confirmingCall, setConfirmingCall] = useState(false);
   const inFlight = useRef(false);
 
   const mode = detectMode(value);
@@ -211,6 +215,7 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
     const raw = e.target.value;
     const nextMode = detectMode(raw);
     setValue(nextMode === "phone" ? raw.replace(/\D/g, "").slice(0, 10) : raw);
+    setConfirmingCall(false);
   };
   const handlePaste = (e) => {
     const text = e.clipboardData.getData("text");
@@ -219,12 +224,24 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
       setValue(normalizePhonePaste(text));
     }
   };
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setTouched(true);
+
+  const fireSubmit = () => {
     if (!valid || loading || inFlight.current) return;
     inFlight.current = true;
     Promise.resolve(onSubmit(value)).finally(() => (inFlight.current = false));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setTouched(true);
+    if (!valid || loading) return;
+    // Phone OTPs are delivered via a call, not silently — confirm with the
+    // user before we trigger it, rather than surprising them with a ring.
+    if (detectChannel(value) === "phone" && !confirmingCall) {
+      setConfirmingCall(true);
+      return;
+    }
+    fireSubmit();
   };
 
   return (
@@ -242,9 +259,9 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
         Welcome to BBM
       </h1>
       <p className="mt-2.5 text-[13.5px] font-medium leading-relaxed text-slate-500">
-       One verified account to buy and sell. We'll send a one-time code —
-       no password to remember.
-     </p>
+        One verified account to buy and sell. We'll send a one-time code —
+        no password to remember.
+      </p>
 
       <label htmlFor="identifier" className="mt-8 text-[12px] font-bold uppercase tracking-wide text-slate-500">Mobile number or email</label>
       <div
@@ -274,13 +291,31 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
         {!showError && serverError && <p className="text-[12px] font-semibold text-[#c71f11]">{serverError}</p>}
       </div>
 
+      <AnimatePresence mode="wait">
+        {confirmingCall && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+            className="mt-2 overflow-hidden rounded-xl border border-[#7fb3bd]/60 bg-[#047084]/[0.06] px-3.5 py-3"
+          >
+            <p className="flex items-start gap-2 text-[12.5px] font-semibold leading-relaxed text-slate-700">
+              <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#047084]" />
+              You'll receive a call on +91 {value} with your one-time code. Make sure you can pick up.
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <motion.button
         type="submit" disabled={!valid || loading}
         whileTap={{ scale: 0.98 }}
         className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-[0_16px_30px_-10px_rgba(199,31,17,0.55)] transition-all duration-200 enabled:hover:-translate-y-0.5 enabled:hover:shadow-[0_20px_36px_-10px_rgba(199,31,17,0.6)] disabled:cursor-not-allowed disabled:opacity-40"
         style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}
       >
-        {loading ? (<><Loader2 className="h-4 w-4 animate-spin" />Sending OTP…</>) : (<>Send OTP<ArrowRight className="h-4 w-4" /></>)}
+        {loading ? (<><Loader2 className="h-4 w-4 animate-spin" />Sending OTP…</>) : confirmingCall ? (
+          <>Yes, call me <ArrowRight className="h-4 w-4" /></>
+        ) : (
+          <>Send OTP<ArrowRight className="h-4 w-4" /></>
+        )}
       </motion.button>
 
       <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11.5px] font-medium text-slate-400">
@@ -424,14 +459,13 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
       setStage("verified");
       onVerified?.(true, prefillVerifiedValue);
     }
-    // Only run when the prefill actually arrives (e.g. fetchMe resolves after mount).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillVerifiedValue]);
 
   const valid = validate(value);
+  const isPhoneField = field === "phone";
 
-  const sendCode = async () => {
-    if (!valid) return;
+  const actuallySendCode = async () => {
     setError(null);
     setStage("sending");
     const res = await requestContactOtp(token, field, value);
@@ -441,6 +475,17 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
       return;
     }
     setStage("otp");
+  };
+
+  const sendCode = async () => {
+    if (!valid) return;
+    // Phone verification here happens via a call — confirm before dialing
+    // rather than surprising the user, same as the login identifier step.
+    if (isPhoneField && stage !== "confirm") {
+      setStage("confirm");
+      return;
+    }
+    await actuallySendCode();
   };
 
   const confirmCode = async (otp) => {
@@ -480,21 +525,35 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
       </label>
 
       {stage !== "otp" ? (
-        <div className="mt-1 flex gap-2">
-          <input
-            inputMode={inputMode} value={value}
-            onChange={(e) => { setValue(e.target.value); onVerified?.(false, ""); }}
-            placeholder={placeholder} disabled={stage === "sending"}
-            className="w-full min-w-0 rounded-md border-2 border-slate-200 bg-white px-3.5 py-0 text-[14px] font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-300 focus:border-[#047084] focus:outline-none focus:ring-4 focus:ring-[#047084]/10"
-          />
-          <button
-            type="button" onClick={sendCode} disabled={!valid || stage === "sending"}
-            className="shrink-0 rounded-xl px-4 py-3 text-[12.5px] font-bold text-white shadow-[0_8px_16px_-6px_rgba(4,112,132,0.5)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ background: "linear-gradient(135deg, #0a95ab 0%, #047084 100%)" }}
-          >
-            {stage === "sending" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
-          </button>
-        </div>
+        <>
+          <div className="mt-1 flex gap-2">
+            <input
+              inputMode={inputMode} value={value}
+              onChange={(e) => { setValue(e.target.value); setStage("idle"); onVerified?.(false, ""); }}
+              placeholder={placeholder} disabled={stage === "sending"}
+              className="w-full min-w-0 rounded-md border-2 border-slate-200 bg-white px-3.5 py-0 text-[14px] font-semibold text-slate-800 placeholder:font-normal placeholder:text-slate-300 focus:border-[#047084] focus:outline-none focus:ring-4 focus:ring-[#047084]/10"
+            />
+            <button
+              type="button" onClick={sendCode} disabled={!valid || stage === "sending"}
+              className="shrink-0 rounded-xl px-4 py-3 text-[12.5px] font-bold text-white shadow-[0_8px_16px_-6px_rgba(4,112,132,0.5)] transition-transform active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+              style={{ background: "linear-gradient(135deg, #0a95ab 0%, #047084 100%)" }}
+            >
+              {stage === "sending" ? <Loader2 className="h-4 w-4 animate-spin" /> : stage === "confirm" ? "Yes, call me" : "Verify"}
+            </button>
+          </div>
+
+          <AnimatePresence>
+            {stage === "confirm" && (
+              <motion.p
+                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                className="mt-2 flex items-start gap-2 overflow-hidden rounded-lg border border-[#7fb3bd]/60 bg-[#047084]/[0.06] px-3 py-2 text-[12px] font-semibold leading-relaxed text-slate-700"
+              >
+                <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#047084]" />
+                You'll receive a call on +91 {value} with your code. Tap "Yes, call me" when ready.
+              </motion.p>
+            )}
+          </AnimatePresence>
+        </>
       ) : (
         <div className="mt-2.5 max-w-[280px]">
           <OtpBoxes length={6} onComplete={confirmCode} error={error} />
