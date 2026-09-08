@@ -144,7 +144,7 @@ export default function SellerEditListingPage() {
                     initialValues={initialValues}
                     onSubmit={handleSubmit}
                     submitting={submitting}
-                    submitLabel="Save & resubmit for review"
+                    submitLabel="Save the changes?"
                 />
             </div>
         </div>

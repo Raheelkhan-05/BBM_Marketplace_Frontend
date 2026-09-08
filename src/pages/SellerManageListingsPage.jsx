@@ -88,7 +88,7 @@ import {
 import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
-import SellerListingForm from "../components/seller/listingForm/SellerListingForm.jsx";
+import SellerListingForm, { unflattenDispatchingLocations } from "../components/seller/listingForm/SellerListingForm.jsx";
 // Same shared convention BuyNowModal.jsx / HomeProductFeed.jsx already use
 // for "what unit is this listing actually sold and priced in" — imported
 // rather than reimplemented here, so this page can't drift out of sync
@@ -329,7 +329,14 @@ function submissionToInitialValues(s) {
         dispatchDistrict: s.dispatch_district || "",
         dispatchState: s.dispatch_state || "",
         dispatchPincode: s.dispatch_pincode || "",
-        dispatchingLocations: s.dispatching_locations || null,
+        // dispatching_locations is stored/returned as the flat persisted
+        // array ({type:"country"|"state", ...}) — the SAME shape the
+        // create-mode template-prefill effect in SellerListingForm.jsx
+        // already has to unflatten before use. Edit mode needs the exact
+        // same conversion, or DispatchingLocationsPicker sees a shape
+        // with no .country, fails computeMissing, and silently resets to
+        // a blank default the moment its section is opened.
+        dispatchingLocations: unflattenDispatchingLocations(s.dispatching_locations),
 
         returnPolicyKey: s.return_policy_key || "",
         warrantyKey: s.warranty_key || "",
@@ -420,7 +427,7 @@ function EditListingModal({ token, submissionId, onClose, onSaved }) {
                                     initialValues={initialValues}
                                     onSubmit={handleSubmit}
                                     submitting={submitting}
-                                    submitLabel="Save & resubmit for review"
+                                    submitLabel="Update"
                                     stickyBottomClassName="-bottom-4"
                                 />
                             </motion.div>
@@ -1284,10 +1291,19 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                                     <ReadRow label="MOQ" value={s.moq != null ? `${s.moq} ${pluralizeUnit(s.moq, saleUnit)}` : null} />
                                     <ReadRow label="Sample" value={s.sample_available ? `${baseUnitsToBasisQty(s.sample_quantity, s.sample_unit_basis, s.pack_size, s.units_per_master_pack) || ""} ${s.sample_unit_basis ? { per_unit: "unit(s)", per_pack: "pack(s)", per_master_pack: "master pack(s)" }[s.sample_unit_basis] : ""}`.trim() || "Available" : "Not available"} />
                                 </SectionBlock>
-                                {(s.price_slabs?.length > 0 || s.quantity_discounts?.length > 0) && (
-                                    <div className="-mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                        <ReadRowsList rows={s.price_slabs} columns={[{ key: "minQty" }, { key: "maxQty" }, { key: "price" }]} />
-                                        <ReadRowsList rows={s.quantity_discounts} columns={[{ key: "minQty" }, { key: "discountPercent" }]} />
+                                {s.quantity_discounts?.length > 0 && (
+                                    <div className="-mt-1">
+                                        <p className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Discount slabs</p>
+                                        <div className="flex flex-col gap-1">
+                                            {[...s.quantity_discounts]
+                                                .sort((a, b) => Number(a.minQty) - Number(b.minQty))
+                                                .map((slab, i) => (
+                                                    <div key={i} className="flex items-center justify-between rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ background: C.hairSoft, color: C.ink }}>
+                                                        <span>Above {slab.minQty} {pluralizeUnit(slab.minQty, saleUnit)}</span>
+                                                        <span className="font-bold" style={{ color: C.secondary }}>{slab.discountPercent}% off</span>
+                                                    </div>
+                                                ))}
+                                        </div>
                                     </div>
                                 )}
 

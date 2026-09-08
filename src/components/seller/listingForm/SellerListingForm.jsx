@@ -154,7 +154,7 @@ function unitBasisLabel(basis, unit) {
 // picker mounts and its own "no country" fallback resets everything to a
 // blank all-India default — which is what was masquerading as "autofill only
 // works after opening the section."
-function unflattenDispatchingLocations(flat) {
+export function unflattenDispatchingLocations(flat) {
     if (!Array.isArray(flat) || !flat.length) return null;
     const countryEntry = flat.find((e) => e?.type === "country");
     if (!countryEntry) return null;
@@ -329,7 +329,7 @@ function getApplicableSlab(slabsInPacks, qtyPacks) {
 }
 
 export default function SellerListingForm({
-    onSubmit, submitting, submitLabel = "Submit for review",
+    onSubmit, submitting, submitLabel = "Submit",
     mode = "create", identityReadOnly, brandDisplay, initialValues,
     identityLocked, lockedIdentity,
     stickyBottomClassName = "-bottom-1 md:bottom-0", // default (page/edit route)
@@ -1148,7 +1148,7 @@ export default function SellerListingForm({
                 <button type="button" onClick={handleSubmit} disabled={submitting}
                     className="mt-2.5 flex w-full items-center tracking-wider justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
                     style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} <CheckCircle2 className="h-4 w-4" /></>}
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} </>}
                 </button>
             </div>
         </div>
