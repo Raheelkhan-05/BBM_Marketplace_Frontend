@@ -4,8 +4,11 @@
 // rounded-2xl cards, hairline borders, tabular-nums, framer-motion entrance.
 import { useState, useRef, useId, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Plus, Trash2, Info, Check, X, CheckCircle2 } from "lucide-react";
+import { ChevronDown, Plus, Trash2, Info, Check, X, CheckCircle2, Download } from "lucide-react";
 import { createPortal } from "react-dom";
+import { Loader2, Upload } from "lucide-react";
+import { uploadSellerFile } from "../../../utils/api.js";
+
 
 export const C = {
     ink: "#0B1116",
@@ -917,6 +920,184 @@ export function ToggleField2({ label, value, onChange, hint, onLabel = "Yes", of
                     </button>
                 ))}
             </div>
+        </div>
+    );
+}
+
+
+const CERT_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.txt,image/*";
+
+function fileIconLabel(url) {
+    const ext = (url.split(".").pop() || "").toLowerCase().split("?")[0];
+    return ext ? ext.toUpperCase() : "FILE";
+}
+
+function extFromUrl(url) {
+    const clean = url.split("?")[0];
+    const ext = clean.split(".").pop();
+    return ext && ext.length <= 5 ? ext : "";
+}
+
+// Cross-origin URLs (Supabase storage is a different origin than the
+// app) make the browser IGNORE <a download>'s filename — it falls back
+// to whatever's in the URL path, which is why this was downloading as
+// the raw timestamped storage filename instead of the seller's own
+// label. Fetching the file as a blob and downloading FROM that blob
+// (a same-origin blob: URL) is what actually lets us control the
+// filename the browser saves it as.
+async function downloadNamed(url, desiredName) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Couldn't download this file.");
+    const blob = await res.blob();
+    const ext = extFromUrl(url);
+    const filename = ext && !desiredName.toLowerCase().endsWith(`.${ext}`) ? `${desiredName}.${ext}` : desiredName;
+
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(blobUrl);
+}
+
+// Direct-upload replacement for the old "paste a link" certificate rows.
+// Flow: pick file(s) → each becomes a PENDING row (not yet uploaded) that
+// asks "What is this file about?" → seller names it and confirms → THEN
+// it uploads to Supabase storage via the same uploadSellerFile() every
+// other upload on this form uses.
+export function CertificateUploadField({ label, hint, rows, onChange, token, addLabel = "Upload certificate" }) {
+    const [pending, setPending] = useState([]); // [{ file, name }] — chosen but not yet uploaded
+    const [confirmingIdx, setConfirmingIdx] = useState(null); // index into `pending` currently uploading
+    const [downloadingIdx, setDownloadingIdx] = useState(null); // index into `rows` currently downloading
+    const [error, setError] = useState(null);
+    const inputRef = useRef(null);
+
+    const handleFiles = (e) => {
+        const files = Array.from(e.target.files || []);
+        if (!files.length) return;
+        setError(null);
+        setPending((p) => [...p, ...files.map((file) => ({ file, name: "" }))]);
+        e.target.value = "";
+    };
+
+    const renamePending = (i, name) => setPending((p) => p.map((row, idx) => (idx === i ? { ...row, name } : row)));
+    const cancelPending = (i) => setPending((p) => p.filter((_, idx) => idx !== i));
+
+    const confirmPending = async (i) => {
+        const row = pending[i];
+        if (!row.name.trim()) return;
+        setError(null);
+        setConfirmingIdx(i);
+        try {
+            const res = await uploadSellerFile(token, row.file, "certificates");
+            if (!res?.success) throw new Error("Upload failed for " + row.file.name);
+            onChange([...(rows || []), { name: row.name.trim(), url: res.url }]);
+            setPending((p) => p.filter((_, idx) => idx !== i));
+        } catch (err) {
+            setError(err.message || "Couldn't upload this file.");
+        } finally {
+            setConfirmingIdx(null);
+        }
+    };
+
+    const removeSaved = (i) => onChange(rows.filter((_, idx) => idx !== i));
+    const renameSaved = (i, name) => onChange(rows.map((r, idx) => (idx === i ? { ...r, name } : r)));
+
+    const handleDownload = async (i, row) => {
+        setError(null);
+        setDownloadingIdx(i);
+        try {
+            await downloadNamed(row.url, row.name?.trim() || "certificate");
+        } catch (err) {
+            setError(err.message || "Couldn't download this file.");
+        } finally {
+            setDownloadingIdx(null);
+        }
+    };
+
+    return (
+        <div className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>{label}</span>
+            {hint && <p className="-mt-0.5 text-[11px] font-medium" style={{ color: C.muted }}>{hint}</p>}
+
+            <div className="flex flex-col gap-1.5">
+                {/* Already-uploaded certificates */}
+                {(rows || []).map((row, i) => (
+                    <div key={row.url + i} className="flex items-center gap-2 rounded-lg border px-2.5 py-2" style={{ borderColor: C.hair }}>
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[9px] font-extrabold" style={{ background: C.hairSoft, color: C.secondary }}>
+                            {fileIconLabel(row.url)}
+                        </span>
+                        <input
+                            value={row.name}
+                            onChange={(e) => renameSaved(i, e.target.value)}
+                            placeholder="What is this file about?"
+                            className="min-w-0 flex-1 bg-transparent text-[12.5px] font-semibold focus:outline-none"
+                            style={{ color: C.ink }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => handleDownload(i, row)}
+                            disabled={downloadingIdx === i}
+                            className="flex shrink-0 items-center gap-1 text-[10.5px] font-bold underline disabled:opacity-50"
+                            style={{ color: C.secondary }}
+                        >
+                            {downloadingIdx === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                            {downloadingIdx === i ? "Downloading" : "Download"}
+                        </button>
+                        <button type="button" onClick={() => removeSaved(i)} className="shrink-0 rounded-md p-1" style={{ color: C.muted }}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                ))}
+
+                {/* Just-picked files, waiting to be named + confirmed */}
+                {pending.map((row, i) => (
+                    <div key={i} className="flex items-center gap-2 rounded-lg border-2 px-2.5 py-2" style={{ borderColor: C.primary + "55", background: C.primary + "08" }}>
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[9px] font-extrabold" style={{ background: "#fff", color: C.primary }}>
+                            {(row.file.name.split(".").pop() || "FILE").toUpperCase()}
+                        </span>
+                        <input
+                            autoFocus={i === pending.length - 1}
+                            value={row.name}
+                            onChange={(e) => renamePending(i, e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmPending(i); } }}
+                            placeholder="e.g. ISO 9001 Certificate, Factory Audit Report…"
+                            className="min-w-0 flex-1 bg-transparent text-[12.5px] font-semibold focus:outline-none"
+                            style={{ color: C.ink }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => confirmPending(i)}
+                            disabled={!row.name.trim() || confirmingIdx === i}
+                            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[10.5px] font-bold text-white disabled:opacity-40"
+                            style={{ background: C.secondary }}
+                        >
+                            {confirmingIdx === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                            {confirmingIdx === i ? "Uploading" : "Add"}
+                        </button>
+                        <button type="button" onClick={() => cancelPending(i)} disabled={confirmingIdx === i} className="shrink-0 rounded-md p-1" style={{ color: C.muted }}>
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                ))}
+
+                <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 py-2 text-[12px] font-bold" style={{ borderColor: C.hair, color: C.muted }}>
+                    <Upload className="h-3.5 w-3.5" />
+                    {addLabel}
+                    <input
+                        ref={inputRef}
+                        type="file"
+                        accept={CERT_ACCEPT}
+                        multiple
+                        onChange={handleFiles}
+                        className="hidden"
+                    />
+                </label>
+            </div>
+
+            {error && <p className="text-[11px] font-semibold" style={{ color: C.danger }}>{error}</p>}
         </div>
     );
 }

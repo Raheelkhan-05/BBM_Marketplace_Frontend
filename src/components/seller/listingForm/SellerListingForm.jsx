@@ -53,6 +53,7 @@ import {
     ToggleField3,
     RepeatableRows2,
     Label,
+    CertificateUploadField,
 } from "./FormPrimitives.jsx";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
@@ -757,10 +758,12 @@ export default function SellerListingForm({
                             </div>
                         </FieldAnchor>
 
-                        <RepeatableRows
-                            label="Quality & certifications" hint="Link any current certificates you have for this item"
-                            rows={form.qualityCertificates} onChange={(rows) => setField("qualityCertificates", rows)} addLabel="Add certificate"
-                            columns={[{ key: "name", placeholder: "Certificate name" }, { key: "url", placeholder: "Link to file" }]}
+                        <CertificateUploadField
+                            label="Quality & certifications"
+                            hint=""
+                            rows={form.qualityCertificates}
+                            onChange={(rows) => setField("qualityCertificates", rows)}
+                            token={token}
                         />
 
                         <TextAreaField label="Note to admin" value={form.noteToAdmin} onChange={(v) => setField("noteToAdmin", v)} rows={2}
@@ -1151,3 +1154,6 @@ export default function SellerListingForm({
         </div>
     );
 }
+
+
+
