@@ -21,21 +21,21 @@ import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, hasOuterPack, saleUni
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 
 // Seeds a new-address form from the buyer's GST-derived business_profiles
-// row and their basic profiles row (name/phone). profiles data wins for
-// contact_name/contact_phone since GST data has no phone number and the
-// registered legal_name is often the company, not a person.
-function seedFromBusinessProfile(bp, contact) {
-    if (!bp && !contact) return null;
-    const useDispatch = bp?.dispatch_same_as_registered === false && bp.dispatch_address;
+// row, so first-time checkout doesn't start from a totally blank form.
+// Prefers the dispatch address over the registered address when the
+// buyer has explicitly set one (dispatch_same_as_registered === false).
+function seedFromBusinessProfile(bp) {
+    if (!bp) return null;
+    const useDispatch = bp.dispatch_same_as_registered === false && bp.dispatch_address;
     return {
-        label: "Registered Office",
-        contact_name: contact?.name || bp?.legal_name || bp?.trade_name || "",
-        contact_phone: contact?.phone || "",
-        address_line1: (useDispatch ? bp?.dispatch_address : bp?.registered_address) || "",
+        label: "Deliver To: ",
+        contact_name: bp.legal_name || bp.trade_name || "",
+        contact_phone: "", // GST data has no phone number — buyer fills this in
+        address_line1: useDispatch ? bp.dispatch_address : (bp.registered_address || ""),
         address_line2: "",
-        city: bp?.district || "",
-        state: (useDispatch ? (bp?.dispatch_state || bp?.state) : bp?.state) || "",
-        pincode: (useDispatch ? (bp?.dispatch_pincode || bp?.pincode) : bp?.pincode) || "",
+        city: bp.district || "",
+        state: useDispatch ? (bp.dispatch_state || bp.state || "") : (bp.state || ""),
+        pincode: useDispatch ? (bp.dispatch_pincode || bp.pincode || "") : (bp.pincode || ""),
     };
 }
 
@@ -227,7 +227,8 @@ function normalizeQuote(raw) {
 // Small presentational helpers, styled to match FormPrimitives idiom.
 // ---------------------------------------------------------------------
 
-function Stepper({ value, onChange, min = 1 }) {
+function Stepper({ value, onChange, min = 1, max }) {
+    const atMax = max != null && Number(value) >= Number(max);
     return (
         <div className="flex items-center gap-2">
             <button type="button" onClick={() => onChange(Math.max(min, Number(value) - 1))}
@@ -236,14 +237,10 @@ function Stepper({ value, onChange, min = 1 }) {
             </button>
             <input type="text" inputMode="decimal" value={value}
                 onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
-                // No more auto-snap-to-min on blur. Leave the invalid value as
-                // typed — the disabled buttons + Notice below already tell the
-                // person what's wrong. Silently rewriting their input right
-                // before submit is what let a below-MOQ order sneak through.
                 className="w-full rounded-lg border px-3 py-2 text-center text-[15px] font-extrabold tabular-nums tracking-wide focus:outline-none focus:ring-2"
                 style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
-            <button type="button" onClick={() => onChange(Number(value) + 1)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hair }}>
+            <button type="button" disabled={atMax} onClick={() => onChange(Number(value) + 1)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent" style={{ borderColor: C.hair }}>
                 <Plus className="h-3.5 w-3.5" style={{ color: C.ink }} />
             </button>
         </div>
@@ -372,6 +369,19 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // settled, so we never briefly show a unit-based quote for a pack item.
     const [quote, setQuote] = useState(null);
 
+    // Prefer the server-confirmed quote's availableStock (it re-reads live
+    // stock on every debounced call); fall back to the seller prop for the
+    // instant local estimate before the first server quote lands. Only a
+    // hard cap for ready_stock listings with a known quantity — made_to_order
+    // listings have nothing to cap against.
+    const maxQuantity = !isSample && seller?.stockType === "ready_stock"
+        ? (quote?.availableStock ?? seller?.availableStock ?? null)
+        : null;
+
+    const exceedsStock = !isSample && maxQuantity != null && Number(quantity) > Number(maxQuantity);
+    const outOfStock = !isSample && (quote?.outOfStock || (maxQuantity != null && Number(maxQuantity) <= 0));
+
+
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
     const [done, setDone] = useState(null);
@@ -379,8 +389,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const requestIdRef = useRef(0);
     const pendingQuoteRef = useRef(Promise.resolve());
     const standardBasisRef = useRef(defaultBasis);
-
-    const outOfStock = !isSample && quote?.outOfStock;
 
     // Remember the last basis used for a standard order, so a detour into
     // sample mode (which forces "per_unit") and back restores exactly what
@@ -477,7 +485,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 // they aren't starting from a blank form on every first order.
                 const bpRes = await fetchBusinessProfile(token);
                 if (cancelled) return;
-                const seeded = bpRes?.success ? seedFromBusinessProfile(bpRes.profile, bpRes.contact) : null;
+                const seeded = bpRes?.success ? seedFromBusinessProfile(bpRes.profile) : null;
                 setNewAddress(seeded || EMPTY_ADDRESS);
                 setShowNewAddress(true);
             }
@@ -565,6 +573,14 @@ export default function BuyNowModal({ seller, product, onClose }) {
             setError(`Minimum order quantity is ${minQuantity} ${moqUnitLabel}${minQuantity === 1 ? "" : "s"}.`);
             return;
         }
+        // Hard stock guard — never trust the disabled prop alone here either.
+        if (!isSample && maxQuantity != null && Number(quantity) > Number(maxQuantity)) {
+            setError(Number(maxQuantity) <= 0
+                ? "This item is currently out of stock with this seller."
+                : `You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller.`);
+            return;
+        }
+
         let addressId = selectedAddressId;
         if (showNewAddress || !addressId) {
             addressId = await handleSaveNewAddress();
@@ -842,7 +858,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                     </div>
                                 ) : (
                                     <>
-                                        <Stepper value={quantity} onChange={setQuantity} min={minQuantity} />
+                                        <Stepper value={quantity} onChange={setQuantity} min={minQuantity} max={maxQuantity} />
                                         <p className="text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>
                                             {quantity} {basisLabel}{basis !== "per_unit" && quote?.baseQuantity ? ` = ${quote.baseQuantity * seller.packSize} ${seller?.unit}` : ""}
                                         </p>
@@ -857,6 +873,14 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 {!isSample && quote && quote.meetsMoq === false && (
                                     <Notice tone="danger">
                                         Below the seller's MOQ of {formatMoqForBasis(quote.moq, seller)}.
+                                    </Notice>
+                                )}
+                                {!isSample && outOfStock && (
+                                    <Notice tone="danger">This item is currently out of stock with this seller.</Notice>
+                                )}
+                                {!isSample && !outOfStock && exceedsStock && (
+                                    <Notice tone="danger">
+                                        You can order at most {maxQuantity} {saleUnitLabel(seller?.masterPackSize)}{Number(maxQuantity) === 1 ? "" : "s"} from this seller. Please reduce the quantity.
                                     </Notice>
                                 )}
                                 {/* {!isSample && quote?.stockShortfall && (
@@ -1099,7 +1123,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                             {/* Credit slot */}
                             {!isSample && (
                                 canBuyOnCredit ? (
-                                    <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq || outOfStock}
+                                    <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq || outOfStock || exceedsStock}
                                         className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
                                         style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
                                         <CreditCard className="h-3.5 w-3.5" /> {submitting ? "Placing…" : "Buy on credit"}
@@ -1111,7 +1135,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         <Notice tone="warn">Your last credit request was declined. You can request again after {new Date(creditStatus.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</Notice>
                                     </div>
                                 ) : (
-                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit || belowMoq || outOfStock}
+                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit || belowMoq || outOfStock || exceedsStock}
                                         className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-bold tracking-wide disabled:opacity-60"
                                         style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
                                         <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
@@ -1129,6 +1153,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                             setError(`Minimum order quantity is ${formatMoqForBasis(quote.moq, seller)}.`);
                                             return;
                                         }
+                                        if (maxQuantity != null && Number(quantity) > Number(maxQuantity)) {
+                                            setError(`You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller.`);
+                                            return;
+                                        }
                                         const confirmed = await pendingQuoteRef.current;
                                         const finalQuote = confirmed || quote;
                                         if (finalQuote && finalQuote.meetsMoq === false) {
@@ -1142,7 +1170,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         onClose();
                                         navigate("/cart");
                                     }}
-                                    disabled={submitting || belowMoq || outOfStock}
+                                    disabled={submitting || belowMoq || outOfStock || exceedsStock}
                                     className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
                                     style={{ borderColor: C.hair, color: C.ink }}
                                 >
@@ -1150,7 +1178,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 </button>
                             )}
 
-                            <button onClick={() => handleSubmit()} disabled={submitting || (!isSample && (belowMoq || outOfStock))}
+                            <button onClick={() => handleSubmit()} disabled={submitting || (!isSample && (belowMoq || outOfStock || exceedsStock))}
                                 className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[14px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
                                 style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}

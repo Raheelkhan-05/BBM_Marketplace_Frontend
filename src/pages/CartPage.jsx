@@ -47,6 +47,17 @@ function priceFor(item) {
     return { saleQty, lineTotal: round2(unitPrice * saleQty), discountPercent, meetsMoq, moqSaleUnits };
 }
 
+function stockInfoFor(item) {
+    const capped = item.stock_type === "ready_stock" && item.available_stock != null;
+    const max = capped ? Number(item.available_stock) : null;
+    return {
+        capped,
+        max,
+        outOfStock: capped && max <= 0,
+        exceeds: capped && Number(item.quantity) > max,
+    };
+}
+
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
@@ -198,7 +209,17 @@ export default function CartPage() {
         return res.address.id;
     };
 
+    const hasStockBlock = items.some((it) => {
+        const s = stockInfoFor(it);
+        return s.outOfStock || s.exceeds;
+    });
+
     const handleCheckout = async () => {
+        if (hasStockBlock) {
+            setError("One or more items in your cart exceed what's available from the seller. Please adjust the quantities.");
+            return;
+        }
+
         // NOTE: there used to be an `if (!addressId) return setError(...)` guard
         // right here. That's what caused "Please select a shipping address" to
         // fire even when the buyer HAD just filled in a new address — with no
@@ -251,6 +272,8 @@ export default function CartPage() {
                                     const p = priceFor(it);
                                     const floor = Number(it.moq) > 0 ? Number(it.moq) : 1;
                                     const atFloor = it.quantity <= floor;
+                                    const stock = stockInfoFor(it);
+                                    const atCeiling = stock.capped && it.quantity >= stock.max;
                                     return (
                                         <div key={it.cart_item_id} className="flex flex-col gap-1">
                                             <div className="flex items-center gap-3">
@@ -258,21 +281,26 @@ export default function CartPage() {
                                                 <div className="min-w-0 flex-1">
                                                     <p className="truncate text-[13.5px] font-bold" style={{ color: C.ink }}>{it.product_name}</p>
                                                     <div className="mt-1 flex items-center gap-2">
-                                                        <button
-                                                            onClick={() => handleQty(it.submission_id, it.quantity - 1, it.moq)}
-                                                            disabled={atFloor}
-                                                            className="h-6 w-6 rounded border text-xs disabled:opacity-30"
-                                                            style={{ borderColor: C.hair }}
-                                                        >
-                                                            −
-                                                        </button>
+                                                        <button onClick={() => handleQty(it.submission_id, it.quantity - 1, it.moq)} disabled={atFloor}
+                                                            className="h-6 w-6 rounded border text-xs disabled:opacity-30" style={{ borderColor: C.hair }}>−</button>
                                                         <span className="text-[12.5px] font-bold tabular-nums">{it.quantity}</span>
-                                                        <button onClick={() => handleQty(it.submission_id, it.quantity + 1, it.moq)} className="h-6 w-6 rounded border text-xs" style={{ borderColor: C.hair }}>+</button>
+                                                        <button onClick={() => handleQty(it.submission_id, it.quantity + 1, it.moq)} disabled={atCeiling}
+                                                            className="h-6 w-6 rounded border text-xs disabled:opacity-30" style={{ borderColor: C.hair }}>+</button>
                                                         <span className="text-[11px] font-semibold" style={{ color: C.muted }}>{saleUnitLabel(it.units_per_master_pack)}(s)</span>
                                                     </div>
                                                     {atFloor && floor > 1 && (
                                                         <p className="mt-0.5 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                             At the seller's MOQ ({floor} {saleUnitLabel(it.units_per_master_pack)}{floor === 1 ? "" : "s"}) — remove the item instead of going lower.
+                                                        </p>
+                                                    )}
+                                                    {stock.outOfStock && (
+                                                        <p className="mt-0.5 text-[10.5px] font-bold tracking-wide text-red-600">
+                                                            Out of stock with this seller — remove to continue.
+                                                        </p>
+                                                    )}
+                                                    {!stock.outOfStock && stock.exceeds && (
+                                                        <p className="mt-0.5 text-[10.5px] font-bold tracking-wide text-red-600">
+                                                            Only {stock.max} {saleUnitLabel(it.units_per_master_pack)}{stock.max === 1 ? "" : "s"} available from this seller — reduce quantity to continue.
                                                         </p>
                                                     )}
                                                 </div>
@@ -340,7 +368,7 @@ export default function CartPage() {
                                 <p className="text-[11px] font-bold uppercase" style={{ color: C.muted }}>Total</p>
                                 <p className="text-[18px] font-extrabold tabular-nums">₹{inr(grandTotal)}</p>
                             </div>
-                            <button onClick={handleCheckout} disabled={checking}
+                            <button onClick={handleCheckout} disabled={checking || hasStockBlock}
                                 className="rounded-xl px-6 py-3 text-[13.5px] font-bold text-white disabled:opacity-50"
                                 style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                                 {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Proceed to pay"}
