@@ -380,6 +380,7 @@ function EditListingModal({ token, submissionId, onClose, onSaved }) {
                     className="flex-1 overflow-y-auto px-5 py-4"
                     style={{ minHeight: 0, overscrollBehavior: "contain" }}
                     data-scroll-lock-allow=""
+                    data-lenis-prevent=""
                 >
                     <AnimatePresence mode="wait" initial={false}>
                         {loading ? (
@@ -1136,6 +1137,7 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                             transition={{ duration: 0.15 }}
                             className="flex-1 overflow-y-auto"
                             data-scroll-lock-allow=""
+                            data-lenis-prevent=""
                         >
                             <ListingDetailModalSkeleton />
                         </motion.div>
@@ -1158,6 +1160,7 @@ function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick
                             className="flex-1 overflow-y-auto px-5 py-3.5"
                             style={{ minHeight: 0, overscrollBehavior: "contain" }}
                             data-scroll-lock-allow=""
+                            data-lenis-prevent=""
                         >
                             <div className="flex flex-wrap items-center gap-1.5 pb-3">
                                 <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{
