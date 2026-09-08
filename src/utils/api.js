@@ -172,6 +172,13 @@ export async function saveSellerBankDetails(token, payload) {
   return res.json();
 }
 
+export async function fetchBusinessProfile(token) {
+  const res = await fetch(`${API_BASE}/buyer/business-profile`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+
 function getAnonUploadId() {
   let id = localStorage.getItem("bbm_anon_upload_id");
   if (!id) {

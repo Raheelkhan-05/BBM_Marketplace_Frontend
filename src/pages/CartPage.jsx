@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Plus } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
-import { fetchBuyerAddresses, createBuyerAddress } from "../utils/api.js";
+import { fetchBuyerAddresses, createBuyerAddress, fetchBusinessProfile } from "../utils/api.js";
 import { C } from "../components/catalog/tokens";
 import GroupPaymentQRModal from "../components/GroupPaymentQRModal.jsx";
 import { TextField } from "../components/seller/listingForm/FormPrimitives.jsx";
@@ -51,6 +51,25 @@ function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFract
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 
+// Seeds a new-address form from the buyer's GST-derived business_profiles
+// row and their basic profiles row (name/phone). profiles data wins for
+// contact_name/contact_phone since GST data has no phone number and the
+// registered legal_name is often the company, not a person.
+function seedFromBusinessProfile(bp, contact) {
+    if (!bp && !contact) return null;
+    const useDispatch = bp?.dispatch_same_as_registered === false && bp.dispatch_address;
+    return {
+        label: "Registered Office",
+        contact_name: contact?.name || bp?.legal_name || bp?.trade_name || "",
+        contact_phone: contact?.phone || "",
+        address_line1: (useDispatch ? bp?.dispatch_address : bp?.registered_address) || "",
+        address_line2: "",
+        city: bp?.district || "",
+        state: (useDispatch ? (bp?.dispatch_state || bp?.state) : bp?.state) || "",
+        pincode: (useDispatch ? (bp?.dispatch_pincode || bp?.pincode) : bp?.pincode) || "",
+    };
+}
+
 export default function CartPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
@@ -75,12 +94,21 @@ export default function CartPage() {
 
     useEffect(() => { load(); }, [load]);
     useEffect(() => {
-        fetchBuyerAddresses(token).then((res) => {
+        fetchBuyerAddresses(token).then(async (res) => {
             if (res?.success) {
                 setAddresses(res.addresses || []);
                 const def = res.addresses?.find((a) => a.is_default) || res.addresses?.[0];
-                if (def) setAddressId(def.id);
-                else setShowNewAddress(true); // no saved addresses yet — go straight to the form, same as BuyNowModal
+                if (def) {
+                    setAddressId(def.id);
+                } else {
+                    // No saved addresses yet — go straight to the form, same as
+                    // BuyNowModal, but prefill it from the buyer's GST profile
+                    // (if they have one on file) instead of leaving it blank.
+                    const bpRes = await fetchBusinessProfile(token);
+                    const seeded = bpRes?.success ? seedFromBusinessProfile(bpRes.profile, bpRes.contact) : null;
+                    setNewAddress(seeded || EMPTY_ADDRESS);
+                    setShowNewAddress(true);
+                }
             }
         });
     }, [token]);
@@ -171,8 +199,15 @@ export default function CartPage() {
     };
 
     const handleCheckout = async () => {
-        if (!addressId) return setError("Please select a shipping address.");
-
+        // NOTE: there used to be an `if (!addressId) return setError(...)` guard
+        // right here. That's what caused "Please select a shipping address" to
+        // fire even when the buyer HAD just filled in a new address — with no
+        // saved addresses, addressId is null by definition (there's nothing to
+        // select), so the guard tripped before we ever reached the
+        // showNewAddress branch below that actually saves the typed-in address
+        // and gets it an id. handleSaveNewAddress() already validates the
+        // fields and sets its own error, so this separate guard was redundant
+        // as well as wrong — removed.
         setChecking(true);
 
         // Make sure every optimistic quantity change actually landed in the DB

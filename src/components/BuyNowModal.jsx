@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi } from "../utils/api.js";
+import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi, fetchBusinessProfile } from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
 import { getOrCreateDirectConversation, fetchTransportPreference } from "../utils/chatApi.js";
 import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
@@ -19,6 +19,25 @@ import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./selle
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, hasOuterPack, saleUnitLabel, round2 } from "../shared/packUnits.js";
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
+
+// Seeds a new-address form from the buyer's GST-derived business_profiles
+// row and their basic profiles row (name/phone). profiles data wins for
+// contact_name/contact_phone since GST data has no phone number and the
+// registered legal_name is often the company, not a person.
+function seedFromBusinessProfile(bp, contact) {
+    if (!bp && !contact) return null;
+    const useDispatch = bp?.dispatch_same_as_registered === false && bp.dispatch_address;
+    return {
+        label: "Registered Office",
+        contact_name: contact?.name || bp?.legal_name || bp?.trade_name || "",
+        contact_phone: contact?.phone || "",
+        address_line1: (useDispatch ? bp?.dispatch_address : bp?.registered_address) || "",
+        address_line2: "",
+        city: bp?.district || "",
+        state: (useDispatch ? (bp?.dispatch_state || bp?.state) : bp?.state) || "",
+        pincode: (useDispatch ? (bp?.dispatch_pincode || bp?.pincode) : bp?.pincode) || "",
+    };
+}
 
 const BASIS_OPTIONS = [
     { value: "per_pack", label: "Packs" },
@@ -450,7 +469,18 @@ export default function BuyNowModal({ seller, product, onClose }) {
             if (cancelled || !res?.success) return;
             setAddresses(res.addresses || []);
             const def = res.addresses?.find((a) => a.is_default) || res.addresses?.[0];
-            if (def) setSelectedAddressId(def.id); else setShowNewAddress(true);
+            if (def) {
+                setSelectedAddressId(def.id);
+            } else {
+                // No saved addresses yet — go straight to the form, but prefill
+                // it from the buyer's GST-derived business profile (if any) so
+                // they aren't starting from a blank form on every first order.
+                const bpRes = await fetchBusinessProfile(token);
+                if (cancelled) return;
+                const seeded = bpRes?.success ? seedFromBusinessProfile(bpRes.profile, bpRes.contact) : null;
+                setNewAddress(seeded || EMPTY_ADDRESS);
+                setShowNewAddress(true);
+            }
         })();
         return () => { cancelled = true; };
     }, [access, token]);
