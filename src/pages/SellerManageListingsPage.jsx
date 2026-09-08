@@ -1297,7 +1297,7 @@ const STATUS_FILTERS = [
 ];
 
 export default function SellerManageListingsPage() {
-    const { token, profile, registerResyncHandler } = useAuth();
+    const { token, profile, registerResyncHandler, refreshProfile } = useAuth();
     const { socket } = useSocket();
     const navigate = useNavigate();
 
@@ -1441,6 +1441,10 @@ export default function SellerManageListingsPage() {
 
     if (!isApprovedSeller) {
         if (profile?.seller_status === "pending_review") {
+            // This branch is now effectively dead for brand-new sellers
+            // (nothing sets "pending_review" anymore), but harmless to
+            // leave in case older rows or a manual admin action still use
+            // that status.
             return (
                 <>
                     <div className="min-h-screen" style={{ background: "#FCFBF9" }}>
@@ -1461,11 +1465,15 @@ export default function SellerManageListingsPage() {
             );
         }
 
+
         // No seller record yet, or previously rejected — show the onboarding
-        // form directly, right here, instead of a separate page.
+        // form directly. On submit, the seller is now auto-approved
+        // server-side; refreshProfile() pulls that updated status into
+        // AuthContext so this same component re-renders as the real
+        // dashboard below instead of the onboarding form.
         return (
             <>
-                <SellerOnboardingForm />
+                <SellerOnboardingForm onSubmitted={() => refreshProfile?.()} />
                 <Toast message={toastMsg} show={!!toastMsg} onDone={() => setToastMsg(null)} />
             </>
         );

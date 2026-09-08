@@ -93,7 +93,11 @@ export function SellerOnboardingForm({ onSubmitted }) {
       const res = await submitSellerOnboarding(token, form);
       if (!res?.success) return setError(res?.message || "Couldn't submit. Please check required fields.");
 
-      onSubmitted?.(res.seller);
+      // Await this — it refreshes the auth profile so isApprovedSeller
+      // flips true before we navigate, so the destination page renders
+      // the real dashboard on the very first paint instead of bouncing
+      // back to onboarding for a frame.
+      await onSubmitted?.(res.seller);
 
       const pending = readPendingProductSubmission();
       if (pending?.form) {
@@ -101,7 +105,9 @@ export function SellerOnboardingForm({ onSubmitted }) {
         return;
       }
 
-      setSubmitted(true);
+      // Seller is approved immediately now — no review screen, go
+      // straight to the live seller dashboard.
+      navigate("/seller/listings", { replace: true });
     } finally {
       setSubmitting(false);
     }
