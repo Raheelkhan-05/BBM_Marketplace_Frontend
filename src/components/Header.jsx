@@ -120,6 +120,15 @@ export default function Header({ onOpenRfq }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
+
+  // A logged-in-but-unfinished-onboarding user should look exactly like a
+  // guest in the header — Sign In button, no account menu, no nav items
+  // that assume a completed profile. Same condition as Layout.jsx's
+  // onboardingIncomplete, kept in sync so both hide/show together.
+  const onboardingDone = !isLoggedIn || profile?.onboarding_step === "done";
+  const effectiveLoggedIn = isLoggedIn && onboardingDone;
+
+
   const headerRef = useRef(null);
   const rowRef = useRef(null);
   const logoRef = useRef(null);
@@ -200,10 +209,12 @@ export default function Header({ onOpenRfq }) {
     || profile?.name?.trim().split(" ")[0]
     || "Account";
 
-  const isAdmin = profile?.role === "admin";
-  const isApprovedSeller = profile?.seller_status === "approved";
+  const isAdmin = effectiveLoggedIn && profile?.role === "admin";
+  const isApprovedSeller = effectiveLoggedIn && profile?.seller_status === "approved";
 
-  const navItems = NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate });
+  const navItems = NAV_ITEMS({ isLoggedIn: effectiveLoggedIn, isApprovedSeller, onOpenRfq, navigate });
+
+
 
   return (
     <>
@@ -228,7 +239,7 @@ export default function Header({ onOpenRfq }) {
           <ScrollableNav navItems={navItems} pathname={pathname} navMaxWidth={navMaxWidth} />
 
           <div ref={rightRef} className="flex shrink-0 items-center gap-3">
-            {isLoggedIn ? (
+            {effectiveLoggedIn ? (
               <>
                 <NotificationBell />
                 <div className="relative hidden md:block" ref={accountRef}>
@@ -355,7 +366,7 @@ export default function Header({ onOpenRfq }) {
               className="fixed left-0 right-0 z-50 max-h-[calc(100dvh-var(--h))] overflow-y-auto border-b border-[rgba(20,27,34,0.08)] bg-[#FCFBF9] shadow-xl backdrop-blur-xl md:hidden"
             >
               <div className="mx-auto max-w-7xl px-5 py-4">
-                {isLoggedIn && (
+                {effectiveLoggedIn && (
                   <div className="mb-3 flex items-center gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5">
                     <span
                       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
@@ -371,7 +382,7 @@ export default function Header({ onOpenRfq }) {
                 )}
 
                 <nav className="flex flex-col gap-0.5">
-                  {isLoggedIn && (
+                  {effectiveLoggedIn && (
                     <>
                       {isApprovedSeller && (
                         <SmartLink to={`/shop/${profile.shop_slug}`} onClick={() => setOpen(false)} className={`${MOBILE_ROW} text-[#0B7285]`}>
@@ -425,7 +436,7 @@ export default function Header({ onOpenRfq }) {
                     </>
                   )}
 
-                  {!isLoggedIn && (
+                  {!effectiveLoggedIn && (
                     <SmartLink
                       to="/login"
                       onClick={() => setOpen(false)}

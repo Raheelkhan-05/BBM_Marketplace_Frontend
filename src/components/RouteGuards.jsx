@@ -55,11 +55,13 @@ export function RequireGuest({ children, fallback }) {
   const { isLoggedIn, profile } = useAuth();
 
   // A guest (no stored token) renders the landing page immediately —
-  // nothing to wait for. A returning logged-in user also sees it
-  // immediately rather than a spinner, and gets redirected to /home the
-  // moment their profile confirms onboarding is done (usually within one
-  // network round trip, invisible behind the page that was already
-  // rendering).
+  // nothing to wait for. A logged-in user who never finished onboarding
+  // (still sitting at the "contact" step) gets sent straight back to
+  // /login to pick up where they left off, rather than seeing the
+  // landing page as if they were a fresh visitor.
+  // if (isLoggedIn && profile?.onboarding_step !== "done") {
+  //   return <Navigate to="/login" replace />;
+  // }
 
   return children;
 }

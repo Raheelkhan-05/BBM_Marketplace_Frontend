@@ -16,7 +16,7 @@ import SellerListingForm from "../seller/listingForm/SellerListingForm.jsx";
 import { C, EASE } from "./tokens";
 
 export default function ListNewBrandModal({ genericProduct, onClose }) {
-    const { token } = useAuth();
+    const { token, isLoggedIn, profile, clearSession } = useAuth();
     const navigate = useNavigate();
     const [access, setAccess] = useState(undefined);
     const [submitting, setSubmitting] = useState(false);
@@ -25,19 +25,37 @@ export default function ListNewBrandModal({ genericProduct, onClose }) {
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            if (!token) { if (!cancelled) setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" }); return; }
+            if (!isLoggedIn || !token) {
+                if (!cancelled) setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" });
+                return;
+            }
+            if (profile && profile.onboarding_step !== "done") {
+                if (!cancelled) setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" });
+                return;
+            }
             const res = await fetchSellerAccessStatus(token);
-            if (!cancelled) setAccess(res?.success ? res : { canPublish: false, reason: "NOT_AUTHENTICATED" });
+            if (cancelled) return;
+            if (!res?.success) {
+                if (res?.status === 401) await clearSession();
+                setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" });
+                return;
+            }
+            setAccess(res);
         })();
         return () => { cancelled = true; };
-    }, [token]);
+    }, [token, isLoggedIn, profile, clearSession]);
 
     const handleSubmit = async (form) => {
         setSubmitting(true);
         try {
             const res = await createSellerSubmission(token, { genericProductId: genericProduct.id, ...form });
             if (!res?.success) {
-                if (["NOT_AUTHENTICATED", "SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"].includes(res?.code)) {
+                if (res?.status === 401 || res?.code === "NOT_AUTHENTICATED") {
+                    await clearSession();
+                    setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" });
+                    return;
+                }
+                if (["SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"].includes(res?.code)) {
                     setAccess({ canPublish: false, reason: res.code, sellerStatus: res.sellerStatus });
                     return;
                 }

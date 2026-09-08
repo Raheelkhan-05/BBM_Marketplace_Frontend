@@ -13,6 +13,8 @@ import PendingPaymentGate from './components/PendingPaymentGate.jsx';
 import ContactsBootstrapper from "./components/ContactsBootstrapper.jsx";
 import DeferredMount from "./components/DeferredMount.jsx";
 import { routeImports, preloadRoutesWhenIdle } from "./routePreload.js";
+import OnboardingGate from "./components/OnboardingGate.jsx";
+
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -92,7 +94,7 @@ function App() {
       <SocketProvider>
         <BrowserRouter>
           <ScrollToTop />
-
+          <OnboardingGate />
           {/*
             InstallAppPrompt, PendingSubmissionWatcher, PendingPaymentGate and
             ContactsBootstrapper are app-wide background features unrelated

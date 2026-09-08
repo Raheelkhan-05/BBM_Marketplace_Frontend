@@ -249,6 +249,8 @@ function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onD
     const [error, setError] = useState(null);
     const totalDependents = (dependents || []).reduce((s, d) => s + Number(d.count || 0), 0);
     const needsCascade = totalDependents > 0;
+
+    const hasSkipped = (dependents || []).some((d) => d.action === "skipped");
     const canConfirm = confirmText.trim().toUpperCase() === "DELETE";
 
     const doDelete = async (cascade) => {
@@ -302,16 +304,19 @@ function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onD
                                             <Link2 className="h-3 w-3 shrink-0" style={{ color: C.muted }} />
                                             {prettify(d.table)}
                                         </span>
-                                        <Pill tone={d.deleteRule === "CASCADE" ? "good" : "warn"}>
-                                            {d.count} row{d.count === 1 ? "" : "s"} · {d.deleteRule === "CASCADE" ? "auto-cascades" : "force delete"}
+                                        <Pill tone={d.action === "deleted" ? "danger" : d.action === "delinked" ? "warn" : "good"}>
+                                            {d.action === "skipped"
+                                                ? "left untouched"
+                                                : `${d.count} row${d.count === 1 ? "" : "s"} · ${d.action === "deleted" ? "will be deleted" : "will be delinked"}`}
                                         </Pill>
                                     </div>
                                 ))}
                             </div>
                             <p className="mt-1 text-[11.5px] font-medium leading-relaxed" style={{ color: C.muted }}>
-                                Rows marked <strong>auto-cascades</strong> are already set to delete automatically at the database level.
-                                Rows marked <strong>force delete</strong> aren't — type <strong>DELETE</strong> below to remove this
-                                record and everything chained to it in one atomic operation.
+                                Rows marked <strong>will be deleted</strong> only belong to this record and are removed with it.
+                                Rows marked <strong>will be delinked</strong> are shared data — they're kept, just unlinked from this record.
+                                Rows marked <strong>left untouched</strong> involve other people or transactions and won't be touched at all.
+                                {hasSkipped ? " " : " "}Type <strong>DELETE</strong> below to confirm.
                             </p>
                         </div>
                     ) : (

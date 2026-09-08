@@ -9,7 +9,7 @@ import SellerListingForm from "../seller/listingForm/SellerListingForm.jsx";
 import { C, EASE } from "../catalog/tokens.js";
 
 export default function SellThisItemModal({ brand, onClose }) {
-    const { token } = useAuth();
+    const { token, isLoggedIn, profile, clearSession } = useAuth();
     const navigate = useNavigate();
     const [access, setAccess] = useState(undefined);
     const [submitting, setSubmitting] = useState(false);
@@ -28,12 +28,34 @@ export default function SellThisItemModal({ brand, onClose }) {
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            if (!token) { if (!cancelled) setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" }); return; }
+            // Not logged in at all — no need to hit the network.
+            if (!isLoggedIn || !token) {
+                if (!cancelled) setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" });
+                return;
+            }
+            // Logged in but never finished setup — same gate the header/nav
+            // already enforce elsewhere, applied here too so a stray deep
+            // link or race can't open a listing form for an incomplete account.
+            if (profile && profile.onboarding_step !== "done") {
+                if (!cancelled) setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" });
+                return;
+            }
             const res = await fetchSellerAccessStatus(token);
-            if (!cancelled) setAccess(res?.success ? res : { canPublish: false, reason: "NOT_AUTHENTICATED" });
+            if (cancelled) return;
+            if (!res?.success) {
+                // A 401 here means the token is stale — expired, or the
+                // account behind it has since been deleted. Clear the local
+                // session so the header/app state catches up immediately,
+                // instead of silently leaving a dead session lying around.
+                if (res?.status === 401) await clearSession();
+                setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" });
+                return;
+            }
+            setAccess(res);
         })();
         return () => { cancelled = true; };
-    }, [token]);
+    }, [token, isLoggedIn, profile, clearSession]);
+
 
     useEffect(() => {
         const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
@@ -65,9 +87,14 @@ export default function SellThisItemModal({ brand, onClose }) {
     const handleSubmit = async (formValues) => {
         setSubmitting(true);
         try {
-            const res = await createSellerListingForBrand(token, { genericProductBrandId: brand.id, ...formValues });
+            const res = await createSellerListingForBrand(token, { genericProductId: brand.id, ...formValues });
             if (!res?.success) {
-                if (["NOT_AUTHENTICATED", "SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"].includes(res?.code)) {
+                if (res?.status === 401 || res?.code === "NOT_AUTHENTICATED") {
+                    await clearSession();
+                    setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" });
+                    return;
+                }
+                if (["SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"].includes(res?.code)) {
                     setAccess({ canPublish: false, reason: res.code, sellerStatus: res.sellerStatus });
                     return;
                 }
