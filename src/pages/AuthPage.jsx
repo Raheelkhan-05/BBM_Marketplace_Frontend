@@ -109,9 +109,22 @@ export default function AuthPage() {
       }
     });
 
-  const handleResend = () => {
-    requestOtp(identifier);
-  };
+  // FIX: this used to be "fire and forget" — requestOtp(identifier) with no
+  // await, no loading state, and no error surfaced. If the resend call
+  // failed (rate limit, network blip, provider hiccup), the OtpPanel timer
+  // still restarted as if it worked, so the user just saw a silently
+  // "broken" resend button with no code ever arriving. Now it goes through
+  // withLoading (so serverError renders in OtpPanel) and returns whether it
+  // actually succeeded so the panel only resets its countdown on success.
+  const handleResend = () =>
+    withLoading(async () => {
+      const res = await requestOtp(identifier);
+      if (!res.success) {
+        setError(res.message || "Couldn't resend the code. Try again.");
+        return false;
+      }
+      return true;
+    });
 
   const handleOnboardingSubmit = (payload) =>
     withLoading(async () => {
@@ -194,9 +207,6 @@ export default function AuthPage() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Step 1: identifier
-// ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Step 1: identifier
 // ---------------------------------------------------------------------------
@@ -360,6 +370,16 @@ function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled }) {
     if (pasted.length === length) onComplete(pasted);
   };
 
+  // Clear the boxes whenever a new code is requested (e.g. after Resend),
+  // so stale digits from a failed attempt don't linger on screen.
+  useEffect(() => {
+    if (!disabled) {
+      setDigits(Array(length).fill(""));
+      inputsRef.current[0]?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [length]);
+
   return (
     <div>
       <div className="relative">
@@ -400,6 +420,8 @@ function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled }) {
 
 function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serverError }) {
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+  const [resending, setResending] = useState(false);
+  const [justResent, setJustResent] = useState(false);
   const channel = detectChannel(identifier);
 
   useEffect(() => {
@@ -408,10 +430,25 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
     return () => clearTimeout(id);
   }, [secondsLeft]);
 
-  const handleResend = () => {
-    if (secondsLeft > 0) return;
-    setSecondsLeft(RESEND_SECONDS);
-    onResend();
+  // FIX: previously this just called onResend() and reset the 30s timer
+  // unconditionally — even if the resend request actually failed, the
+  // button would disappear behind the countdown as if a new code had gone
+  // out. Now the countdown only restarts on a confirmed success, and the
+  // button is disabled + shows a spinner while the request is in flight so
+  // it can't be double-tapped.
+  const handleResend = async () => {
+    if (secondsLeft > 0 || resending) return;
+    setResending(true);
+    setJustResent(false);
+    try {
+      const ok = await onResend();
+      if (ok !== false) {
+        setSecondsLeft(RESEND_SECONDS);
+        setJustResent(true);
+      }
+    } finally {
+      setResending(false);
+    }
   };
 
   return (
@@ -436,11 +473,29 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
         <OtpBoxes onComplete={(code) => !loading && onVerify(code)} error={serverError} disabled={loading} />
       </div>
 
-      <p className="mt-5 text-center text-[12px] font-medium text-slate-400">
-        {secondsLeft > 0 ? <>Resend code in {secondsLeft}s</> : (
-          <button type="button" onClick={handleResend} className="font-bold text-[#047084] hover:underline">Resend code</button>
+      <div className="mt-5 flex flex-col items-center gap-1.5 text-center">
+        <p className="text-[12px] font-medium text-slate-400">
+          {secondsLeft > 0 ? (
+            <>Resend code in {secondsLeft}s</>
+          ) : (
+            <button
+              type="button" onClick={handleResend} disabled={resending}
+              className="inline-flex items-center gap-1.5 font-bold text-[#047084] hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {resending ? (<><Loader2 className="h-3 w-3 animate-spin" />Resending…</>) : "Resend code"}
+            </button>
+          )}
+        </p>
+        {channel === "phone" && justResent && secondsLeft === RESEND_SECONDS && (
+          <motion.p
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#047084]"
+          >
+            <Phone className="h-3 w-3" />
+            We're calling +91 {identifier} again now.
+          </motion.p>
         )}
-      </p>
+      </div>
     </motion.div>
   );
 }
