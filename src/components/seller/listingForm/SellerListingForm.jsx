@@ -35,11 +35,24 @@
 // (stored in base units) had the same class of bug on the initial-load
 // side — see the fix in SellerManageListingsPage.jsx's
 // submissionToInitialValues().
+//
+// THIS PASS: two UX fixes to the section-card behaviour.
+//   1. All sections now start collapsed by default (was: "product" open
+//      on mount). openSection now initializes to null.
+//   2. Opening a section while another is open was leaving the viewport
+//      wherever it happened to land after the close/expand animations —
+//      since the closing section shrinks and the opening one grows, the
+//      newly-opened section could end up scrolled halfway off-screen or
+//      cut off ("UI jump"). handleSectionToggle now waits for the
+//      collapse/expand motion to settle, then scrollIntoView's the
+//      newly-opened section to the top of the viewport (block: "start"),
+//      same anchor pattern jumpToError already uses for validation
+//      errors. Each SectionCard below now gets a stable `id` to target.
 import { useEffect, useMemo, useState } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
     Loader2, CheckCircle2, AlertTriangle, ImagePlus,
-    Info,
+    Info, Pencil
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { uploadSellerFile } from "../../../utils/api.js";
@@ -333,6 +346,9 @@ export default function SellerListingForm({
     mode = "create", identityReadOnly, brandDisplay, initialValues,
     identityLocked, lockedIdentity,
     stickyBottomClassName = "-bottom-1 md:bottom-0", // default (page/edit route)
+    readOnly = false,        // NEW — renders the whole form non-interactive
+    onEdit,                  // NEW — footer "Edit this listing" callback when readOnly
+    onClose,                 // NEW — footer "Close" callback when readOnly
 }) {
     const locked = identityReadOnly ?? identityLocked ?? mode === "edit";
     const identity = brandDisplay ?? lockedIdentity;
@@ -365,8 +381,15 @@ export default function SellerListingForm({
 
         if (locked) {
             const hasPackaging = base.unit && Number(base.packSize) > 0;
+            console.log("initialValues", initialValues);
+
             base.brandItemMatch = hasPackaging
-                ? { unit: base.unit, packSize: base.packSize, masterPackSize: base.masterPackSize }
+                ? {
+                    id: initialValues?.brandItemMatch?.id ?? initialValues?.genericProductBrandId ?? null,
+                    unit: base.unit,
+                    packSize: base.packSize,
+                    masterPackSize: base.masterPackSize,
+                }
                 : null;
         }
 
@@ -379,10 +402,58 @@ export default function SellerListingForm({
     const [touched, setTouched] = useState({});
     const [checkingBrandMatch, setCheckingBrandMatch] = useState(false);
 
-    // Only one section open at a time; "Product" is open by default since
-    // it's the first thing a seller needs to fill in.
-    const [openSection, setOpenSection] = useState("product");
-    const toggleSection = (key) => setOpenSection((cur) => (cur === key ? null : key));
+    // All sections start collapsed. Only one section open at a time —
+    // opening one closes any other that was open (see handleSectionToggle
+    // below, which also handles scrolling the newly-opened section into view).
+    const [openSection, setOpenSection] = useState(null);
+
+    // Opening a section while a different section is currently open causes
+    // that other section to collapse (shrinking) at the same time this one
+    // expands (growing) — the net effect on scroll position is unpredictable,
+    // which is what caused the "UI jump" (newly opened section landing
+    // half off-screen, or the page appearing not to have moved at all).
+    // Instead of leaving the browser's default scroll-anchoring to sort it
+    // out, we explicitly scroll the newly-opened section's card to the top
+    // of the viewport once the collapse/expand motion has settled — same
+    // "wait for the animation, then scrollIntoView" approach jumpToError
+    // already uses below for validation errors. From there the section is
+    // just normally scrollable downward as usual.
+    //
+    // `opening` mirrors the boolean SectionCard's onOpenChange passes:
+    // true = "open this section" (SectionCard's toggle called with the
+    // section not currently open), false = "close this section" (seller
+    // clicked the currently-open section's own header/chevron again).
+    // Height of whatever sticky/fixed header sits above this page's content.
+    // Adjust the selector to whatever your actual site header element is.
+    const STICKY_HEADER_OFFSET = 64; // px — swap for a measured value if it can vary
+
+    const handleSectionToggle = (key, opening) => {
+        const wasAlreadyOpenElsewhere = openSection && openSection !== key;
+        setOpenSection(opening ? key : null);
+        if (!opening) return;
+
+        setTimeout(() => {
+            const target = document.getElementById(`section-${key}`);
+            if (!target) return;
+
+            const rect = target.getBoundingClientRect();
+            const headerEl = document.querySelector("header"); // or whatever selector matches your actual header
+            const headerOffset = headerEl ? headerEl.getBoundingClientRect().height : STICKY_HEADER_OFFSET;
+            const viewportHeight = window.innerHeight;
+
+            // Only snap if the section doesn't already fit entirely within the
+            // visible area below the header. If it's already fully in view
+            // (top not hidden behind the header, bottom not past the fold),
+            // leave the scroll position alone — no need to move anything.
+            const fitsAlready = rect.top >= headerOffset && rect.bottom <= viewportHeight;
+            if (fitsAlready) return;
+
+            const currentScrollY = window.scrollY;
+            const targetY = currentScrollY + rect.top - headerOffset - 8; // small breathing-room buffer
+
+            window.scrollTo({ top: targetY, behavior: "smooth" });
+        }, wasAlreadyOpenElsewhere ? 260 : 0);
+    };
 
     const missing = useMemo(() => computeMissing(form), [form]);
     const missingKeys = useMemo(() => new Set(missing.map((m) => m.key)), [missing]);
@@ -693,9 +764,18 @@ export default function SellerListingForm({
         const stockQuantitySaleUnits = form.stockType === "ready_stock"
             ? round2(toSaleUnitQtyFromBasis(form.stockQuantityBasis, form.stockQuantity, form.packSize, form.masterPackSize))
             : form.stockQuantity;
-
+        console.log("form", form);
         onSubmit({
             ...form,
+            // NEW — when this listing is for a product that already exists in
+            // the catalog (locked identity, "Already approved" banner), the
+            // backend needs to know WHICH brand item this is for. Without
+            // this, createListingForExistingBrand has no way to resolve the
+            // product and rejects the request outright with "Missing brand
+            // item." — this was being detected on the frontend (brandItemMatch
+            // is what drives the locked/"Already approved" UI) but never
+            // actually sent.
+            genericProductBrandId: form.brandItemMatch?.id || null,
             moq: String(round2ToInt(form.moq)),
             sampleQuantity: form.sampleAvailable ? String(sampleQuantityBaseUnits) : form.sampleQuantity,
             stockQuantity: form.stockType === "ready_stock" ? String(stockQuantitySaleUnits) : form.stockQuantity,
@@ -712,9 +792,10 @@ export default function SellerListingForm({
             )}
 
             {/* ---------------- Product ---------------- */}
-            <SectionCard icon={Package} title="Product" subtitle={locked ? "Already approved · locked" : "Name, brand, images & documents"}
-                open={openSection === "product"} onOpenChange={(v) => setOpenSection(v ? "product" : null)}
-                missingCount={missingCountBySection.product} totalCount={totalCountBySection.product}>
+            <SectionCard id="section-product" icon={Package} title="Product" subtitle={locked ? "Already approved · locked" : "Name, brand, images & documents"}
+                open={openSection === "product"} onOpenChange={(v) => handleSectionToggle("product", v)}
+                missingCount={missingCountBySection.product} totalCount={totalCountBySection.product}
+                readOnly={readOnly}>
                 {locked ? (
                     <div className="flex items-center gap-3 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
                         {form.images?.[0] && <img src={form.images[0]} alt="" className="h-12 w-12 shrink-0 rounded-lg border object-cover" style={{ borderColor: C.hair }} />}
@@ -773,9 +854,10 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Packaging ---------------- */}
-            <SectionCard icon={Boxes} title="Packaging"
-                open={openSection === "packaging"} onOpenChange={(v) => setOpenSection(v ? "packaging" : null)}
-                missingCount={missingCountBySection.packaging} totalCount={totalCountBySection.packaging}>
+            <SectionCard id="section-packaging" icon={Boxes} title="Packaging"
+                open={openSection === "packaging"} onOpenChange={(v) => handleSectionToggle("packaging", v)}
+                missingCount={missingCountBySection.packaging} totalCount={totalCountBySection.packaging}
+                readOnly={readOnly}>
                 {checkingBrandMatch && (
                     <p className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.muted }}>
                         <Loader2 className="h-3 w-3 animate-spin" /> Checking if this product already exists…
@@ -875,9 +957,10 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Pricing ---------------- */}
-            <SectionCard icon={IndianRupee} title="Tax & Pricing"
-                open={openSection === "pricing"} onOpenChange={(v) => setOpenSection(v ? "pricing" : null)}
-                missingCount={missingCountBySection.pricing} totalCount={totalCountBySection.pricing}>
+            <SectionCard id="section-pricing" icon={IndianRupee} title="Tax & Pricing"
+                open={openSection === "pricing"} onOpenChange={(v) => handleSectionToggle("pricing", v)}
+                missingCount={missingCountBySection.pricing} totalCount={totalCountBySection.pricing}
+                readOnly={readOnly}>
                 <ChipToggleGroup dense label="Applicable GST % for this Product" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
                 {(() => {
                     const showMaster = form.hasOuterPack && Number(form.masterPackSize) >= 2;
@@ -1080,9 +1163,10 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Fulfilment ---------------- */}
-            <SectionCard icon={Truck} title="Fulfilment"
-                open={openSection === "fulfilment"} onOpenChange={(v) => setOpenSection(v ? "fulfilment" : null)}
-                missingCount={missingCountBySection.fulfilment} totalCount={totalCountBySection.fulfilment}>
+            <SectionCard id="section-fulfilment" icon={Truck} title="Fulfilment"
+                open={openSection === "fulfilment"} onOpenChange={(v) => handleSectionToggle("fulfilment", v)}
+                missingCount={missingCountBySection.fulfilment} totalCount={totalCountBySection.fulfilment}
+                readOnly={readOnly}>
                 <ChipToggleGroup label="Fulfilment" value={form.stockType} onChange={(v) => setField("stockType", v)}
                     options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
                 {form.stockType === "ready_stock" ? (
@@ -1108,9 +1192,10 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Terms ---------------- */}
-            <SectionCard icon={FileText} title="Terms"
-                open={openSection === "terms"} onOpenChange={(v) => setOpenSection(v ? "terms" : null)}
-                missingCount={missingCountBySection.terms} totalCount={totalCountBySection.terms}>
+            <SectionCard id="section-terms" icon={FileText} title="Terms"
+                open={openSection === "terms"} onOpenChange={(v) => handleSectionToggle("terms", v)}
+                missingCount={missingCountBySection.terms} totalCount={totalCountBySection.terms}
+                readOnly={readOnly}>
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="returnPolicyKey">
                         <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => setField("returnPolicyKey", v)} error={isErr("returnPolicyKey")} />
@@ -1122,9 +1207,10 @@ export default function SellerListingForm({
             </SectionCard>
 
             {/* ---------------- Delivery ---------------- */}
-            <SectionCard icon={Truck} title="Delivery"
-                open={openSection === "delivery"} onOpenChange={(v) => setOpenSection(v ? "delivery" : null)}
-                missingCount={missingCountBySection.delivery} totalCount={totalCountBySection.delivery}>
+            <SectionCard id="section-delivery" icon={Truck} title="Delivery"
+                open={openSection === "delivery"} onOpenChange={(v) => handleSectionToggle("delivery", v)}
+                missingCount={missingCountBySection.delivery} totalCount={totalCountBySection.delivery}
+                readOnly={readOnly}>
                 <FieldAnchor fieldKey="dispatchPincode">
                     <div className="flex flex-col gap-1">
                         <TextField required dense label="Dispatch pincode" value={form.dispatchPincode}
@@ -1143,17 +1229,31 @@ export default function SellerListingForm({
 
             </SectionCard>
 
-            <div className={`sticky ${stickyBottomClassName} z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4`} style={{ borderColor: C.hair }}>
-                <Progress percent={percentComplete} />
-                <button type="button" onClick={handleSubmit} disabled={submitting}
-                    className="mt-2.5 flex w-full items-center tracking-wider justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
-                    style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} </>}
-                </button>
-            </div>
+            {readOnly ? (
+                <div className={`sticky ${stickyBottomClassName} z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4`} style={{ borderColor: C.hair }}>
+                    <div className="flex items-center gap-2">
+                        <button type="button" onClick={onClose}
+                            className="flex-1 rounded-xl border px-4 py-3 text-[13.5px] font-bold tracking-wide"
+                            style={{ borderColor: C.hair, color: C.muted }}>
+                            Close
+                        </button>
+                        <button type="button" onClick={onEdit}
+                            className="flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white tracking-wide"
+                            style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                            <Pencil className="h-4 w-4" /> Edit this listing
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <div className={`sticky ${stickyBottomClassName} z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4`} style={{ borderColor: C.hair }}>
+                    <Progress percent={percentComplete} />
+                    <button type="button" onClick={handleSubmit} disabled={submitting}
+                        className="mt-2.5 flex w-full items-center tracking-wider justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
+                        style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} </>}
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
-
-
-

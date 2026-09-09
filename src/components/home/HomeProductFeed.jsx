@@ -102,6 +102,41 @@ function SellerSortToggle({ value, onChange }) {
     );
 }
 
+// Add near the top of the file, with the other small hooks/helpers:
+
+// Tracks how many columns are active at the current breakpoint, matching
+// the sm/lg breakpoints used elsewhere (1 col mobile, 2 col tablet, 3 col
+// desktop). Needed because manual column-bucketing (below) can't respond
+// to Tailwind breakpoints on its own — it has to know the count in JS.
+function useResponsiveColumnCount() {
+    const getCount = () => {
+        if (typeof window === "undefined") return 1;
+        if (window.innerWidth >= 1024) return 3; // lg
+        if (window.innerWidth >= 640) return 2;  // sm
+        return 1;
+    };
+    const [count, setCount] = useState(getCount);
+    useEffect(() => {
+        const onResize = () => setCount(getCount());
+        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", onResize);
+    }, []);
+    return count;
+}
+
+// Distributes items round-robin (item 0 → col 1, item 1 → col 2, item 2 →
+// col 3, item 3 → col 1, ...) so reading order goes left-to-right across
+// a row before wrapping — matches how a normal grid reads — while each
+// column still renders as its own independent stack, so opening a
+// dropdown never reflows sibling columns.
+function bucketItemsByColumn(items, numCols) {
+    const cols = Array.from({ length: numCols }, () => []);
+    items.forEach((item, i) => {
+        cols[i % numCols].push(item);
+    });
+    return cols;
+}
+
 function SellerPriceBlock({ pricing, unit }) {
     if (!pricing) return null;
     const { discountPercent, hasMasterPack, unit: u, pack, masterPack } = pricing;
@@ -402,9 +437,10 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                 delay: animateEntrance ? Math.min(idx * 0.012, 0.18) : 0,
                 ease: EASE,
             }}
-            className="grid w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 border-b px-3 py-3 sm:px-4"
+            // On ProductRow's outer motion.div — bump the row min-height to match:
+            className="grid w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 sm:px-4 min-h-[7.5rem]"
+
             style={{
-                borderColor: C.hairSoft,
                 background: isOpen ? C.hairSoft : "transparent",
                 opacity: isOutOfStock ? 0.5 : 1,
             }}
@@ -412,7 +448,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             {/* COL 1 — IMAGE */}
             <div className="flex h-full items-center justify-center">
                 <span
-                    className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
+                    className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
                     style={{
                         borderColor: C.hair,
                         background: C.imgBg,
@@ -438,19 +474,14 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                 }}
                 role="button"
                 tabIndex={0}
-                className="min-w-0 cursor-pointer text-left"
+                className="min-w-0 cursor-pointer text-left min-h-[5rem] flex flex-col justify-center"
             >
+
                 <p
-                    className="min-w-0 text-[14px] font-bold leading-tight tracking-wide"
+                    className="min-w-0 text-[14px] font-bold leading-tight tracking-wide line-clamp-2"
                     style={{ color: C.ink }}
                 >
                     {item.name}
-                    {/* Rendered INLINE inside the title text — not as a flex
-                        sibling — so it always sits right after the last
-                        word, on whichever line that lands on. A flex
-                        sibling centers against the whole (possibly 2-line)
-                        block, which is what made it look off-kilter on
-                        longer names. */}
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
@@ -480,15 +511,14 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     {item.subcategory_name}
                 </p>
 
-                {/* PACKAGING — OWN LINE */}
-                {packaging && (
-                    <p
-                        className="mt-1 text-[10px] sm:text-[11px] md:text-[11.5px] font-semibold leading-tight tracking-wide"
-                        style={{ color: C.secondary }}
-                    >
-                        {packaging}
-                    </p>
-                )}
+                {/* Reserve the packaging line's height even when there's no
+        packaging string, so rows with/without it match. */}
+                <p
+                    className="mt-1 text-[10px] sm:text-[11px] md:text-[11.5px] font-semibold leading-tight tracking-wide min-h-[1.2em]"
+                    style={{ color: C.secondary }}
+                >
+                    {packaging || "\u00A0"}
+                </p>
             </div>
 
             {/* COL 3 — PRICE BREAKDOWN (unit / pack / master pack) */}
@@ -921,6 +951,9 @@ export default function HomeProductFeed({ category, q = "" }) {
         return fresh;
     }, [items]);
 
+    const columnCount = useResponsiveColumnCount();
+    const columns = useMemo(() => bucketItemsByColumn(items, columnCount), [items, columnCount]);
+
     return (
         <div>
             <div className="flex items-center justify-between px-1 pb-2">
@@ -933,7 +966,17 @@ export default function HomeProductFeed({ category, q = "" }) {
             <div className="rounded-2xl border bg-white" style={{ borderColor: C.hair }}>
 
                 {showFullSkeleton
-                    ? Array.from({ length: 8 }).map((_, i) => <RowSkeleton key={i} />)
+                    ? (
+                        <div className="flex divide-x" style={{ borderColor: C.hair }}>
+                            {Array.from({ length: columnCount }).map((_, colIdx) => (
+                                <div key={colIdx} className="min-w-0 flex-1 divide-y" style={{ borderColor: C.hairSoft }}>
+                                    {Array.from({ length: Math.ceil(8 / columnCount) }).map((_, i) => (
+                                        <RowSkeleton key={i} />
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
+                    )
                     : items.length === 0 ? (
                         <div className="flex flex-col items-center gap-1.5 px-6 py-16 text-center">
                             <Package className="h-6 w-6" style={{ color: C.hair }} />
@@ -945,38 +988,49 @@ export default function HomeProductFeed({ category, q = "" }) {
                             </p>
                         </div>
                     ) : (
-                        <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity 0.15s ease" }}>
-                            {items.map((item, i) => {
-                                const isOpen = openItemId === item.id;
-                                return (
-                                    <motion.div key={item.id} layout="position" transition={{ duration: 0.24, ease: EASE }}>
-                                        <ProductRow
-                                            item={item}
-                                            idx={i}
-                                            isOpen={isOpen}
-                                            onToggle={() => toggleDropdown(item)}
-                                            onInfo={() => setInfoItemId(item.id)}
-                                            onImageOpen={setLightboxSrc}
-                                            includeGst={includeGst}
-                                            animateEntrance={newlyAppearedIds.has(item.id)}
-                                        />
-                                        <AnimatePresence initial={false}>
-                                            {isOpen && (
-                                                <SellerDropdown
+                        // Each column is its own independent flex stack (not a CSS grid
+                        // row or a browser-rebalanced multi-column layout), so opening
+                        // a seller dropdown only pushes items further down in THAT
+                        // column — the other columns' contents never move or reflow.
+                        <div
+                            className="flex divide-x"
+                            style={{ borderColor: C.hair, opacity: loading ? 0.55 : 1, transition: "opacity 0.15s ease" }}
+                        >
+                            {columns.map((colItems, colIdx) => (
+                                <div key={colIdx} className="min-w-0 flex-1 divide-y" style={{ borderColor: C.hairSoft }}>
+                                    {colItems.map((item) => {
+                                        const isOpen = openItemId === item.id;
+                                        const i = items.indexOf(item);
+                                        return (
+                                            <motion.div key={item.id} layout="position" transition={{ duration: 0.24, ease: EASE }}>
+                                                <ProductRow
                                                     item={item}
-                                                    state={sellerState[item.id]}
-                                                    onBuySeller={(seller) => handleBuySeller(item, seller)}
-                                                    onSell={() => handleSell(item)}
+                                                    idx={i}
+                                                    isOpen={isOpen}
+                                                    onToggle={() => toggleDropdown(item)}
+                                                    onInfo={() => setInfoItemId(item.id)}
+                                                    onImageOpen={setLightboxSrc}
                                                     includeGst={includeGst}
-                                                    sortMode={sellerSortMode}
-                                                    onSortModeChange={setSellerSortMode}
+                                                    animateEntrance={newlyAppearedIds.has(item.id)}
                                                 />
-                                            )}
-                                        </AnimatePresence>
-                                    </motion.div>
-                                );
-                            })}
-                            {loadingMore && <RowSkeleton />}
+                                                <AnimatePresence initial={false}>
+                                                    {isOpen && (
+                                                        <SellerDropdown
+                                                            item={item}
+                                                            state={sellerState[item.id]}
+                                                            onBuySeller={(seller) => handleBuySeller(item, seller)}
+                                                            onSell={() => handleSell(item)}
+                                                            includeGst={includeGst}
+                                                            sortMode={sellerSortMode}
+                                                            onSortModeChange={setSellerSortMode}
+                                                        />
+                                                    )}
+                                                </AnimatePresence>
+                                            </motion.div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
                         </div>
                     )}
                 {hasMore && !loading && <div ref={sentinelRef} className="h-1" />}

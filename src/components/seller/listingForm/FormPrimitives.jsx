@@ -738,9 +738,12 @@ export function RepeatableRows2({ label, hint, rows, columns, onChange, addLabel
     );
 }
 
-// SectionCard — pass `alwaysOpen` for a card that's never collapsible
-// (no chevron, no click target, content always rendered).
-export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, missingCount, totalCount, children, open, onOpenChange, id, alwaysOpen }) {
+// SectionCard — add a `readOnly` prop. Headers stay clickable (sections
+// can still be expanded/collapsed to browse), but the field content
+// inside becomes non-interactive and slightly dimmed, and the
+// completion ring is hidden — "3/9 filled" reads as a validation nag,
+// which makes no sense for a listing that's already been submitted.
+export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRight, missingCount, totalCount, children, open, onOpenChange, id, alwaysOpen, readOnly }) {
     const [internalOpen, setInternalOpen] = useState(!!defaultOpen);
     const isControlled = open !== undefined;
     const isOpen = alwaysOpen ? true : (isControlled ? open : internalOpen);
@@ -750,7 +753,10 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
         else setInternalOpen((o) => !o);
     };
 
-    const showStatus = typeof missingCount === "number" && typeof totalCount === "number" && totalCount > 0;
+    // Status ring is a "you're missing X" prompt — never relevant in
+    // read-only mode, so it's suppressed outright rather than just hidden
+    // via CSS (keeps the header layout from reserving dead space for it).
+    const showStatus = !readOnly && typeof missingCount === "number" && typeof totalCount === "number" && totalCount > 0;
     const filledCount = showStatus ? totalCount - missingCount : 0;
     const isComplete = showStatus && missingCount === 0;
     const fillPercent = showStatus ? Math.round((filledCount / totalCount) * 100) : 0;
@@ -773,63 +779,19 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
                         <span className="flex items-center gap-2">
                             <span className="block text-[15.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{title}</span>
                             {showStatus && (
-                                <span
-                                    className="ml-auto inline-flex shrink-0 items-center justify-center"
-                                    title={`${filledCount} of ${totalCount} fields completed`}
-                                    aria-label={
-                                        isComplete
-                                            ? "Section complete"
-                                            : `${filledCount} of ${totalCount} fields completed`
-                                    }
-                                >
+                                /* ...unchanged status-ring block... */
+                                <span className="ml-auto inline-flex shrink-0 items-center justify-center" title={`${filledCount} of ${totalCount} fields completed`}>
                                     {isComplete ? (
-                                        <span
-                                            className="flex h-7 w-7 items-center justify-center rounded-full"
-                                            style={{
-                                                background: `${C.secondary}12`,
-                                                color: C.secondary,
-                                            }}
-                                        >
-                                            <Check
-                                                className="h-3.5 w-3.5"
-                                                strokeWidth={2.5}
-                                            />
+                                        <span className="flex h-7 w-7 items-center justify-center rounded-full" style={{ background: `${C.secondary}12`, color: C.secondary }}>
+                                            <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
                                         </span>
                                     ) : (
                                         <span className="relative h-7 w-7">
-                                            {/* Background ring */}
-                                            <svg
-                                                viewBox="0 0 36 36"
-                                                className="h-7 w-7 -rotate-90"
-                                            >
-                                                <circle
-                                                    cx="18"
-                                                    cy="18"
-                                                    r="15"
-                                                    fill="none"
-                                                    stroke={C.hairSoft}
-                                                    strokeWidth="3"
-                                                />
-
-                                                {/* Progress ring */}
-                                                <circle
-                                                    cx="18"
-                                                    cy="18"
-                                                    r="15"
-                                                    fill="none"
-                                                    stroke={C.secondary}
-                                                    strokeWidth="3"
-                                                    strokeLinecap="round"
-                                                    strokeDasharray={`${fillPercent * 0.9425} 94.25`}
-                                                    className="transition-all duration-300 ease-out"
-                                                />
+                                            <svg viewBox="0 0 36 36" className="h-7 w-7 -rotate-90">
+                                                <circle cx="18" cy="18" r="15" fill="none" stroke={C.hairSoft} strokeWidth="3" />
+                                                <circle cx="18" cy="18" r="15" fill="none" stroke={C.secondary} strokeWidth="3" strokeLinecap="round" strokeDasharray={`${fillPercent * 0.9425} 94.25`} className="transition-all duration-300 ease-out" />
                                             </svg>
-
-                                            {/* Count */}
-                                            <span
-                                                className="absolute inset-0 flex items-center justify-center text-[8px] font-extrabold tabular-nums"
-                                                style={{ color: C.ink }}
-                                            >
+                                            <span className="absolute inset-0 flex items-center justify-center text-[8px] font-extrabold tabular-nums" style={{ color: C.ink }}>
                                                 {filledCount}/{totalCount}
                                             </span>
                                         </span>
@@ -856,7 +818,17 @@ export function SectionCard({ icon: Icon, title, subtitle, defaultOpen, headerRi
                         transition={{ duration: 0.2, ease: EASE }}
                         style={{ overflow: "hidden" }}
                     >
-                        <div className="flex flex-col gap-3 border-t px-3.5 py-3.5 sm:px-4" style={{ borderColor: C.hairSoft }}>{children}</div>
+                        {/* pointer-events-none blocks every input/button inside the
+                            content (typing, toggling, uploading, adding rows) without
+                            having to thread a `disabled` prop through every field
+                            primitive individually. Header above is OUTSIDE this div,
+                            so expand/collapse still works normally. */}
+                        <div
+                            className={`flex flex-col gap-3 border-t px-3.5 py-3.5 sm:px-4 ${readOnly ? "pointer-events-none opacity-[0.85]" : ""}`}
+                            style={{ borderColor: C.hairSoft }}
+                        >
+                            {children}
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>

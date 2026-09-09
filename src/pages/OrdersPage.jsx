@@ -374,15 +374,8 @@ export default function OrdersPage() {
 
     return (
         <div className="mx-auto min-h-screen max-w-4xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
-            <div className="mt-3 flex items-center gap-3">
-                <button onClick={() => navigate('/home')} className="flex h-9 w-9 items-center justify-center rounded-full border" style={{ borderColor: C.hair }} aria-label="Back">
-                    <ArrowLeft className="h-4 w-4" />
-                </button>
-                <h1 className="font-extrabold tracking-wide" style={{ color: C.ink, fontSize: "clamp(22px, 1.8vw, 27px)" }}>My Orders</h1>
-            </div>
-
             {isApprovedSeller && (
-                <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl border p-1" style={{ borderColor: C.hair, background: "#fafbfb" }}>
+                <div className="mt-0 grid grid-cols-2 gap-1 rounded-xl border p-1" style={{ borderColor: C.hair, background: "#fafbfb" }}>
                     <button onClick={() => setActiveTab("purchases")}
                         className="relative rounded-md px-4 py-1.5 text-[13px] font-bold tracking-wide transition-colors"
                         style={{ background: activeTab === "purchases" ? C.primary : "transparent", color: activeTab === "purchases" ? "#fff" : C.muted, boxShadow: activeTab === "purchases" ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>

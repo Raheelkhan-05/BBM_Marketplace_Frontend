@@ -88,7 +88,7 @@ export default function SellerWalletPage() {
     return (
         <div className="mx-auto min-h-screen max-w-3xl px-2.5 pb-16 pt-3 sm:px-4">
             <div className="mt-3 flex items-center gap-3">
-                <button onClick={() => navigate('/home')} className="flex h-9 w-9 items-center justify-center rounded-full border" style={{ borderColor: C.hair, color: C.ink }}><ArrowLeft className="h-4 w-4" /></button>
+                <button onClick={() => navigate('/seller/listings')} className="flex h-9 w-9 items-center justify-center rounded-full border" style={{ borderColor: C.hair, color: C.ink }}><ArrowLeft className="h-4 w-4" /></button>
                 <h1 className="flex items-center gap-2 font-extrabold tracking-wide" style={{ color: C.ink, fontSize: "clamp(20px,1.8vw,26px)" }}>
                     <Wallet className="h-5 w-5" style={{ color: C.secondary }} /> Wallet
                 </h1>

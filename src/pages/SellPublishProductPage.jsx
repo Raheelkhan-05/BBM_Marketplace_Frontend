@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { CheckCircle2, Lock, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { fetchSellerAccessStatus, createSellerSubmission, updateSellerProductSubmission } from "../utils/api.js";
+import { fetchSellerAccessStatus, createSellerSubmission, createListingForExistingBrand, updateSellerProductSubmission } from "../utils/api.js";
 import { fetchSubmissionDetail } from "../utils/sellerListingApi.js";
 import ProductPathPicker from "../components/ProductPathPicker.jsx";
 import SellerListingForm, { DEFAULT_LISTING_FORM } from "../components/seller/listingForm/SellerListingForm.jsx";
@@ -150,8 +150,17 @@ export default function SellPublishProductPage() {
             let res;
             if (isEdit) {
                 res = await updateSellerProductSubmission(token, submissionId, form);
+            } else if (form.genericProductBrandId) {
+                // Product already exists in the catalog and was matched/locked
+                // (the "Already approved · locked" banner) — this hits the
+                // endpoint that resolves the brand item by ID directly instead
+                // of re-searching by product/brand name.
+
+                res = await createListingForExistingBrand(token, form);
             } else {
-                res = await createSellerSubmission(token, form); // form already has genericProductId
+                // Brand-new product — no existing match, backend resolves-or-
+                // creates the brand item from productName/brandName itself.
+                res = await createSellerSubmission(token, form);
             }
             if (!res?.success) {
                 const code = res?.code;

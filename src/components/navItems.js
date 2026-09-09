@@ -23,14 +23,16 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate })
             onClick: () => navigate("/home"),
             match: (p) => p === "/home",
         } : null,
-        isLoggedIn ? {
-            id: "sellerlist",
-            label: "Seller Listing",
-            icon: Store,
-            to: "/seller/listings",
-            onClick: () => navigate("/seller/listings"),
-            match: (p) => p === "/seller/listings",
-        } : null,
+        isLoggedIn
+            ? {
+                id: "myproducts",
+                label: "My Products",
+                icon: Package,
+                to: "/seller/listings",
+                onClick: () => navigate("/seller/listings"),
+                match: (p) => p === "/seller/listings",
+            }
+            : null,
         isLoggedIn ? {
             id: "chat",
             label: "Chat",
@@ -58,15 +60,6 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate })
                 }),
             match: (p) => p.startsWith("/orders"),
         } : null,
-        isApprovedSeller
-            ? {
-                id: "wallet",
-                label: "Wallet",
-                icon: Wallet,
-                to: "/seller/wallet",
-                onClick: () => navigate("/seller/wallet"),
-                match: (p) => p.startsWith("/seller/wallet"),
-            }
-            : null,
+
     ].filter(Boolean);
 }

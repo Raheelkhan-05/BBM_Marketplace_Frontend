@@ -64,8 +64,9 @@ import {
     Search, Pencil, Power, PowerOff, ImageIcon, Package, IndianRupee, Boxes,
     Archive, Truck, FileText, Handshake, ShieldCheck, X, Loader2, ChevronRight,
     RefreshCw, AlertTriangle, CheckCircle2, PackageX, TrendingDown, Plus, Check,
-    PackagePlus, Lock, Clock,
+    PackagePlus, Lock, Clock, Wallet
 } from "lucide-react";
+import { fetchWalletStatus } from "../utils/walletApi.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 // NOTE: SmoothScrollProvider itself is NOT imported/used here anymore —
@@ -458,6 +459,72 @@ function timeAgo(date) {
 }
 
 /* ============================ small pieces ============================ */
+function WalletSummaryCard({ wallet, onClick }) {
+    const isBlocked = wallet?.is_blocked;
+
+    const balance = wallet
+        ? `₹${(Number(wallet.balance_due) || 0).toLocaleString("en-IN", {
+            maximumFractionDigits: 0,
+        })}`
+        : "—";
+
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="
+                flex w-full max-w-[150px] min-w-0
+                items-center gap-2.5
+                rounded-xl px-3 py-2.5
+                text-left
+                transition-all duration-150
+                hover:opacity-95
+                active:scale-[0.98]
+                sm:max-w-[190px]
+                sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3
+            "
+            style={{
+                background: isBlocked
+                    ? "linear-gradient(135deg, #c71f11, #a11a10)"
+                    : "linear-gradient(135deg, #047084, #0B7285)",
+            }}
+        >
+            {/* Wallet Icon */}
+            <span
+                className="
+                    flex h-8 w-8 shrink-0
+                    items-center justify-center
+                    rounded-lg bg-white/15
+                    sm:h-9 sm:w-9
+                "
+            >
+                <Wallet
+                    className="h-[15px] w-[15px] text-white sm:h-[17px] sm:w-[17px]"
+                    strokeWidth={2.2}
+                />
+            </span>
+
+            {/* Wallet Info */}
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-[9px] font-bold uppercase tracking-wider text-white/70 sm:text-[10px]">
+                    {isBlocked ? "Orders paused" : "Wallet balance"}
+                </span>
+
+                {/* Amount + Navigation */}
+                <span className="mt-1 flex items-center gap-1">
+                    <span className="truncate text-[18px] font-black leading-none tracking-tight text-white sm:text-[20px]">
+                        {balance}
+                    </span>
+
+                    <ChevronRight
+                        className="h-4 w-4 shrink-0 text-white/65 sm:h-[17px] sm:w-[17px]"
+                        strokeWidth={2.2}
+                    />
+                </span>
+            </span>
+        </button>
+    );
+}
 
 function StatTile({ icon: Icon, label, value, tone = "ink" }) {
     const toneColor = { ink: C.ink, primary: C.primary, secondary: C.secondary, muted: C.muted }[tone];
@@ -558,7 +625,7 @@ function QuickField({ label, ...props }) {
 //    arithmetic themselves — and always sees a live preview of the
 //    resulting total before it's applied.
 function StockAdjuster({ value, onChange, saleUnit }) {
-    const [mode, setMode] = useState("add");
+    const [mode, setMode] = useState("set");
     const [delta, setDelta] = useState("");
 
     const current = Number(value) || 0;
@@ -864,7 +931,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                             />
                         )}
 
-                        <p className="text-[10.5px] font-medium leading-relaxed" style={{ color: C.muted }}>
+                        <p className="text-[10.5px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>
                             Need to change pack size, master pack, quality certificates, dispatch locations, or return/warranty policy?
                             Use <span className="font-bold" style={{ color: C.ink }}>Edit listing</span> for the full form.
                         </p>
@@ -1159,214 +1226,107 @@ function useLenisScrollLock() {
     }, [lenis]);
 }
 
-function ListingDetailModal({ token, submissionId, onClose, onEdit, onImageClick }) {
+function ListingDetailModal({ token, submissionId, onClose, onEdit }) {
     useLenisScrollLock();
     const [loading, setLoading] = useState(true);
-    const [data, setData] = useState(null);
     const [error, setError] = useState("");
+    const [initialValues, setInitialValues] = useState(null);
+    const [brandDisplay, setBrandDisplay] = useState(null);
+    const [statusMeta, setStatusMeta] = useState(null); // review_status / is_active / rejection_reason for the banner
 
     useEffect(() => {
         let cancelled = false;
         setLoading(true); setError("");
         fetchSellerSubmissionDetail(token, submissionId).then((res) => {
             if (cancelled) return;
-            if (res?.success) setData(res.submission); else setError(res?.message || "Couldn't load this listing.");
+            if (!res?.success) { setError(res?.message || "Couldn't load this listing."); setLoading(false); return; }
+            const s = res.submission;
+            setInitialValues(submissionToInitialValues(s));
+            setBrandDisplay({
+                name: s.product_name || s.brand?.name,
+                brandName: s.brand_name || s.brand?.brand_name,
+                image: s.image || s.brand?.image,
+            });
+            setStatusMeta({
+                reviewStatus: s.review_status,
+                isActive: s.is_active !== false,
+                rejectionReason: s.rejection_reason,
+            });
             setLoading(false);
         });
         return () => { cancelled = true; };
     }, [token, submissionId]);
 
-    const s = data;
-    const images = s?.images?.length ? s.images : (s?.image ? [s.image] : []);
-    const name = s?.brand?.name || "Product";
-    const brandName = s?.brand?.brand_name;
-
-    // The sale unit this listing is priced, MOQ'd, and stocked in.
-    const saleUnit = saleUnitLabel(s?.units_per_master_pack);
-
-    // GST always added on top of the entered base price — same shared
-    // helpers the Quick Update panel uses, so the two views can never
-    // disagree. No inclusive/exclusive branching, no gst_inclusive_input.
-    const gstAmount = s ? computeGstAmount(s.base_price, s.gst_percent) : 0;
-    const finalPrice = s ? computeFinalPrice(s.base_price, s.gst_percent) : 0;
-
-    const gp = s?.brand?.generic_product;
-    const crumb = [gp?.subcategory?.category?.name, gp?.subcategory?.name, gp?.name].filter(Boolean).join(" › ");
-
     return (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-            <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white" style={{ height: "88vh" }}>
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-2.5 sm:p-4" onClick={onClose}>
+            <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white" style={{ height: "92vh" }}>
                 <div className="flex shrink-0 items-center justify-between border-b px-5 py-3.5" style={{ borderColor: C.hairSoft }}>
                     <div className="min-w-0">
-                        <h3 className="truncate text-[15px] font-extrabold" style={{ color: C.ink }}>{name}</h3>
-                        {!s?.brand?.brand_not_applicable && brandName && <p className="text-[11.5px] font-semibold" style={{ color: C.muted }}>{brandName}</p>}
+                        <h3 className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>Listing details</h3>
+                        <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                            What you submitted for this product — tap Edit to make changes.
+                        </p>
                     </div>
                     <button onClick={onClose} className="shrink-0 rounded-full p-1.5 transition-colors duration-150 hover:bg-black/[0.05]" style={{ color: C.muted }}>
                         <X className="h-4 w-4" />
                     </button>
                 </div>
 
-                <AnimatePresence mode="wait" initial={false}>
-                    {loading ? (
-                        <motion.div
-                            key="skeleton"
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.15 }}
-                            className="flex-1 overflow-y-auto"
-                            data-scroll-lock-allow=""
-                            data-lenis-prevent=""
-                        >
-                            <ListingDetailModalSkeleton />
-                        </motion.div>
-                    ) : error ? (
-                        <motion.p
-                            key="error"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            className="flex-1 px-5 py-8 text-center text-[13px] font-semibold"
-                            style={{ color: "#c71f11" }}
-                        >
-                            {error}
-                        </motion.p>
-                    ) : s ? (
-                        <motion.div
-                            key="content"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ duration: 0.18 }}
-                            className="flex-1 overflow-y-auto px-5 py-3.5"
-                            style={{ minHeight: 0, overscrollBehavior: "contain" }}
-                            data-scroll-lock-allow=""
-                            data-lenis-prevent=""
-                        >
-                            <div className="flex flex-wrap items-center gap-1.5 pb-3">
-                                <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{
-                                    background: s.review_status === "approved" ? "#dcfce7" : s.review_status === "rejected" ? "#fee2e2" : "#fef3c7",
-                                    color: s.review_status === "approved" ? "#15803d" : s.review_status === "rejected" ? "#b91c1c" : "#a16207",
-                                }}>
-                                    {s.review_status === "approved" ? "Approved" : s.review_status === "rejected" ? "Rejected" : "Pending review"}
-                                </span>
-                                {s.is_active === false && <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: C.hairSoft, color: C.muted }}>Hidden from buyers</span>}
-                            </div>
-                            {s.rejection_reason && <p className="mb-3 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ background: "rgba(199,31,17,0.08)", color: "#c71f11" }}>Rejected: {s.rejection_reason}</p>}
-                            {crumb && (
-                                <div className="mb-3 rounded-lg px-3 py-2" style={{ background: C.hairSoft }}>
-                                    <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Catalog mapping</p>
-                                    <p className="text-[12px] font-bold break-words" style={{ color: C.ink }}>{crumb}</p>
+                <div
+                    className="flex-1 overflow-y-auto px-5 py-4"
+                    style={{ minHeight: 0, overscrollBehavior: "contain" }}
+                    data-scroll-lock-allow=""
+                    data-lenis-prevent=""
+                >
+                    <AnimatePresence mode="wait" initial={false}>
+                        {loading ? (
+                            <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                                <EditListingModalSkeleton />
+                            </motion.div>
+                        ) : error ? (
+                            <motion.p key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                                className="py-8 text-center text-[13px] font-semibold" style={{ color: "#c71f11" }}>
+                                {error}
+                            </motion.p>
+                        ) : initialValues ? (
+                            <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
+                                {/* Status banner — same badge language ListingRow already uses,
+                                    so "what state is this listing in" reads consistently
+                                    across the list and this detail view. */}
+                                <div className="mb-3 flex flex-wrap items-center gap-1.5">
+                                    <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{
+                                        background: statusMeta.reviewStatus === "approved" ? "#dcfce7" : statusMeta.reviewStatus === "rejected" ? "#fee2e2" : "#fef3c7",
+                                        color: statusMeta.reviewStatus === "approved" ? "#15803d" : statusMeta.reviewStatus === "rejected" ? "#b91c1c" : "#a16207",
+                                    }}>
+                                        {statusMeta.reviewStatus === "approved" ? "Approved" : statusMeta.reviewStatus === "rejected" ? "Rejected" : "Pending review"}
+                                    </span>
+                                    {!statusMeta.isActive && (
+                                        <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: C.hairSoft, color: C.muted }}>
+                                            Hidden from buyers
+                                        </span>
+                                    )}
                                 </div>
-                            )}
-
-                            <div className="flex flex-col gap-1 pt-1">
-                                <SectionBlock icon={Package} title="Product">
-                                    <ReadRow label="Manufacturer" value={s.manufacturer} />
-                                    <ReadRow label="Model / Part No." value={s.model_no} />
-                                    <ReadRow label="Grade / Variant" value={s.grade_variant} />
-                                </SectionBlock>
-                                {(s.specifications?.length > 0 || images.length > 0) && (
-                                    <div className="-mt-1">
-                                        {s.specifications?.length > 0 && <ReadRowsList rows={s.specifications} columns={[{ key: "key" }, { key: "value" }]} />}
-                                        {images.length > 0 && (
-                                            <div className="mt-2 flex flex-wrap gap-1.5">
-                                                {images.map((src, i) => (
-                                                    <button key={src + i} onClick={() => onImageClick?.({ images, index: i, alt: name })} className="relative h-14 w-14">
-                                                        <img src={resizedImageUrl(src, { width: 75 })} alt="" loading="lazy" decoding="async" className="h-full w-full rounded-md border object-cover" style={{ borderColor: C.hair }} />
-                                                        {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-md bg-black/60 py-0.5 text-center text-[7.5px] font-bold text-white">Cover</span>}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
+                                {statusMeta.rejectionReason && (
+                                    <p className="mb-3 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ background: "rgba(199,31,17,0.08)", color: "#c71f11" }}>
+                                        Rejected: {statusMeta.rejectionReason}
+                                    </p>
                                 )}
 
-                                <SectionBlock icon={IndianRupee} title="Pricing">
-                                    <ReadRow label={`Base Price (/${saleUnit})`} value={s.base_price != null ? `₹${formatMoney(s.base_price)}` : null} />
-                                    <ReadRow label="GST %" value={s.gst_percent != null ? `${s.gst_percent}%` : null} />
-                                    <ReadRow label="GST amount" value={`₹${formatMoney(gstAmount)}`} />
-                                    <ReadRow label={`Final price (/${saleUnit})`} value={`₹${formatMoney(finalPrice)}`} />
-                                    <ReadRow label="Freight" value={s.freight_included != null ? (s.freight_included ? "Included" : "Extra, buyer pays") : null} />
-                                    <ReadRow label="Valid till" value={s.price_validity_till} />
-                                </SectionBlock>
-
-                                <SectionBlock icon={Boxes} title="Quantity">
-                                    <ReadRow label="MOQ" value={s.moq != null ? `${s.moq} ${pluralizeUnit(s.moq, saleUnit)}` : null} />
-                                    <ReadRow label="Sample" value={s.sample_available ? `${baseUnitsToBasisQty(s.sample_quantity, s.sample_unit_basis, s.pack_size, s.units_per_master_pack) || ""} ${s.sample_unit_basis ? { per_unit: "unit(s)", per_pack: "pack(s)", per_master_pack: "master pack(s)" }[s.sample_unit_basis] : ""}`.trim() || "Available" : "Not available"} />
-                                </SectionBlock>
-                                {s.quantity_discounts?.length > 0 && (
-                                    <div className="-mt-1">
-                                        <p className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Discount slabs</p>
-                                        <div className="flex flex-col gap-1">
-                                            {[...s.quantity_discounts]
-                                                .sort((a, b) => Number(a.minQty) - Number(b.minQty))
-                                                .map((slab, i) => (
-                                                    <div key={i} className="flex items-center justify-between rounded-md px-2.5 py-1.5 text-[11.5px] font-semibold" style={{ background: C.hairSoft, color: C.ink }}>
-                                                        <span>Above {slab.minQty} {pluralizeUnit(slab.minQty, saleUnit)}</span>
-                                                        <span className="font-bold" style={{ color: C.secondary }}>{slab.discountPercent}% off</span>
-                                                    </div>
-                                                ))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                <SectionBlock icon={Archive} title="Packaging">
-                                    <ReadRow label="Selling unit" value={s.unit} />
-                                    <ReadRow label="Pack size" value={s.pack_size != null ? `${s.pack_size} ${s.unit || ""}`.trim() : null} />
-
-                                </SectionBlock>
-
-                                <SectionBlock icon={Boxes} title="Availability">
-                                    <ReadRow label="Stock" value={s.stock_quantity != null ? `${s.stock_quantity} ${pluralizeUnit(s.stock_quantity, saleUnit)}` : "Not set"} />
-                                    <ReadRow label="Fulfilment" value={s.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock"} />
-                                </SectionBlock>
-
-                                <SectionBlock icon={Truck} title="Delivery">
-                                    <ReadRow label="Dispatch pincode" value={s.dispatch_pincode} />
-                                    <ReadRow label="Dispatch district" value={s.dispatch_district} />
-                                    <ReadRow label="Dispatch state" value={s.dispatch_state} />
-                                    <ReadRow label="Lead time" value={s.stock_type === "made_to_order" ? (s.production_lead_time_days != null ? `${s.production_lead_time_days}d` : null) : (s.dispatch_time_days != null ? `${s.dispatch_time_days}d` : null)} />
-                                </SectionBlock>
-                                {summarizeDispatchLocations(s.dispatching_locations) && <ReadRow label="Delivers to" value={summarizeDispatchLocations(s.dispatching_locations)} />}
-                                <ReadRow label="Seller location" value={s.seller_location} />
-                                <ReadRow label="Freight terms" value={s.freight_terms} />
-
-                                <SectionBlock icon={FileText} title="Tax & Legal">
-                                    <ReadRow label="HSN Code" value={s.hsn_code} />
-                                    <ReadRow label="GST status" value={s.gst_registration_status} />
-                                    <ReadRow label="Tax invoice" value={s.tax_invoice_available != null ? (s.tax_invoice_available ? "Yes" : "No") : null} />
-                                </SectionBlock>
-
-                                <SectionBlock icon={Handshake} title="Commercial Terms" />
-                                <ReadRow label="Warranty" value={s.warranty} />
-                                <ReadRow label="Payment terms" value={s.payment_terms} />
-                                <ReadRow label="Return policy" value={s.return_policy} />
-                                {s.note_to_admin && (
-                                    <div className="border-t pt-3" style={{ borderColor: C.hairSoft }}>
-                                        <p className="mb-1 text-[11.5px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Your note to admin</p>
-                                        <p className="text-[12px] font-medium leading-relaxed" style={{ color: C.ink }}>{s.note_to_admin}</p>
-                                    </div>
-                                )}
-
-                                {(s.quality_certificates?.length > 0 || s.tds_msds_coa?.length > 0 || s.other_certifications?.length > 0) && (
-                                    <SectionBlock icon={ShieldCheck} title="Quality & Certifications">
-                                        <div className="col-span-2 flex flex-col gap-1.5">
-                                            <ReadRowsList rows={s.quality_certificates} columns={[{ key: "name" }, { key: "url" }]} />
-                                            <ReadRowsList rows={s.tds_msds_coa} columns={[{ key: "type" }, { key: "url" }]} />
-                                            <ReadRowsList rows={s.other_certifications} columns={[{ key: "name" }, { key: "url" }]} />
-                                        </div>
-                                    </SectionBlock>
-                                )}
-                            </div>
-                        </motion.div>
-                    ) : null}
-                </AnimatePresence>
-
-                {!loading && s && (
-                    <div className="flex shrink-0 items-center justify-end gap-2 border-t px-5 py-3" style={{ borderColor: C.hairSoft }}>
-                        <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[12.5px] font-bold" style={{ color: C.muted }}>Close</button>
-                        <button onClick={onEdit} className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-bold text-white transition-opacity duration-150" style={{ background: C.secondary }}>
-                            <Pencil className="h-3.5 w-3.5" /> Edit this listing
-                        </button>
-                    </div>
-                )}
+                                <SellerListingForm
+                                    mode="edit"
+                                    identityReadOnly
+                                    readOnly
+                                    brandDisplay={brandDisplay}
+                                    initialValues={initialValues}
+                                    onSubmit={() => { }}
+                                    onEdit={onEdit}
+                                    onClose={onClose}
+                                    stickyBottomClassName="-bottom-4"
+                                />
+                            </motion.div>
+                        ) : null}
+                    </AnimatePresence>
+                </div>
             </div>
         </div>
     );
@@ -1386,6 +1346,8 @@ export default function SellerManageListingsPage() {
     const { token, profile, registerResyncHandler, refreshProfile } = useAuth();
     const { socket } = useSocket();
     const navigate = useNavigate();
+
+    const [wallet, setWallet] = useState(null);
 
     const [items, setItems] = useState([]);
 
@@ -1457,6 +1419,13 @@ export default function SellerManageListingsPage() {
         window.addEventListener("focus", onVisible);
         return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); };
     }, [reload]);
+
+    // Alongside the existing reload-on-mount effect — same load pattern,
+    // just for the wallet snapshot this header chip needs.
+    useEffect(() => {
+        if (!token || !isApprovedSeller) return;
+        fetchWalletStatus(token).then((res) => { if (res?.success) setWallet(res.wallet); });
+    }, [token, isApprovedSeller]);
 
     const stats = useMemo(() => {
         const total = items.length;
@@ -1570,17 +1539,47 @@ export default function SellerManageListingsPage() {
             {/* No local <SmoothScrollProvider> here anymore — see import
                 comment above. This page just renders under the single
                 global instance main.jsx already provides. */}
-            <main className="mx-auto max-w-5xl px-2.5 pb-24 pt-5 sm:px-4 lg:px-6">
+            <main className="mx-auto max-w-7xl px-2.5 pb-24 pt-5 sm:px-4 lg:px-6">
+
+                <div className="grid grid-cols-2 items-end gap-3 sm:gap-6 ps-2">
+                    {/* Left */}
+                    <div className="min-w-0">
+                        <h1
+                            className="text-[22px] font-black leading-tight tracking-tight sm:text-[28px]"
+                            style={{ color: C.ink }}
+                        >
+                            My Products
+                        </h1>
+
+                        <p
+                            className="mt-1 text-[12px] font-semibold leading-tight tracking-wide sm:text-[13px]"
+                            style={{ color: C.muted }}
+                        >
+                            {stats.total} listing{stats.total === 1 ? "" : "s"}
+                            <span className="mx-1">·</span>
+                            {stats.live} live
+                        </p>
+                    </div>
+
+                    {/* Right */}
+                    <div className="flex justify-end">
+                        <WalletSummaryCard
+                            wallet={wallet}
+                            onClick={() => navigate("/seller/wallet")}
+                        />
+                    </div>
+                </div>
 
                 {/* search + filters */}
-                <div className="mt-0 flex flex-col gap-3">
+                <div className="mt-4 flex flex-col gap-3">
+
                     <div className="relative">
                         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: C.muted }} />
                         <input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             placeholder="Search your listings by product or brand…"
-                            className="w-full rounded-full border bg-white py-2.5 pl-10 pr-4 text-[13px] font-medium focus:outline-none focus:ring-2"
+                            className="w-full rounded-full border bg-white tracking-wide py-2.5 pl-10 pr-4 text-[13px] font-medium focus:outline-none focus:ring-2"
                             style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }}
                         />
                     </div>

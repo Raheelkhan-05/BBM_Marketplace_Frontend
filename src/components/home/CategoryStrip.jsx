@@ -162,28 +162,12 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ duration: 0.25, delay: Math.min(i * 0.02, 0.2), ease: EASE }}
                             whileTap={{ scale: 0.96 }}
-                            className="flex shrink-0 items-center gap-2 rounded-full py-1.5 pl-1.5 pr-3.5 transition-colors duration-150"
+                            className="flex shrink-0 items-center rounded-full py-1.5 px-3.5 transition-colors duration-150"
                             style={{
                                 background: active ? C.accentTint : "#fff",
                                 border: `1.5px solid ${active ? C.accent : C.hair}`,
                             }}
                         >
-                            <span
-                                className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full"
-                                style={{ background: active ? C.accentTintIcon : "#F1F3F4" }}
-                            >
-                                {cat.image
-                                    ? (
-                                        <img
-                                            src={resizedImageUrl(cat.image, { width: 48 })}
-                                            alt=""
-                                            className="h-full w-full object-cover"
-                                            loading="lazy"
-                                            decoding="async"
-                                        />
-                                    )
-                                    : <Box className="h-3 w-3" style={{ color: active ? C.accent : C.muted }} />}
-                            </span>
                             <span className="whitespace-nowrap text-[12.5px] font-bold tracking-wide" style={{ color: active ? C.accent : C.ink }}>
                                 {cat.name}
                             </span>

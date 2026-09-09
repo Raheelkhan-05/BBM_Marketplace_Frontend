@@ -768,6 +768,16 @@ export async function createSellerListingForBrand(token, payload) {
   return res.json();
 }
 
+// utils/api.js
+export async function createListingForExistingBrand(token, payload) {
+  const res = await fetch(`${API_BASE}/seller/catalog/listings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
 // ---- Checkout / Orders ----
 export async function fetchCheckoutStatus(token) {
   const res = await fetch(`${API_BASE}/orders/checkout-status`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });

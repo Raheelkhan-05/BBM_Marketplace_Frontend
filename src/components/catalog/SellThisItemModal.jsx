@@ -79,6 +79,7 @@ export default function SellThisItemModal({ brand, onClose }) {
     // items (created before this was tracked) will have these blank, and
     // only those will still prompt for input.
     const packagingInitialValues = {
+        genericProductBrandId: detail?.id || brand?.id,
         unit: detail?.unit || "",
         packSize: detail?.packSize != null ? String(detail.packSize) : "",
         masterPackSize: detail?.unitsPerMasterPack != null ? String(detail.unitsPerMasterPack) : "",
@@ -87,7 +88,9 @@ export default function SellThisItemModal({ brand, onClose }) {
     const handleSubmit = async (formValues) => {
         setSubmitting(true);
         try {
+            console.log("formValues", formValues);
             const res = await createSellerListingForBrand(token, { genericProductId: brand.id, ...formValues });
+
             if (!res?.success) {
                 if (res?.status === 401 || res?.code === "NOT_AUTHENTICATED") {
                     await clearSession();
