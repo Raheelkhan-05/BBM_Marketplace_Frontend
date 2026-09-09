@@ -245,16 +245,17 @@ export default function Header({ onOpenRfq }) {
                 <div className="relative hidden md:block" ref={accountRef}>
                   <button
                     onClick={() => setAccountOpen((v) => !v)}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[13px] font-bold text-slate-700 transition hover:border-[#7fb3bd]"
+                    title={displayName}
+                    className="inline-flex w-[165px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[13px] font-bold text-slate-700 transition hover:border-[#7fb3bd]"
                   >
                     <span
-                      className="flex h-6 w-6 items-center justify-center rounded-full text-white"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white"
                       style={{ background: "linear-gradient(135deg, #0B7285 0%, #4FA3B0 100%)" }}
                     >
                       <User className="h-3.5 w-3.5" />
                     </span>
-                    {displayName}
-                    <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${accountOpen ? "rotate-180" : ""}`} />
+                    <span className="min-w-0 flex-1 truncate text-left">{displayName}</span>
+                    <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${accountOpen ? "rotate-180" : ""}`} />
                   </button>
 
                   <AnimatePresence>

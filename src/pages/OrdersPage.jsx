@@ -373,7 +373,7 @@ export default function OrdersPage() {
     const [activeTab, setActiveTab] = useState("purchases"); // "purchases" | "sales"
 
     return (
-        <div className="mx-auto min-h-screen max-w-4xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
+        <div className="mx-auto min-h-screen max-w-7xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
             {isApprovedSeller && (
                 <div className="mt-0 grid grid-cols-2 gap-1 rounded-xl border p-1" style={{ borderColor: C.hair, background: "#fafbfb" }}>
                     <button onClick={() => setActiveTab("purchases")}
