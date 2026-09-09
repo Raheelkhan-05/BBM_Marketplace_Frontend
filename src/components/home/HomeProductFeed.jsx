@@ -47,7 +47,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Package, Info, Store, ShieldCheck } from "lucide-react";
+import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2 } from "lucide-react";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -709,75 +709,83 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                     )}
                 </div>
 
-                <div className="max-h-64 overflow-y-auto overscroll-contain">
-                    {loading ? (
-                        // Skeleton rows now mirror the real seller row shape:
-                        // name + MOQ/lead-time on the left, price + unit on
-                        // the right — instead of generic unaligned bars.
-                        <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
-                            {Array.from({ length: 3 }).map((_, i) => (
-                                <div key={i} className="flex items-center justify-between gap-3 py-2.5">
-                                    <div className="min-w-0 flex-1 space-y-1.5">
-                                        <div className="h-2.5 w-32 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                        <div className="h-2 w-20 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                    </div>
-                                    <div className="shrink-0 space-y-1.5 text-right">
-                                        <div className="ml-auto h-2.5 w-12 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                        <div className="ml-auto h-2 w-8 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                <div
+                    className="max-h-64 overflow-y-auto overscroll-contain seller-scroll"
+                    style={{ scrollbarGutter: "stable" }}
+                >
+                    <AnimatePresence mode="wait" initial={false}>
+                        {loading ? (
+                            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                                <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
+                                    <div className="flex items-center justify-between gap-3 py-3">
+                                        <div className="min-w-0 flex-1 space-y-1.5">
+                                            <div className="h-2.5 w-32 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                            <div className="h-2 w-24 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                        </div>
+                                        <div className="shrink-0 space-y-1.5 text-right">
+                                            <div className="ml-auto h-2.5 w-12 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                            <div className="ml-auto h-2 w-8 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                        </div>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    ) : error ? (
-                        <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>{error}</p>
-                    ) : sortedItems.length === 0 ? (
-                        <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>No sellers listing this yet.</p>
-                    ) : (
-                        <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
-                            {sortedItems.map((s) => {
-                                const pricing = sellerPricingForMode(s, sortMode, includeGst);
-                                const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
-                                const isOwn = isOwnSellerRow(s, currentUserId);
-                                return (
-                                    <button
-                                        key={s.submission_id}
-                                        onClick={() => !outOfStock && !isOwn && onBuySeller(s)}
-                                        disabled={outOfStock || isOwn}
-                                        className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] disabled:cursor-not-allowed"
-                                        style={outOfStock || isOwn ? { opacity: 0.45 } : undefined}
-                                    >
-                                        <div className="min-w-0 flex-1">
-                                            <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                {s.display_name}{isOwn ? " (You)" : ""}
-                                            </p>
-                                            <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
-                                                {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
-                                                {pricing?.discountPercent > 0
-                                                    ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
-                                                    : ""}
-                                            </p>
-                                        </div>
-                                        {outOfStock ? (
-                                            <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
-                                                OUT OF STOCK
-                                            </span>
-                                        ) : (
-                                            <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                        )}
-                                    </button>
-                                );
-                            })}
-                            {hasMore && (
-                                <p className="pt-2 text-center text-[11px] font-semibold" style={{ color: C.muted }}>
-                                    +{Math.max(total - items.length, 0)} more sellers
-                                </p>
-                            )}
-                        </div>
-
-                    )}
+                            </motion.div>
+                        ) : error ? (
+                            <motion.p key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+                                className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>
+                                {error}
+                            </motion.p>
+                        ) : sortedItems.length === 0 ? (
+                            <motion.p key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+                                className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>
+                                No sellers listing this yet.
+                            </motion.p>
+                        ) : (
+                            <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                                <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
+                                    {sortedItems.map((s) => {
+                                        const pricing = sellerPricingForMode(s, sortMode, includeGst);
+                                        const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
+                                        const isOwn = isOwnSellerRow(s, currentUserId);
+                                        return (
+                                            <button
+                                                key={s.submission_id}
+                                                onClick={() => !outOfStock && !isOwn && onBuySeller(s)}
+                                                disabled={outOfStock || isOwn}
+                                                className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] disabled:cursor-not-allowed"
+                                                style={outOfStock || isOwn ? { opacity: 0.45 } : undefined}
+                                            >
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                        {s.display_name}{isOwn ? " (You)" : ""}
+                                                    </p>
+                                                    <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                        {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
+                                                        {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
+                                                        {pricing?.discountPercent > 0
+                                                            ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
+                                                            : ""}
+                                                    </p>
+                                                </div>
+                                                {outOfStock ? (
+                                                    <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
+                                                        OUT OF STOCK
+                                                    </span>
+                                                ) : (
+                                                    <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                    {hasMore && (
+                                        <p className="pt-2 text-center text-[11px] font-semibold" style={{ color: C.muted }}>
+                                            +{Math.max(total - items.length, 0)} more sellers
+                                        </p>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
-
 
                 {/* Hidden until the sellers fetch has settled — no more
                     "Sell this product" flashing on screen before we know

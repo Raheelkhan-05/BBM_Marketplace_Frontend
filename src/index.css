@@ -53,3 +53,24 @@ body {
   display: none;
   /* Chrome, Safari, Opera */
 }
+
+/* Thin, unobtrusive scrollbar for seller dropdown lists — visible when
+   actually needed, but doesn't visually "pop" when it appears since it's
+   slim and low-contrast rather than a full-width default scrollbar. */
+.seller-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(11, 17, 22, 0.15) transparent;
+}
+
+.seller-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.seller-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.seller-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(11, 17, 22, 0.15);
+  border-radius: 999px;
+}
