@@ -503,7 +503,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             >
 
                 <p
-                    className="min-w-0 text-[14px] font-bold leading-tight tracking-wide line-clamp-2"
+                    className="min-w-0 text-[14px] font-bold leading-tight tracking-wide sm:line-clamp-3 md:line-clamp-2"
                     style={{ color: C.ink }}
                 >
                     {item.name}
