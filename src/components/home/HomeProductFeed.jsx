@@ -29,6 +29,20 @@
 //   it's treated as a spurious re-invocation and skipped, so only one
 //   request actually goes out. A genuine category/search change always
 //   produces a different key, so this never blocks real navigation.
+//
+// "SELL THIS PRODUCT" SELF-LISTING GUARD (this revision):
+// - The CTA at the bottom of the seller dropdown used to show up
+//   unconditionally once the sellers fetch settled — including for a
+//   seller who already has their own listing for that exact product,
+//   where "Sell this product" makes no sense (they're already selling
+//   it). Fixed by comparing each loaded seller row's owning user against
+//   the signed-in user (via useAuth()'s `profile.id`, same shape
+//   AuthContext exposes elsewhere) and hiding the button on a match.
+//   NOTE: this only sees sellers in the currently-loaded page
+//   (SELLER_PAGE_SIZE = 30, sorted by price) — if a seller's own listing
+//   happens to be priced far enough down that it hasn't been fetched yet,
+//   the button could still show. Good enough for the common case; flag if
+//   you want a dedicated "do I already sell this" check instead.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -41,6 +55,7 @@ import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
 import SellThisItemModal from "../catalog/SellThisItemModal";
 import BuyNowModal from "../BuyNowModal";
 import { resizedImageUrl } from "../../utils/imageUrl";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
@@ -310,6 +325,16 @@ function toBuyerSellerPayload(s) {
         sampleQuantity: s.sample_quantity ?? null,
         samplePrice: s.sample_price ?? null,
     };
+}
+
+// Whether a given seller row belongs to the signed-in user — the row may
+// carry the owning user id under either `user_id` (typical) or
+// `seller_user_id` depending on which query populated it, so check both
+// rather than assuming one name.
+function isOwnSellerRow(sellerRow, currentUserId) {
+    if (!currentUserId) return false;
+    const ownerId = sellerRow?.shop_slug ?? null;
+    return ownerId != null && String(ownerId) === String(currentUserId);
 }
 
 // Stable sort: items with an actual seller (lowest_price present) float
@@ -620,8 +645,10 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
 // item's fetch. `data-lenis-prevent` on the scrollable list is what
 // hands scroll control back to the native container the instant the
 // cursor is over it, instead of the page's Lenis smooth-scroll eating
-// the wheel event.
-function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange }) {
+// the wheel event. `currentUserId` is used only to hide "Sell this
+// product" when the signed-in seller already has a listing among the
+// loaded rows — see the file header note.
+function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId }) {
     const { loading, items = [], error, total = 0, hasMore } = state || {};
 
     // Re-sort whichever page of sellers we've already fetched. Note: this
@@ -648,6 +675,14 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
         });
         return withMeta.map((x) => x.s);
     }, [items, sortMode, includeGst]);
+
+    // If the signed-in seller already lists this exact product (found among
+    // the loaded rows), "Sell this product" is a no-op for them — hide it
+    // instead of inviting them to create a duplicate listing.
+    const alreadySelling = useMemo(
+        () => items.some((s) => isOwnSellerRow(s, currentUserId)),
+        [items, currentUserId]
+    );
 
     return (
         <motion.div
@@ -702,16 +737,19 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                             {sortedItems.map((s) => {
                                 const pricing = sellerPricingForMode(s, sortMode, includeGst);
                                 const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
+                                const isOwn = isOwnSellerRow(s, currentUserId);
                                 return (
                                     <button
                                         key={s.submission_id}
-                                        onClick={() => !outOfStock && onBuySeller(s)}
-                                        disabled={outOfStock}
+                                        onClick={() => !outOfStock && !isOwn && onBuySeller(s)}
+                                        disabled={outOfStock || isOwn}
                                         className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] disabled:cursor-not-allowed"
-                                        style={outOfStock ? { opacity: 0.45 } : undefined}
+                                        style={outOfStock || isOwn ? { opacity: 0.45 } : undefined}
                                     >
                                         <div className="min-w-0 flex-1">
-                                            <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{s.display_name}</p>
+                                            <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                {s.display_name}{isOwn ? " (You)" : ""}
+                                            </p>
                                             <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                 {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
                                                 {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
@@ -743,8 +781,10 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
 
                 {/* Hidden until the sellers fetch has settled — no more
                     "Sell this product" flashing on screen before we know
-                    who else is already selling it. */}
-                {!loading && (
+                    who else is already selling it. Also hidden outright
+                    when the signed-in seller is already one of the loaded
+                    sellers for this product (see alreadySelling above). */}
+                {!loading && !alreadySelling && (
                     <button
                         onClick={onSell}
                         className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors duration-150 hover:bg-black/[0.03]"
@@ -775,6 +815,8 @@ function RowSkeleton() {
 // same unfiltered behavior as before. Passing it wires up live search.
 export default function HomeProductFeed({ category, q = "" }) {
     const navigate = useNavigate();
+    const { profile } = useAuth();
+    const currentUserId = profile?.shop_slug ?? null;
     const [items, setItems] = useState([]);
     const seenItemIdsRef = useRef(new Set());
     const [total, setTotal] = useState(null);
@@ -1023,6 +1065,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                             includeGst={includeGst}
                                                             sortMode={sellerSortMode}
                                                             onSortModeChange={setSellerSortMode}
+                                                            currentUserId={currentUserId}
                                                         />
                                                     )}
                                                 </AnimatePresence>
