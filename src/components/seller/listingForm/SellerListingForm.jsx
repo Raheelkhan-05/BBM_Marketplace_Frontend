@@ -1214,11 +1214,6 @@ export default function SellerListingForm({
                 <FieldAnchor fieldKey="dispatchingLocations">
                     <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
                 </FieldAnchor>
-
-                <FieldAnchor fieldKey="dispatchingLocations">
-                    <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
-                </FieldAnchor>
-
             </SectionCard>
 
             {readOnly ? (
