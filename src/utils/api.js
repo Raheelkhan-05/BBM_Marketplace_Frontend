@@ -815,6 +815,12 @@ export async function cancelMyOrder(token, id, reason) {
   return res.json();
 }
 
+export async function fetchOrderConstraints(submissionId) {
+  const params = new URLSearchParams({ submissionId });
+  const res = await fetch(`${API_BASE}/orders/order-constraints?${params}`);
+  return res.json();
+}
+
 // ---- Seller order management ----
 export async function fetchSellerOrders(token, status, orderType) {
   const params = new URLSearchParams();

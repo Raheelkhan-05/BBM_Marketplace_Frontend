@@ -6,7 +6,7 @@ import PaymentQRModal from "./PaymentQRModal.jsx";
 import {
     Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee,
     Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
-    CreditCard, Boxes, ShoppingCart,
+    CreditCard, Boxes, ShoppingCart, Clock
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -17,6 +17,8 @@ import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } fro
 import { clearPaymentSession } from "../utils/paymentSession.js";
 import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./seller/listingForm/FormPrimitives.jsx";
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, hasOuterPack, saleUnitLabel, round2 } from "../shared/packUnits.js";
+import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
+import { fetchOrderConstraints } from "../utils/api.js";
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 
@@ -86,6 +88,30 @@ function resolveDiscountPercent(quantityDiscounts, quantity) {
         .sort((a, b) => Number(b.minQty) - Number(a.minQty));
     if (!applicable.length) return { percent: 0, tier: null };
     return { percent: Number(applicable[0].discountPercent) || 0, tier: applicable[0] };
+}
+
+// One cohesive card for "can't order right now" — used instead of stacking
+// separate Notice boxes when more than one constraint can be true at once
+// (working hours + delivery area are independent checks, so both can fail
+// together). A single reason still reads fine with just one bullet.
+function ConstraintNotice({ reasons }) {
+    const active = reasons.filter(Boolean);
+    if (!active.length) return null;
+    return (
+        <div className="rounded-lg px-3 py-2.5" style={{ background: "rgba(199,31,17,0.08)" }}>
+            <p className="text-[11.5px] font-extrabold uppercase tracking-[0.06em]" style={{ color: C.danger }}>
+                Can't place an order right now
+            </p>
+            <div className="mt-1.5 flex flex-col gap-1">
+                {active.map((r, i) => (
+                    <div key={i} className="flex items-start gap-1.5">
+                        <r.icon className="mt-[1px] h-3 w-3 shrink-0" style={{ color: C.danger }} />
+                        <span className="text-[12px] font-semibold leading-snug tracking-wider" style={{ color: C.danger }}>{r.message}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 // toBaseUnits is still needed for stock/pricing (those stay in base
@@ -369,6 +395,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // settled, so we never briefly show a unit-based quote for a pack item.
     const [quote, setQuote] = useState(null);
 
+
     // Prefer the server-confirmed quote's availableStock (it re-reads live
     // stock on every debounced call); fall back to the seller prop for the
     // instant local estimate before the first server quote lands. Only a
@@ -469,6 +496,44 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return () => { cancelled = true; };
     }, [token]);
 
+    // Working-hours + delivery-serviceability constraints for this seller/listing.
+    const [constraints, setConstraints] = useState(null);
+    useEffect(() => {
+        if (!seller?.offerId || !access?.canCheckout) return;
+        fetchOrderConstraints(seller.offerId).then((res) => {
+            if (res?.success) setConstraints(res);
+        });
+    }, [seller?.offerId, access]);
+
+    // Re-evaluate the working-hours window every 30s so a modal left open
+    // across the seller's cutoff time disables itself without a reload.
+    const [clockTick, setClockTick] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => setClockTick((t) => t + 1), 30000);
+        return () => clearInterval(id);
+    }, []);
+
+    const effectiveCity = showNewAddress ? newAddress.city : selectedAddress?.city;
+
+    const windowStatus = useMemo(
+        () => checkOrderWindow(constraints ? {
+            workingDays: constraints.workingDays,
+            orderAcceptanceStart: constraints.orderAcceptanceStart,
+            orderAcceptanceEnd: constraints.orderAcceptanceEnd,
+            holidays: constraints.holidays,
+        } : null),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [constraints, clockTick]
+    );
+
+    const locationStatus = useMemo(
+        () => checkLocationServiceable(constraints?.dispatchingLocations, { state: effectiveState, city: effectiveCity }),
+        [constraints, effectiveState, effectiveCity]
+    );
+
+    const blockedByConstraints = !locationStatus.serviceable || !windowStatus.open;
+
+
     useEffect(() => {
         if (!access?.canCheckout) return;
         let cancelled = false;
@@ -567,6 +632,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // regular "Place order" button, exactly as before.
     const handleSubmit = async (explicitOrderType) => {
         setError(null);
+        if (!windowStatus.open) return setError(windowStatus.message);
+        if (!locationStatus.serviceable) return setError(locationStatus.message);
+
         // Hard guard — never trust the disabled prop alone. Re-check against
         // whatever quote we have right now before doing anything else.
         if (!isSample && Number(quantity) < minQuantity) {
@@ -930,17 +998,30 @@ export default function BuyNowModal({ seller, product, onClose }) {
                             <SectionCard icon={MapPin} title="Shipping address" alwaysOpen>
                                 {!showNewAddress && addresses.length > 0 && (
                                     <div className="flex flex-col gap-2">
-                                        {addresses.map((a) => (
-                                            <button key={a.id} type="button" onClick={() => setSelectedAddressId(a.id)}
-                                                className="flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors duration-150"
-                                                style={{ borderColor: selectedAddressId === a.id ? C.secondary : C.hair, background: selectedAddressId === a.id ? `${C.secondary}08` : "#fff" }}>
-                                                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                                                <div className="min-w-0">
-                                                    <p className="text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>{a.label} — {a.contact_name}</p>
-                                                    <p className="text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p>
-                                                </div>
-                                            </button>
-                                        ))}
+                                        {addresses.map((a) => {
+                                            // Checked per-address (not just the selected one) so the whole list
+                                            // signals which saved addresses this seller can't actually reach —
+                                            // the buyer can see it before tapping instead of picking one and
+                                            // then hitting the footer error. The full explanation still lives
+                                            // in one place only — the sticky footer notice below.
+                                            const addrLocationStatus = checkLocationServiceable(constraints?.dispatchingLocations, { state: a.state, city: a.city });
+                                            const isSelected = selectedAddressId === a.id;
+                                            const isUndeliverable = !!constraints && !addrLocationStatus.serviceable;
+                                            return (
+                                                <button key={a.id} type="button" onClick={() => setSelectedAddressId(a.id)}
+                                                    className="flex items-start gap-2.5 rounded-xl border p-3 text-left transition-colors duration-150"
+                                                    style={{
+                                                        borderColor: isUndeliverable ? C.danger : (isSelected ? C.secondary : C.hair),
+                                                        background: isUndeliverable ? `${C.danger}08` : (isSelected ? `${C.secondary}08` : "#fff"),
+                                                    }}>
+                                                    <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: isUndeliverable ? C.danger : C.secondary }} />
+                                                    <div className="min-w-0">
+                                                        <p className="text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>{a.label} — {a.contact_name}</p>
+                                                        <p className="text-[12px] font-semibold tracking-wide" style={{ color: isUndeliverable ? C.danger : C.muted }}>{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
                                         <button type="button" onClick={() => setShowNewAddress(true)} className="flex w-fit items-center gap-1.5 text-[12px] font-bold tracking-wide" style={{ color: C.secondary }}>
                                             <Plus className="h-3.5 w-3.5" /> Add a new address
                                         </button>
@@ -955,7 +1036,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         </div>
                                         <TextField dense label="Address line 1" value={newAddress.address_line1} onChange={(v) => setAddrField("address_line1", v)} />
                                         <TextField dense label="Address line 2 (optional)" value={newAddress.address_line2} onChange={(v) => setAddrField("address_line2", v)} />
-                                        <div className="grid grid-cols-3 gap-2.5">
+                                        <div
+                                            className="grid grid-cols-3 gap-2.5 rounded-lg transition-colors duration-150"
+                                            style={constraints && !locationStatus.serviceable
+                                                ? { background: `${C.danger}08`, boxShadow: `0 0 0 1px ${C.danger}40`, padding: 6, margin: -6 }
+                                                : undefined}
+                                        >
                                             <TextField dense label="City" value={newAddress.city} onChange={(v) => setAddrField("city", v)} />
                                             <TextField dense label="State" value={newAddress.state} onChange={(v) => setAddrField("state", v)} />
                                             <TextField dense label="Pincode" value={newAddress.pincode} onChange={(v) => setAddrField("pincode", v)} />
@@ -1002,7 +1088,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         </span>
                                     </button>
                                 ) : null}
-
                                 <div className="flex flex-col gap-1">
                                     <Label>Note to seller (optional)</Label>
                                     <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any special instructions…"
@@ -1111,78 +1196,85 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                         {/* ---------------- Sticky submit ---------------- */}
                         <div className="sticky bottom-0 z-10 border-t bg-white/95 px-5 py-3.5 backdrop-blur sm:px-6" style={{ borderColor: C.hairSoft }}>
-                            {quote && (
-                                <div className="mb-2.5 flex items-center justify-between">
-                                    <span className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Total payable</span>
-                                    <span className="flex items-center text-[17px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                                        <IndianRupee className="h-4 w-4" />{inr(quote.subtotal)}
-                                    </span>
-                                </div>
-                            )}
+                            {blockedByConstraints ? (
+                                <ConstraintNotice reasons={[
+                                    !windowStatus.open && { icon: Clock, message: windowStatus.message },
+                                    !locationStatus.serviceable && { icon: MapPin, message: locationStatus.message },
+                                ]} />
+                            ) : (
+                                <>
+                                    {quote && (
+                                        <div className="mb-2.5 flex items-center justify-between">
+                                            <span className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Total payable</span>
+                                            <span className="flex items-center text-[17px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                                <IndianRupee className="h-4 w-4" />{inr(quote.subtotal)}
+                                            </span>
+                                        </div>
+                                    )}
 
-                            {/* Credit slot */}
-                            {!isSample && (
-                                canBuyOnCredit ? (
-                                    <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq || outOfStock || exceedsStock}
-                                        className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
-                                        style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
-                                        <CreditCard className="h-3.5 w-3.5" /> {submitting ? "Placing…" : "Buy on credit"}
+                                    {/* Credit slot */}
+                                    {!isSample && (
+                                        canBuyOnCredit ? (
+                                            <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq || outOfStock || exceedsStock}
+                                                className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
+                                                style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                                <CreditCard className="h-3.5 w-3.5" /> {submitting ? "Placing…" : "Buy on credit"}
+                                            </button>
+                                        ) : creditStatus?.status === "pending" ? (
+                                            <div className="mb-2"><Notice tone="info">Your credit request to {seller.display_name} is awaiting their response — check your chat with them.</Notice></div>
+                                        ) : creditCooldownActive ? (
+                                            <div className="mb-2">
+                                                <Notice tone="warn">Your last credit request was declined. You can request again after {new Date(creditStatus.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</Notice>
+                                            </div>
+                                        ) : (
+                                            <button type="button" onClick={handleRequestCredit} disabled={requestingCredit || belowMoq || outOfStock || exceedsStock}
+                                                className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-bold tracking-wide disabled:opacity-60"
+                                                style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                                <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
+                                            </button>
+                                        )
+                                    )}
+
+                                    {!isSample && !isCredit && (
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (quote && quote.meetsMoq === false) {
+                                                    setError(`Minimum order quantity is ${formatMoqForBasis(quote.moq, seller)}.`);
+                                                    return;
+                                                }
+                                                if (maxQuantity != null && Number(quantity) > Number(maxQuantity)) {
+                                                    setError(`You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller.`);
+                                                    return;
+                                                }
+                                                const confirmed = await pendingQuoteRef.current;
+                                                const finalQuote = confirmed || quote;
+                                                if (finalQuote && finalQuote.meetsMoq === false) {
+                                                    setError(`Minimum order quantity is ${formatMoqForBasis(finalQuote.moq, seller)}.`);
+                                                    return;
+                                                }
+                                                setSubmitting(true);
+                                                const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
+                                                setSubmitting(false);
+                                                if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
+                                                onClose();
+                                                navigate("/cart");
+                                            }}
+                                            disabled={submitting || belowMoq || outOfStock || exceedsStock}
+                                            className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
+                                            style={{ borderColor: C.hair, color: C.ink }}
+                                        >
+                                            <ShoppingCart className="h-3.5 w-3.5" /> Add to cart
+                                        </button>
+                                    )}
+
+                                    <button onClick={() => handleSubmit()} disabled={submitting || (!isSample && (belowMoq || outOfStock || exceedsStock))}
+                                        className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[14px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
+                                        style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                                        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
                                     </button>
-                                ) : creditStatus?.status === "pending" ? (
-                                    <div className="mb-2"><Notice tone="info">Your credit request to {seller.display_name} is awaiting their response — check your chat with them.</Notice></div>
-                                ) : creditCooldownActive ? (
-                                    <div className="mb-2">
-                                        <Notice tone="warn">Your last credit request was declined. You can request again after {new Date(creditStatus.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</Notice>
-                                    </div>
-                                ) : (
-                                    <button type="button" onClick={handleRequestCredit} disabled={requestingCredit || belowMoq || outOfStock || exceedsStock}
-                                        className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-bold tracking-wide disabled:opacity-60"
-                                        style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
-                                        <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
-                                    </button>
-                                )
+                                </>
                             )}
-
-                            {!isSample && !isCredit && (
-                                <button
-                                    type="button"
-                                    onClick={async () => {
-                                        // Guard immediately, using whatever quote is on hand — don't wait on
-                                        // the debounced server quote before rejecting an obviously-invalid tap.
-                                        if (quote && quote.meetsMoq === false) {
-                                            setError(`Minimum order quantity is ${formatMoqForBasis(quote.moq, seller)}.`);
-                                            return;
-                                        }
-                                        if (maxQuantity != null && Number(quantity) > Number(maxQuantity)) {
-                                            setError(`You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller.`);
-                                            return;
-                                        }
-                                        const confirmed = await pendingQuoteRef.current;
-                                        const finalQuote = confirmed || quote;
-                                        if (finalQuote && finalQuote.meetsMoq === false) {
-                                            setError(`Minimum order quantity is ${formatMoqForBasis(finalQuote.moq, seller)}.`);
-                                            return;
-                                        }
-                                        setSubmitting(true);
-                                        const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
-                                        setSubmitting(false);
-                                        if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
-                                        onClose();
-                                        navigate("/cart");
-                                    }}
-                                    disabled={submitting || belowMoq || outOfStock || exceedsStock}
-                                    className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide disabled:opacity-50"
-                                    style={{ borderColor: C.hair, color: C.ink }}
-                                >
-                                    <ShoppingCart className="h-3.5 w-3.5" /> Add to cart
-                                </button>
-                            )}
-
-                            <button onClick={() => handleSubmit()} disabled={submitting || (!isSample && (belowMoq || outOfStock || exceedsStock))}
-                                className="flex w-full items-center justify-center gap-1.5 rounded-xl px-5 py-3 text-[14px] font-bold tracking-wider text-white transition-opacity duration-150 disabled:opacity-50"
-                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
-                            </button>
                         </div>
                     </>
                 )}
