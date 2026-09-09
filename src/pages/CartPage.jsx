@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Plus } from "lucide-react";
+import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Plus, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
-import { fetchBuyerAddresses, createBuyerAddress, fetchBusinessProfile } from "../utils/api.js";
+import { fetchBuyerAddresses, createBuyerAddress, fetchBusinessProfile, fetchOrderConstraints } from "../utils/api.js";
 import { C } from "../components/catalog/tokens";
 import GroupPaymentQRModal from "../components/GroupPaymentQRModal.jsx";
 import { TextField } from "../components/seller/listingForm/FormPrimitives.jsx";
 
 import { purchaseQtyToSaleUnitQty, saleUnitLabel, round2, hasOuterPack } from "../shared/packUnits.js";
+import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
 
 // Mirrors resolveSlabUnitPrice/resolveDiscountPercent used everywhere else
 // (BuyNowModal, orders.controller) — kept local since there's no shared
@@ -81,6 +82,30 @@ function seedFromBusinessProfile(bp, contact) {
     };
 }
 
+// One cohesive notice block for "can't order right now" — mirrors
+// BuyNowModal's ConstraintNotice so the two flows read consistently.
+// Reasons is a flat list of { icon, message }; falsy entries are dropped
+// so a single active reason still renders cleanly.
+function ConstraintNotice({ reasons }) {
+    const active = reasons.filter(Boolean);
+    if (!active.length) return null;
+    return (
+        <div className="mt-2.5 rounded-lg px-3 py-2.5" style={{ background: "rgba(199,31,17,0.08)" }}>
+            <p className="text-[11px] font-extrabold uppercase tracking-[0.06em]" style={{ color: "#c71f11" }}>
+                Can't include this seller's items right now
+            </p>
+            <div className="mt-1.5 flex flex-col gap-1">
+                {active.map((r, i) => (
+                    <div key={i} className="flex items-start gap-1.5">
+                        <r.icon className="mt-[1px] h-3 w-3 shrink-0" style={{ color: "#c71f11" }} />
+                        <span className="text-[11.5px] font-semibold leading-snug tracking-wider" style={{ color: "#c71f11" }}>{r.message}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function CartPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
@@ -131,6 +156,96 @@ export default function CartPage() {
 
     const grandTotal = items.reduce((sum, it) => sum + priceFor(it).lineTotal, 0);
 
+    // ---------------------------------------------------------------
+    // Order-window + delivery-serviceability constraints, per seller/item.
+    //
+    // Why this exists: a buyer can add items to the cart while a seller's
+    // shop is open and deliverable to their address, then come back to
+    // check out later — outside the seller's working hours, on a holiday,
+    // or after switching to an address that seller doesn't ship to. The
+    // backend (checkoutCart) already hard-blocks all of this at the RPC
+    // boundary, so nothing incorrect can ever actually be ordered — but
+    // without this, the buyer would fill in the whole form and only find
+    // out from a generic error message after hitting "Proceed to pay".
+    // This mirrors that exact same check on the frontend, per seller
+    // (window) and per item (location, since dispatching_locations is set
+    // per listing, not per seller), so the buyer sees it before they even
+    // reach checkout — same UX contract BuyNowModal already gives for a
+    // single-seller purchase.
+    // ---------------------------------------------------------------
+    const submissionIds = useMemo(
+        () => [...new Set(items.map((i) => i.submission_id).filter(Boolean))],
+        [items]
+    );
+    const submissionIdsKey = submissionIds.join(",");
+
+    const [constraintsBySubmission, setConstraintsBySubmission] = useState({});
+    useEffect(() => {
+        if (!submissionIds.length) { setConstraintsBySubmission({}); return; }
+        let cancelled = false;
+        (async () => {
+            const results = await Promise.all(submissionIds.map((id) => fetchOrderConstraints(id)));
+            if (cancelled) return;
+            const map = {};
+            submissionIds.forEach((id, idx) => {
+                if (results[idx]?.success) map[id] = results[idx];
+            });
+            setConstraintsBySubmission(map);
+        })();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [submissionIdsKey]);
+
+    // Re-evaluate the working-hours window every 30s, same as BuyNowModal,
+    // so a cart left open across a seller's cutoff time disables itself
+    // without a reload.
+    const [clockTick, setClockTick] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => setClockTick((t) => t + 1), 30000);
+        return () => clearInterval(id);
+    }, []);
+
+    // Effective address used for the location check — prefers the
+    // in-progress new-address form (so it updates live as the buyer
+    // types) exactly like BuyNowModal does, falls back to the selected
+    // saved address otherwise.
+    const effectiveAddress = showNewAddress
+        ? { state: newAddress.state, city: newAddress.city }
+        : (addresses.find((a) => a.id === addressId) || null);
+
+    // Per-seller-group constraint status: working-hours window (shared
+    // across all of a seller's items) + per-item location serviceability
+    // (each listing can have its own dispatching_locations).
+    const groupConstraintStatus = useMemo(() => {
+        const result = {};
+        for (const [sellerId, group] of Object.entries(grouped)) {
+            const first = group.items[0];
+            const constraints = constraintsBySubmission[first.submission_id];
+            const windowStatus = checkOrderWindow(constraints ? {
+                workingDays: constraints.workingDays,
+                orderAcceptanceStart: constraints.orderAcceptanceStart,
+                orderAcceptanceEnd: constraints.orderAcceptanceEnd,
+                holidays: constraints.holidays,
+            } : null);
+
+            const itemLocationStatuses = group.items.map((it) => {
+                const c = constraintsBySubmission[it.submission_id];
+                return { item: it, status: checkLocationServiceable(c?.dispatchingLocations, effectiveAddress) };
+            });
+            const blockedItems = itemLocationStatuses.filter((x) => !x.status.serviceable);
+
+            result[sellerId] = {
+                windowStatus,
+                blockedItems,
+                blocked: !windowStatus.open || blockedItems.length > 0,
+            };
+        }
+        return result;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [grouped, constraintsBySubmission, effectiveAddress?.state, effectiveAddress?.city, clockTick]);
+
+    const anyGroupBlocked = Object.values(groupConstraintStatus).some((g) => g.blocked);
+
     useEffect(() => {
         // Clean up any in-flight debounce timers on unmount so they don't
         // fire updateCartItem calls against an unmounted page.
@@ -162,12 +277,12 @@ export default function CartPage() {
     };
 
     const flushPendingWrites = async () => {
-        const submissionIds = Object.keys(pendingWrites.current);
-        submissionIds.forEach((id) => clearTimeout(pendingWrites.current[id]));
+        const ids = Object.keys(pendingWrites.current);
+        ids.forEach((id) => clearTimeout(pendingWrites.current[id]));
 
         // Re-run each write immediately (bypassing the timer) for anything
         // still pending, then wait for all of them.
-        const flushes = submissionIds.map(async (submissionId) => {
+        const flushes = ids.map(async (submissionId) => {
             const it = items.find((i) => i.submission_id === submissionId);
             if (!it) return;
             const res = it.quantity <= 0
@@ -220,6 +335,21 @@ export default function CartPage() {
             return;
         }
 
+        // Hard guard — never trust the disabled prop alone. Re-check against
+        // whatever constraint state we have right now, same pattern as
+        // BuyNowModal's handleSubmit, before doing anything else. The
+        // backend re-checks this again inside checkoutCart regardless, but
+        // catching it here avoids an unnecessary round trip and gives a
+        // clearer, per-seller message.
+        if (anyGroupBlocked) {
+            const blockedGroup = Object.values(groupConstraintStatus).find((g) => g.blocked);
+            const message = !blockedGroup.windowStatus.open
+                ? blockedGroup.windowStatus.message
+                : blockedGroup.blockedItems[0]?.status.message;
+            setError(message || "One or more sellers in your cart can't be ordered from right now.");
+            return;
+        }
+
         // NOTE: there used to be an `if (!addressId) return setError(...)` guard
         // right here. That's what caused "Please select a shipping address" to
         // fire even when the buyer HAD just filled in a new address — with no
@@ -264,55 +394,76 @@ export default function CartPage() {
                 </div>
             ) : (
                 <>
-                    {Object.values(grouped).map((g) => (
-                        <div key={g.seller.seller_id} className="mt-4 rounded-2xl border p-3.5" style={{ borderColor: C.hair }}>
-                            <p className="flex items-center gap-1.5 text-[13px] font-extrabold" style={{ color: C.ink }}><Store className="h-3.5 w-3.5" /> {g.seller.seller_name}</p>
-                            <div className="mt-3 flex flex-col gap-3">
-                                {g.items.map((it) => {
-                                    const p = priceFor(it);
-                                    const floor = Number(it.moq) > 0 ? Number(it.moq) : 1;
-                                    const atFloor = it.quantity <= floor;
-                                    const stock = stockInfoFor(it);
-                                    const atCeiling = stock.capped && it.quantity >= stock.max;
-                                    return (
-                                        <div key={it.cart_item_id} className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-3">
-                                                <img src={it.product_image} className="h-12 w-12 rounded-lg border object-cover" style={{ borderColor: C.hair }} />
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="truncate text-[13.5px] font-bold" style={{ color: C.ink }}>{it.product_name}</p>
-                                                    <div className="mt-1 flex items-center gap-2">
-                                                        <button onClick={() => handleQty(it.submission_id, it.quantity - 1, it.moq)} disabled={atFloor}
-                                                            className="h-6 w-6 rounded border text-xs disabled:opacity-30" style={{ borderColor: C.hair }}>−</button>
-                                                        <span className="text-[12.5px] font-bold tabular-nums">{it.quantity}</span>
-                                                        <button onClick={() => handleQty(it.submission_id, it.quantity + 1, it.moq)} disabled={atCeiling}
-                                                            className="h-6 w-6 rounded border text-xs disabled:opacity-30" style={{ borderColor: C.hair }}>+</button>
-                                                        <span className="text-[11px] font-semibold" style={{ color: C.muted }}>{saleUnitLabel(it.units_per_master_pack)}(s)</span>
+                    {Object.entries(grouped).map(([sellerId, g]) => {
+                        const groupStatus = groupConstraintStatus[sellerId];
+                        return (
+                            <div key={g.seller.seller_id} className="mt-4 rounded-2xl border p-3.5" style={{ borderColor: C.hair }}>
+                                <p className="flex items-center gap-1.5 text-[13px] font-extrabold" style={{ color: C.ink }}><Store className="h-3.5 w-3.5" /> {g.seller.seller_name}</p>
+                                <div className="mt-3 flex flex-col gap-3">
+                                    {g.items.map((it) => {
+                                        const p = priceFor(it);
+                                        const floor = Number(it.moq) > 0 ? Number(it.moq) : 1;
+                                        const atFloor = it.quantity <= floor;
+                                        const stock = stockInfoFor(it);
+                                        const atCeiling = stock.capped && it.quantity >= stock.max;
+                                        const itemBlockedByLocation = groupStatus?.blockedItems?.some((b) => b.item.cart_item_id === it.cart_item_id);
+                                        return (
+                                            <div key={it.cart_item_id} className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-3">
+                                                    <img src={it.product_image} className="h-12 w-12 rounded-lg border object-cover" style={{ borderColor: C.hair }} />
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate text-[13.5px] font-bold" style={{ color: C.ink }}>{it.product_name}</p>
+                                                        <div className="mt-1 flex items-center gap-2">
+                                                            <button onClick={() => handleQty(it.submission_id, it.quantity - 1, it.moq)} disabled={atFloor}
+                                                                className="h-6 w-6 rounded border text-xs disabled:opacity-30" style={{ borderColor: C.hair }}>−</button>
+                                                            <span className="text-[12.5px] font-bold tabular-nums">{it.quantity}</span>
+                                                            <button onClick={() => handleQty(it.submission_id, it.quantity + 1, it.moq)} disabled={atCeiling}
+                                                                className="h-6 w-6 rounded border text-xs disabled:opacity-30" style={{ borderColor: C.hair }}>+</button>
+                                                            <span className="text-[11px] font-semibold" style={{ color: C.muted }}>{saleUnitLabel(it.units_per_master_pack)}(s)</span>
+                                                        </div>
+                                                        {atFloor && floor > 1 && (
+                                                            <p className="mt-0.5 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                                At the seller's MOQ ({floor} {saleUnitLabel(it.units_per_master_pack)}{floor === 1 ? "" : "s"}) — remove the item instead of going lower.
+                                                            </p>
+                                                        )}
+                                                        {stock.outOfStock && (
+                                                            <p className="mt-0.5 text-[10.5px] font-bold tracking-wide text-red-600">
+                                                                Out of stock with this seller — remove to continue.
+                                                            </p>
+                                                        )}
+                                                        {!stock.outOfStock && stock.exceeds && (
+                                                            <p className="mt-0.5 text-[10.5px] font-bold tracking-wide text-red-600">
+                                                                Only {stock.max} {saleUnitLabel(it.units_per_master_pack)}{stock.max === 1 ? "" : "s"} available from this seller — reduce quantity to continue.
+                                                            </p>
+                                                        )}
+                                                        {itemBlockedByLocation && (
+                                                            <p className="mt-0.5 flex items-center gap-1 text-[10.5px] font-bold tracking-wide" style={{ color: "#c71f11" }}>
+                                                                <MapPin className="h-2.5 w-2.5" /> Not deliverable to your selected address.
+                                                            </p>
+                                                        )}
                                                     </div>
-                                                    {atFloor && floor > 1 && (
-                                                        <p className="mt-0.5 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                            At the seller's MOQ ({floor} {saleUnitLabel(it.units_per_master_pack)}{floor === 1 ? "" : "s"}) — remove the item instead of going lower.
-                                                        </p>
-                                                    )}
-                                                    {stock.outOfStock && (
-                                                        <p className="mt-0.5 text-[10.5px] font-bold tracking-wide text-red-600">
-                                                            Out of stock with this seller — remove to continue.
-                                                        </p>
-                                                    )}
-                                                    {!stock.outOfStock && stock.exceeds && (
-                                                        <p className="mt-0.5 text-[10.5px] font-bold tracking-wide text-red-600">
-                                                            Only {stock.max} {saleUnitLabel(it.units_per_master_pack)}{stock.max === 1 ? "" : "s"} available from this seller — reduce quantity to continue.
-                                                        </p>
-                                                    )}
+                                                    <p className="text-[13.5px] font-extrabold tabular-nums">₹{inr(p.lineTotal)}</p>
+                                                    <button onClick={() => handleRemove(it.submission_id)}><Trash2 className="h-4 w-4" style={{ color: C.muted }} /></button>
                                                 </div>
-                                                <p className="text-[13.5px] font-extrabold tabular-nums">₹{inr(p.lineTotal)}</p>
-                                                <button onClick={() => handleRemove(it.submission_id)}><Trash2 className="h-4 w-4" style={{ color: C.muted }} /></button>
                                             </div>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    })}
+                                </div>
+
+                                {groupStatus?.blocked && (
+                                    <ConstraintNotice reasons={[
+                                        !groupStatus.windowStatus.open && { icon: Clock, message: groupStatus.windowStatus.message },
+                                        groupStatus.blockedItems.length > 0 && {
+                                            icon: MapPin,
+                                            message: groupStatus.blockedItems.length === 1
+                                                ? groupStatus.blockedItems[0].status.message
+                                                : `${groupStatus.blockedItems.length} items from this seller aren't deliverable to your selected address.`,
+                                        },
+                                    ]} />
+                                )}
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
 
                     <div className="mt-4 rounded-2xl border p-3.5" style={{ borderColor: C.hair }}>
                         <p className="flex items-center gap-1.5 text-[12px] font-extrabold uppercase" style={{ color: C.muted }}>
@@ -368,7 +519,7 @@ export default function CartPage() {
                                 <p className="text-[11px] font-bold uppercase" style={{ color: C.muted }}>Total</p>
                                 <p className="text-[18px] font-extrabold tabular-nums">₹{inr(grandTotal)}</p>
                             </div>
-                            <button onClick={handleCheckout} disabled={checking || hasStockBlock}
+                            <button onClick={handleCheckout} disabled={checking || hasStockBlock || anyGroupBlocked}
                                 className="rounded-xl px-6 py-3 text-[13.5px] font-bold text-white disabled:opacity-50"
                                 style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                                 {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Proceed to pay"}

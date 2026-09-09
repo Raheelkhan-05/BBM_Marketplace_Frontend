@@ -1162,22 +1162,27 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                             </div>
                                         </div>
 
-                                        {/* delivery block unchanged */}
-                                        <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: `${C.secondary}0a` }}>
-                                            <Truck className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                                            <div className="min-w-0 flex-1">
-                                                <span className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: C.muted }}>
-                                                    Estimated delivery
-                                                </span>
-                                                <p className="text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>
-                                                    {quote.isEstimate || !quote.estimatedDeliveryDate ? (
-                                                        <SkeletonBar width="90px" />
-                                                    ) : (
-                                                        deliveryDateLabel(quote.estimatedDeliveryDate)
-                                                    )}
-                                                </p>
+                                        {/* delivery block — hidden when the seller can't currently take this
+                                            order (outside working hours / address not serviceable), since
+                                            showing an estimated delivery date for an order that can't actually
+                                            be placed right now is misleading. */}
+                                        {!blockedByConstraints && (
+                                            <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: `${C.secondary}0a` }}>
+                                                <Truck className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                                <div className="min-w-0 flex-1">
+                                                    <span className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: C.muted }}>
+                                                        Estimated delivery
+                                                    </span>
+                                                    <p className="text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                                                        {quote.isEstimate || !quote.estimatedDeliveryDate ? (
+                                                            <SkeletonBar width="90px" />
+                                                        ) : (
+                                                            deliveryDateLabel(quote.estimatedDeliveryDate)
+                                                        )}
+                                                    </p>
+                                                </div>
                                             </div>
-                                        </div>
+                                        )}
 
                                     </div>
                                 ) : (
