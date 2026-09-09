@@ -13,6 +13,7 @@ import {
 import useSellerProfileStatus from "../hooks/useSellerProfileStatus.js";
 import { extractColorsFromImage } from "../utils/colorExtract.js";
 import { STEPS, BUSINESS_TYPES, WEEKDAYS, guessBusinessType } from "../components/seller/fieldConfigs.js";
+import { lookupPincode } from "../utils/sellerListingApi.js";
 import { readPendingProductSubmission } from "./SellPublishProductPage.jsx";
 
 export function SellerOnboardingForm({ onSubmitted }) {
@@ -217,7 +218,7 @@ export default function SellerOnboardingPage() {
 
 function requiredMissing(stepKey, f) {
   const REQ = {
-    operations: ["order_acceptance_start", "order_acceptance_end"],
+    operations: ["order_acceptance_start", "order_acceptance_end", "dispatch_pincode"],
     bank: ["bank_account_number", "bank_ifsc_code"],
     identity: ["logo_url"],
   }[stepKey] || [];
@@ -426,6 +427,21 @@ function OperationsStep({ form, update }) {
   const weekdaysOnly = WEEKDAYS.filter((d) => d !== "Sun");
   const isWeekdaysOnly = weekdaysOnly.length === selected.length && weekdaysOnly.every((d) => selected.includes(d));
 
+  const [pincodeStatus, setPincodeStatus] = useState(null); // 'checking' | 'ok' | 'error' | null
+
+  const confirmPincode = async (pincode) => {
+    if (!/^\d{6}$/.test(pincode)) return;
+    setPincodeStatus("checking");
+    const res = await lookupPincode(pincode);
+    if (res?.success) {
+      update("dispatch_district", res.district);
+      update("dispatch_state", res.state);
+      setPincodeStatus("ok");
+    } else {
+      setPincodeStatus("error");
+    }
+  };
+
   const presetBtnClass = (active) =>
     `rounded-full border px-3 py-1 text-[12.5px] font-bold tracking-wide transition-colors ${active
       ? "border-[#047084] bg-[#047084] text-white"
@@ -467,6 +483,24 @@ function OperationsStep({ form, update }) {
       <div className="grid grid-cols-2 gap-3">
         <TimeField label="Order acceptance starts" value={form.order_acceptance_start} onChange={(v) => update("order_acceptance_start", v)} />
         <TimeField label="Order acceptance ends" value={form.order_acceptance_end} onChange={(v) => update("order_acceptance_end", v)} />
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <Label>Dispatch pincode</Label>
+        <input
+          value={form.dispatch_pincode || ""}
+          onChange={(e) => { update("dispatch_pincode", e.target.value.replace(/\D/g, "").slice(0, 6)); setPincodeStatus(null); }}
+          onBlur={(e) => confirmPincode(e.target.value)}
+          inputMode="numeric"
+          placeholder="6-digit pincode"
+          className={fieldWrap()}
+        />
+        <p className="text-[12.5px] font-medium tracking-wide text-slate-400">
+          Where you'll be dispatching orders from?
+        </p>
+        {pincodeStatus === "checking" && <p className="text-[12px] font-semibold text-slate-400">Checking…</p>}
+        {pincodeStatus === "ok" && <p className="text-[12px] font-bold text-[#047084]">Dispatching from {form.dispatch_district}, {form.dispatch_state}</p>}
+        {pincodeStatus === "error" && <p className="text-[12px] font-medium text-[#c71f11]">Couldn't verify this pincode — you can still continue.</p>}
       </div>
     </div>
   );

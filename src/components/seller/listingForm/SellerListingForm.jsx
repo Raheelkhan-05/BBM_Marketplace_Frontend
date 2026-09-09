@@ -118,7 +118,7 @@ const SECTION_FIELD_MAP = {
     pricing: ["gstPercent", "basePrice"],
     fulfilment: ["stockQuantity", "productionLeadTimeDays"],
     terms: ["returnPolicyKey", "warrantyKey"],
-    delivery: ["dispatchPincode", "dispatchingLocations"],
+    delivery: ["dispatchingLocations"],
 };
 const FIELD_TO_SECTION = Object.entries(SECTION_FIELD_MAP).reduce((acc, [section, fields]) => {
     fields.forEach((f) => { acc[f] = section; });
@@ -313,7 +313,7 @@ function computeMissing(form) {
     add(form.sampleAvailable && !(Number(form.sampleQuantity) > 0), "sampleQuantity", "Sample quantity");
     add(form.stockType === "ready_stock" && (form.stockQuantity === "" || form.stockQuantity == null), "stockQuantity", "Available stock");
     add(form.stockType === "made_to_order" && (form.productionLeadTimeDays === "" || form.productionLeadTimeDays == null), "productionLeadTimeDays", "Lead time");
-    add(!form.dispatchPincode?.trim(), "dispatchPincode", "Dispatch pincode");
+    // add(!form.dispatchPincode?.trim(), "dispatchPincode", "Dispatch pincode");
     add(!form.dispatchingLocations?.country, "dispatchingLocations", "Dispatching locations");
     add(!form.returnPolicyKey, "returnPolicyKey", "Return / replacement policy");
     add(!form.warrantyKey, "warrantyKey", "Warranty");
@@ -496,19 +496,19 @@ export default function SellerListingForm({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [form.hasOuterPack]);
 
-    const [pincodeStatus, setPincodeStatus] = useState(null); // 'checking' | 'ok' | 'error' | null
+    // const [pincodeStatus, setPincodeStatus] = useState(null); // 'checking' | 'ok' | 'error' | null
 
-    const confirmPincode = async () => {
-        if (!/^\d{6}$/.test(form.dispatchPincode)) return;
-        setPincodeStatus("checking");
-        const res = await lookupPincode(form.dispatchPincode);
-        if (res?.success) {
-            setForm((f) => ({ ...f, dispatchDistrict: res.district, dispatchState: res.state }));
-            setPincodeStatus("ok");
-        } else {
-            setPincodeStatus("error");
-        }
-    };
+    // const confirmPincode = async () => {
+    //     if (!/^\d{6}$/.test(form.dispatchPincode)) return;
+    //     setPincodeStatus("checking");
+    //     const res = await lookupPincode(form.dispatchPincode);
+    //     if (res?.success) {
+    //         setForm((f) => ({ ...f, dispatchDistrict: res.district, dispatchState: res.state }));
+    //         setPincodeStatus("ok");
+    //     } else {
+    //         setPincodeStatus("error");
+    //     }
+    // };
 
     // Whenever productName / brandName / brandNotApplicable settle, check
     // whether this exact product+brand already exists in the catalog. If
@@ -1211,16 +1211,8 @@ export default function SellerListingForm({
                 open={openSection === "delivery"} onOpenChange={(v) => handleSectionToggle("delivery", v)}
                 missingCount={missingCountBySection.delivery} totalCount={totalCountBySection.delivery}
                 readOnly={readOnly}>
-                <FieldAnchor fieldKey="dispatchPincode">
-                    <div className="flex flex-col gap-1">
-                        <TextField required dense label="Dispatch pincode" value={form.dispatchPincode}
-                            onChange={(v) => { setField("dispatchPincode", v.replace(/[^\d]/g, "")); setPincodeStatus(null); }}
-                            onBlur={() => { touch("dispatchPincode"); confirmPincode(); }}
-                            error={isErr("dispatchPincode")} inputMode="numeric" />
-                        {pincodeStatus === "checking" && <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>Checking…</p>}
-                        {pincodeStatus === "ok" && <p className="text-[10.5px] font-bold" style={{ color: C.secondary }}>Dispatching from {form.dispatchDistrict}, {form.dispatchState}</p>}
-                        {pincodeStatus === "error" && <p className="text-[10.5px] font-medium" style={{ color: C.primary }}>Couldn't verify this pincode — you can still continue.</p>}
-                    </div>
+                <FieldAnchor fieldKey="dispatchingLocations">
+                    <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
                 </FieldAnchor>
 
                 <FieldAnchor fieldKey="dispatchingLocations">
