@@ -9,6 +9,7 @@
 //                      admin.routes.js fix: these existed in the
 //                      controller but were never mounted before)
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Loader2, CheckCircle2, XCircle, Clock, ImageOff, ExternalLink,
@@ -105,12 +106,17 @@ function RejectPanel({ onCancel, onConfirm, submitting }) {
 }
 
 // ---------------- Order payment proof card (unchanged behavior) ----------------
-function OrderProofCard({ proof, onVerify, onReject, onZoom, actioning }) {
+function OrderProofCard({ proof, onVerify, onReject, onZoom, actioning, highlighted }) {
     const [rejecting, setRejecting] = useState(false);
     const order = proof.order;
 
     return (
-        <div className="flex flex-col gap-3 rounded-2xl border p-4" style={{ borderColor: C.hair }}>
+        <div id={`payment-row-${proof.id}`}
+            className="flex flex-col gap-3 rounded-2xl border p-4 transition-colors duration-700"
+            style={{
+                borderColor: highlighted ? C.secondary : C.hair,
+                background: highlighted ? `${C.secondary}0d` : "transparent",
+            }}>
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <p className="truncate text-[14px] font-extrabold tracking-wide" style={{ color: C.ink }}>{order?.order_number || "—"}</p>
@@ -196,11 +202,16 @@ function OrderProofCard({ proof, onVerify, onReject, onZoom, actioning }) {
 // Amount here is the SELLER's own entered figure (wallet_payments.amount),
 // not derived from an order — shown prominently since it's the number the
 // admin is actually verifying against the UTR/screenshot.
-function WalletProofCard({ proof, onVerify, onReject, onZoom, actioning }) {
+function WalletProofCard({ proof, onVerify, onReject, onZoom, actioning, highlighted }) {
     const [rejecting, setRejecting] = useState(false);
 
     return (
-        <div className="flex flex-col gap-3 rounded-2xl border p-4" style={{ borderColor: C.hair }}>
+        <div id={`payment-row-${proof.id}`}
+            className="flex flex-col gap-3 rounded-2xl border p-4 transition-colors duration-700"
+            style={{
+                borderColor: highlighted ? C.secondary : C.hair,
+                background: highlighted ? `${C.secondary}0d` : "transparent",
+            }}>
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <p className="truncate text-[14px] font-extrabold tracking-wide" style={{ color: C.ink }}>
@@ -278,13 +289,31 @@ function WalletProofCard({ proof, onVerify, onReject, onZoom, actioning }) {
 
 export default function PaymentVerificationPage() {
     const { token } = useAuth();
-    const [queue, setQueue] = useState("orders"); // "orders" | "wallet"
-    const [tab, setTab] = useState("pending");
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // Notification deep-links land here as /admin/payments?queue=wallet&
+    // status=pending&highlight=<id> — read them once on mount so the page
+    // opens on the right queue/tab instead of always defaulting to orders/pending.
+    const [queue, setQueue] = useState(searchParams.get("queue") === "wallet" ? "wallet" : "orders");
+    const [tab, setTab] = useState(searchParams.get("status") || "pending");
+    const [highlightId, setHighlightId] = useState(searchParams.get("highlight") || null);
+
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [actioning, setActioning] = useState(null);
     const [zoomSrc, setZoomSrc] = useState(null);
+
+    useEffect(() => {
+        if (!highlightId) return;
+        const timer = setTimeout(() => {
+            setHighlightId(null);
+            const next = new URLSearchParams(searchParams);
+            next.delete("highlight");
+            setSearchParams(next, { replace: true });
+        }, 3000);
+        return () => clearTimeout(timer);
+    }, [highlightId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const load = useCallback(async () => {
         if (!token) return;
@@ -375,10 +404,10 @@ export default function PaymentVerificationPage() {
                 <div className="flex flex-col gap-3">
                     {items.map((item) => (
                         queue === "orders" ? (
-                            <OrderProofCard key={item.id} proof={item} actioning={actioning}
+                            <OrderProofCard key={item.id} proof={item} actioning={actioning} highlighted={item.id === highlightId}
                                 onVerify={handleVerify} onReject={handleReject} onZoom={setZoomSrc} />
                         ) : (
-                            <WalletProofCard key={item.id} proof={item} actioning={actioning}
+                            <WalletProofCard key={item.id} proof={item} actioning={actioning} highlighted={item.id === highlightId}
                                 onVerify={handleVerify} onReject={handleReject} onZoom={setZoomSrc} />
                         )
                     ))}
