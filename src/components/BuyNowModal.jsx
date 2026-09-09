@@ -1163,6 +1163,22 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         </div>
 
                                         {/* delivery block unchanged */}
+                                        <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: `${C.secondary}0a` }}>
+                                            <Truck className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                            <div className="min-w-0 flex-1">
+                                                <span className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: C.muted }}>
+                                                    Estimated delivery
+                                                </span>
+                                                <p className="text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                                                    {quote.isEstimate || !quote.estimatedDeliveryDate ? (
+                                                        <SkeletonBar width="90px" />
+                                                    ) : (
+                                                        deliveryDateLabel(quote.estimatedDeliveryDate)
+                                                    )}
+                                                </p>
+                                            </div>
+                                        </div>
+
                                     </div>
                                 ) : (
                                     <p className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
@@ -1277,8 +1293,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
                             )}
                         </div>
                     </>
-                )}
-            </motion.div>
-        </motion.div>
+                )
+                }
+            </motion.div >
+        </motion.div >
     );
 }

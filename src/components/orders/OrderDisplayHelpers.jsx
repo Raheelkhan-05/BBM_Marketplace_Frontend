@@ -78,6 +78,9 @@ export function parseDeliveryDate(value) {
         return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
     }
     if (/^\d{2}\s[A-Za-z]{3}$/.test(value)) return value;
+    // NEW: pass through range labels like "10 Sept - 11 Sept" as-is —
+    // this is what place_order now stores in lead_time_snapshot.
+    if (/^\d{1,2}\s[A-Za-z]{3}\s-\s\d{1,2}\s[A-Za-z]{3}$/.test(value)) return value;
     return null;
 }
 
