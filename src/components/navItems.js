@@ -15,14 +15,7 @@ import {
 
 export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate }) {
     return [
-        isLoggedIn ? {
-            id: "home",
-            label: "Home",
-            icon: Home,
-            to: "/home",
-            onClick: () => navigate("/home"),
-            match: (p) => p === "/home",
-        } : null,
+
         isLoggedIn
             ? {
                 id: "myproducts",
