@@ -32,7 +32,8 @@ export async function checkoutCart(token, { shippingAddressId, notes }) {
     return request("POST", "/cart/checkout", token, { shippingAddressId, notes });
 }
 
-// utils/api.js (addition — mirrors fetchPaymentInstructions)
+// utils/cartApi.js  (updated payment-related exports — merge into your existing file)
+
 export async function fetchGroupPaymentInstructions(token, groupId) {
     const res = await fetch(`${API_BASE}/cart/groups/${groupId}/payment-instructions`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -46,10 +47,10 @@ export async function fetchGroupPaymentInstructions(token, groupId) {
     return body;
 }
 
-// utils/cartApi.js (addition — mirrors submitPaymentProof)
-export async function submitGroupPaymentProof(token, groupId, { utr, screenshotFile }) {
+export async function submitGroupPaymentProof(token, groupId, { utr, method, screenshotFile }) {
     const form = new FormData();
     form.append("utr", utr);
+    form.append("payment_method", method || "upi");
     if (screenshotFile) form.append("screenshot", screenshotFile);
     const res = await fetch(`${API_BASE}/cart/groups/${groupId}/payment-proof`, {
         method: "POST",

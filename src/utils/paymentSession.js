@@ -1,12 +1,12 @@
 // utils/paymentSession.js
 //
 // Persists the buyer's "mid-payment" state (which order they're paying for,
-// the UPI details, and an in-progress UTR draft) across page refreshes and
-// app-switches (buyer leaves to their UPI app, comes back). Backed by
-// localStorage rather than sessionStorage specifically because on mobile,
-// switching to a UPI app and back can sometimes cost the tab its
-// sessionStorage depending on OS/browser, whereas localStorage always
-// survives.
+// the UPI/bank details, which method they picked, and an in-progress UTR
+// draft) across page refreshes and app-switches (buyer leaves to their UPI
+// app or bank app, comes back). Backed by localStorage rather than
+// sessionStorage specifically because on mobile, switching to a UPI app and
+// back can sometimes cost the tab its sessionStorage depending on
+// OS/browser, whereas localStorage always survives.
 //
 // Deliberately a SINGLE global session, not one per order — a buyer can
 // only realistically be mid-payment on one order at a time, and keying by
@@ -15,11 +15,14 @@
 
 const STORAGE_KEY = "bbm_pending_payment";
 export const PAYMENT_SESSION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+export const DEFAULT_PAYMENT_METHOD = "upi"; // 'upi' | 'neft' | 'rtgs'
 
-export function savePaymentSession({ orderId, orderNumber, amount, vpa, payeeName, note, upiUri, utrDraft }) {
+export function savePaymentSession({ orderId, orderNumber, amount, vpa, payeeName, note, upiUri, bankDetails, method, utrDraft }) {
     const existing = loadPaymentSession(orderId);
     const session = {
         orderId, orderNumber, amount, vpa, payeeName, note, upiUri,
+        bankDetails: bankDetails ?? existing?.bankDetails ?? null,
+        method: method ?? existing?.method ?? DEFAULT_PAYMENT_METHOD,
         utrDraft: utrDraft ?? existing?.utrDraft ?? "",
         // Preserve the original startedAt when we're just refreshing fields
         // for the SAME order/session — only a brand new order, or an
@@ -49,6 +52,17 @@ export function updateUtrDraft(orderId, utrDraft) {
     if (!existing) return;
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...existing, utrDraft }));
+    } catch { /* noop */ }
+}
+
+// Lightweight update for which method the buyer has selected (UPI vs
+// NEFT/RTGS), so switching tabs then leaving and coming back keeps them on
+// the same tab instead of resetting to UPI.
+export function updatePaymentMethod(orderId, method) {
+    const existing = loadPaymentSession(orderId);
+    if (!existing) return;
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...existing, method }));
     } catch { /* noop */ }
 }
 

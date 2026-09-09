@@ -1053,9 +1053,10 @@ export async function fetchPaymentInstructions(token, orderId) {
   return body;
 }
 
-export async function submitPaymentProof(token, orderId, { utr, screenshotFile }) {
+export async function submitPaymentProof(token, orderId, { utr, method, screenshotFile }) {
   const form = new FormData();
   form.append("utr", utr);
+  form.append("payment_method", method || "upi");
   if (screenshotFile) form.append("screenshot", screenshotFile);
   const res = await fetch(`${API_BASE}/orders/${orderId}/payment-proof`, {
     method: "POST",
