@@ -4,7 +4,7 @@
 // rounded-2xl cards, hairline borders, tabular-nums, framer-motion entrance.
 import { useState, useRef, useId, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Plus, Trash2, Info, Check, X, CheckCircle2, Download } from "lucide-react";
+import { ChevronDown, Plus, Trash2, Info, Check, X, CheckCircle2, Download, Pencil } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Loader2, Upload } from "lucide-react";
 import { uploadSellerFile } from "../../../utils/api.js";
@@ -910,6 +910,17 @@ function extFromUrl(url) {
     return ext && ext.length <= 5 ? ext : "";
 }
 
+// Derives a human-friendly default name from a picked File's own filename —
+// strips the extension and swaps underscores/dashes for spaces, e.g.
+// "iso_9001_certificate.pdf" -> "iso 9001 certificate". This is what lets
+// the pending row start pre-filled instead of empty (see the file header
+// note on CertificateUploadField for why an empty field was the root of
+// the naming/upload confusion).
+function defaultNameFromFile(file) {
+    const withoutExt = file.name.replace(/\.[^.\/]+$/, "");
+    return withoutExt.replace(/[_-]+/g, " ").trim();
+}
+
 // Cross-origin URLs (Supabase storage is a different origin than the
 // app) make the browser IGNORE <a download>'s filename — it falls back
 // to whatever's in the URL path, which is why this was downloading as
@@ -936,23 +947,55 @@ async function downloadNamed(url, desiredName) {
 
 // Direct-upload replacement for the old "paste a link" certificate rows.
 // Flow: pick file(s) → each becomes a PENDING row (not yet uploaded) that
-// asks "What is this file about?" → seller names it and confirms → THEN
-// it uploads to Supabase storage via the same uploadSellerFile() every
-// other upload on this form uses.
+// asks the seller to confirm a name → THEN it uploads to Supabase storage
+// via the same uploadSellerFile() every other upload on this form uses.
+//
+// UX FIX (this pass): sellers were picking a file, seeing the pending row's
+// name input showing greyed-out placeholder text, and — because it looked
+// like ordinary already-filled text rather than an empty required field —
+// assuming the file was already named and done. They'd then tap "Upload
+// certificate" again instead of typing a name and tapping Add, so the file
+// never actually got confirmed/uploaded.
+//
+// Root cause was relying on a placeholder as the only signal for a required
+// action. Fixed by:
+//   1. Auto-filling the name from the picked file's own filename the
+//      instant it's selected, so the field is NEVER empty/placeholder-only —
+//      there's always real, editable text sitting in it, and "Add" is
+//      immediately actionable without typing anything.
+//   2. Giving the pending row its own explicit caption ("Name this
+//      certificate") above the input, so the required action is stated in
+//      real UI chrome, not implied by placeholder text alone.
+//   3. Auto-focusing + auto-selecting that text on the newest pending row,
+//      so a seller who starts typing simply overwrites the suggested name
+//      instead of needing to clear it first.
+//   4. Badging the "Upload certificate" button with a count whenever items
+//      are still waiting to be confirmed, so re-clicking it doesn't read as
+//      the obvious next step while a pending card above is still open.
 export function CertificateUploadField({ label, hint, rows, onChange, token, addLabel = "Upload certificate" }) {
     const [pending, setPending] = useState([]); // [{ file, name }] — chosen but not yet uploaded
     const [confirmingIdx, setConfirmingIdx] = useState(null); // index into `pending` currently uploading
     const [downloadingIdx, setDownloadingIdx] = useState(null); // index into `rows` currently downloading
     const [error, setError] = useState(null);
     const inputRef = useRef(null);
+    const newestPendingRef = useRef(null);
 
     const handleFiles = (e) => {
         const files = Array.from(e.target.files || []);
         if (!files.length) return;
         setError(null);
-        setPending((p) => [...p, ...files.map((file) => ({ file, name: "" }))]);
+        setPending((p) => [...p, ...files.map((file) => ({ file, name: defaultNameFromFile(file) }))]);
         e.target.value = "";
     };
+
+    // Focus + select the newest pending row's name field so a seller can
+    // just start typing to replace the auto-filled suggestion, or hit
+    // Enter / tap Add to accept it as-is.
+    useEffect(() => {
+        if (pending.length === 0) return;
+        const el = newestPendingRef.current;
+        if (el) { el.focus(); el.select(); }
+    }, [pending.length]);
 
     const renamePending = (i, name) => setPending((p) => p.map((row, idx) => (idx === i ? { ...row, name } : row)));
     const cancelPending = (i) => setPending((p) => p.filter((_, idx) => idx !== i));
@@ -1024,40 +1067,81 @@ export function CertificateUploadField({ label, hint, rows, onChange, token, add
                     </div>
                 ))}
 
-                {/* Just-picked files, waiting to be named + confirmed */}
-                {pending.map((row, i) => (
-                    <div key={i} className="flex items-center gap-2 rounded-lg border-2 px-2.5 py-2" style={{ borderColor: C.primary + "55", background: C.primary + "08" }}>
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[9px] font-extrabold" style={{ background: "#fff", color: C.primary }}>
-                            {(row.file.name.split(".").pop() || "FILE").toUpperCase()}
-                        </span>
-                        <input
-                            autoFocus={i === pending.length - 1}
-                            value={row.name}
-                            onChange={(e) => renamePending(i, e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmPending(i); } }}
-                            placeholder="e.g. ISO 9001 Certificate, Factory Audit Report…"
-                            className="min-w-0 flex-1 bg-transparent text-[12.5px] font-semibold focus:outline-none"
-                            style={{ color: C.ink }}
-                        />
-                        <button
-                            type="button"
-                            onClick={() => confirmPending(i)}
-                            disabled={!row.name.trim() || confirmingIdx === i}
-                            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[10.5px] font-bold text-white disabled:opacity-40"
-                            style={{ background: C.secondary }}
+                {/* Just-picked files, waiting to be named + confirmed. Styled as
+                    a positive "you're almost done" next-step card — teal/secondary
+                    tones matching the rest of the form's normal state, a checkmark-
+                    style step badge instead of a warning glyph, and calm copy —
+                    rather than looking like an error/validation state. It's still
+                    visually distinct from an already-saved row (so it reads as
+                    "one step left"), just not alarming. */}
+                {pending.map((row, i) => {
+                    const isNewest = i === pending.length - 1;
+                    const isEmpty = !row.name.trim();
+                    return (
+                        <div
+                            key={i}
+                            className="flex flex-col gap-1.5 rounded-xl border px-3 py-2.5"
+                            style={{ borderColor: C.secondary + "3a", background: C.secondary + "08" }}
                         >
-                            {confirmingIdx === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                            {confirmingIdx === i ? "Uploading" : "Add"}
-                        </button>
-                        <button type="button" onClick={() => cancelPending(i)} disabled={confirmingIdx === i} className="shrink-0 rounded-md p-1" style={{ color: C.muted }}>
-                            <X className="h-3.5 w-3.5" />
-                        </button>
-                    </div>
-                ))}
+                            <div className="flex items-center gap-1.5">
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white" style={{ background: C.secondary }}>
+                                    <Pencil className="h-2.5 w-2.5" />
+                                </span>
+                                <span className="text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.secondary }}>
+                                    Almost there — confirm a name
+                                </span>
+                            </div>
 
-                <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 py-2 text-[12px] font-bold" style={{ borderColor: C.hair, color: C.muted }}>
+                            <div className="flex items-center gap-2">
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[9px] font-extrabold" style={{ background: "#fff", color: C.secondary }}>
+                                    {(row.file.name.split(".").pop() || "FILE").toUpperCase()}
+                                </span>
+                                <input
+                                    ref={isNewest ? newestPendingRef : undefined}
+                                    value={row.name}
+                                    onChange={(e) => renamePending(i, e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmPending(i); } }}
+                                    placeholder="e.g. ISO 9001 Certificate"
+                                    className="min-w-0 flex-1 rounded-md border tracking-wide bg-white px-2 py-1.5 text-[12.5px] font-semibold focus:outline-none focus:ring-2"
+                                    style={{ color: C.ink, borderColor: C.secondary + "40", ["--tw-ring-color"]: `${C.secondary}22` }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => confirmPending(i)}
+                                    disabled={isEmpty || confirmingIdx === i}
+                                    className="flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-[12.5px] font-bold text-white disabled:opacity-40"
+                                    style={{ background: C.secondary }}
+                                >
+                                    {confirmingIdx === i ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                    {confirmingIdx === i ? "Uploading" : "Add"}
+                                </button>
+                                <button type="button" onClick={() => cancelPending(i)} disabled={confirmingIdx === i} className="shrink-0 rounded-md p-1" style={{ color: C.muted }}>
+                                    <X className="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+
+                            <p className="text-[10.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                                {row.file.name} — {isEmpty ? "type a name, then tap Add to finish" : "looks good — edit if you'd like, or tap Add"}
+                            </p>
+                        </div>
+                    );
+                })}
+
+                <label
+                    className="relative flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 py-2 text-[12px] font-bold"
+                    style={{ borderColor: C.hair, color: C.muted }}
+                >
                     <Upload className="h-3.5 w-3.5" />
                     {addLabel}
+                    {pending.length > 0 && (
+                        <span
+                            className="flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold text-white"
+                            style={{ background: C.secondary }}
+                            title={`${pending.length} file${pending.length === 1 ? "" : "s"} ready to confirm above`}
+                        >
+                            {pending.length}
+                        </span>
+                    )}
                     <input
                         ref={inputRef}
                         type="file"
@@ -1067,6 +1151,11 @@ export function CertificateUploadField({ label, hint, rows, onChange, token, add
                         className="hidden"
                     />
                 </label>
+                {pending.length > 0 && (
+                    <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>
+                        Just confirm the name{pending.length === 1 ? "" : "s"} above to add {pending.length === 1 ? "it" : "them"} — then you can upload more.
+                    </p>
+                )}
             </div>
 
             {error && <p className="text-[11px] font-semibold" style={{ color: C.danger }}>{error}</p>}
