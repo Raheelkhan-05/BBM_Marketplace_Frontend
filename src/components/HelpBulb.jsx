@@ -456,10 +456,10 @@ export default function HelpBulb() {
                         <motion.div
                             key="resolution"
                             {...slide(isDesktop ? -6 : 6)}
-                            className="absolute right-0 top-16 rounded-2xl border p-4 shadow-xl"
+                            className="absolute left-1/2 -bottom-14 -translate-x-1/2 md:left-auto md:right-0 md:bottom-auto md:top-16 md:translate-x-0 rounded-2xl border p-4 shadow-xl"
                             style={{
                                 ...panelAnchorClass.split(" ").reduce((acc, cls) => acc, {}),
-                                width: isDesktop ? "clamp(220px, 22vw, 280px)" : "clamp(240px, 78vw, 320px)",
+                                width: isDesktop ? "clamp(220px, 22vw, 280px)" : "clamp(240px, 90vw, 340px)",
                                 maxWidth: "calc(100vw - 24px)",
                                 background: "#fff",
                                 borderColor: `${STATUS_COLORS.resolved.icon}44`,
