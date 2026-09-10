@@ -19,7 +19,7 @@ import {
 // on the "My Orders" pill. Clamped to "9+" the same way the bell's badge
 // is, for consistency.
 
-export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate, ordersBadgeCount = 0, cartBadgeCount = 0, chatBadgeCount = 0 }) {
+export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate, ordersBadgeCount = 0, cartBadgeCount = 0, chatBadgeCount = 0, productsBadgeCount = 0 }) {
     return [
         isLoggedIn ? {
             id: "home",
@@ -29,16 +29,15 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate, o
             onClick: () => navigate("/home"),
             match: (p) => p === "/home",
         } : null,
-        isLoggedIn
-            ? {
-                id: "myproducts",
-                label: "My Products",
-                icon: Package,
-                to: "/seller/listings",
-                onClick: () => navigate("/seller/listings"),
-                match: (p) => p === "/seller/listings",
-            }
-            : null,
+        isLoggedIn ? {
+            id: "myproducts",
+            label: "My Products",
+            icon: Package,
+            to: "/seller/listings",
+            badge: productsBadgeCount > 0 ? (productsBadgeCount > 9 ? "9+" : productsBadgeCount) : null,
+            onClick: () => navigate("/seller/listings"),
+            match: (p) => p === "/seller/listings",
+        } : null,
         isLoggedIn ? {
             id: "chat",
             label: "Chat",

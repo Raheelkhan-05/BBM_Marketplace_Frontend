@@ -11,6 +11,9 @@ import OrderNotificationToast from "./OrderNotificationToast.jsx";
 import ChatNotificationToast from "./ChatNotificationToast.jsx";
 import { CartProvider } from "../context/CartContext.jsx";
 import { ChatProvider } from "../context/ChatContext.jsx";
+import { ListingsProvider } from "../context/ListingsContext.jsx";
+import { HelpRequestProvider } from "../context/HelpRequestContext.jsx";
+import HelpBulb from "./HelpBulb.jsx";
 
 const LightboxVisibilityContext = createContext(null);
 
@@ -44,30 +47,37 @@ export default function Layout() {
     <NotificationsProvider>
       <CartProvider>
         <ChatProvider>
-          <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>
-            <div className="relative min-h-screen bg-[#FCFBF9] overflow-x-clip">
-              <div className="relative z-1">
-                <Header onOpenRfq={() => setRfqOpen(true)} />
+          <ListingsProvider>
+            <HelpRequestProvider>
 
-                <main className={showBottomNav ? "pb-10 md:pb-0" : ""}>
-                  <Outlet />
-                </main>
+              <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>
+                <div className="relative min-h-screen bg-[#FCFBF9] overflow-x-clip">
+                  <div className="relative z-1">
+                    <Header onOpenRfq={() => setRfqOpen(true)} />
 
-                <div className="hidden md:block">
-                  <Footer />
-                </div>
+                    <main className={showBottomNav ? "pb-10 md:pb-0" : ""}>
+                      <Outlet />
+                    </main>
 
-                {showBottomNav && <BottomNavStrip onOpenRfq={() => setRfqOpen(true)} />}
-              </div>
+                    <div className="hidden md:block">
+                      <Footer />
+                    </div>
 
-              {/* Center-screen popup for order (purchase + sales) notifications.
+                    {showBottomNav && <BottomNavStrip onOpenRfq={() => setRfqOpen(true)} />}
+                  </div>
+
+                  {/* Center-screen popup for order (purchase + sales) notifications.
               Portals to document.body, so placement in the tree doesn't
               matter — it just needs to be inside NotificationsProvider and
               inside the Router (it uses useNavigate). */}
-              <OrderNotificationToast />
-              <ChatNotificationToast />
-            </div>
-          </LightboxVisibilityContext.Provider>
+                  <HelpBulb />
+                  <OrderNotificationToast />
+                  <ChatNotificationToast />
+                </div>
+              </LightboxVisibilityContext.Provider>
+            </HelpRequestProvider>
+          </ListingsProvider>
+
         </ChatProvider>
       </CartProvider>
     </NotificationsProvider>

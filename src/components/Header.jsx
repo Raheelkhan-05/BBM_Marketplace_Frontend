@@ -4,7 +4,7 @@ import {
   Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck,
   Clock3, ListChecks, BookOpen, Users, IndianRupee,
   Skull,
-  Boxes
+  Boxes, Lightbulb
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { TAGLINE } from "../../data/content";
@@ -16,6 +16,7 @@ import { NAV_ITEMS } from "./navItems.js";
 import { useCart } from "../context/CartContext.jsx";
 import { preloadRoute } from "../routePreload.js";
 import { useChatContext } from "../context/ChatContext.jsx";
+import { useListings } from "../context/ListingsContext.jsx";
 
 
 const C = {
@@ -129,6 +130,7 @@ export default function Header({ onOpenRfq }) {
   const { orderUnreadCount } = useNotifications();
   const { cartCount } = useCart();
   const { unreadTotal: chatUnreadTotal } = useChatContext();
+  const { totalBadgeCount: productsBadgeCount } = useListings();
 
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -230,7 +232,8 @@ export default function Header({ onOpenRfq }) {
     isLoggedIn: effectiveLoggedIn, isApprovedSeller, onOpenRfq, navigate,
     ordersBadgeCount: orderUnreadCount,
     cartBadgeCount: cartCount,
-    chatBadgeCount: chatUnreadTotal, // add
+    chatBadgeCount: chatUnreadTotal,
+    productsBadgeCount: productsBadgeCount,
   });
 
 
@@ -315,6 +318,10 @@ export default function Header({ onOpenRfq }) {
                             <SmartLink to="/admin/listings" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
                               <ListChecks className="h-3.5 w-3.5 text-[#0B7285]" />
                               Product Review Requests
+                            </SmartLink>
+                            <SmartLink to="/admin/support" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
+                              <Lightbulb className="h-3.5 w-3.5 text-[#0B7285]" />
+                              Support Requests
                             </SmartLink>
                             <SmartLink to="/admin/payments" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
                               <IndianRupee className="h-3.5 w-3.5 text-[#0B7285]" />
@@ -429,6 +436,10 @@ export default function Header({ onOpenRfq }) {
                           <SmartLink to="/admin/listings" onClick={() => setOpen(false)} className={MOBILE_ROW}>
                             <ListChecks className="h-4 w-4 text-slate-400" />
                             Product Review Requests
+                          </SmartLink>
+                          <SmartLink to="/admin/support" onClick={() => setOpen(false)} className={MOBILE_ROW}>
+                            <Lightbulb className="h-4 w-4 text-slate-400" />
+                            Support Requests
                           </SmartLink>
                           <SmartLink to="/admin/payments" onClick={() => setOpen(false)} className={MOBILE_ROW}>
                             <IndianRupee className="h-4 w-4 text-slate-400" />

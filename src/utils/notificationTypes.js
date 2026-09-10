@@ -14,6 +14,9 @@
 const PURCHASE_LINK_RE = /^\/orders\/[^/?#]+/;
 const SALES_LINK_RE = /^\/seller\/orders\/[^/?#]+/;
 const CHAT_LINK_RE = /^\/chat\/[^/?#]+/;
+const LISTINGS_LINK_RE = /^\/seller\/listings/;
+const WALLET_LINK_RE = /^\/seller\/wallet/;
+
 
 
 export function isPurchaseOrderNotification(n) {
@@ -36,4 +39,39 @@ export function orderIdFromLink(link) {
 
 export function isChatNotification(n) {
     return typeof n?.link === "string" && CHAT_LINK_RE.test(n.link);
+}
+
+// Manual admin decisions only — NOT the auto-approve-on-create path.
+export function isListingApprovedNotification(n) {
+    return n?.type === "listing_approved";
+}
+export function isListingRejectedNotification(n) {
+    return n?.type === "listing_rejected";
+}
+// Deliberately excluded from every badge/count below — the instant
+// "product already approved elsewhere, yours went live automatically"
+// case never involved a human review, so it shouldn't count as a
+// pending-attention item anywhere.
+export function isAutoApprovedListingNotification(n) {
+    return n?.type === "listing_live_auto";
+}
+export function isWalletTopupNotification(n) {
+    return n?.type === "wallet_topup_success";
+}
+export function isWalletLowBalanceNotification(n) {
+    return n?.type === "wallet_low_balance";
+}
+// Everything that belongs on "My Products" instead of the bell.
+export function isListingsSectionNotification(n) {
+    return isListingApprovedNotification(n) || isListingRejectedNotification(n)
+        || isWalletTopupNotification(n) || isWalletLowBalanceNotification(n);
+}
+
+// approveSellerSubmission/rejectSellerSubmission/notifySellerListingLive
+// all embed the submission id as ?highlight=<id> in their link — this
+// pulls it back out so the list page can flash the right row.
+export function extractHighlightId(link) {
+    if (typeof link !== "string") return null;
+    const m = link.match(/[?&]highlight=([^&]+)/);
+    return m ? m[1] : null;
 }

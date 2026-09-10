@@ -96,6 +96,7 @@ import SellerListingForm, { unflattenDispatchingLocations } from "../components/
 // with the buyer-facing pages again.
 import { saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { resizedImageUrl } from "../utils/imageUrl.js";
+import { useListings } from "../context/ListingsContext.jsx";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -989,7 +990,7 @@ function DeactivateConfirm({ busy, onConfirm, onCancel }) {
 /* ============================== list row ============================== */
 
 function ListingRow({
-    it, idx, isQuickEditing, isConfirmingDeactivate, togglingId,
+    it, idx, isHighlighted, isQuickEditing, isConfirmingDeactivate, togglingId,
     onOpenDetail, onEdit, onQuickEdit, onCancelQuickEdit, onQuickSave,
     onAskDeactivate, onCancelDeactivate, onConfirmDeactivate, onActivate,
     onOpenImage,
@@ -1018,8 +1019,13 @@ function ListingRow({
     return (
         <motion.div
             initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28, delay: Math.min(idx * 0.02, 0.2), ease: EASE }}
+            animate={{
+                opacity: 1, y: 0,
+                backgroundColor: isHighlighted ? ["#FDF3D8", "#FDF3D8", "#ffffff"] : undefined,
+            }}
+            transition={isHighlighted
+                ? { duration: 2.5, times: [0, 0.3, 1], delay: Math.min(idx * 0.02, 0.2) }
+                : { duration: 0.28, delay: Math.min(idx * 0.02, 0.2), ease: EASE }}
         >
             <div
                 onClick={() => { if (!isExpanded) onOpenDetail(it); }}
@@ -1347,7 +1353,11 @@ export default function SellerManageListingsPage() {
     const { socket } = useSocket();
     const navigate = useNavigate();
 
+    const { reportRestockCount, reportWallet, markListingsViewed, markWalletTopupViewed, reloadWallet } = useListings();
+
     const [wallet, setWallet] = useState(null);
+
+    const [highlightedIds, setHighlightedIds] = useState(new Set());
 
     const [items, setItems] = useState([]);
 
@@ -1458,6 +1468,23 @@ export default function SellerManageListingsPage() {
         return list;
     }, [items, statusFilter, needsRestockOnly, query]);
 
+    useEffect(() => {
+        markListingsViewed().then((ids) => {
+            if (!ids.length) return;
+            setHighlightedIds(new Set(ids));
+            const t = setTimeout(() => setHighlightedIds(new Set()), 5000);
+            return () => clearTimeout(t);
+        });
+    }, [markListingsViewed]);
+
+    useEffect(() => {
+        reportRestockCount(stats.low + stats.out); // stats is already computed above via useMemo
+    }, [stats.low, stats.out, reportRestockCount]);
+
+    useEffect(() => {
+        if (wallet) reportWallet(wallet);
+    }, [wallet, reportWallet]);
+
     function patchItem(id, patch) {
         setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
     }
@@ -1565,7 +1592,10 @@ export default function SellerManageListingsPage() {
                     <div className="flex justify-end">
                         <WalletSummaryCard
                             wallet={wallet}
-                            onClick={() => navigate("/seller/wallet")}
+                            onClick={async () => {
+                                await markWalletTopupViewed();
+                                navigate("/seller/wallet");
+                            }}
                         />
                     </div>
                 </div>
@@ -1640,6 +1670,7 @@ export default function SellerManageListingsPage() {
                                 key={it.id}
                                 it={it}
                                 idx={i}
+                                isHighlighted={highlightedIds.has(it.id)}
                                 isQuickEditing={quickEditId === it.id}
                                 isConfirmingDeactivate={confirmDeactivateId === it.id}
                                 togglingId={togglingId}

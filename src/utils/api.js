@@ -1089,3 +1089,48 @@ export async function uploadFullCatalogFile(token, file) {
   });
   return res.json();
 }
+
+// ---- Help request (support bulb) ----
+export async function fetchHelpStatus(token) {
+  try {
+    const res = await fetch(`${API_BASE}/help/status`, { headers: { Authorization: `Bearer ${token}` } });
+    return await res.json();
+  } catch { return { success: false, message: "Network error." }; }
+}
+export async function markHelpResolutionSeen(token, id) {
+  try {
+    await fetch(`${API_BASE}/help/${id}/seen`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+  } catch { /* best-effort */ }
+}
+export async function triggerHelpRequest(token) {
+  try {
+    const res = await fetch(`${API_BASE}/help/trigger`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+    return { ...(await res.json()), status: res.status };
+  } catch { return { success: false, message: "Network error." }; }
+}
+export async function adminListHelpRequests(token, status) {
+  try {
+    const res = await fetch(`${API_BASE}/help/admin/list?status=${status}`, { headers: { Authorization: `Bearer ${token}` } });
+    return await res.json();
+  } catch { return { success: false, message: "Network error." }; }
+}
+export async function adminAcknowledgeHelpRequest(token, id, notes) {
+  try {
+    const res = await fetch(`${API_BASE}/api/help/admin/${id}/acknowledge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ notes }),
+    });
+    return await res.json();
+  } catch { return { success: false, message: "Network error." }; }
+}
+export async function adminResolveHelpRequest(token, id, notes) {
+  try {
+    const res = await fetch(`${API_BASE}/help/admin/${id}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ notes }),
+    });
+    return await res.json();
+  } catch { return { success: false, message: "Network error." }; }
+}

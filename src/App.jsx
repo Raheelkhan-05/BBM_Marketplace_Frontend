@@ -61,6 +61,7 @@ const SellerWalletPage = lazy(routeImports["/seller/wallet"]);
 const AdminDatabasePanel = lazy(() => import("./pages/admin/AdminDatabasePanel.jsx"));
 const AdminProductCommissionsPage = lazy(() => import("./pages/admin/AdminProductCommissionsPage.jsx"));
 const SellerEditListingPage = lazy(() => import("./pages/SellerEditListingPage.jsx"));
+const AdminHelpRequestsPage = lazy(() => import("./pages/admin/AdminHelpRequestsPage.jsx"));
 
 function CatalogLevelPageWithKey({ configKey }) {
   const { idOrSlug } = useParams();
@@ -167,6 +168,9 @@ function App() {
                 <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
                 <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
                 <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
+
+                <Route path="/admin/support" element={<RequireAdmin><AdminHelpRequestsPage /></RequireAdmin>} />
+
                 <Route path="/shop/:slug" element={<ShopRoute />} />
                 <Route path="/product/:id" element={<ProductDetailPage />} />
 

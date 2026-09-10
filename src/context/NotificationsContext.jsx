@@ -16,7 +16,14 @@ import { useAuth } from "./AuthContext.jsx";
 import { useSocket } from "./SocketContext.jsx";
 import { fetchNotifications, markNotificationRead as apiMarkRead, markAllNotificationsRead as apiMarkAllRead } from "../utils/api.js";
 import { playNotificationSound } from "../utils/notificationSound.js";
-import { isOrderNotification, isPurchaseOrderNotification, isSalesOrderNotification, orderIdFromLink, isChatNotification } from "../utils/notificationTypes.js";
+import {
+    isOrderNotification, isPurchaseOrderNotification, isSalesOrderNotification, isChatNotification,
+    isListingsSectionNotification, isAutoApprovedListingNotification,
+    isListingApprovedNotification, isListingRejectedNotification,
+    isWalletTopupNotification, isWalletLowBalanceNotification,
+    extractHighlightId, orderIdFromLink
+} from "../utils/notificationTypes.js";
+
 
 const NotificationsContext = createContext(null);
 
@@ -54,18 +61,20 @@ export function NotificationsProvider({ children }) {
         if (!socket) return;
         const onNotif = (payload) => {
             if (!payload?.id) return;
-            // Chat has its own unread system (ChatContext, driven by message
-            // read-watermarks) and never enters the bell dropdown or its list —
-            // but it still needs to fire a toast, so route it to its own
-            // listener bucket instead of silently dropping it.
             if (isChatNotification(payload)) {
                 chatListenersRef.current.forEach((cb) => cb(payload));
                 return;
             }
+            // Auto-approvals never needed a human review — don't count them
+            // anywhere, don't toast them, don't store them.
+            if (isAutoApprovedListingNotification(payload)) return;
+
             setNotifications((prev) => (prev.some((n) => n.id === payload.id) ? prev : [payload, ...prev]));
             playNotificationSound();
             const targets = isOrderNotification(payload) ? orderListenersRef.current : nonOrderListenersRef.current;
-            targets.forEach((cb) => cb(payload));
+            // Listings/wallet notifications still get stored (so markRead/history
+            // work) but never dispatched to the bell's own toast/dropdown listeners.
+            if (!isListingsSectionNotification(payload)) targets.forEach((cb) => cb(payload));
         };
         socket.on("notification:new", onNotif);
         return () => socket.off("notification:new", onNotif);
@@ -109,12 +118,50 @@ export function NotificationsProvider({ children }) {
         await Promise.all(toMark.map((n) => apiMarkRead(token, n.id)));
     }, [notifications, token]);
 
-    // bellNotifications memo — exclude chat too, in case any pre-existing
     // "message" notifications are already sitting in the DB from before this change
+    // bellNotifications — exclude listings/wallet the same way chat/orders are excluded
     const bellNotifications = useMemo(
-        () => notifications.filter((n) => !isOrderNotification(n) && !isChatNotification(n)),
+        () => notifications.filter((n) => !isOrderNotification(n) && !isChatNotification(n) && !isListingsSectionNotification(n)),
         [notifications]
     );
+
+    const listingApprovalUnreadCount = useMemo(
+        () => notifications.filter((n) => isListingApprovedNotification(n) && !n.read).length,
+        [notifications]
+    );
+    const listingRejectionUnreadCount = useMemo(
+        () => notifications.filter((n) => isListingRejectedNotification(n) && !n.read).length,
+        [notifications]
+    );
+    const walletTopupUnreadCount = useMemo(
+        () => notifications.filter((n) => isWalletTopupNotification(n) && !n.read).length,
+        [notifications]
+    );
+    // Deliberately NOT count-based — see ListingsContext for why the low-
+    // balance badge is driven by live wallet state instead of read status.
+    const unreadWalletLowBalanceNotifications = useMemo(
+        () => notifications.filter((n) => isWalletLowBalanceNotification(n) && !n.read),
+        [notifications]
+    );
+
+    // Clears every unread listing approval/rejection notification, and
+    // returns the submission ids they pointed at so the caller can flash
+    // those specific rows. Called once by SellerManageListingsPage on mount.
+    const markListingsViewed = useCallback(async () => {
+        const toMark = notifications.filter((n) => !n.read && (isListingApprovedNotification(n) || isListingRejectedNotification(n)));
+        if (!toMark.length) return [];
+        const ids = toMark.map((n) => extractHighlightId(n.link)).filter(Boolean);
+        setNotifications((prev) => prev.map((n) => (toMark.includes(n) ? { ...n, read: true } : n)));
+        await Promise.all(toMark.map((n) => apiMarkRead(token, n.id)));
+        return ids;
+    }, [notifications, token]);
+
+    const markWalletTopupViewed = useCallback(async () => {
+        const toMark = notifications.filter((n) => !n.read && isWalletTopupNotification(n));
+        if (!toMark.length) return;
+        setNotifications((prev) => prev.map((n) => (toMark.includes(n) ? { ...n, read: true } : n)));
+        await Promise.all(toMark.map((n) => apiMarkRead(token, n.id)));
+    }, [notifications, token]);
 
     const bellUnreadCount = useMemo(() => bellNotifications.filter((n) => !n.read).length, [bellNotifications]);
     const purchaseUnreadCount = useMemo(
@@ -153,9 +200,12 @@ export function NotificationsProvider({ children }) {
         notifications, loading, reload: load,
         bellNotifications, bellUnreadCount,
         purchaseUnreadCount, salesUnreadCount, orderUnreadCount,
-        purchaseOrderUnreadCounts, salesOrderUnreadCounts, // NEW
+        purchaseOrderUnreadCounts, salesOrderUnreadCounts,
         markRead, markAllRead, markOrderRead,
         subscribeNonOrder, subscribeOrder, subscribeChat,
+        listingApprovalUnreadCount, listingRejectionUnreadCount,
+        walletTopupUnreadCount, unreadWalletLowBalanceNotifications,
+        markListingsViewed, markWalletTopupViewed,
     };
 
     return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;

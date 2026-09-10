@@ -10,6 +10,7 @@ import { useNotifications } from "../context/NotificationsContext.jsx";
 import { NAV_ITEMS } from "./navItems.js";
 import { useCart } from "../context/CartContext.jsx";
 import { useChatContext } from "../context/ChatContext.jsx";
+import { useListings } from "../context/ListingsContext.jsx";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)" };
 
@@ -20,13 +21,15 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const { orderUnreadCount } = useNotifications();
     const { cartCount } = useCart();
     const { unreadTotal: chatUnreadTotal } = useChatContext();
+    const { totalBadgeCount: productsBadgeCount } = useListings();
     const isApprovedSeller = profile?.seller_status === "approved";
 
     const items = NAV_ITEMS({
         isLoggedIn, isApprovedSeller, onOpenRfq, navigate,
         ordersBadgeCount: orderUnreadCount,
         cartBadgeCount: cartCount,
-        chatBadgeCount: chatUnreadTotal, // add
+        chatBadgeCount: chatUnreadTotal,
+        productsBadgeCount: productsBadgeCount,
     });
 
     return (
