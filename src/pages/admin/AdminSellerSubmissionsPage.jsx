@@ -11,6 +11,16 @@
 //  1. Approve failing silently when the brand item isn't category-mapped
 //     yet — now surfaces the reason and lets you map + approve in one place.
 //  2. The view modal closing on a failed approve, hiding the error.
+//
+// "NEEDS MAPPING" TAB (this pass): brand-new products submitted by a
+// seller are now fast-approved server-side the instant they're submitted
+// (see sellerCatalogListings.controller.js) — they're live for buyers
+// immediately but still have no category/subcategory/generic-product
+// mapping. Those items are already "approved", so they no longer surface
+// under the "Pending" tab. This adds a dedicated "Needs mapping" tab
+// (status=unmapped) so admin can find and map them whenever they're free,
+// with no change to how mapping itself works — "Fix mapping" in the view
+// modal already worked on any submission regardless of review_status.
 import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -40,6 +50,9 @@ import CompleteListingModal from "../../components/admin/CompleteListingModal.js
 const STATUS_TABS = [
     { key: "pending_review", label: "Pending" },
     { key: "approved", label: "Approved" },
+    // NEW — approved-but-unmapped items (fast-approved brand-new products
+    // still waiting on a category/subcategory/generic-product mapping).
+    { key: "unmapped", label: "Needs mapping" },
     { key: "rejected", label: "Rejected" },
     { key: "all", label: "All" },
 ];
@@ -277,6 +290,11 @@ export default function AdminSellerSubmissionsPage() {
                                     {it.hsn_code && <span> · HSN {it.hsn_code}</span>}
                                     {it.note_to_admin && <span className="ml-1.5 font-bold" style={{ color: C.secondary }}>· Has a note to admin</span>}
                                     {it.is_active === false && <span className="ml-1.5 font-bold" style={{ color: "#a16207" }}>· Hidden by seller</span>}
+                                    {/* NEW — surfaces regardless of which tab is active: an already-
+                                        approved (live) item that still has no category mapping. */}
+                                    {it.review_status === "approved" && !it.generic_product && (
+                                        <span className="ml-1.5 font-bold" style={{ color: "#a16207" }}>· Needs category mapping</span>
+                                    )}
                                 </p>
                                 {it.rejection_reason && <p className="mt-1 text-[11.5px] font-semibold" style={{ color: C.danger }}>Rejected: {it.rejection_reason}</p>}
                             </div>
@@ -504,6 +522,9 @@ function ViewSubmissionModal({ token, submissionId, onClose, onEdit, onImageClic
                                 }}>
                                 {s.review_status === "approved" ? "Approved" : s.review_status === "rejected" ? "Rejected" : "Pending review"}
                             </span>
+                            {s.review_status === "approved" && !gp && (
+                                <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: "#fef3c7", color: "#a16207" }}>Needs category mapping</span>
+                            )}
                             {s.is_active === false && <span className="rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: C.hairSoft, color: C.muted }}>Hidden by seller</span>}
                             <span className="text-[11px] font-medium" style={{ color: C.muted }}>Seller: {s.seller?.display_name || "—"}</span>
                         </div>
@@ -827,9 +848,14 @@ function EditSubmissionModal({ token, submissionId, onClose, onSaved, onApprove 
                                 {fixingMapping ? "Cancel" : "Fix mapping"}
                             </button>
                         </div>
-                        {!crumb && (
+                        {!crumb && reviewStatus === "pending_review" && (
                             <p className="mb-3 flex items-start gap-1.5 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ background: "#fef3c7", color: "#a16207" }}>
                                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> This item can't be approved until it's mapped to a category above.
+                            </p>
+                        )}
+                        {!crumb && reviewStatus === "approved" && (
+                            <p className="mb-3 flex items-start gap-1.5 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ background: "#fef3c7", color: "#a16207" }}>
+                                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> This product is already live for buyers, but still needs a category mapping — map it above whenever you're ready.
                             </p>
                         )}
                         {fixingMapping && brandItemId && (
