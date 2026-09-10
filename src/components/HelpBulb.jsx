@@ -93,7 +93,7 @@ const STATUS_MESSAGES = {
 
 const HINT_SEEN_KEY = "bbm_help_bulb_hint_seen_v1";
 const DRAG_TRIGGER_DISTANCE = 90;
-const REST_CORD_LENGTH = 14;
+const REST_CORD_LENGTH = 25;
 const STATUS_AUTOHIDE_MS = 6000;
 
 function usePrefersReducedMotion() {
@@ -409,7 +409,7 @@ export default function HelpBulb() {
                                     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); showHint(); }
                                 }}
                                 aria-label="What does this button do?"
-                                className={`absolute -right-1.5 -top-1.5 flex h-5 min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white ${focusRing}`}
+                                className={`absolute -right-1.5 -top-1.5 flex h-4 min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-bold text-white ring-2 ring-white ${focusRing}`}
                                 style={{ background: C.primary, "--tw-ring-color": C.primary }}
                             >
                                 ?
@@ -456,7 +456,7 @@ export default function HelpBulb() {
                         <motion.div
                             key="resolution"
                             {...slide(isDesktop ? -6 : 6)}
-                            className="absolute rounded-2xl border p-4 shadow-xl"
+                            className="absolute right-0 top-16 rounded-2xl border p-4 shadow-xl"
                             style={{
                                 ...panelAnchorClass.split(" ").reduce((acc, cls) => acc, {}),
                                 width: isDesktop ? "clamp(220px, 22vw, 280px)" : "clamp(240px, 78vw, 320px)",
