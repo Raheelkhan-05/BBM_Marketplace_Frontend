@@ -28,7 +28,6 @@ export default function Layout() {
   const { isLoggedIn, profile } = useAuth();
   const isLandingPage = pathname === "/";
   const isAdminPage = pathname.startsWith("/admin");
-  const isCartPage = pathname.startsWith("/cart");
   const isWalletPage = pathname.startsWith("/seller/wallet");
   const isChatDetailPage = /^\/chat\/[^/]+/.test(pathname);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -41,7 +40,7 @@ export default function Layout() {
   // OnboardingGate (App.jsx) instead.
   const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step !== "done";
 
-  const showBottomNav = !isLandingPage && !isAdminPage && !isCartPage && !isWalletPage && !isChatDetailPage && !lightboxOpen && !onboardingIncomplete;
+  const showBottomNav = !isLandingPage && !isAdminPage && !isWalletPage && !isChatDetailPage && !lightboxOpen && !onboardingIncomplete;
 
   return (
     <NotificationsProvider>
