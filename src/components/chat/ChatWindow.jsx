@@ -82,6 +82,7 @@ import { ArrowLeft, ArrowDown, CreditCard, Truck, Loader2, Pencil, Check, CheckC
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
 import useChatMessages, { usePresence, useCredit, useTransportPreference } from "../../hooks/useChat.js";
+import { useChatContext } from "../../context/ChatContext.jsx";
 
 import { formatLastSeen } from "../../utils/formatLastSeen.js";
 
@@ -689,6 +690,7 @@ function ThreadSkeleton() {
 
 export default function ChatWindow({ conversationId, meta, onBack }) {
     const { profile } = useAuth();
+    const { markLocalRead } = useChatContext();
     const scrollRef = useRef(null);
     const bottomRef = useRef(null);
     const presence = usePresence(meta?.otherUserId ? [meta.otherUserId] : []);
@@ -745,6 +747,23 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
             setNewIncoming(0);
         }
     }, [conversationId]);
+
+    useEffect(() => {
+        if (conversationId) markLocalRead(conversationId);
+    }, [conversationId, markLocalRead]);
+
+
+
+    // Keeps it cleared if a new message arrives from the other person
+    // WHILE this thread is already open (ackRead already fires for the
+    // read-receipt tick in useChatMessages — this keeps the nav badge in
+    // sync with that same "already looking at it" state).
+    useEffect(() => {
+        const last = messages[messages.length - 1];
+        if (last && last.sender_id !== profile?.id) markLocalRead(conversationId);
+    }, [messages, profile?.id, conversationId, markLocalRead]);
+
+
 
     // Once messages for the CURRENT conversation have actually loaded,
     // snap straight to the latest message — this is the ONLY place that

@@ -10,11 +10,17 @@
 // agreed with the buyer, if one was snapshotted onto this order at
 // placement time (orders.transport_mode) — mirrors the same card added
 // to OrderDetailPage.jsx (the buyer's view of the same order).
-import { useCallback, useState } from "react";
+//
+// NEW (notifications pass): marks every unread "sales" notification for
+// this order (link === /seller/orders/:id) as read on open, via
+// NotificationsContext — this is what steps down the My Orders badge and
+// the Sales Orders tab count.
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Package, User, Phone, Mail, ShieldCheck, Loader2, MapPin, IndianRupee, Radio, CheckCircle2, Circle, XCircle, Truck } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useNotifications } from "../context/NotificationsContext.jsx";
 import { fetchSellerOrderById, confirmSellerOrder, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder } from "../utils/api.js";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
@@ -93,6 +99,7 @@ export default function SellerOrderDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { token } = useAuth();
+    const { markOrderRead } = useNotifications();
     const [busy, setBusy] = useState(null);
 
     const fetcher = useCallback((orderId) => fetchSellerOrderById(token, orderId), [token]);
@@ -110,7 +117,17 @@ export default function SellerOrderDetailPage() {
         setBusy(action.key);
         const res = await action.fn(token, id, reason);
         setBusy(null);
-        if (res?.success) reload(); else window.alert(res?.message || "Couldn't update the order.");
+        if (res?.success) {
+            // Only these two are terminal from the seller's perspective —
+            // confirm/process/ship leave the order "in progress" and the
+            // unread badge should keep reflecting that.
+            if (action.key === "reject" || action.key === "deliver") {
+                await markOrderRead(id, "seller");
+            }
+            reload();
+        } else {
+            window.alert(res?.message || "Couldn't update the order.");
+        }
     };
 
     if (loading && !order) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>;

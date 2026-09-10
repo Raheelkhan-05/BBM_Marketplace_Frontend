@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bell } from "lucide-react";
-import { useAuth } from "../context/AuthContext.jsx";
-import useRealtimeNotifications from "../hooks/useRealtimeNotifications.js";
+import { useNotifications } from "../context/NotificationsContext.jsx";
 import SmartLink from "./SmartLink.jsx";
 import NotificationIsland from "./NotificationIsland.jsx";
-import { playNotificationSound } from "../utils/notificationSound.js";
 
+// Order notifications (purchase + sales) are excluded here — they live on
+// the "My Orders" nav badge instead and toast from the center of the
+// screen via OrderNotificationToast. See NotificationsContext for the
+// link-based classification that makes this split.
 export default function NotificationBell() {
-  const { token } = useAuth();
+  const { bellNotifications, bellUnreadCount, markRead, subscribeNonOrder } = useNotifications();
   const [open, setOpen] = useState(false);
   const bellRef = useRef(null);
 
@@ -21,17 +23,13 @@ export default function NotificationBell() {
   const [pendingIds, setPendingIds] = useState(() => new Set());
   const [bumping, setBumping] = useState(false);
 
-  const handleNewNotification = useCallback((payload) => {
-    if (!payload?.id) return;
-    setPendingIds((prev) => new Set(prev).add(payload.id));
-    setQueue((prev) => [...prev, payload]);
-    playNotificationSound();
-  }, []);
-
-  const { notifications, unreadCount, markRead } = useRealtimeNotifications({
-    token,
-    onNewNotification: handleNewNotification,
-  });
+  useEffect(() => {
+    const unsubscribe = subscribeNonOrder((payload) => {
+      setPendingIds((prev) => new Set(prev).add(payload.id));
+      setQueue((prev) => [...prev, payload]);
+    });
+    return unsubscribe;
+  }, [subscribeNonOrder]);
 
   // Drain the queue one toast at a time so overlapping notifications don't
   // stack their animations on top of each other.
@@ -54,7 +52,7 @@ export default function NotificationBell() {
     setTimeout(() => setBumping(false), 320);
   }, []);
 
-  const displayUnreadCount = Math.max(0, unreadCount - pendingIds.size);
+  const displayUnreadCount = Math.max(0, bellUnreadCount - pendingIds.size);
 
   const handleClick = (n) => { if (!n.read) markRead(n.id); setOpen(false); };
 
@@ -93,8 +91,8 @@ export default function NotificationBell() {
         {open && (
           <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
             className="absolute right-0 mt-2 w-72 max-h-80 overflow-y-auto rounded-xl border border-slate-100 bg-white py-1.5 shadow-xl">
-            {notifications.length === 0 && <p className="px-4 py-6 text-center text-[12.5px] text-slate-400">No notifications yet.</p>}
-            {notifications.map((n) => (
+            {bellNotifications.length === 0 && <p className="px-4 py-6 text-center text-[12.5px] text-slate-400">No notifications yet.</p>}
+            {bellNotifications.map((n) => (
               <SmartLink key={n.id} to={n.link || "#"} onClick={() => handleClick(n)}
                 className={`block px-4 py-2.5 text-[12.5px] hover:bg-slate-50 ${!n.read ? "bg-[#047084]/[0.04]" : ""}`}>
                 <p className="font-bold text-slate-800">{n.title}</p>

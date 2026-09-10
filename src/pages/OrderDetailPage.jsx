@@ -6,11 +6,17 @@
 // that was agreed with the seller, if one was snapshotted onto this order
 // at placement time (orders.transport_mode, set by place_order when
 // BuyNowModal forwards a confirmed buyer_seller_transport_prefs row).
-import { useCallback } from "react";
+//
+// NEW (notifications pass): marks every unread "purchase" notification for
+// this order (link === /orders/:id) as read on open, via
+// NotificationsContext — this is what steps down the My Orders badge and
+// the Purchase Orders tab count.
+import { useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Package, MapPin, Loader2, CheckCircle2, Circle, XCircle, Radio, Store, Truck } from "lucide-react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useNotifications } from "../context/NotificationsContext.jsx";
 import { fetchOrderById, cancelMyOrder } from "../utils/api.js";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
@@ -124,10 +130,17 @@ export default function OrderDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
     const { token } = useAuth();
+    const { markOrderRead } = useNotifications();
 
     const fetcher = useCallback((orderId) => fetchOrderById(token, orderId), [token]);
     const { order, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
     // console.log("order.stock_shortfall:", order?.stock_shortfall, "| lead_time_snapshot:", order?.items?.[0]?.lead_time_snapshot);
+
+    // Steps down the My Orders badge + Purchase Orders tab count for this
+    // order the moment its detail page is opened.
+    useEffect(() => {
+        if (id) markOrderRead(id, "buyer");
+    }, [id, markOrderRead]);
 
     const deliveredEvent = events.find((e) => e.to_status === "delivered");
 

@@ -7,6 +7,7 @@ import { fetchBuyerAddresses, createBuyerAddress, fetchBusinessProfile, fetchOrd
 import { C } from "../components/catalog/tokens";
 import GroupPaymentQRModal from "../components/GroupPaymentQRModal.jsx";
 import { TextField } from "../components/seller/listingForm/FormPrimitives.jsx";
+import { useCart } from "../context/CartContext.jsx";
 
 import { purchaseQtyToSaleUnitQty, saleUnitLabel, round2, hasOuterPack } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
@@ -119,14 +120,18 @@ export default function CartPage() {
     const [error, setError] = useState(null);
     const [payingGroupId, setPayingGroupId] = useState(null);
     const pendingWrites = useRef({});
+    const { reload: reloadCartBadge, setCountOptimistic } = useCart();
 
     const pendingWritePromises = useRef({});
 
     const load = useCallback(async () => {
         const res = await fetchCart(token);
-        if (res?.success) setItems(res.items);
+        if (res?.success) {
+            setItems(res.items);
+            setCountOptimistic(res.items.length); // keep badge in sync on full loads too
+        }
         setLoading(false);
-    }, [token]);
+    }, [token, setCountOptimistic]);
 
     useEffect(() => { load(); }, [load]);
     useEffect(() => {
@@ -256,7 +261,10 @@ export default function CartPage() {
         const floor = Number(moq) > 0 ? Number(moq) : 1;
         if (quantity < floor) return;
 
-        setItems((prev) => prev.map((it) => (it.submission_id === submissionId ? { ...it, quantity } : it)));
+        setItems((prev) => {
+            const next = prev.map((it) => (it.submission_id === submissionId ? { ...it, quantity } : it));
+            return next;
+        });
 
         clearTimeout(pendingWrites.current[submissionId]);
 
@@ -299,12 +307,15 @@ export default function CartPage() {
     };
 
     const handleRemove = (submissionId) => {
-        // Optimistic removal too — drop it from view immediately.
-        setItems((prev) => prev.filter((it) => it.submission_id !== submissionId));
+        setItems((prev) => {
+            const next = prev.filter((it) => it.submission_id !== submissionId);
+            setCountOptimistic(next.length);
+            return next;
+        });
         removeFromCart(token, submissionId).then((res) => {
             if (res && res.success === false) {
                 setError(res.message || "Couldn't remove item.");
-                load(); // reconcile — it's still actually in the cart server-side
+                load(); // reconciles both items and the badge count
             }
         });
     };
@@ -532,7 +543,7 @@ export default function CartPage() {
                 <GroupPaymentQRModal
                     token={token}
                     groupId={payingGroupId}
-                    onClose={() => { setPayingGroupId(null); load(); }}
+                    onClose={() => { setPayingGroupId(null); load(); reloadCartBadge(); }}
                     onDoneViewOrders={() => navigate("/orders")}
                 />
             )}

@@ -139,17 +139,31 @@ export default function useChatMessages(conversationId, otherUserId) {
         fetchMessages(token, conversationId).then((res) => {
             if (cancelled || !res?.success) return;
             setMessageMap((prev) => {
-                // server-fetched messages arrive pre-ordered (oldest →
-                // newest) — Map preserves insertion order, so building
-                // straight from this array is already correct, no client-
-                // side sort needed.
-                const next = new Map(res.messages.map((m) => [m.id, m]));
-                // preserve any purely-local state (e.g. an in-flight optimistic
-                // send) that the fresh page wouldn't know about — appended
-                // after the server's messages, since it's newer than
-                // anything the server returned.
-                prev.forEach((v, k) => { if (!next.has(k)) next.set(k, v); });
-                return next;
+                const freshEntries = res.messages.map((m) => [m.id, m]);
+                const freshIds = new Set(freshEntries.map(([id]) => id));
+                const freshOldest = res.messages[0]?.created_at;
+
+                // Anything left over in `prev` after removing what the fresh
+                // fetch already covers falls into two buckets:
+                //   - OLDER than the fetched page: this is paginated history
+                //     from a previous loadOlder() call that the cache still
+                //     had, but this fetch (always just "latest 30") doesn't
+                //     include. It belongs BEFORE the fresh page.
+                //   - Not older (an in-flight optimistic send, or genuinely
+                //     newer than anything the server just returned): belongs
+                //     AFTER the fresh page, same as before.
+                // Blindly appending everything here (the old behavior) is
+                // what let older cached history get shoved below "Today" —
+                // this is the fix for that.
+                const older = [];
+                const newer = [];
+                prev.forEach((v, k) => {
+                    if (freshIds.has(k)) return; // fresh copy wins, already in freshEntries
+                    if (freshOldest && new Date(v.created_at) < new Date(freshOldest)) older.push([k, v]);
+                    else newer.push([k, v]);
+                });
+
+                return new Map([...older, ...freshEntries, ...newer]);
             });
             setHasMore(res.hasMore);
             oldestCursorRef.current = res.oldestCursor || null;
@@ -447,12 +461,17 @@ export function useConversations() {
             setConversations((prev) => {
                 const idx = prev.findIndex((c) => c.id === payload.conversation_id);
                 if (idx === -1) { scheduleReload(); return prev; }
+                const incomingFromOther = payload.sender_id !== myId;
                 const updated = {
                     ...prev[idx],
                     lastMessagePreview: previewFor(payload.body),
-                    lastMessageIsMine: payload.sender_id === myId,
+                    lastMessageIsMine: !incomingFromOther,
                     lastMessageAt: payload.created_at,
-                    unread: payload.sender_id !== myId ? true : prev[idx].unread,
+                    // bump the count, don't just flip a flag — ChatWindow
+                    // zeroes it back to 0 via markLocalRead if this
+                    // conversation happens to be open right now.
+                    unreadCount: incomingFromOther ? (prev[idx].unreadCount || 0) + 1 : prev[idx].unreadCount,
+                    unread: incomingFromOther ? true : prev[idx].unread,
                 };
                 const nextList = [updated, ...prev.slice(0, idx), ...prev.slice(idx + 1)];
                 conversationsCache = { list: nextList };
@@ -468,17 +487,23 @@ export function useConversations() {
         };
     }, [socket, myId, scheduleReload]);
 
-    // lets the chat screen clear a conversation's unread dot the instant
-    // it's opened, rather than waiting on the next list refresh
     const markLocalRead = useCallback((conversationId) => {
         setConversations((prev) => {
-            const nextList = prev.map((c) => (c.id === conversationId ? { ...c, unread: false } : c));
+            const nextList = prev.map((c) => (c.id === conversationId ? { ...c, unread: false, unreadCount: 0 } : c));
             conversationsCache = { list: nextList };
             return nextList;
         });
     }, []);
 
-    return { conversations, loading, unreadTotal: conversations.filter((c) => c.unread).length, reload, markLocalRead };
+    // Total unread MESSAGES across all conversations — this is what the
+    // Chat nav badge shows, same "sum, not just count-of-threads" idea as
+    // Orders' aggregate badge.
+    const unreadTotal = useMemo(
+        () => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
+        [conversations]
+    );
+
+    return { conversations, loading, unreadTotal, reload, markLocalRead };
 }
 
 // ---------------------------------------------------------------------

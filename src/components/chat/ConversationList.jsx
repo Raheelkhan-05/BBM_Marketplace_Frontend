@@ -134,15 +134,19 @@ export default function ConversationList({ conversations, loading, activeId, onS
                                         <p className="truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
                                             {c.otherShopName || "Unknown seller"}
                                         </p>
-                                        <span className="shrink-0 text-[10.5px] font-semibold" style={{ color: c.unread ? C.secondary : C.muted }}>
+                                        <span className="shrink-0 text-[10.5px] font-semibold" style={{ color: c.unreadCount > 0 ? C.secondary : C.muted }}>
                                             {timeLabel(c.lastMessageAt)}
                                         </span>
                                     </div>
                                     <div className="mt-0.5 flex items-center justify-between gap-2">
-                                        <p className="truncate text-[12px] font-medium" style={{ color: c.unread ? C.ink : C.muted }}>
+                                        <p className="truncate text-[12px] font-medium" style={{ color: c.unreadCount > 0 ? C.ink : C.muted }}>
                                             {c.lastMessageIsMine && "You: "}{c.lastMessagePreview || "Say hello 👋"}
                                         </p>
-                                        {c.unread && <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: C.primary }} />}
+                                        {c.unreadCount > 0 && (
+                                            <span className="flex h-4 min-w-[16px] shrink-0 items-center justify-center rounded-full px-1 text-[9px] font-bold text-white" style={{ background: C.primary }}>
+                                                {c.unreadCount > 9 ? "9+" : c.unreadCount}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </motion.button>

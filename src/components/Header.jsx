@@ -9,10 +9,14 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import { TAGLINE } from "../../data/content";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useNotifications } from "../context/NotificationsContext.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
 import SmartLink from "./SmartLink.jsx";
 import { NAV_ITEMS } from "./navItems.js";
+import { useCart } from "../context/CartContext.jsx";
 import { preloadRoute } from "../routePreload.js";
+import { useChatContext } from "../context/ChatContext.jsx";
+
 
 const C = {
   ink: "#141B22",
@@ -73,7 +77,7 @@ function ScrollableNav({ navItems, pathname, navMaxWidth }) {
         )}
         <nav
           ref={scrollRef}
-          className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] lg:gap-1.5 [&::-webkit-scrollbar]:hidden"
+          className="flex items-center gap-1 py-5 -my-2 [scrollbar-width:none] lg:gap-1.5 [&::-webkit-scrollbar]:hidden"
         >
           {navItems.map((it) => {
             const Icon = it.icon;
@@ -93,7 +97,7 @@ function ScrollableNav({ navItems, pathname, navMaxWidth }) {
                   if (!active) e.currentTarget.style.background = "rgba(20,27,34,0.045)";
                 }}
                 onTouchStart={() => { if (it.to) preloadRoute(it.to); }}
-                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors duration-150 lg:px-4 lg:text-[13px]"
+                className="relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors duration-150 lg:px-4 lg:text-[13px]"
                 style={{
                   color: active ? "#fff" : C.ink,
                   background: active ? C.secondary : "transparent",
@@ -102,6 +106,11 @@ function ScrollableNav({ navItems, pathname, navMaxWidth }) {
               >
                 <Icon className="h-3.5 w-3.5 lg:h-4 lg:w-4" style={{ color: active ? "#fff" : C.muted }} />
                 {it.label}
+                {it.badge != null && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                    {it.badge}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -117,6 +126,10 @@ export default function Header({ onOpenRfq }) {
   const [headerHeight, setHeaderHeight] = useState(49);
   const [navMaxWidth, setNavMaxWidth] = useState(null);
   const { isLoggedIn, profile, signOut } = useAuth();
+  const { orderUnreadCount } = useNotifications();
+  const { cartCount } = useCart();
+  const { unreadTotal: chatUnreadTotal } = useChatContext();
+
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
@@ -134,6 +147,7 @@ export default function Header({ onOpenRfq }) {
   const logoRef = useRef(null);
   const rightRef = useRef(null);
   const accountRef = useRef(null);
+
 
   useEffect(() => {
     if (!headerRef.current) return;
@@ -212,7 +226,12 @@ export default function Header({ onOpenRfq }) {
   const isAdmin = effectiveLoggedIn && profile?.role === "admin";
   const isApprovedSeller = effectiveLoggedIn && profile?.seller_status === "approved";
 
-  const navItems = NAV_ITEMS({ isLoggedIn: effectiveLoggedIn, isApprovedSeller, onOpenRfq, navigate });
+  const navItems = NAV_ITEMS({
+    isLoggedIn: effectiveLoggedIn, isApprovedSeller, onOpenRfq, navigate,
+    ordersBadgeCount: orderUnreadCount,
+    cartBadgeCount: cartCount,
+    chatBadgeCount: chatUnreadTotal, // add
+  });
 
 
 

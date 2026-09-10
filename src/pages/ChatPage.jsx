@@ -16,12 +16,15 @@ import ChatWindow from "../components/chat/ChatWindow.jsx";
 import { useConversations } from "../hooks/useChat.js";
 import { MessageSquare } from "lucide-react";
 
+import { useChatContext } from "../context/ChatContext.jsx";
+
+
 const C = { ink: "#0B1116", muted: "#667077", hair: "rgba(11,17,22,0.09)" };
 
 export default function ChatPage() {
     const { conversationId } = useParams();
     const navigate = useNavigate();
-    const { conversations, loading, reload, markLocalRead } = useConversations();
+    const { conversations, loading, reload, markLocalRead } = useChatContext();
 
     const activeMeta = useMemo(
         () => conversations.find((c) => c.id === conversationId) || null,

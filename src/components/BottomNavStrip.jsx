@@ -6,7 +6,10 @@
 // which buried primary navigation behind an extra tap.
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useNotifications } from "../context/NotificationsContext.jsx";
 import { NAV_ITEMS } from "./navItems.js";
+import { useCart } from "../context/CartContext.jsx";
+import { useChatContext } from "../context/ChatContext.jsx";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)" };
 
@@ -14,16 +17,24 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const navigate = useNavigate();
     const { pathname } = useLocation();
     const { isLoggedIn, profile } = useAuth();
+    const { orderUnreadCount } = useNotifications();
+    const { cartCount } = useCart();
+    const { unreadTotal: chatUnreadTotal } = useChatContext();
     const isApprovedSeller = profile?.seller_status === "approved";
 
-    const items = NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate });
+    const items = NAV_ITEMS({
+        isLoggedIn, isApprovedSeller, onOpenRfq, navigate,
+        ordersBadgeCount: orderUnreadCount,
+        cartBadgeCount: cartCount,
+        chatBadgeCount: chatUnreadTotal, // add
+    });
 
     return (
         <nav
             className="fixed inset-x-0 bottom-0 z-40 border-t bg-white backdrop-blur-md md:hidden"
             style={{ borderColor: C.hair, paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-            <div className="flex gap-1.5 overflow-x-auto px-3 py-2 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-1.5 overflow-x-auto px-3 py-2 pb-4 -mt-2 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {items.map((it) => {
                     const Icon = it.icon;
                     const active = it.match(pathname);
@@ -31,7 +42,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         <button
                             key={it.id}
                             onClick={it.onClick}
-                            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[13.5px] font-bold transition-colors duration-150 tracking-wide"
+                            className="relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[13.5px] font-bold transition-colors duration-150 tracking-wide"
                             style={{
                                 color: active ? "#fff" : C.ink,
                                 background: active ? C.secondary : "rgba(20,27,34,0.045)",
@@ -39,6 +50,11 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         >
                             <Icon className="h-3.5 w-3.5" style={{ color: active ? "#fff" : C.muted }} />
                             {it.label}
+                            {it.badge != null && (
+                                <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white ring-2 ring-white">
+                                    {it.badge}
+                                </span>
+                            )}
                         </button>
                     );
                 })}

@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Package, Loader2, ShoppingBag, User, Phone, Mail, Store, IndianRupee } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useNotifications } from "../context/NotificationsContext.jsx";
 import {
     fetchMyOrders, cancelMyOrder,
     fetchSellerOrders, confirmSellerOrder, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder,
@@ -20,6 +21,18 @@ import {
 // ---------- shared helpers ----------
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
 function round2(n) { return Math.round((Number(n) + Number.EPSILON) * 100) / 100; }
+
+// Small pill used next to the Purchase/Sales tab labels — same visual
+// language as the bell/nav badges elsewhere, just inline instead of
+// absolutely positioned since these are text tabs, not icon buttons.
+function TabBadge({ count }) {
+    if (!count) return null;
+    return (
+        <span className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 align-middle text-[9px] font-bold text-white">
+            {count > 9 ? "9+" : count}
+        </span>
+    );
+}
 
 const PURCHASE_STATUS_TABS = [
     { key: "", label: "All" }, { key: "pending_confirmation", label: "Pending" }, { key: "confirmed", label: "Confirmed" },
@@ -40,6 +53,19 @@ const NEXT_ACTION = {
     processing: [{ key: "ship", label: "Mark as shipped", fn: shipSellerOrder, primary: true }],
     shipped: [{ key: "deliver", label: "Mark as delivered", fn: deliverSellerOrder, primary: true }],
 };
+// Shared unread indicator for an individual order row. Renders a number
+// badge if there's more than one unread notification queued for this
+// order, otherwise a plain dot — either way it sits in the card's corner.
+function OrderUnreadMark({ count }) {
+    if (!count) return null;
+    return count > 1 ? (
+        <span className="absolute -right-1.5 -top-1.5 z-10 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white ring-2 ring-white">
+            {count > 9 ? "9+" : count}
+        </span>
+    ) : (
+        <span className="absolute -right-1 -top-1 z-10 h-2.5 w-2.5 rounded-full bg-[#d2462b] ring-2 ring-white" />
+    );
+}
 
 // ---------- Purchase (buyer) card ----------
 function GroupBadge({ groupNumber }) {
@@ -55,6 +81,8 @@ function PurchaseOrderCard({ order, idx, onCancel }) {
     const navigate = useNavigate();
     const [cancelling, setCancelling] = useState(false);
     const canCancel = order.status === "pending_confirmation";
+    const { purchaseOrderUnreadCounts } = useNotifications();
+    const unreadCount = purchaseOrderUnreadCounts.get(String(order.id)) || 0;
     const item = order.items?.[0];
     const extraCount = (order.items?.length || 1) - 1;
     const isSample = order.order_type === "sample";
@@ -62,7 +90,10 @@ function PurchaseOrderCard({ order, idx, onCancel }) {
     return (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: Math.min(idx * 0.03, 0.3), ease: EASE }}
             onClick={() => navigate(`/orders/${order.id}`)}
-            className="cursor-pointer rounded-2xl border bg-white p-3.5 transition-shadow duration-150 hover:shadow-sm sm:p-4" style={{ borderColor: isSample ? "#7c3aed30" : C.hair }}>
+            className="relative cursor-pointer rounded-2xl border bg-white p-3.5 transition-shadow duration-150 hover:shadow-sm sm:p-4"
+            style={{ borderColor: isSample ? "#7c3aed30" : C.hair }}>
+            <OrderUnreadMark count={unreadCount} />
+
 
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
@@ -203,6 +234,8 @@ function PurchaseOrdersView() {
 function SalesOrderCard({ order, idx, onAction }) {
     const navigate = useNavigate();
     const [busy, setBusy] = useState(null);
+    const { salesOrderUnreadCounts } = useNotifications();
+    const unreadCount = salesOrderUnreadCounts.get(String(order.id)) || 0;
     const actions = NEXT_ACTION[order.status] || [];
     const addr = order.shipping_address_snapshot || {};
     const isSample = order.order_type === "sample";
@@ -212,15 +245,18 @@ function SalesOrderCard({ order, idx, onAction }) {
         if (action.needsReason) {
             const reason = window.prompt("Reason for rejecting this order (shown to the buyer):");
             if (reason === null) return;
-            setBusy(action.key); await onAction(order.id, action.fn, reason); setBusy(null); return;
+            setBusy(action.key); await onAction(order.id, action, reason); setBusy(null); return;
         }
-        setBusy(action.key); await onAction(order.id, action.fn); setBusy(null);
+        setBusy(action.key); await onAction(order.id, action); setBusy(null);
     };
 
     return (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: Math.min(idx * 0.03, 0.3), ease: EASE }}
             onClick={() => navigate(`/seller/orders/${order.id}`)}
-            className="cursor-pointer rounded-2xl border bg-white p-3.5 transition-shadow duration-150 hover:shadow-sm sm:p-4" style={{ borderColor: isSample ? "#7c3aed30" : C.hair }}>
+            className="relative cursor-pointer rounded-2xl border bg-white p-3.5 transition-shadow duration-150 hover:shadow-sm sm:p-4"
+            style={{ borderColor: isSample ? "#7c3aed30" : C.hair }}>
+            <OrderUnreadMark count={unreadCount} />
+
 
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
@@ -316,6 +352,7 @@ function SalesOrdersView() {
     const { token, profile } = useAuth();
     const [activeStatus, setActiveStatus] = useState("");
     const [activeType, setActiveType] = useState("");
+    const { markOrderRead } = useNotifications();
 
     const fetcher = useCallback(async () => {
         const res = await fetchSellerOrders(token, activeStatus || undefined, activeType || undefined);
@@ -324,7 +361,17 @@ function SalesOrdersView() {
     }, [token, activeStatus, activeType]);
 
     const { orders, loading, reload } = useRealtimeOrders({ channelToken: profile?.notificationChannel, fetcher });
-    const handleAction = async (orderId, fn, reason) => { const res = await fn(token, orderId, reason); if (res?.success) reload(); else window.alert(res?.message || "Couldn't update the order."); };
+    const handleAction = async (orderId, action, reason) => {
+        const res = await action.fn(token, orderId, reason);
+        if (res?.success) {
+            if (action.key === "reject" || action.key === "deliver") {
+                await markOrderRead(orderId, "seller");
+            }
+            reload();
+        } else {
+            window.alert(res?.message || "Couldn't update the order.");
+        }
+    };
 
     return (
         <>
@@ -364,6 +411,7 @@ function SalesOrdersView() {
 export default function OrdersPage() {
     const navigate = useNavigate();
     const { profile } = useAuth();
+    const { purchaseUnreadCount, salesUnreadCount } = useNotifications();
 
     // TODO: confirm this matches your AuthContext's actual field for seller
     // approval status (e.g. profile?.seller?.status === "approved", or a
@@ -380,12 +428,13 @@ export default function OrdersPage() {
                         className="relative rounded-md px-4 py-1.5 text-[13px] font-bold tracking-wide transition-colors"
                         style={{ background: activeTab === "purchases" ? C.primary : "transparent", color: activeTab === "purchases" ? "#fff" : C.muted, boxShadow: activeTab === "purchases" ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
                         Purchase Orders
+                        <TabBadge count={purchaseUnreadCount} />
                     </button>
                     <button onClick={() => setActiveTab("sales")}
                         className="relative rounded-md px-4 py-1.5 text-[13px] font-bold tracking-wide transition-colors"
                         style={{ background: activeTab === "sales" ? C.primary : "transparent", color: activeTab === "sales" ? "#fff" : C.muted, boxShadow: activeTab === "sales" ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
                         Sales Orders
-
+                        <TabBadge count={salesUnreadCount} />
                     </button>
                 </div>
             )}
