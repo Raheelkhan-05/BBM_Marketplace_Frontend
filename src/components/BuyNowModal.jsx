@@ -214,16 +214,17 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
 function normalizeQuote(raw) {
     if (!raw) return raw;
     const isSample = raw.orderType === "sample";
+    const acceptanceFields = {
+        acceptingNow: raw.acceptingNow,
+        acceptanceMessage: raw.acceptanceMessage,
+        acceptanceDelayDays: raw.acceptanceDelayDays || 0,
+        acceptanceWindowLabel: raw.acceptanceWindowLabel,
+    };
 
-    // Samples are always denominated in base units (Pieces/Kg/…) — never
-    // in the seller's sale unit (Pack/Master Pack). Keep the two
-    // completely separate instead of falling back through one shared
-    // "quantity" field, which is what let a sample's base-unit count
-    // get mislabeled as a Pack count below.
     if (isSample) {
         const subtotal = Number(raw.subtotal) || 0;
         return {
-            ...raw,
+            ...raw, ...acceptanceFields,
             baseUnitQuantity: Number(raw.quantity) || 0,
             grossSubtotal: raw.grossSubtotal != null ? Number(raw.grossSubtotal) : subtotal,
             discountAmount: 0,
@@ -246,7 +247,7 @@ function normalizeQuote(raw) {
 
     const discountAmount = raw.discountAmount != null ? Number(raw.discountAmount) : round2(grossSubtotal - subtotal);
 
-    return { ...raw, saleUnitQuantity, grossSubtotal, discountAmount, discountPercent };
+    return { ...raw, ...acceptanceFields, saleUnitQuantity, grossSubtotal, discountAmount, discountPercent };
 }
 
 // ---------------------------------------------------------------------
@@ -531,7 +532,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
         [constraints, effectiveState, effectiveCity]
     );
 
-    const blockedByConstraints = !locationStatus.serviceable || !windowStatus.open;
+    const blockedByConstraints = !locationStatus.serviceable;
 
 
     useEffect(() => {
@@ -1167,21 +1168,46 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                             showing an estimated delivery date for an order that can't actually
                                             be placed right now is misleading. */}
                                         {!blockedByConstraints && (
-                                            <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: `${C.secondary}0a` }}>
-                                                <Truck className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                                                <div className="min-w-0 flex-1">
-                                                    <span className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: C.muted }}>
-                                                        Estimated delivery
-                                                    </span>
-                                                    <p className="text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>
-                                                        {quote.isEstimate || !quote.estimatedDeliveryDate ? (
-                                                            <SkeletonBar width="90px" />
-                                                        ) : (
-                                                            deliveryDateLabel(quote.estimatedDeliveryDate)
-                                                        )}
-                                                    </p>
+                                            <>
+                                                {!isSample && quote.acceptanceDelayDays > 0 && (
+                                                    <div className="flex items-start gap-2 rounded-lg px-3 py-2" style={{ background: "#fef3c7" }}>
+                                                        <Clock className="mt-[1px] h-3.5 w-3.5 shrink-0" style={{ color: "#a16207" }} />
+                                                        <span className="text-[11.5px] font-semibold leading-snug tracking-wide" style={{ color: "#a16207" }}>
+                                                            {quote.acceptanceMessage || "This seller is currently closed — your order will still be placed, but acceptance is delayed."}
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                <div className="flex flex-col gap-2 rounded-xl border p-3.5" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                                                    <span className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Delivery estimate breakdown</span>
+
+                                                    {quote.acceptanceDelayDays > 0 && (
+                                                        <QuoteRow small label="Acceptance delay" value={`${quote.acceptanceDelayDays} day${quote.acceptanceDelayDays === 1 ? "" : "s"}`} />
+                                                    )}
+                                                    {quote.leadDays > 0 && (
+                                                        <QuoteRow small label={seller?.stockType === "made_to_order" ? "Production time" : "Dispatch time"} value={`${quote.leadDays} day${quote.leadDays === 1 ? "" : "s"}`} />
+                                                    )}
+                                                    <QuoteRow
+                                                        small
+                                                        label="Transit"
+                                                        value={quote.transitDaysMin === quote.transitDaysMax
+                                                            ? `${quote.transitDaysMin} day${quote.transitDaysMin === 1 ? "" : "s"}`
+                                                            : `${quote.transitDaysMin}–${quote.transitDaysMax} days`}
+                                                    />
+
+                                                    <div className="my-0.5 h-px" style={{ background: C.hair }} />
+
+                                                    <div className="flex items-center gap-2">
+                                                        <Truck className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                                        <div className="min-w-0 flex-1">
+                                                            <span className="text-[11px] font-bold uppercase tracking-[0.06em]" style={{ color: C.muted }}>Total estimated delivery</span>
+                                                            <p className="text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                                                                {quote.isEstimate || !quote.estimatedDeliveryDate ? <SkeletonBar width="90px" /> : deliveryDateLabel(quote.estimatedDeliveryDate)}
+                                                            </p>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            </>
                                         )}
 
                                     </div>
@@ -1217,13 +1243,16 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                         {/* ---------------- Sticky submit ---------------- */}
                         <div className="sticky bottom-0 z-10 border-t bg-white/95 px-5 py-3.5 backdrop-blur sm:px-6" style={{ borderColor: C.hairSoft }}>
-                            {blockedByConstraints ? (
-                                <ConstraintNotice reasons={[
-                                    !windowStatus.open && { icon: Clock, message: windowStatus.message },
-                                    !locationStatus.serviceable && { icon: MapPin, message: locationStatus.message },
-                                ]} />
+                            {!locationStatus.serviceable ? (
+                                <ConstraintNotice reasons={[{ icon: MapPin, message: locationStatus.message }]} />
                             ) : (
                                 <>
+                                    {!windowStatus.open && (
+                                        <div className="mb-2.5">
+                                            <Notice tone="warn">{windowStatus.message}</Notice>
+                                        </div>
+                                    )}
+
                                     {quote && (
                                         <div className="mb-2.5 flex items-center justify-between">
                                             <span className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Total payable</span>

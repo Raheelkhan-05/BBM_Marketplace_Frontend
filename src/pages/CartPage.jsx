@@ -221,6 +221,9 @@ export default function CartPage() {
     // Per-seller-group constraint status: working-hours window (shared
     // across all of a seller's items) + per-item location serviceability
     // (each listing can have its own dispatching_locations).
+    // groupConstraintStatus: `blocked` now only reflects location, but we
+    // still carry windowStatus through so the UI can show the non-blocking
+    // "seller currently closed" notice per seller group.
     const groupConstraintStatus = useMemo(() => {
         const result = {};
         for (const [sellerId, group] of Object.entries(grouped)) {
@@ -242,7 +245,8 @@ export default function CartPage() {
             result[sellerId] = {
                 windowStatus,
                 blockedItems,
-                blocked: !windowStatus.open || blockedItems.length > 0,
+                // location is the only thing that actually blocks checkout now
+                blocked: blockedItems.length > 0,
             };
         }
         return result;
@@ -354,10 +358,7 @@ export default function CartPage() {
         // clearer, per-seller message.
         if (anyGroupBlocked) {
             const blockedGroup = Object.values(groupConstraintStatus).find((g) => g.blocked);
-            const message = !blockedGroup.windowStatus.open
-                ? blockedGroup.windowStatus.message
-                : blockedGroup.blockedItems[0]?.status.message;
-            setError(message || "One or more sellers in your cart can't be ordered from right now.");
+            setError(blockedGroup.blockedItems[0]?.status.message || "One or more sellers in your cart don't deliver to your selected address.");
             return;
         }
 
@@ -461,9 +462,16 @@ export default function CartPage() {
                                     })}
                                 </div>
 
+                                {groupStatus?.windowStatus && !groupStatus.windowStatus.open && (
+                                    <div className="mt-2.5 flex items-start gap-1.5 rounded-lg px-3 py-2" style={{ background: "#fef3c7" }}>
+                                        <Clock className="mt-[1px] h-3 w-3 shrink-0" style={{ color: "#a16207" }} />
+                                        <span className="text-[11.5px] font-semibold leading-snug tracking-wider" style={{ color: "#a16207" }}>
+                                            {groupStatus.windowStatus.message}
+                                        </span>
+                                    </div>
+                                )}
                                 {groupStatus?.blocked && (
                                     <ConstraintNotice reasons={[
-                                        !groupStatus.windowStatus.open && { icon: Clock, message: groupStatus.windowStatus.message },
                                         groupStatus.blockedItems.length > 0 && {
                                             icon: MapPin,
                                             message: groupStatus.blockedItems.length === 1
