@@ -1116,7 +1116,7 @@ export async function adminListHelpRequests(token, status) {
 }
 export async function adminAcknowledgeHelpRequest(token, id, notes) {
   try {
-    const res = await fetch(`${API_BASE}/api/help/admin/${id}/acknowledge`, {
+    const res = await fetch(`${API_BASE}/help/admin/${id}/acknowledge`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ notes }),
