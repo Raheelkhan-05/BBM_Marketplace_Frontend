@@ -13,11 +13,21 @@ export default function PolicySelect({ kind, label, value, onChange, error, requ
     const [menuRect, setMenuRect] = useState(null); // { top, left, width } in viewport coords
     const boxRef = useRef(null);
     const menuRef = useRef(null);
+    const [highlightedIdx, setHighlightedIdx] = useState(-1);
+
 
     useEffect(() => {
         setLoading(true);
         fetchListingPolicyOptions(kind).then((r) => { if (r?.success) setOptions(r.items); setLoading(false); });
     }, [kind]);
+
+
+    // seed highlight to current value whenever the menu opens
+    useEffect(() => {
+        if (!open) return;
+        const idx = options.findIndex((o) => o.key === value);
+        setHighlightedIdx(idx >= 0 ? idx : 0);
+    }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         function onOutside(e) {
@@ -75,6 +85,28 @@ export default function PolicySelect({ kind, label, value, onChange, error, requ
         <div ref={boxRef} className="relative flex min-w-0 flex-col gap-1">
             <Label>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>
             <button type="button" onClick={() => setOpen((o) => !o)}
+                onKeyDown={(e) => {
+                    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
+                        e.preventDefault();
+                        setOpen(true);
+                        return;
+                    }
+                    if (!open) return;
+                    if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setHighlightedIdx((i) => Math.min(options.length - 1, i + 1));
+                    } else if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setHighlightedIdx((i) => Math.max(0, i - 1));
+                    } else if (e.key === "Enter") {
+                        e.preventDefault();
+                        const opt = options[highlightedIdx];
+                        if (opt) { onChange(opt.key); setOpen(false); }
+                    } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setOpen(false);
+                    }
+                }}
                 className="flex w-full items-center tracking-wide justify-between gap-2 rounded-lg border bg-white px-3 py-2 text-left text-[13px] font-bold focus:outline-none focus:ring-2"
                 style={error ? { borderColor: "#f2b3ab", background: "#fff8f7" } : { borderColor: C.hair }}>
                 <span className="truncate" style={{ color: selected ? C.ink : "#94a3b8" }}>{selected ? selected.label : "Select…"}</span>
@@ -94,9 +126,14 @@ export default function PolicySelect({ kind, label, value, onChange, error, requ
                         className="fixed z-[1000] max-h-64 overflow-y-auto rounded-xl border bg-white shadow-lg"
                         style={{ borderColor: C.hair, left: menuRect.left, width: menuRect.width, top: menuRect.top, bottom: menuRect.bottom }}
                     >
-                        {options.map((o) => (
+                        {options.map((o, idx) => (
                             <button key={o.key} type="button" onClick={() => { onChange(o.key); setOpen(false); }}
-                                className="flex w-full items-start gap-2.5 border-b px-3.5 py-2.5 tracking-wide text-left last:border-b-0 transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hairSoft }}>
+                                className="flex w-full items-start gap-2.5 border-b px-3.5 py-2.5 tracking-wide text-left last:border-b-0 transition-colors duration-150 hover:bg-black/[0.03]"
+                                style={{
+                                    borderColor: C.hairSoft,
+                                    background: idx === highlightedIdx ? "rgba(11,17,22,0.04)" : undefined,
+                                }}
+                            >
                                 <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full" style={o.key === value ? { background: C.secondary } : { border: `1.5px solid ${C.hair}` }}>
                                     {o.key === value && <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />}
                                 </span>

@@ -10,6 +10,11 @@
 //   - Submits to POST /api/seller/wallet/payments (wallet_payments row),
 //     not an order's payment-proof endpoint.
 //
+// KEYBOARD: pressing Enter in the UTR field now submits directly (as long
+// as a UTR has been typed and a submission isn't already in flight),
+// matching the same "Enter submits" behavior added to PaymentQRModal /
+// GroupPaymentQRModal.
+//
 // TODO(confirm): screenshot upload here is sent as multipart to match the
 // order flow's submitPaymentProof pattern. This assumes the wallet payments
 // route/controller accepts multipart + a file the same way — see the
@@ -68,6 +73,16 @@ export default function WalletPaymentQRModal({ token, amount, onClose, onSubmitt
         setSubmitting(false);
         if (!res?.success) { setError(res?.message || "Couldn't submit payment proof."); return; }
         setSubmitted(true);
+    };
+
+    // Enter on the UTR field submits directly — same convenience as
+    // clicking the submit button — as long as there's something typed and
+    // we're not already mid-submission.
+    const handleUtrKeyDown = (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (utr.trim() && !submitting) handleSubmit();
+        }
     };
 
     return (
@@ -143,7 +158,11 @@ export default function WalletPaymentQRModal({ token, amount, onClose, onSubmitt
 
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>UTR / transaction reference number</label>
-                                <input value={utr} onChange={(e) => setUtr(e.target.value)} placeholder="e.g. 402312345678"
+                                <input
+                                    value={utr}
+                                    onChange={(e) => setUtr(e.target.value)}
+                                    onKeyDown={handleUtrKeyDown}
+                                    placeholder="e.g. 402312345678"
                                     className="w-full rounded-lg border px-3 py-2.5 text-[14px] font-semibold tracking-wide focus:outline-none focus:ring-2"
                                     style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
                             </div>

@@ -12,47 +12,57 @@
 // form. Now accepts `mode`, `identityReadOnly`, `brandDisplay`, and
 // `initialValues` (aliases kept for back-compat).
 //
-// BUGFIX (this pass): `moq` and `stock_quantity` are both persisted on
+// BUGFIX (earlier pass): `moq` and `stock_quantity` are both persisted on
 // the backend in the listing's canonical SALE UNIT — Master Pack when
 // the listing has an outer pack (units_per_master_pack >= 2), Pack
 // otherwise (see the backend controller's toListingRow(), which tags
-// both fields "already sale-unit qty"). Two places in this file
-// disagreed with that:
-//   1. The old `toPacksFromBasis`/`fromPacksToBasis` helpers converted
-//      the Stock field to literal Packs instead of the sale unit, so
-//      switching the stock unit dropdown to "Master Pack" and entering
-//      e.g. 600 got multiplied by units_per_master_pack before saving
-//      (600 → 1800 for a 1-Master-Pack-=-3-Packs listing).
-//   2. The initial-values loader divided an already-correct sale-unit
-//      MOQ by masterPackSize on open, based on a stale "MOQ is stored
-//      in Packs" assumption — so Edit showed a different (wrong,
-//      smaller) MOQ than the read-only Detail view, and saving from
-//      Edit without touching MOQ would silently overwrite the correct
-//      value in the database with the wrong one.
-// Both are fixed below by routing stock through the actual sale unit
-// (not literal Packs), and by no longer re-deriving MOQ on load since
-// it already arrives in the unit the field expects. Sample quantity
-// (stored in base units) had the same class of bug on the initial-load
-// side — see the fix in SellerManageListingsPage.jsx's
-// submissionToInitialValues().
+// both fields "already sale-unit qty"). Both are fixed by routing stock
+// through the actual sale unit (not literal Packs), and by no longer
+// re-deriving MOQ on load since it already arrives in the unit the field
+// expects.
 //
-// THIS PASS: two UX fixes to the section-card behaviour.
-//   1. All sections now start collapsed by default (was: "product" open
-//      on mount). openSection now initializes to null.
-//   2. Opening a section while another is open was leaving the viewport
-//      wherever it happened to land after the close/expand animations —
-//      since the closing section shrinks and the opening one grows, the
-//      newly-opened section could end up scrolled halfway off-screen or
-//      cut off ("UI jump"). handleSectionToggle now waits for the
-//      collapse/expand motion to settle, then scrollIntoView's the
-//      newly-opened section to the top of the viewport (block: "start"),
-//      same anchor pattern jumpToError already uses for validation
-//      errors. Each SectionCard below now gets a stable `id` to target.
-import { useEffect, useMemo, useState } from "react";
+// UX pass: two fixes to the section-card behaviour.
+//   1. All sections now start collapsed by default (openSection inits null).
+//   2. Opening a section scrollIntoView's it to the top of the viewport
+//      once the collapse/expand animation settles (handleSectionToggle),
+//      same anchor pattern jumpToError uses for validation errors.
+//
+// PREVIOUS PASS: two more UX fixes.
+//   1. KEYBOARD FLOW — pressing Enter inside any text field jumps focus
+//      to the next incomplete required field (opening its section and
+//      scrolling it into view if needed), and pressing Enter on the LAST
+//      remaining required field submits the form, same as tapping the
+//      submit button.
+//   2. DRAG & DROP for product images — the image-picker area also
+//      accepts a drag-and-drop of image files, isolated from the
+//      separate certificates dropzone in FormPrimitives.jsx.
+//
+// THIS PASS: two real bugfixes to the above.
+//   1. "Next field" was always computed as "the first missing field in a
+//      fixed global list", NOT "the next missing field relative to where
+//      the seller currently is". That meant: (a) Tab/Enter inside a later
+//      section, with an earlier section still incomplete, always yanked
+//      focus back to that earlier section instead of continuing forward
+//      in the current one; and (b) Shift+Tab never actually went
+//      backward, because the direction argument was silently dropped at
+//      every call site. Fixed by introducing a canonical FIELD_ORDER
+//      (mirrors the actual on-page top-to-bottom order) and rewriting
+//      handleFieldAdvance to search forward/backward from the field that
+//      was just interacted with, only wrapping around when nothing is
+//      left ahead/behind — and by threading the real "forward"/"backward"
+//      argument through every onEnterKey call site instead of discarding it.
+//   2. Drag-and-drop hardening — a window-level dragover/drop guard now
+//      prevents the browser's default "navigate the tab to this file"
+//      behavior for any drop that lands outside both dropzones (a few
+//      pixels off target, or a drop that happens mid-re-render), and a
+//      window-level dragend listener force-resets the image dropzone's
+//      highlight state so it can never get stuck "on" the way it could
+//      before if a drag was abandoned without a clean dragleave.
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
     Loader2, CheckCircle2, AlertTriangle, ImagePlus,
-    Info, Pencil
+    Info, Pencil, UploadCloud
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { uploadSellerFile } from "../../../utils/api.js";
@@ -127,6 +137,36 @@ const FIELD_TO_SECTION = Object.entries(SECTION_FIELD_MAP).reduce((acc, [section
 }, {});
 
 FIELD_TO_SECTION["stockTypeAmount"] = "fulfilment";
+
+// Canonical top-to-bottom field order — mirrors the ACTUAL on-page order
+// the sections render in (Product → Packaging → Pricing → Fulfilment →
+// Terms → Delivery), and each field's order within its own section. This
+// is the single source of truth for "what comes next" when a seller
+// presses Enter/Tab, so keyboard flow always continues from wherever the
+// seller currently is instead of snapping back to the first incomplete
+// field anywhere on the form. If a field is ever reordered on the page,
+// update its position here too so the two stay in sync.
+const FIELD_ORDER = [
+    // Product
+    "productName", "brandName", "images",
+    // Packaging
+    "unit", "packSize", "hasOuterPack", "masterPackSize", "moq", "sampleAvailable", "sampleQuantity",
+    // Pricing
+    "gstPercent", "basePrice", "gstInclusive", "freightIncluded",
+    // Fulfilment
+    "stockType", "stockQuantity", "productionLeadTimeDays",
+    // Terms
+    "returnPolicyKey", "warrantyKey",
+    // Delivery
+    "dispatchingLocations",
+];
+
+// stockTypeAmount has no DOM field of its own (see computeMissing) — for
+// ordering purposes it should sit wherever stockType sits.
+function orderKeyFor(key) {
+    return key === "stockTypeAmount" ? "stockType" : key;
+}
+
 // Dynamic MOQ label/hint — mirrors whichever basis the seller is
 // currently thinking in. When there's an outer pack, MOQ is asked for in
 // Master Packs (the unit sellers actually reason in for bulk orders);
@@ -222,12 +262,9 @@ function fromBaseUnitsToBasis(basis, baseUnits, packSize, masterPackSize) {
 // stock_quantity is stored on the backend as the listing's canonical
 // SALE UNIT quantity — Master Pack when the listing has an outer pack
 // (masterPackSize > 1), Pack otherwise. It is NOT always literal Packs.
-// (The previous toPacksFromBasis/fromPacksToBasis pair assumed "Packs"
-// unconditionally, which is what silently multiplied entered Master
-// Pack quantities by masterPackSize before saving — see the file header
-// note.) Routing through base units and then through whichever unit is
-// ACTUALLY the sale unit fixes that, and keeps this in lockstep with how
-// `moq` is already handled everywhere else on this page.
+// Routing through base units and then through whichever unit is ACTUALLY
+// the sale unit keeps this in lockstep with how `moq` is handled
+// everywhere else on this page.
 function saleUnitSizeInBaseUnits(packSize, masterPackSize) {
     const pack = Number(packSize) > 0 ? Number(packSize) : 1;
     const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
@@ -433,15 +470,10 @@ export default function SellerListingForm({
         // in the listing's canonical SALE UNIT — Master Packs when this
         // listing has an outer pack, Packs otherwise — which is exactly
         // the unit the MOQ field above is labeled in (see getMoqLabel).
-        // No conversion is needed here. (This used to divide by
-        // masterPackSize under a stale "MOQ is stored in Packs"
-        // assumption, which showed a different, wrong MOQ in this form
-        // than the read-only Detail view, and would silently persist
-        // that wrong value if the seller saved without touching MOQ.)
+        // No conversion is needed here.
 
         if (locked) {
             const hasPackaging = base.unit && Number(base.packSize) > 0;
-            console.log("initialValues", initialValues);
 
             base.brandItemMatch = hasPackaging
                 ? {
@@ -461,6 +493,13 @@ export default function SellerListingForm({
     const [error, setError] = useState(null);
     const [touched, setTouched] = useState({});
     const [checkingBrandMatch, setCheckingBrandMatch] = useState(false);
+
+    // Drag state for the product-images dropzone. dragCounter tracks
+    // nested dragenter/dragleave pairs (a drag over child elements fires
+    // both) so the highlight doesn't flicker while dragging around inside
+    // the zone.
+    const [imageDragActive, setImageDragActive] = useState(false);
+    const imageDragCounter = useRef(0);
 
     // All sections start collapsed. Only one section open at a time —
     // opening one closes any other that was open (see handleSectionToggle
@@ -746,9 +785,23 @@ export default function SellerListingForm({
         setTouched((t) => (t.moq ? { ...t, moq: false } : t));
     };
 
-    const handleImageFiles = async (e) => {
-        const files = Array.from(e.target.files || []);
-        if (!files.length) return;
+    // Shared upload pipeline for product images — used by both the file
+    // input (click to browse) and the drag-and-drop zone below, so both
+    // paths get identical validation/error handling.
+    const processImageFiles = async (fileList) => {
+        const allFiles = Array.from(fileList || []);
+        if (!allFiles.length) return;
+
+        // The dropzone specifically accepts product photos — silently skip
+        // anything that isn't an image rather than erroring the whole drop,
+        // since a seller dragging a folder/mixed selection shouldn't lose
+        // their valid images over one stray file.
+        const files = allFiles.filter((f) => f.type?.startsWith("image/"));
+        if (!files.length) {
+            setError("Please drop image files (JPG, PNG, etc.) here.");
+            return;
+        }
+
         setUploadingImage(true); setError(null);
         try {
             const urls = [];
@@ -758,9 +811,79 @@ export default function SellerListingForm({
                 urls.push(res.url);
             }
             setForm((f) => ({ ...f, images: [...f.images, ...urls] }));
-        } catch (err) { setError(err.message); } finally { setUploadingImage(false); e.target.value = ""; }
+        } catch (err) { setError(err.message); } finally { setUploadingImage(false); }
+    };
+
+    const handleImageFiles = async (e) => {
+        await processImageFiles(e.target.files);
+        e.target.value = "";
     };
     const removeImageAt = (i) => setForm((f) => ({ ...f, images: f.images.filter((_, idx) => idx !== i) }));
+
+    // --- Product-images drag & drop, scoped strictly to the images box ---
+    // Every handler calls stopPropagation() so a drop here is never
+    // re-interpreted by the (separate, sibling) certificates dropzone
+    // inside CertificateUploadField, and never bubbles up to the page.
+    const handleImageDragEnter = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (readOnly || uploadingImage) return;
+        if (!e.dataTransfer?.types?.includes("Files")) return;
+        imageDragCounter.current += 1;
+        setImageDragActive(true);
+    };
+    const handleImageDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const handleImageDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        imageDragCounter.current = Math.max(0, imageDragCounter.current - 1);
+        if (imageDragCounter.current === 0) setImageDragActive(false);
+    };
+    const handleImageDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        imageDragCounter.current = 0;
+        setImageDragActive(false);
+        if (readOnly || uploadingImage) return;
+        processImageFiles(e.dataTransfer?.files);
+    };
+
+    // Bugfix: two window-level safety nets for drag & drop.
+    //   1. `dragover`/`drop` — the browser's DEFAULT behavior for a drop
+    //      event that no handler calls preventDefault() on is to navigate
+    //      the whole tab to that file. Both dropzones already
+    //      preventDefault()+stopPropagation() their OWN drag events, but
+    //      a drop that lands a few pixels outside either zone (or during
+    //      a mid-drag re-render that temporarily unmounts the zone under
+    //      the pointer) would otherwise hit this default and blow away
+    //      the page. This listens at the window level and simply
+    //      preventDefault()s anything that wasn't already handled, so an
+    //      off-target drop is a harmless no-op instead of a navigation.
+    //   2. `dragend` — always fires on the drag source once a drag ends,
+    //      whether it was dropped, cancelled (Esc), or ended somewhere
+    //      that never produces a clean dragleave on the zone (e.g. over
+    //      unrelated browser chrome). Without this, imageDragActive /
+    //      imageDragCounter could get stuck "on" after an abandoned drag,
+    //      making the dropzone look broken until the component remounts.
+    useEffect(() => {
+        const stopUnhandledDrop = (e) => e.preventDefault();
+        const resetImageDragState = () => {
+            imageDragCounter.current = 0;
+            setImageDragActive(false);
+        };
+        window.addEventListener("dragover", stopUnhandledDrop);
+        window.addEventListener("drop", stopUnhandledDrop);
+        window.addEventListener("dragend", resetImageDragState);
+        return () => {
+            window.removeEventListener("dragover", stopUnhandledDrop);
+            window.removeEventListener("drop", stopUnhandledDrop);
+            window.removeEventListener("dragend", resetImageDragState);
+        };
+    }, []);
 
     function jumpToError(firstMissing) {
         const section = FIELD_TO_SECTION[firstMissing.key];
@@ -779,6 +902,74 @@ export default function SellerListingForm({
         }, needsSwitch ? 260 : 0);
     }
 
+    // Focuses whatever the first focusable control is inside a given
+    // field's FieldAnchor (input / textarea / button), opening + scrolling
+    // its section into view first if needed. Shared by both the keyboard
+    // "advance" flow and jumpToError-style jumps.
+    function focusFieldKey(key, { select = false } = {}) {
+        const section = FIELD_TO_SECTION[key];
+        const needsSwitch = section && section !== openSection;
+        if (needsSwitch) setOpenSection(section);
+
+        setTimeout(() => {
+            const target = document.getElementById(`field-${key}`);
+            if (!target) return;
+            target.scrollIntoView({ behavior: "smooth", block: "center" });
+            const input = target.querySelector("input:not([type=hidden]), textarea, button");
+            if (input) {
+                input.focus();
+                if (select && typeof input.select === "function") input.select();
+            }
+        }, needsSwitch ? 260 : 40);
+    }
+
+    // KEYBOARD FLOW: called by a field's onEnterKey("forward" | "backward").
+    //
+    // BUGFIX: this previously always jumped to `currentMissing[0]` — i.e.
+    // literally the first missing field anywhere on the whole form, in a
+    // fixed order — rather than the next incomplete field relative to
+    // wherever the seller currently is. That's why filling in fields in
+    // section 2 while section 1 still had gaps always yanked focus back
+    // to section 1, and why Shift+Tab never actually went backward (the
+    // direction argument was silently ignored).
+    //
+    // Fixed by: sorting the still-missing fields by their position in
+    // FIELD_ORDER (the canonical top-to-bottom order matching the page),
+    // then searching strictly forward (or backward) from the field that
+    // was just interacted with. Only when there's nothing left ahead (or
+    // behind) does it wrap around to the other end of the missing list —
+    // e.g. finishing the very last gap near the bottom of the form loops
+    // back up to the first remaining gap higher up, same as before, but
+    // WITHOUT clobbering forward progress through a section that already
+    // has later fields correctly filled.
+    function handleFieldAdvance(fieldKey, direction = "forward", isSubmitAttempt = false) {
+        setTouched((t) => (t[fieldKey] ? t : { ...t, [fieldKey]: true }));
+
+        setTimeout(() => {
+            // Enter (not Tab) only submits once the whole form is complete.
+            if (isSubmitAttempt) {
+                const stillMissing = computeMissing(form);
+                if (stillMissing.length === 0) {
+                    handleSubmit();
+                    return;
+                }
+            }
+
+            // Purely positional: next/prev visible field in FIELD_ORDER, looping.
+            const visibleOrder = FIELD_ORDER.filter((key) => isFieldVisible(key, form));
+            const idx = visibleOrder.indexOf(orderKeyFor(fieldKey));
+            if (idx === -1 || visibleOrder.length === 0) return;
+
+            const nextIdx = direction === "backward"
+                ? (idx - 1 + visibleOrder.length) % visibleOrder.length
+                : (idx + 1) % visibleOrder.length;
+
+            const nextKey = visibleOrder[nextIdx];
+            const targetKey = nextKey === "stockTypeAmount" ? "stockType" : nextKey;
+            focusFieldKey(targetKey, { select: true });
+        }, 40);
+    }
+
     const handleSubmit = () => {
         if (missing.length) {
             setTouched((t) => ({ ...t, ...Object.fromEntries(missing.map((m) => [m.key, true])) }));
@@ -792,12 +983,7 @@ export default function SellerListingForm({
         // quantity (Master Packs when hasOuterPack, Packs otherwise) — the
         // same unit the backend stores it in (see toListingRow's "already
         // sale-unit qty" comment) — so it's sent through as-is below, only
-        // rounded to a whole number. (A previous, unused `moqInPacks`
-        // conversion used to live here under a stale "MOQ is always
-        // persisted in Packs" assumption; it never actually reached
-        // onSubmit's payload, but its presence is exactly what led the
-        // initial-values loader above to wrongly divide MOQ on Edit — both
-        // are removed now to stop that confusion from recurring.)
+        // rounded to a whole number.
 
         const dl = form.dispatchingLocations;
         let dispatchingLocations = [];
@@ -826,7 +1012,6 @@ export default function SellerListingForm({
         const stockQuantitySaleUnits = form.stockType === "ready_stock"
             ? round2(toSaleUnitQtyFromBasis(form.stockQuantityBasis, form.stockQuantity, form.packSize, form.masterPackSize))
             : form.stockQuantity;
-        console.log("form", form);
         onSubmit({
             ...form,
             hasOuterPack: !!form.hasOuterPack,
@@ -841,8 +1026,25 @@ export default function SellerListingForm({
         });
     };
 
+    // Root-level Enter guard: if Enter is pressed while focus is on
+    // something that ISN'T one of our wired fields (e.g. a native browser
+    // autofill interaction, or a stray element), stop it from doing a
+    // default form-submit navigation. Wired fields already call
+    // handleFieldAdvance via their own onEnterKey/onKeyDown, which calls
+    // preventDefault() themselves — this is just a safety net at the
+    // container level since there's no literal <form> tag with a default
+    // submit action here.
+    const handleRootKeyDown = (e) => {
+        if (e.key === "Enter" && e.target?.tagName === "INPUT") {
+            // Already handled by the individual field's own onKeyDown in the
+            // vast majority of cases; this guards any field that doesn't yet
+            // pass onEnterKey through.
+            e.preventDefault();
+        }
+    };
+
     return (
-        <div className="flex flex-col gap-3 pb-24 sm:gap-3.5">
+        <div className="flex flex-col gap-3 pb-24 sm:gap-3.5" onKeyDown={handleRootKeyDown}>
             {error && (
                 <div className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12px] font-semibold leading-snug" style={{ background: "rgba(199,31,17,0.08)", color: C.danger }}>
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
@@ -865,7 +1067,7 @@ export default function SellerListingForm({
                 ) : (
                     <>
                         <FieldAnchor fieldKey="productName">
-                            <TextField required label="Product name" value={form.productName} onChange={(v) => setField("productName", v)} onBlur={() => touch("productName")} error={isErr("productName")} placeholder="e.g. Premium Stainless Steel Hinges" />
+                            <TextField required label="Product name" value={form.productName} onChange={(v) => setField("productName", v)} onBlur={() => touch("productName")} error={isErr("productName")} placeholder="e.g. Premium Stainless Steel Hinges" onEnterKey={(dir) => handleFieldAdvance("productName", dir)} />
                         </FieldAnchor>
 
                         <FieldAnchor fieldKey="brandName">
@@ -880,7 +1082,18 @@ export default function SellerListingForm({
                                 <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
                                     Product images {form.images.length > 0 && `(${form.images.length})`} <span style={{ color: C.primary }}>*</span>
                                 </span>
-                                <div className="flex flex-wrap gap-2">
+                                {/* Drag-and-drop zone for product photos. Handlers are scoped
+                                    to this div only (stopPropagation on every drag event), so
+                                    dropping here can never be picked up by the certificates
+                                    dropzone elsewhere on the form, or vice versa. */}
+                                <div
+                                    className="flex flex-wrap gap-2 rounded-xl transition-colors duration-150"
+                                    style={imageDragActive ? { boxShadow: `0 0 0 2px ${C.secondary}55`, background: `${C.secondary}06`, padding: "8px", margin: "-8px" } : undefined}
+                                    onDragEnter={handleImageDragEnter}
+                                    onDragOver={handleImageDragOver}
+                                    onDragLeave={handleImageDragLeave}
+                                    onDrop={handleImageDrop}
+                                >
                                     {form.images.map((src, i) => (
                                         <div key={src + i} className="relative h-16 w-16 sm:h-[72px] sm:w-[72px]">
                                             <img src={src} alt="" className="h-full w-full rounded-xl border object-cover" style={{ borderColor: C.hair }} />
@@ -888,12 +1101,17 @@ export default function SellerListingForm({
                                             {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-xl bg-black/60 py-0.5 text-center text-[8px] font-bold text-white">Cover</span>}
                                         </div>
                                     ))}
-                                    <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed sm:h-[72px] sm:w-[72px]" style={{ borderColor: C.hair, color: C.muted }}>
-                                        {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-                                        <span className="text-[9px] font-bold">{uploadingImage ? "Uploading…" : "Add"}</span>
+                                    <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed sm:h-[72px] sm:w-[72px]" style={imageDragActive ? { borderColor: C.secondary, color: C.secondary, background: `${C.secondary}0a` } : { borderColor: C.hair, color: C.muted }}>
+                                        {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : imageDragActive ? <UploadCloud className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}
+                                        <span className="text-[9px] font-bold">{uploadingImage ? "Uploading…" : imageDragActive ? "Drop here" : "Add"}</span>
                                         <input type="file" accept="image/*" multiple onChange={handleImageFiles} className="hidden" disabled={uploadingImage} />
                                     </label>
                                 </div>
+                                {!imageDragActive && (
+                                    <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>
+                                        Or drag & drop image files anywhere in this box.
+                                    </p>
+                                )}
                             </div>
                         </FieldAnchor>
 
@@ -937,10 +1155,10 @@ export default function SellerListingForm({
                     <div className="flex flex-col gap-2.5">
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                             <FieldAnchor fieldKey="unit">
-                                <SelectField required dense halfOnMobile label="What is the Selling Unit of this Product?" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} />
+                                <SelectField required dense halfOnMobile label="What is the Selling Unit of this Product?" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} onEnterKey={(dir) => handleFieldAdvance("unit", dir)} />
                             </FieldAnchor>
                             <FieldAnchor fieldKey="packSize">
-                                <TextField required dense tinyOnMobile placeholder="1234" label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" />
+                                <TextField required dense tinyOnMobile placeholder="1234" label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" onEnterKey={(dir) => handleFieldAdvance("packSize", dir)} />
                             </FieldAnchor>
                         </div>
 
@@ -950,6 +1168,7 @@ export default function SellerListingForm({
                                 value={form.hasOuterPack}
                                 onChange={(v) => { handleOuterPackToggle(v); touch("hasOuterPack"); }}
                                 error={isErr("hasOuterPack")}
+                                onEnterKey={(dir) => handleFieldAdvance("hasOuterPack", dir)}
                                 infoBlock={
                                     <div className="mb-1 flex items-start gap-2 rounded-xl">
                                         <p className="text-[8.5px] font-semibold leading-snug tracking-wide" style={{ color: C.primary }}>
@@ -973,6 +1192,7 @@ export default function SellerListingForm({
                                         onBlur={() => touch("masterPackSize")}
                                         error={isErr("masterPackSize")}
                                         inputMode="numeric"
+                                        onEnterKey={(dir) => handleFieldAdvance("masterPackSize", dir)}
                                     />
                                 </FieldAnchor>
                             </>
@@ -994,7 +1214,7 @@ export default function SellerListingForm({
                     <FieldAnchor fieldKey="moq">
                         <TextField required dense tinyOnMobile placeholder="1234" label={getMoqLabel(form.hasOuterPack)} hint={getMoqHint(form.hasOuterPack)}
                             value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))}
-                            onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
+                            onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" onEnterKey={(dir) => handleFieldAdvance("moq", dir)} />
                     </FieldAnchor>
                 </div>
                 <FieldAnchor fieldKey="sampleAvailable">
@@ -1003,6 +1223,7 @@ export default function SellerListingForm({
                         value={form.sampleAvailable}
                         onChange={(v) => { setField("sampleAvailable", v); touch("sampleAvailable"); }}
                         error={isErr("sampleAvailable")}
+                        onEnterKey={(dir) => handleFieldAdvance("sampleAvailable", dir)}
                     />
                 </FieldAnchor>
                 {form.sampleAvailable && (
@@ -1018,6 +1239,7 @@ export default function SellerListingForm({
                             unitValue={form.sampleUnitBasis}
                             unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
                             onUnitChange={changeSampleBasis}
+                            onEnterKey={(dir) => handleFieldAdvance("sampleQuantity", dir)}
                         />
                     </FieldAnchor>
                 )}
@@ -1034,6 +1256,7 @@ export default function SellerListingForm({
                     value={form.gstPercent === "" || form.gstPercent == null ? "" : Number(form.gstPercent)}
                     onChange={(v) => setField("gstPercent", Number(v))}
                     options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))}
+                    onEnterKey={(dir) => handleFieldAdvance("gstPercent", dir)}
                 />
                 {(() => {
                     const showMaster = form.hasOuterPack && Number(form.masterPackSize) >= 2;
@@ -1066,6 +1289,7 @@ export default function SellerListingForm({
                                     onBlur={() => touch("basePrice")}
                                     error={isErr("basePrice")}
                                     inputMode="decimal"
+                                    onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
                                 />
                                 <TextField2
                                     required dense
@@ -1077,6 +1301,7 @@ export default function SellerListingForm({
                                     onBlur={() => touch("basePrice")}
                                     error={isErr("basePrice")}
                                     inputMode="decimal"
+                                    onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
                                 />
                                 {showMaster && (
                                     <TextField2
@@ -1089,6 +1314,7 @@ export default function SellerListingForm({
                                         onBlur={() => touch("basePrice")}
                                         error={isErr("basePrice")}
                                         inputMode="decimal"
+                                        onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
                                     />
                                 )}
                             </div>
@@ -1115,6 +1341,7 @@ export default function SellerListingForm({
                             value={form.gstInclusive}
                             onChange={(v) => { setField("gstInclusive", v); touch("gstInclusive"); }}
                             error={isErr("gstInclusive")}
+                            onEnterKey={(dir) => handleFieldAdvance("gstInclusive", dir)}
                         />
                     </FieldAnchor>
                 </div>
@@ -1244,6 +1471,7 @@ export default function SellerListingForm({
                             value={form.freightIncluded}
                             onChange={(v) => { setField("freightIncluded", v); touch("freightIncluded"); }}
                             error={isErr("freightIncluded")}
+                            onEnterKey={(dir) => handleFieldAdvance("freightIncluded", dir)}
                         />
                     </FieldAnchor>
                 </div>
@@ -1258,7 +1486,8 @@ export default function SellerListingForm({
                     <ChipToggleGroup label="Fulfilment" value={form.stockType}
                         onChange={(v) => { setField("stockType", v); touch("stockType"); }}
                         error={isErr("stockType")}
-                        options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
+                        options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]}
+                        onEnterKey={(dir) => handleFieldAdvance("stockType", dir)} />
 
                 </FieldAnchor>
                 {form.stockType === "ready_stock" ? (
@@ -1274,11 +1503,12 @@ export default function SellerListingForm({
                             unitValue={form.stockQuantityBasis}
                             unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
                             onUnitChange={changeStockBasis}
+                            onEnterKey={(dir) => handleFieldAdvance("stockQuantity", dir)}
                         />
                     </FieldAnchor>
                 ) : (
                     <FieldAnchor fieldKey="productionLeadTimeDays">
-                        <TextField required dense label="Lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" />
+                        <TextField required dense label="Lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" onEnterKey={(dir) => handleFieldAdvance("productionLeadTimeDays", dir)} />
                     </FieldAnchor>
                 )}
             </SectionCard>
@@ -1290,10 +1520,10 @@ export default function SellerListingForm({
                 readOnly={readOnly}>
                 <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     <FieldAnchor fieldKey="returnPolicyKey">
-                        <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => setField("returnPolicyKey", v)} error={isErr("returnPolicyKey")} />
+                        <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => { setField("returnPolicyKey", v); handleFieldAdvance("returnPolicyKey", "forward"); }} error={isErr("returnPolicyKey")} />
                     </FieldAnchor>
                     <FieldAnchor fieldKey="warrantyKey">
-                        <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => setField("warrantyKey", v)} error={isErr("warrantyKey")} />
+                        <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => { setField("warrantyKey", v); handleFieldAdvance("warrantyKey", "forward"); }} error={isErr("warrantyKey")} />
                     </FieldAnchor>
                 </div>
             </SectionCard>

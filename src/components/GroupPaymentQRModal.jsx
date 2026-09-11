@@ -2,6 +2,11 @@
 // Same UX as PaymentQRModal (UPI QR, or a NEFT/RTGS bank-transfer panel),
 // but for a whole cart checkout (order group) instead of a single order —
 // one payment / one UTR covers all seller orders in the group.
+//
+// KEYBOARD: same additions as PaymentQRModal — the UTR field submits on
+// Enter, and both the UPI/NEFT method tabs and the NEFT/RTGS bank-method
+// tabs (inside BankTransferPanel) support Left/Right arrow-key switching
+// as a proper tab group.
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -36,6 +41,9 @@ function formatCountdown(ms) {
 // Bank transfer panel — identical treatment to PaymentQRModal.jsx: hero
 // amount card, a "receipt" of account details with per-field copy, a
 // "copy all" action, and a compact numbered guide.
+//
+// KEYBOARD: NEFT/RTGS pair is a role="tablist" — Left/Right arrows move
+// between the two and switch the selection.
 // ---------------------------------------------------------------------
 function DetailRow({ icon: Icon, label, value, mono = true, onCopy, copied }) {
     if (!value) return null;
@@ -98,6 +106,14 @@ function BankTransferPanel({ info, bankMethod, setBankMethod, msLeft, hasUpi }) 
         copy("all", lines);
     };
 
+    const handleBankTabKeyDown = (e) => {
+        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        e.preventDefault();
+        const next = bankMethod === "neft" ? "rtgs" : "neft";
+        setBankMethod(next);
+        e.currentTarget.querySelector(`[data-bank-tab="${next}"]`)?.focus();
+    };
+
     return (
         <>
             <div className="flex flex-col items-center gap-1.5 rounded-2xl border p-6" style={{ borderColor: C.hair, background: `linear-gradient(180deg, ${C.secondary}08 0%, transparent 60%)` }}>
@@ -110,15 +126,28 @@ function BankTransferPanel({ info, bankMethod, setBankMethod, msLeft, hasUpi }) 
                 <p className="text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>Transfer to the account below — covers all sellers in this order</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => setBankMethod("neft")}
+            <div
+                className="grid grid-cols-2 gap-2"
+                role="tablist"
+                aria-label="Bank transfer method"
+                onKeyDown={handleBankTabKeyDown}
+            >
+                <button
+                    data-bank-tab="neft"
+                    role="tab"
+                    aria-selected={bankMethod === "neft"}
+                    onClick={() => setBankMethod("neft")}
                     className="flex flex-col items-start gap-0.5 rounded-xl border-2 px-3.5 py-2.5 text-left transition"
                     style={bankMethod === "neft" ? { borderColor: C.secondary, background: `${C.secondary}0a` } : { borderColor: C.hair, background: "transparent" }}>
                     <span className="flex items-center gap-1.5 text-[13px] font-extrabold tracking-wide" style={{ color: bankMethod === "neft" ? C.secondary : C.ink }}>
                         <ClipboardList className="h-3.5 w-3.5" /> NEFT
                     </span>
                 </button>
-                <button onClick={() => setBankMethod("rtgs")}
+                <button
+                    data-bank-tab="rtgs"
+                    role="tab"
+                    aria-selected={bankMethod === "rtgs"}
+                    onClick={() => setBankMethod("rtgs")}
                     className="flex flex-col items-start gap-0.5 rounded-xl border-2 px-3.5 py-2.5 text-left transition"
                     style={bankMethod === "rtgs" ? { borderColor: C.secondary, background: `${C.secondary}0a` } : { borderColor: C.hair, background: "transparent" }}>
                     <span className="flex items-center gap-1.5 text-[13px] font-extrabold tracking-wide" style={{ color: bankMethod === "rtgs" ? C.secondary : C.ink }}>
@@ -282,6 +311,16 @@ export default function GroupPaymentQRModal({ token, groupId, onClose, onDoneVie
         setSubmitted(true);
     };
 
+    // Enter on the UTR field submits directly, same as clicking the
+    // submit button, as long as something's typed and we're not already
+    // mid-submission.
+    const handleUtrKeyDown = (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (utr.trim() && !submitting) handleSubmit();
+        }
+    };
+
     const handleOpenUpiApp = () => {
         if (!info?.upiUri) return;
         window.location.href = info.upiUri;
@@ -310,6 +349,18 @@ export default function GroupPaymentQRModal({ token, groupId, onClose, onDoneVie
     };
 
     const handleClose = () => { clearPaymentSession(); onClose?.(); };
+
+    // Left/Right arrow switches between UPI and NEFT/RTGS and moves focus
+    // to whichever tab becomes active — same roving-tab pattern used for
+    // the NEFT/RTGS bank-method tabs inside BankTransferPanel.
+    const handleMethodTabKeyDown = (e) => {
+        if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+        e.preventDefault();
+        const next = method === "upi" ? "neft" : "upi";
+        handleMethodChange(next);
+        e.currentTarget.querySelector(`[data-tab="${next}"]`)?.focus();
+    };
+
     const countdownWarn = msLeft <= 2 * 60 * 1000;
     const hasUpi = !!info?.upiUri;
     const hasBank = !!info?.bankDetails;
@@ -384,13 +435,27 @@ export default function GroupPaymentQRModal({ token, groupId, onClose, onDoneVie
                     ) : (
                         <>
                             {showTabs && (
-                                <div className="flex rounded-xl p-1" style={{ background: C.hairSoft }}>
-                                    <button onClick={() => handleMethodChange("upi")}
+                                <div
+                                    className="flex rounded-xl p-1"
+                                    style={{ background: C.hairSoft }}
+                                    role="tablist"
+                                    aria-label="Payment method"
+                                    onKeyDown={handleMethodTabKeyDown}
+                                >
+                                    <button
+                                        data-tab="upi"
+                                        role="tab"
+                                        aria-selected={method === "upi"}
+                                        onClick={() => handleMethodChange("upi")}
                                         className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold tracking-wide transition"
                                         style={method === "upi" ? { background: "white", color: C.ink, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" } : { color: C.muted }}>
                                         <QrCode className="h-3.5 w-3.5" /> UPI
                                     </button>
-                                    <button onClick={() => handleMethodChange("neft")}
+                                    <button
+                                        data-tab="neft"
+                                        role="tab"
+                                        aria-selected={method === "neft"}
+                                        onClick={() => handleMethodChange("neft")}
                                         className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold tracking-wide transition"
                                         style={method === "neft" ? { background: "white", color: C.ink, boxShadow: "0 1px 2px rgba(0,0,0,0.06)" } : { color: C.muted }}>
                                         <Landmark className="h-3.5 w-3.5" /> NEFT / RTGS
@@ -427,7 +492,11 @@ export default function GroupPaymentQRModal({ token, groupId, onClose, onDoneVie
 
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}>UTR / transaction reference number</label>
-                                <input value={utr} onChange={(e) => handleUtrChange(e.target.value)} placeholder="e.g. 402312345678"
+                                <input
+                                    value={utr}
+                                    onChange={(e) => handleUtrChange(e.target.value)}
+                                    onKeyDown={handleUtrKeyDown}
+                                    placeholder="e.g. 402312345678"
                                     className="w-full rounded-lg border px-3 py-2.5 text-[14px] font-semibold tracking-wide focus:outline-none focus:ring-2"
                                     style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
                             </div>

@@ -15,8 +15,14 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
     const [uploading, setUploading] = useState(false);
     const [justCreated, setJustCreated] = useState(false);
     const boxRef = useRef(null);
+    const [highlightedIdx, setHighlightedIdx] = useState(-1);
 
     const hasSelection = !notApplicable && !!value;
+
+    // reset highlight whenever the option set changes
+    useEffect(() => {
+        setHighlightedIdx(items.length > 0 ? 0 : (query.trim() && !exactMatch ? 0 : -1));
+    }, [items, query]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         function onOutside(e) { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); }
@@ -35,6 +41,9 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
     }, [query, open, notApplicable, hasSelection, token]);
 
     const exactMatch = items.some((it) => it.name.toLowerCase() === query.trim().toLowerCase());
+
+    const showAddNew = query.trim() && !exactMatch;
+    const totalOptions = items.length + (showAddNew ? 1 : 0);
 
     const pickExisting = (it) => {
         onChange({ brandName: it.name, brandImage: it.image || null, brandNotApplicable: false });
@@ -118,7 +127,28 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
             <div className="flex items-center gap-2">
                 <div className="relative min-w-0 flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2" style={{ color: C.muted }} />
-                    <input value={query} onFocus={() => setOpen(true)} onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+                    <input value={query} onFocus={() => setOpen(true)}
+                        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+                        onKeyDown={(e) => {
+                            if (!open) return;
+                            if (e.key === "ArrowDown") {
+                                e.preventDefault();
+                                setHighlightedIdx((i) => Math.min(totalOptions - 1, i + 1));
+                            } else if (e.key === "ArrowUp") {
+                                e.preventDefault();
+                                setHighlightedIdx((i) => Math.max(0, i - 1));
+                            } else if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (highlightedIdx < items.length && items[highlightedIdx]) {
+                                    pickExisting(items[highlightedIdx]);
+                                } else if (showAddNew) {
+                                    addNew();
+                                }
+                            } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                setOpen(false);
+                            }
+                        }}
                         placeholder="Search or type a new brand…"
                         className="w-full rounded-xl tracking-wide border py-2.5 pl-9 pr-3 text-[14.5px] focus:outline-none focus:ring-2 placeholder:text-gray-300"
                         style={{ borderColor: C.hair }} />
@@ -134,9 +164,14 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
                 {open && (
                     <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }}
                         className="absolute left-0 right-0 top-[68px] z-30 max-h-64 overflow-y-auto rounded-xl border bg-white shadow-lg" style={{ borderColor: C.hair }}>
-                        {items.map((it) => (
+                        {items.map((it, idx) => (
                             <button key={it.name} type="button" onClick={() => pickExisting(it)}
-                                className="flex w-full items-center gap-2.5 border-b px-3.5 py-2.5 text-left last:border-b-0 transition-colors duration-150 hover:bg-black/[0.03]" style={{ borderColor: C.hairSoft }}>
+                                className="flex w-full items-center gap-2.5 border-b px-3.5 py-2.5 text-left last:border-b-0 transition-colors duration-150 hover:bg-black/[0.03]"
+                                style={{
+                                    borderColor: C.hairSoft,
+                                    background: idx === highlightedIdx ? "rgba(11,17,22,0.04)" : undefined,
+                                }}
+                            >
                                 {it.image ? <img src={it.image} alt="" className="h-7 w-7 rounded object-cover" /> : (
                                     <span className="flex h-7 w-7 items-center justify-center rounded text-[11.5px] font-extrabold" style={{ background: C.hairSoft, color: C.muted }}>{it.name.slice(0, 2).toUpperCase()}</span>
                                 )}
@@ -144,11 +179,15 @@ export default function BrandCombobox({ value, notApplicable, image, onChange })
                             </button>
                         ))}
                         {query.trim() && !exactMatch && (
+
                             <button type="button" onClick={addNew}
-                                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03]" style={{ background: `${C.secondary}08` }}>
+                                className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03]"
+                                style={{ background: items.length === highlightedIdx ? "rgba(0,111,131,0.14)" : `${C.secondary}08` }}
+                            >
                                 <span className="flex h-7 w-7 items-center justify-center rounded-full" style={{ background: `${C.secondary}18`, color: C.secondary }}><Plus className="h-3.5 w-3.5" /></span>
                                 <span className="text-[14px] font-bold" style={{ color: C.secondary }}>Add "{query.trim()}" as a new brand</span>
                             </button>
+
                         )}
                         {items.length === 0 && !query.trim() && (
                             <p className="px-3.5 py-3 text-center text-[13px] font-medium" style={{ color: C.muted }}>Start typing to search brands…</p>

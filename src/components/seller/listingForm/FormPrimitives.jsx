@@ -2,9 +2,41 @@
 // the Home / SellerManageListingsPage visual language: same C tokens,
 // compact uppercase-caption labels (like QuickField), rounded-xl inputs,
 // rounded-2xl cards, hairline borders, tabular-nums, framer-motion entrance.
+//
+// THIS PASS: two UX additions.
+//   1. KEYBOARD FLOW — every text-ish field (TextField, TextField2,
+//      TextFieldWithUnitSelect) now accepts an optional `onEnterKey`
+//      callback. Pressing Enter while focused calls it instead of doing
+//      nothing / submitting a native form. TextAreaField keeps Enter as a
+//      normal newline (it's multi-line) but advances on Cmd/Ctrl+Enter.
+//      SelectField and the toggle/chip controls (ToggleField, ToggleField2,
+//      ToggleField3, ChipToggleGroup) call `onEnterKey` right after a
+//      choice is made, so picking an option (by click OR by
+//      keyboard Enter/Space on a focused button) also advances the flow.
+//      The actual "what's next" logic lives in SellerListingForm.jsx —
+//      these primitives just expose the hook, and always forward the
+//      "forward" / "backward" direction so the caller can move either way.
+//   2. DRAG & DROP for CertificateUploadField — dropping files anywhere
+//      inside the certificates field area now adds them as pending rows,
+//      same as picking them via the file input. The drop target is
+//      strictly scoped to this component's own wrapper (onDragEnter /
+//      onDragOver / onDragLeave / onDrop all call stopPropagation), so a
+//      drop here can never bubble up and get misinterpreted by another
+//      dropzone (e.g. the product-images dropzone in SellerListingForm.jsx)
+//      or by the page itself.
+//
+// THIS PASS (bugfix): a `dragend` listener now resets the drag-highlight
+// state unconditionally. Without it, if a drag is cancelled in a way that
+// doesn't fire a clean dragleave on this element (Esc mid-drag, dropping
+// on a browser chrome element, a mid-drag re-render unmounting the node
+// the pointer was over), `isDragActive` and the internal drag counter
+// could get stuck "on" — the dropzone would keep showing the highlighted
+// "Drop to add" state and stop reliably accepting new drags until a full
+// remount. `dragend` always fires on the source element once the drag
+// ends, dropped or not, so it's a reliable place to force a hard reset.
 import { useState, useRef, useId, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Plus, Trash2, Info, Check, X, CheckCircle2, Download, Pencil } from "lucide-react";
+import { ChevronDown, Plus, Trash2, Info, Check, X, CheckCircle2, Download, Pencil, UploadCloud } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Loader2, Upload } from "lucide-react";
 import { uploadSellerFile } from "../../../utils/api.js";
@@ -149,7 +181,47 @@ function fieldTone(error) {
     return { borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` };
 }
 
-export function TextField({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile }) {
+// Shared keydown handler factory: fires onEnterKey("forward") on plain
+// Enter, onEnterKey("forward") on Tab, and onEnterKey("backward") on
+// Shift+Tab. Both Enter AND Tab are hijacked here on purpose — the whole
+// point is that Tab should "flow to the next empty field" the same way
+// Enter does (including opening a different, currently-collapsed
+// section), rather than falling back to the browser's default tab order,
+// which only ever sees whatever's currently mounted in the open section.
+function makeFieldKeyHandler(onEnterKey, extraOnKeyDown) {
+    if (!onEnterKey && !extraOnKeyDown) return undefined;
+    return (e) => {
+        extraOnKeyDown?.(e);
+        if (e.defaultPrevented) return;
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            onEnterKey?.("forward", true); // true = "try to submit if form is complete"
+            return;
+        }
+        if (e.key === "Tab") {
+            e.preventDefault();
+            onEnterKey?.(e.shiftKey ? "backward" : "forward", false);
+        }
+    };
+}
+
+// For button-group controls (ToggleField, ToggleField3, ChipToggleGroup,
+// ToggleField2) — attach to the wrapping div, not each individual button.
+// React's synthetic events bubble, so a Tab pressed while any button
+// inside is focused still reaches this handler. Enter/Space are left
+// alone here (they trigger the focused button's own onClick natively,
+// which already calls onEnterKey("forward") after making the selection).
+function makeGroupTabHandler(onEnterKey) {
+    if (!onEnterKey) return undefined;
+    return (e) => {
+        if (e.key === "Tab") {
+            e.preventDefault();
+            onEnterKey(e.shiftKey ? "backward" : "forward");
+        }
+    };
+}
+
+export function TextField({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile, onEnterKey, onKeyDown }) {
     const widthClass = tinyOnMobile ? "w-[4.5rem] sm:w-full" : halfOnMobile ? "w-1/2 sm:w-full" : "w-full";
     return (
         <div className="flex min-w-0 flex-col gap-1">
@@ -163,6 +235,7 @@ export function TextField({ label, value, onChange, onBlur, placeholder, inputMo
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value)}
                     onBlur={onBlur}
+                    onKeyDown={makeFieldKeyHandler(onEnterKey, onKeyDown)}
                     className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "px-2.5 py-1.5 text-[14.5px]" : "px-3 py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
                     style={{ color: C.ink, ...fieldTone(error) }}
                 />
@@ -278,6 +351,7 @@ export function TextFieldWithUnitSelect({
     label, value, onChange, onBlur, placeholder, inputMode = "decimal", hint,
     required, disabled, error, dense,
     unitValue, unitOptions, onUnitChange,
+    onEnterKey,
 }) {
     const [open, setOpen] = useState(false);
     const [coords, setCoords] = useState(null);
@@ -323,6 +397,7 @@ export function TextFieldWithUnitSelect({
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value)}
                     onBlur={onBlur}
+                    onKeyDown={makeFieldKeyHandler(onEnterKey)}
                     className={`min-w-0 flex-1 rounded-l-lg bg-transparent font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none ${dense ? "py-1.5 pl-2.5 pr-1.5" : "py-2 pl-3 pr-2"} disabled:opacity-60`}
                     style={{ color: C.ink }}
                 />
@@ -378,7 +453,7 @@ export function TextFieldWithUnitSelect({
     );
 }
 
-export function TextField2({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile, prefix }) {
+export function TextField2({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile, prefix, onEnterKey }) {
     const widthClass = tinyOnMobile ? "w-[4.5rem] sm:w-full" : halfOnMobile ? "w-1/2 sm:w-full" : "w-full";
     return (
         <div className="flex min-w-0 flex-col items-stretch justify-end gap-1 h-full">
@@ -400,6 +475,7 @@ export function TextField2({ label, value, onChange, onBlur, placeholder, inputM
                     disabled={disabled}
                     onChange={(e) => onChange(e.target.value)}
                     onBlur={onBlur}
+                    onKeyDown={makeFieldKeyHandler(onEnterKey)}
                     className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "py-1.5 text-[14.5px]" : "py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
                     style={{
                         color: C.ink,
@@ -412,7 +488,7 @@ export function TextField2({ label, value, onChange, onBlur, placeholder, inputM
         </div>
     );
 }
-export function TextAreaField({ label, value, onChange, onBlur, placeholder, hint, required, rows = 2, error }) {
+export function TextAreaField({ label, value, onChange, onBlur, placeholder, hint, required, rows = 2, error, onEnterKey }) {
     return (
         <div className="flex flex-col gap-1">
             <Label hint={hint}>{label}{required && <span style={{ color: C.primary }}> *</span>}</Label>
@@ -422,6 +498,18 @@ export function TextAreaField({ label, value, onChange, onBlur, placeholder, hin
                 rows={rows}
                 onChange={(e) => onChange(e.target.value)}
                 onBlur={onBlur}
+                onKeyDown={(e) => {
+                    // Plain Enter stays a normal newline since this is a
+                    // multi-line field. Cmd/Ctrl+Enter advances instead.
+                    // Tab is left as native browser behavior here on
+                    // purpose — this is an optional field, so hijacking
+                    // Tab out of it isn't necessary the way it is for
+                    // required fields.
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        onEnterKey?.("forward");
+                    }
+                }}
                 className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[14.5px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2 tracking-wide"
                 style={{ color: C.ink, ...fieldTone(error) }}
             />
@@ -434,11 +522,22 @@ export function TextAreaField({ label, value, onChange, onBlur, placeholder, hin
 // modal language (BuyNowModal etc). On desktop it's a normal floating
 // dropdown panel anchored under the trigger. Same external API as before
 // (label, value, onChange, onBlur, options, hint, required, placeholder,
-// error, dense) so no caller needs to change.
-export function SelectField({ label, value, onChange, onBlur, options, hint, required, placeholder = "Select…", error, dense, halfOnMobile }) {
+// error, dense) so no caller needs to change. New: `onEnterKey`, fired
+// right after a selection is made (mouse or keyboard) so the field flow
+// can advance to the next field automatically.
+export function SelectField({ label, value, onChange, onBlur, options, hint, required, placeholder = "Select…", error, dense, halfOnMobile, onEnterKey }) {
     const [open, setOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const wrapperRef = useRef(null);
+    const [highlightedIdx, setHighlightedIdx] = useState(-1);
+
+    // reset highlight whenever the dropdown opens, seeded at the current value
+    useEffect(() => {
+        if (open) {
+            const idx = options.findIndex((o) => (o.value ?? o) === value);
+            setHighlightedIdx(idx >= 0 ? idx : 0);
+        }
+    }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         const check = () => setIsMobile(window.innerWidth < 640);
@@ -463,6 +562,7 @@ export function SelectField({ label, value, onChange, onBlur, options, hint, req
         onChange(optValue);
         setOpen(false);
         onBlur?.();
+        onEnterKey?.("forward");
     };
     const closeAndBlur = () => { setOpen(false); onBlur?.(); };
 
@@ -474,6 +574,35 @@ export function SelectField({ label, value, onChange, onBlur, options, hint, req
                 <button
                     type="button"
                     onClick={() => setOpen((o) => !o)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Tab") {
+                            e.preventDefault();
+                            setOpen(false);
+                            onEnterKey?.(e.shiftKey ? "backward" : "forward", false);
+                            return;
+                        }
+                        if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
+                            e.preventDefault();
+                            setOpen(true);
+                            return;
+                        }
+                        if (open) {
+                            if (e.key === "ArrowDown") {
+                                e.preventDefault();
+                                setHighlightedIdx((i) => Math.min(options.length - 1, i + 1));
+                            } else if (e.key === "ArrowUp") {
+                                e.preventDefault();
+                                setHighlightedIdx((i) => Math.max(0, i - 1));
+                            } else if (e.key === "Enter") {
+                                e.preventDefault();
+                                const opt = options[highlightedIdx];
+                                if (opt) handleSelect(opt.value ?? opt);
+                            } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                closeAndBlur();
+                            }
+                        }
+                    }}
                     className={`flex w-full items-center justify-between rounded-lg border bg-white tracking-wide ${dense ? "px-2.5 py-1.5 text-[14.5px]" : "px-3 py-2.5 text-[15px]"} font-bold focus:outline-none focus:ring-2`}
                     style={{ color: selectedLabel ? C.ink : "#94a3b8", ...fieldTone(error) }}
                 >
@@ -532,7 +661,7 @@ export function SelectField({ label, value, onChange, onBlur, options, hint, req
                             className="absolute left-0 top-full z-[100] mt-1 max-h-64 w-full min-w-[180px] overflow-y-auto rounded-xl border bg-white py-1.5 shadow-lg"
                             style={{ borderColor: C.hair }}
                         >
-                            {options.map((o) => {
+                            {options.map((o, idx) => {
                                 const optValue = o.value ?? o;
                                 const optLabel = o.label ?? o;
                                 const active = optValue === value;
@@ -542,7 +671,9 @@ export function SelectField({ label, value, onChange, onBlur, options, hint, req
                                         type="button"
                                         onClick={() => handleSelect(optValue)}
                                         className="flex w-full items-center justify-between px-3 py-2 text-left text-[14px] font-bold tracking-wide transition-colors duration-100 hover:bg-black/[0.03]"
-                                        style={active ? { color: C.secondary, background: `${C.secondary}0c` } : { color: C.ink }}
+                                        style={active ? { color: C.secondary, background: `${C.secondary}0c` }
+                                            : idx === highlightedIdx ? { background: "rgba(11,17,22,0.04)", color: C.ink }
+                                                : { color: C.ink }}
                                     >
                                         {optLabel}
                                         {active && <Check className="h-3.5 w-3.5" style={{ color: C.secondary }} />}
@@ -557,16 +688,16 @@ export function SelectField({ label, value, onChange, onBlur, options, hint, req
     );
 }
 
-export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", error }) {
+export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", error, onEnterKey }) {
     return (
         <div className="flex flex-col gap-1">
             <Label hint={hint}>{label}</Label>
-            <div className="flex gap-1 rounded-lg p-1" style={{ background: error ? "#fff8f7" : C.hairSoft, width: "fit-content", boxShadow: error ? `0 0 0 1px ${C.danger}40 inset` : "none" }}>
+            <div className="flex gap-1 rounded-lg p-1" style={{ background: error ? "#fff8f7" : C.hairSoft, width: "fit-content", boxShadow: error ? `0 0 0 1px ${C.danger}40 inset` : "none" }} onKeyDown={makeGroupTabHandler(onEnterKey)}>
                 {[{ v: true, t: onLabel }, { v: false, t: offLabel }].map(({ v, t }) => (
                     <button
                         key={t}
                         type="button"
-                        onClick={() => onChange(v)}
+                        onClick={() => { onChange(v); onEnterKey?.("forward"); }}
                         className="rounded-md px-3 py-0.5 text-[13.5px] tracking-wider font-bold transition-colors duration-150"
                         style={value === v ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
                     >
@@ -578,16 +709,16 @@ export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", off
     );
 }
 
-export function ToggleField3({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", error }) {
+export function ToggleField3({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", error, onEnterKey }) {
     return (
         <div className="flex flex-col gap-1 self-end justify-end align-end">
             <Label hint={hint}>{label}</Label>
-            <div className="flex gap-1 rounded-lg p-1" style={{ background: error ? "#fff8f7" : C.hairSoft, width: "fit-content", boxShadow: error ? `0 0 0 1px ${C.danger}40 inset` : "none" }}>
+            <div className="flex gap-1 rounded-lg p-1" style={{ background: error ? "#fff8f7" : C.hairSoft, width: "fit-content", boxShadow: error ? `0 0 0 1px ${C.danger}40 inset` : "none" }} onKeyDown={makeGroupTabHandler(onEnterKey)}>
                 {[{ v: true, t: onLabel }, { v: false, t: offLabel }].map(({ v, t }) => (
                     <button
                         key={t}
                         type="button"
-                        onClick={() => onChange(v)}
+                        onClick={() => { onChange(v); onEnterKey?.("forward"); }}
                         className="rounded-md px-3 py-0.5 text-[13.5px] tracking-wider font-bold transition-colors duration-150"
                         style={value === v ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
                     >
@@ -599,11 +730,11 @@ export function ToggleField3({ label, value, onChange, hint, onLabel = "Yes", of
     );
 }
 
-export function ChipToggleGroup({ label, value, onChange, options, hint, dense }) {
+export function ChipToggleGroup({ label, value, onChange, options, hint, dense, onEnterKey }) {
     return (
         <div className="flex min-w-0 flex-col gap-1.5">
             {label && <Label hint={hint}>{label}</Label>}
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap gap-1.5" onKeyDown={makeGroupTabHandler(onEnterKey)}>
                 {options.map((o) => {
                     const optValue = o.value ?? o;
                     const active = value === optValue;
@@ -611,7 +742,7 @@ export function ChipToggleGroup({ label, value, onChange, options, hint, dense }
                         <button
                             key={optValue}
                             type="button"
-                            onClick={() => onChange(optValue)}
+                            onClick={() => { onChange(optValue); onEnterKey?.("forward"); }}
                             className={`rounded-full border tracking-wide ${dense ? "px-2.5 py-1 text-[12.5px]" : "px-3 py-1.5 text-[12px]"} font-bold transition-colors duration-150`}
                             style={active
                                 ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary }
@@ -874,17 +1005,17 @@ export function CompletedBadge() {
 }
 
 
-export function ToggleField2({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", infoBlock, error }) {
+export function ToggleField2({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", infoBlock, error, onEnterKey }) {
     return (
         <div className="flex flex-col">
             <Label hint={hint}>{label}</Label>
             {infoBlock}
-            <div className="flex gap-1 rounded-lg p-1" style={{ background: error ? "#fff8f7" : C.hairSoft, width: "fit-content", boxShadow: error ? `0 0 0 1px ${C.danger}40 inset` : "none" }}>
+            <div className="flex gap-1 rounded-lg p-1" style={{ background: error ? "#fff8f7" : C.hairSoft, width: "fit-content", boxShadow: error ? `0 0 0 1px ${C.danger}40 inset` : "none" }} onKeyDown={makeGroupTabHandler(onEnterKey)}>
                 {[{ v: true, t: onLabel }, { v: false, t: offLabel }].map(({ v, t }) => (
                     <button
                         key={t}
                         type="button"
-                        onClick={() => onChange(v)}
+                        onClick={() => { onChange(v); onEnterKey?.("forward"); }}
                         className="rounded-md px-3 py-0.5 text-[13.5px] tracking-wider font-bold transition-colors duration-150"
                         style={value === v ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
                     >
@@ -946,16 +1077,29 @@ async function downloadNamed(url, desiredName) {
 }
 
 // Direct-upload replacement for the old "paste a link" certificate rows.
-// Flow: pick file(s) → each becomes a PENDING row (not yet uploaded) that
-// asks the seller to confirm a name → THEN it uploads to Supabase storage
-// via the same uploadSellerFile() every other upload on this form uses.
+// Flow: pick file(s) (via the file input OR by dragging them onto this
+// field's own area — see the drag-and-drop handlers below) → each becomes
+// a PENDING row (not yet uploaded) that asks the seller to confirm a name
+// → THEN it uploads to Supabase storage via the same uploadSellerFile()
+// every other upload on this form uses.
 //
-// UX FIX (this pass): sellers were picking a file, seeing the pending row's
-// name input showing greyed-out placeholder text, and — because it looked
-// like ordinary already-filled text rather than an empty required field —
-// assuming the file was already named and done. They'd then tap "Upload
-// certificate" again instead of typing a name and tapping Add, so the file
-// never actually got confirmed/uploaded.
+// DRAG & DROP: the whole field wrapper is now a dropzone. Dragging
+// file(s) over it highlights the area; dropping adds them to `pending`
+// exactly like picking them from the file input does. All drag events
+// (`dragenter`/`dragover`/`dragleave`/`drop`) call stopPropagation(), so
+// this dropzone can never "steal" a drop meant for a different field
+// (e.g. product images) and vice versa — each dropzone only reacts to
+// drops that land inside its own DOM subtree. A `dragend` listener also
+// hard-resets the highlight/counter state in case a drag is abandoned in
+// a way that never reaches this element's own dragleave (Esc mid-drag,
+// dropping over unrelated browser chrome, a mid-drag re-render).
+//
+// UX FIX (earlier pass): sellers were picking a file, seeing the pending
+// row's name input showing greyed-out placeholder text, and — because it
+// looked like ordinary already-filled text rather than an empty required
+// field — assuming the file was already named and done. They'd then tap
+// "Upload certificate" again instead of typing a name and tapping Add, so
+// the file never actually got confirmed/uploaded.
 //
 // Root cause was relying on a placeholder as the only signal for a required
 // action. Fixed by:
@@ -977,16 +1121,63 @@ export function CertificateUploadField({ label, hint, rows, onChange, token, add
     const [confirmingIdx, setConfirmingIdx] = useState(null); // index into `pending` currently uploading
     const [downloadingIdx, setDownloadingIdx] = useState(null); // index into `rows` currently downloading
     const [error, setError] = useState(null);
+    const [isDragActive, setIsDragActive] = useState(false);
     const inputRef = useRef(null);
     const newestPendingRef = useRef(null);
+    const dragCounter = useRef(0); // tracks nested dragenter/dragleave pairs so the highlight doesn't flicker
 
-    const handleFiles = (e) => {
-        const files = Array.from(e.target.files || []);
+    const addFiles = (fileList) => {
+        const files = Array.from(fileList || []);
         if (!files.length) return;
         setError(null);
         setPending((p) => [...p, ...files.map((file) => ({ file, name: defaultNameFromFile(file) }))]);
+    };
+
+    const handleFiles = (e) => {
+        addFiles(e.target.files);
         e.target.value = "";
     };
+
+    // --- Drag & drop, scoped strictly to this field's own wrapper ---
+    const handleDragEnter = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.dataTransfer?.types?.includes("Files")) return;
+        dragCounter.current += 1;
+        setIsDragActive(true);
+    };
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current = Math.max(0, dragCounter.current - 1);
+        if (dragCounter.current === 0) setIsDragActive(false);
+    };
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current = 0;
+        setIsDragActive(false);
+        addFiles(e.dataTransfer?.files);
+    };
+
+    // Bugfix: `dragend` always fires on the drag source once the drag is
+    // over, whether it was dropped, cancelled, or dropped somewhere that
+    // never triggers a clean dragleave on this element. Without this, the
+    // highlighted "drop" state (and the internal counter that gates it)
+    // could get stuck on, making the dropzone look broken until remount.
+    useEffect(() => {
+        const resetDragState = () => {
+            dragCounter.current = 0;
+            setIsDragActive(false);
+        };
+        window.addEventListener("dragend", resetDragState);
+        return () => window.removeEventListener("dragend", resetDragState);
+    }, []);
 
     // Focus + select the newest pending row's name field so a seller can
     // just start typing to replace the auto-filled suggestion, or hit
@@ -1033,7 +1224,14 @@ export function CertificateUploadField({ label, hint, rows, onChange, token, add
     };
 
     return (
-        <div className="flex flex-col gap-1.5">
+        <div
+            className="flex flex-col gap-1.5 rounded-xl transition-colors duration-150"
+            style={isDragActive ? { boxShadow: `0 0 0 2px ${C.secondary}55`, background: `${C.secondary}06`, padding: "8px", margin: "-8px" } : undefined}
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+        >
             <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>{label}</span>
             {hint && <p className="-mt-0.5 text-[11px] font-medium" style={{ color: C.muted }}>{hint}</p>}
 
@@ -1128,12 +1326,12 @@ export function CertificateUploadField({ label, hint, rows, onChange, token, add
                 })}
 
                 <label
-                    className="relative flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 py-2 text-[12px] font-bold"
-                    style={{ borderColor: C.hair, color: C.muted }}
+                    className="relative flex w-fit cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 py-2 text-[12px] font-bold transition-colors duration-150"
+                    style={isDragActive ? { borderColor: C.secondary, color: C.secondary, background: `${C.secondary}0a` } : { borderColor: C.hair, color: C.muted }}
                 >
-                    <Upload className="h-3.5 w-3.5" />
-                    {addLabel}
-                    {pending.length > 0 && (
+                    {isDragActive ? <UploadCloud className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}
+                    {isDragActive ? "Drop to add" : addLabel}
+                    {!isDragActive && pending.length > 0 && (
                         <span
                             className="flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9px] font-extrabold text-white"
                             style={{ background: C.secondary }}
@@ -1151,9 +1349,11 @@ export function CertificateUploadField({ label, hint, rows, onChange, token, add
                         className="hidden"
                     />
                 </label>
-                {pending.length > 0 && (
+                {!isDragActive && (
                     <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>
-                        Just confirm the name{pending.length === 1 ? "" : "s"} above to add {pending.length === 1 ? "it" : "them"} — then you can upload more.
+                        {pending.length > 0
+                            ? `Just confirm the name${pending.length === 1 ? "" : "s"} above to add ${pending.length === 1 ? "it" : "them"} — then you can upload more.`
+                            : "Or drag & drop files anywhere in this box."}
                     </p>
                 )}
             </div>
