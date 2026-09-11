@@ -19,6 +19,13 @@ const EASE = [0.16, 1, 0.3, 1];
 
 const CACHE_KEY = "bbm_category_strip_cache_v1";
 
+// The "Pending" category is a placeholder/default bucket, not something a
+// shopper should ever be able to select from the strip — filter it out by
+// name wherever the category list is built or updated below.
+function isHiddenCategory(name) {
+    return typeof name === "string" && name.trim().toLowerCase() === "pending";
+}
+
 function readCache() {
     try {
         const raw = sessionStorage.getItem(CACHE_KEY);
@@ -63,8 +70,9 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
         searchCategories("", 16)
             .then((res) => {
                 if (cancelled || !res?.success) return;
-                setCategories(res.items || []);
-                writeCache(res.items || []);
+                const items = (res.items || []).filter((c) => !isHiddenCategory(c.name));
+                setCategories(items);
+                writeCache(items);
             })
             .catch(() => { })
             .finally(() => { if (!cancelled) setLoading(false); });
@@ -89,6 +97,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                     console.log("[CategoryStrip] INSERT received:", payload.new);
                     const row = payload.new;
                     if (row.review_status !== "approved") return;
+                    if (isHiddenCategory(row.name)) return;
                     setCategories((prev) => {
                         const next = upsertSorted(prev, { id: row.id, name: row.name, slug: row.slug, image: row.image });
                         writeCache(next);
@@ -104,7 +113,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                     const row = payload.new;
                     setCategories((prev) => {
                         let next;
-                        if (row.review_status === "approved") {
+                        if (row.review_status === "approved" && !isHiddenCategory(row.name)) {
                             next = upsertSorted(prev, { id: row.id, name: row.name, slug: row.slug, image: row.image });
                         } else {
                             next = prev.filter((c) => c.id !== row.id);
