@@ -34,22 +34,32 @@ function RowSkeleton() {
     );
 }
 
-function Avatar({ logoUrl, shopName, size = "h-11 w-11" }) {
+function Avatar({ logoUrl, shopName, size = "h-11 w-11", muted = false }) {
     if (logoUrl) {
         return (
             <img
                 src={logoUrl}
                 alt={shopName || "Shop"}
                 className={`${size} shrink-0 rounded-full object-cover shadow-sm`}
-                style={{ border: `1px solid ${C.hair}` }}
+                style={{ border: `1px solid ${C.hair}`, filter: muted ? "grayscale(1)" : "none", opacity: muted ? 0.6 : 1 }}
                 onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }}
             />
         );
     }
     return (
         <span className={`flex ${size} shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold text-white shadow-sm`}
-            style={{ background: "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}>
+            style={{ background: muted ? "#9AA3A8" : "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}>
             {initials(shopName)}
+        </span>
+    );
+}
+
+// Small inline tag used wherever a deleted seller's shop name is shown —
+// the name itself stays exactly as it was, this just flags the account.
+function DeletedTag() {
+    return (
+        <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wide" style={{ background: "#fdecea", color: "#c71f11" }}>
+            Deleted
         </span>
     );
 }
@@ -73,6 +83,10 @@ export default function ConversationList({ conversations, loading, activeId, onS
     }, [token]);
 
     // Sellers who don't have an existing conversation yet — those already show up below.
+    // Note: fetchApprovedSellers already excludes deleted sellers server-side,
+    // so this "start a new chat" list never surfaces one — a deleted seller
+    // can only still be seen here if there's already a conversation with
+    // them (handled by the conversations list below, with its own badge).
     const conversationSellerIds = useMemo(
         () => new Set(conversations.filter((c) => c.otherUserId).map((c) => String(c.otherUserId).toLowerCase())),
         [conversations],
@@ -118,6 +132,7 @@ export default function ConversationList({ conversations, loading, activeId, onS
                 ) : (
                     filteredConversations.map((c, i) => {
                         const active = c.id === activeId;
+                        const isDeleted = !!c.otherIsDeletedSeller;
                         return (
                             <motion.button
                                 key={c.id}
@@ -128,12 +143,15 @@ export default function ConversationList({ conversations, loading, activeId, onS
                                 className="flex w-full items-center gap-3 border-b px-3.5 py-3 text-left transition-colors duration-150"
                                 style={{ borderColor: C.hairSoft, background: active ? `${C.secondary}0f` : "transparent" }}
                             >
-                                <Avatar logoUrl={c.otherShopLogo} shopName={c.otherShopName} />
+                                <Avatar logoUrl={c.otherShopLogo} shopName={c.otherShopName} muted={isDeleted} />
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center justify-between gap-2">
-                                        <p className="truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
-                                            {c.otherShopName || "Unknown seller"}
-                                        </p>
+                                        <span className="flex min-w-0 items-center gap-1.5">
+                                            <p className="truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: isDeleted ? C.muted : C.ink }}>
+                                                {c.otherShopName || "Unknown seller"}
+                                            </p>
+                                            {isDeleted && <DeletedTag />}
+                                        </span>
                                         <span className="shrink-0 text-[10.5px] font-semibold" style={{ color: c.unreadCount > 0 ? C.secondary : C.muted }}>
                                             {timeLabel(c.lastMessageAt)}
                                         </span>

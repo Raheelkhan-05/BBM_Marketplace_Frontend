@@ -3,82 +3,24 @@
 // The whole message-thread experience — header, banner, bubbles,
 // composer — lives in this one file.
 //
-// THIS PASS FIXES THE "MESSAGES JUMP" COMPLAINT AT THE ROOT:
+// (See prior revisions' comments for the scroll-jump fixes, key-stability
+// fix, and transport_proposal ReferenceError fix — all unchanged below.)
 //
-// 1. Every message row was keyed on `m.id`. An optimistic send is stored
-//    under a temp id (`temp-<clientMessageId>`) and then, the instant the
-//    server responds, swapped for the real id — so the bubble's React key
-//    changed mid-conversation. React read that as "delete this node, mount
-//    a brand new one," which is exactly the visible jump on every send.
-//    Fixed by keying on `client_message_id` (stable across optimistic →
-//    confirmed) with `id` only as a fallback for messages that never had one.
-//
-// 2. `messages` was rebuilt as all-new objects on every read/delivered
-//    watermark tick (see useChat.js), which defeated MessageBubble's
-//    memo() and re-rendered — and re-laid-out — the entire thread on every
-//    tick. Fixed on the hook side; this file just benefits from it.
-//
-// 3. Auto-scroll fired on *any* change to `messages.length`, so scrolling
-//    up to load older history yanked the view straight back down, and a
-//    new incoming message would forcibly scroll you to the bottom even if
-//    you were reading back through history. Replaced with: scroll-position
-//    anchoring when older history is prepended, and "only auto-scroll on a
-//    genuinely new last message, and only if you were already near the
-//    bottom (or it's your own message)" — otherwise a quiet "N new
-//    messages" pill offers to jump down, same as any mature chat product.
-//
-// 4. CreditBar / TransportBar (and the composer's growing textarea) sit
-//    ABOVE the scrollable message list as flex siblings. When one of them
-//    mounts late (after its own async fetch resolves) or unmounts, the
-//    scroll container's clientHeight changes on its own, with no change
-//    to `messages` at all — so none of the scroll-anchoring logic above
-//    ever saw it happen. scrollTop stayed fixed while clientHeight
-//    shrank/grew, and the thread visibly slid to make room. Fixed with a
-//    ResizeObserver on the scroll container itself: if the user was
-//    pinned to the bottom, any resize re-pins them, regardless of why the
-//    container resized.
-//
-// 5. Lenis (or any similar smooth-scroll library attached at the
-//    window/body level) was intercepting wheel/touch events before they
-//    reached this thread's own `overflow-y-auto` div, hijacking scroll
-//    for the whole page instead of letting the message list scroll
-//    natively. Fixed by stopping wheel/touch propagation at the scroll
-//    container so Lenis's window-level listener never sees the event,
-//    plus a `data-lenis-prevent` attribute for setups that check for it.
-//
-// 6. UX PASS:
-//    - Transport mode selector uses icons + explicit choice (no silent
-//      default) via the shared TRANSPORT_MODES / modeMeta table, used
-//      identically by TransportBar and the transport_proposal bubble so
-//      the two can never show mismatched labels for the same mode again.
-//    - Every async decision button (credit approve/decline, credit
-//      on/off toggle, transport agree/suggest-different) now shows its
-//      own inline spinner and disables its sibling while in flight,
-//      instead of giving zero feedback on a slow network.
-//    - "Suggest different" on a transport proposal now declines AND
-//      immediately reopens the propose sheet, instead of leaving the
-//      person to hunt for the truck icon again.
-//    - A transport proposal you sent that got declined shows an inline
-//      "Propose again" action right on the bubble.
-//
-// 7. BUGFIX (this pass):
-//    - The transport_proposal bubble's Agree / Suggest-different / Propose
-//      again buttons were gated on a variable called `isCurrent`. That
-//      name was only ever declared with `const` inside the *separate*
-//      `credit_request` branch above (block-scoped to that `if`), so it
-//      did not exist in the `transport_proposal` branch at all. Rendering
-//      any transport proposal bubble threw `ReferenceError: isCurrent is
-//      not defined` and crashed the whole message list. The correct,
-//      already-in-scope variable for "is this bubble the message backing
-//      the current live transport preference" is `isLiveProposal`
-//      (defined a few lines above and already used to compute `status`),
-//      so both gates now use that instead.
-//    - Removed two leftover placeholder lines
-//      (`{ isLiveProposal && ... && ( /* comment */ ) }`) that evaluated
-//      to `undefined` and rendered nothing — dead code from drafting.
+// THIS PASS ADDS: deleted-seller lockout.
+//   - `meta.otherIsDeletedSeller` (from the conversations list) OR the
+//     `canSend: false` flag returned by GET messages (source of truth,
+//     since it's re-checked server-side on every load) disables the
+//     composer and shows a clear inline notice, instead of letting the
+//     buyer type and only discovering the block on submit.
+//   - The header still shows the seller's real shop name — it does NOT
+//     fall back to "Unknown seller" — with a small "Deleted" tag next to
+//     it, so existing history stays legible.
+//   - A send attempt that still slips through (e.g. stale client state)
+//     surfaces the server's 403 message inline rather than silently
+//     failing.
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowDown, CreditCard, Truck, Loader2, Pencil, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, Bus, TrainFront, Package, X } from "lucide-react";
+import { ArrowLeft, ArrowDown, CreditCard, Truck, Loader2, Pencil, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, Bus, TrainFront, Package, X, ShieldOff } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
 import useChatMessages, { usePresence, useCredit, useTransportPreference } from "../../hooks/useChat.js";
@@ -134,6 +76,16 @@ function rowKey(m) {
     return m.client_message_id || m.id;
 }
 
+// small inline tag — same visual language as the one in ConversationList,
+// used next to the shop name in the header when the seller is deleted.
+function DeletedTag() {
+    return (
+        <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wide" style={{ background: "#fdecea", color: "#c71f11" }}>
+            Deleted
+        </span>
+    );
+}
+
 // ---- header -----------------------------------------------------------
 
 function TypingDots({ color = C.secondary, size = "h-1.5 w-1.5" }) {
@@ -156,6 +108,7 @@ function StatusStrip({
     credit, viewerRole, otherName,
     onRequestCredit, onToggleCredit, onDecideCredit, requestingCredit,
     transportPref, onOpenTransportSheet,
+    disabled, // NEW — deleted-seller lockout also freezes credit/transport actions
 }) {
     const [decidingCredit, setDecidingCredit] = useState(null); // 'approved' | 'rejected' | null
     const [togglingCredit, setTogglingCredit] = useState(false);
@@ -177,7 +130,7 @@ function StatusStrip({
         const cooldownActive = credit?.status === "rejected" && credit.cooldown_until && new Date(credit.cooldown_until) > new Date();
         if (!credit || credit.status === "revoked" || (credit.status === "rejected" && !cooldownActive)) {
             creditCell = (
-                <button onClick={onRequestCredit} disabled={requestingCredit}
+                <button onClick={onRequestCredit} disabled={requestingCredit || disabled}
                     className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-60"
                     style={{ background: `${C.secondary}10`, color: C.secondary }}>
                     {requestingCredit ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
@@ -210,11 +163,11 @@ function StatusStrip({
             <div className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1" style={{ background: C.warnBg }} title={`${otherName} requested to buy on credit`}>
                 <CreditCard className="h-3 w-3 shrink-0" style={{ color: C.warn }} />
                 <span className="text-[11px] font-bold" style={{ color: C.warn }}>Credit request</span>
-                <button onClick={() => handleDecideCredit(credit.id, "approved")} disabled={!!decidingCredit}
+                <button onClick={() => handleDecideCredit(credit.id, "approved")} disabled={!!decidingCredit || disabled}
                     className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold text-white transition-transform active:scale-95 disabled:opacity-60" style={{ background: C.ok }}>
                     {decidingCredit === "approved" && <Loader2 className="h-2.5 w-2.5 animate-spin" />} Approve
                 </button>
-                <button onClick={() => handleDecideCredit(credit.id, "rejected")} disabled={!!decidingCredit}
+                <button onClick={() => handleDecideCredit(credit.id, "rejected")} disabled={!!decidingCredit || disabled}
                     className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-bold transition-colors hover:bg-black/[0.03] disabled:opacity-60" style={{ borderColor: C.hair, color: C.muted, background: "#fff" }}>
                     {decidingCredit === "rejected" && <Loader2 className="h-2.5 w-2.5 animate-spin" />} Decline
                 </button>
@@ -223,7 +176,7 @@ function StatusStrip({
     } else if (viewerRole === "seller" && credit && (credit.status === "approved" || credit.status === "revoked")) {
         const on = credit.status === "approved";
         creditCell = (
-            <button onClick={() => handleToggleCredit(!on)} disabled={togglingCredit}
+            <button onClick={() => handleToggleCredit(!on)} disabled={togglingCredit || disabled}
                 className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-bold transition-colors disabled:opacity-60"
                 style={{ background: on ? C.okBg : C.hairSoft, color: on ? C.ok : C.muted }}
                 title={on ? `Credit enabled for ${otherName}` : `Credit off for ${otherName}`}>
@@ -244,8 +197,8 @@ function StatusStrip({
     if (transportPref?.status === "confirmed") {
         const { label, Icon } = modeMeta(transportPref.mode);
         transportCell = (
-            <button onClick={onOpenTransportSheet}
-                className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-bold transition-colors hover:opacity-80"
+            <button onClick={onOpenTransportSheet} disabled={disabled}
+                className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-bold transition-colors hover:opacity-80 disabled:opacity-60"
                 style={{ background: C.hairSoft, color: C.ink }}
                 title="Tap to change transport preference">
                 <Icon className="h-3 w-3 shrink-0" style={{ color: C.secondary }} />
@@ -266,6 +219,7 @@ function StatusStrip({
 }
 
 function ChatHeader({ meta, otherPresence, otherTyping, onBack }) {
+    const isDeleted = !!meta?.otherIsDeletedSeller;
     return (
         <div className="flex items-center gap-3 border-b px-3.5 py-2.5" style={{ borderColor: C.hair, background: C.surface }}>
             <button onClick={onBack} className="rounded-full p-1.5 transition-colors hover:bg-black/5 sm:hidden">
@@ -273,19 +227,31 @@ function ChatHeader({ meta, otherPresence, otherTyping, onBack }) {
             </button>
             <div className="relative shrink-0">
                 <span className="flex h-10 w-10 items-center justify-center rounded-full text-[12.5px] font-extrabold text-white shadow-sm"
-                    style={{ background: "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}>
+                    style={{ background: isDeleted ? "#9AA3A8" : "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}>
                     {meta ? initials(meta.otherShopName) : ""}
                 </span>
-                {otherPresence?.online && (
+                {otherPresence?.online && !isDeleted && (
                     <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2" style={{ background: "#1FAE5C", borderColor: C.surface }} />
                 )}
             </div>
             <div className="min-w-0 flex-1">
                 {meta ? (
                     <>
-                        <p className="truncate text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{meta.otherShopName}</p>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                            <p className="truncate text-[14.5px] font-extrabold tracking-wide" style={{ color: isDeleted ? C.muted : C.ink }}>{meta.otherShopName}</p>
+                            {isDeleted && <DeletedTag />}
+                        </span>
                         <AnimatePresence mode="wait" initial={false}>
-                            {otherTyping ? (
+                            {isDeleted ? (
+                                <motion.p
+                                    key="deleted"
+                                    initial={{ opacity: 0, y: -2 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -2 }} transition={{ duration: 0.12 }}
+                                    className="text-[10.5px] font-semibold uppercase tracking-wide"
+                                    style={{ color: C.muted }}
+                                >
+                                    Account no longer active
+                                </motion.p>
+                            ) : otherTyping ? (
                                 <motion.p
                                     key="typing"
                                     initial={{ opacity: 0, y: -2 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -2 }} transition={{ duration: 0.12 }}
@@ -330,15 +296,26 @@ function TypingBubble() {
     );
 }
 
+// Notice shown above the composer whenever sending is blocked because the
+// other party's account is deleted. Non-dismissible by design — it should
+// stay visible for the life of the disabled state, not just be seen once.
+function DeletedSellerNotice({ shopName }) {
+    return (
+        <div className="flex items-start gap-2 border-t px-3.5 py-2.5" style={{ borderColor: C.hair, background: C.dangerBg }}>
+            <ShieldOff className="mt-[1px] h-3.5 w-3.5 shrink-0" style={{ color: C.danger }} />
+            <p className="text-[12px] font-semibold leading-snug" style={{ color: C.danger }}>
+                {shopName || "This seller"}'s account has been deleted. You can no longer send messages here — this thread is kept for your records only.
+            </p>
+        </div>
+    );
+}
+
 function TransportProposeSheet({ open, onClose, current, onSubmit }) {
     const [mode, setMode] = useState(current?.mode || null);
     const [company, setCompany] = useState(current?.transport_company || "");
     const [details, setDetails] = useState(current?.details || "");
     const [submitting, setSubmitting] = useState(false);
 
-    // re-seed from `current` each time the sheet is (re)opened, so
-    // re-opening after a decline/change starts from the latest state
-    // instead of stale values from the previous open.
     useEffect(() => {
         if (open) {
             setMode(current?.mode || null);
@@ -427,7 +404,7 @@ function TickIcon({ status, onRetry }) {
     return <Check className="h-3.5 w-3.5" style={{ color: "rgba(255,255,255,0.7)" }} />;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry, credit, transportPref, onTransportDecision, onOpenTransportSheet }) {
+const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry, credit, transportPref, onTransportDecision, onOpenTransportSheet, disabled }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const [decidingAction, setDecidingAction] = useState(null); // 'confirmed' | 'declined' | null
     const menuRef = useRef(null);
@@ -475,10 +452,6 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
 
     if (message.message_type === "transport_proposal") {
         const p = message.metadata;
-        // Whether THIS bubble is the message backing the conversation's
-        // current live transport-preference row (as opposed to an older,
-        // superseded proposal). This is the correct scope for gating the
-        // action buttons below — it's already used to compute `status`.
         const isLiveProposal = transportPref?.request_message_id === message.id;
         const status = p.finalStatus || (isLiveProposal ? transportPref.status : null);
 
@@ -517,7 +490,7 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
                         <span className="text-[10px] font-semibold" style={{ color: C.muted }}>{time}</span>
                     </div>
 
-                    {isLiveProposal && status === "pending" && !isMine && (
+                    {isLiveProposal && status === "pending" && !isMine && !disabled && (
                         <div className="flex gap-1.5">
                             <button onClick={() => handleDecision("confirmed")} disabled={!!decidingAction}
                                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white transition-transform active:scale-95 disabled:opacity-60" style={{ background: C.ok }}>
@@ -532,7 +505,7 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
                         </div>
                     )}
 
-                    {isLiveProposal && status === "declined" && isMine && (
+                    {isLiveProposal && status === "declined" && isMine && !disabled && (
                         <button onClick={() => onOpenTransportSheet?.()}
                             className="rounded-lg border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-black/[0.03]" style={{ borderColor: C.secondary, color: C.secondary }}>
                             Propose again
@@ -548,9 +521,6 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
     const isFailed = message.status === "failed";
     const isOuterEdge = groupPos === "last" || groupPos === "only";
 
-    // WhatsApp-style corner rounding: only the outer edge of a grouped
-    // run gets the "tail" corner, interior bubbles round evenly on both
-    // sides so a run of consecutive messages reads as one visual block.
     const tailRadius = isMine
         ? { borderBottomRightRadius: isOuterEdge ? 4 : 16 }
         : { borderBottomLeftRadius: isOuterEdge ? 4 : 16 };
@@ -609,21 +579,18 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
         </motion.div>
     );
 }, (prev, next) => (
-    // explicit compare (belt-and-braces alongside the stable-reference fix
-    // in useChat.js): a bubble only needs to re-render when ITS OWN fields
-    // change, or when a credit/transport reference message needs to react
-    // to a status update that isn't reflected in `message` itself.
     prev.message === next.message &&
     prev.isMine === next.isMine &&
     prev.groupPos === next.groupPos &&
     prev.credit === next.credit &&
     prev.transportPref === next.transportPref &&
-    prev.onOpenTransportSheet === next.onOpenTransportSheet
+    prev.onOpenTransportSheet === next.onOpenTransportSheet &&
+    prev.disabled === next.disabled
 ));
 
 // ---- composer -----------------------------------------------------------
 
-function ChatComposer({ onSend, sending, onTypingChange, onOpenTransport }) {
+function ChatComposer({ onSend, sending, onTypingChange, onOpenTransport, disabled }) {
     const [value, setValue] = useState("");
     const textareaRef = useRef(null);
 
@@ -634,7 +601,7 @@ function ChatComposer({ onSend, sending, onTypingChange, onOpenTransport }) {
         e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
     };
     const submit = () => {
-        if (!value.trim()) return;
+        if (!value.trim() || disabled) return;
         onSend(value);
         onTypingChange?.(false);
         setValue("");
@@ -643,6 +610,17 @@ function ChatComposer({ onSend, sending, onTypingChange, onOpenTransport }) {
     const onKeyDown = (e) => {
         if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
     };
+
+    // No message here — DeletedSellerNotice (rendered just above this
+    // composer in ChatWindow) already states the reason once. Repeating
+    // it here just showed the same thing twice in a row.
+    if (disabled) {
+        return (
+            <div className="flex items-center justify-center gap-2 border-t px-3 py-2.5 sm:px-4" style={{ borderColor: C.hair, background: C.hairSoft }}>
+                <ShieldOff className="h-3.5 w-3.5" style={{ color: C.muted }} />
+            </div>
+        );
+    }
 
     return (
         <div className="flex items-end gap-2 border-t px-3 py-2.5 sm:px-4" style={{ borderColor: C.hair, background: C.surface }}>
@@ -712,22 +690,20 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     const {
         messages, loading, loadingOlder, hasMore, loadOlder,
         send, retry, deleteMessage, sending, otherTyping, notifyTyping, connected,
+        canSend, // NEW — server-verified send permission for this conversation, from listMessages
+        sendError, // NEW — surfaces the server's 403 message if a send still gets rejected
     } = useChatMessages(conversationId, meta?.otherUserId);
 
+    // Composer/actions are locked if EITHER the conversations-list flag
+    // (fast, client-side) or the server's fresh per-load check says so.
+    // `canSend` defaults to true before the first load resolves so the
+    // composer doesn't flash disabled on every open.
+    const isLockedOut = !!meta?.otherIsDeletedSeller || canSend === false;
+
     // ---- scroll behavior ---------------------------------------------
-    // Every programmatic scroll below is an INSTANT jump (no `behavior:
-    // "smooth"` anywhere) — opening a chat, sending a message, and
-    // receiving a message should all land you at the bottom immediately,
-    // with no animated scrolling motion.
     const [isNearBottom, setIsNearBottom] = useState(true);
     const [newIncoming, setNewIncoming] = useState(0);
 
-    // `null` on purpose (NOT `conversationId`) — this is what makes the
-    // very first conversation opened in this mounted ChatWindow instance
-    // register as "a conversation just opened" too. Initializing it to
-    // the current conversationId meant the first-ever open never counted
-    // as a change, so the initial snap-to-bottom silently never ran and
-    // the thread was left sitting at the top, looking stuck.
     const scrollStateRef = useRef({ convId: null, placedAtBottom: false });
     const lastMessageIdRef = useRef(null);
     const isPrependingRef = useRef(false);
@@ -737,8 +713,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         bottomRef.current?.scrollIntoView(smooth && !prefersReducedMotion ? { behavior: "smooth", block: "end" } : { block: "end" });
     }, []);
 
-    // conversation changed (including the first one ever opened) — reset
-    // all scroll bookkeeping so the effect below treats it as unplaced.
     useEffect(() => {
         if (scrollStateRef.current.convId !== conversationId) {
             scrollStateRef.current = { convId: conversationId, placedAtBottom: false };
@@ -752,23 +726,11 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         if (conversationId) markLocalRead(conversationId);
     }, [conversationId, markLocalRead]);
 
-
-
-    // Keeps it cleared if a new message arrives from the other person
-    // WHILE this thread is already open (ackRead already fires for the
-    // read-receipt tick in useChatMessages — this keeps the nav badge in
-    // sync with that same "already looking at it" state).
     useEffect(() => {
         const last = messages[messages.length - 1];
         if (last && last.sender_id !== profile?.id) markLocalRead(conversationId);
     }, [messages, profile?.id, conversationId, markLocalRead]);
 
-
-
-    // Once messages for the CURRENT conversation have actually loaded,
-    // snap straight to the latest message — this is the ONLY place that
-    // handles "opening a chat", and it runs regardless of whether this is
-    // the first conversation opened or a switch from another one.
     useLayoutEffect(() => {
         if (loading) return;
         if (scrollStateRef.current.convId !== conversationId) return;
@@ -779,9 +741,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         jumpToBottom(false);
     }, [loading, messages, conversationId, jumpToBottom]);
 
-    // preserves scroll position when older history is prepended — without
-    // this, the browser keeps the scrollTOP fixed while content grows
-    // above it, which reads as the whole thread "jumping" down.
     const handleLoadOlder = useCallback(() => {
         if (!scrollRef.current || loadingOlder || !hasMore) return;
         isPrependingRef.current = true;
@@ -797,27 +756,12 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         }
     }, [messages]);
 
-    // handles messages arriving AFTER the thread has already been placed
-    // at the bottom once (new sends/receives while the chat is open) —
-    // the initial "opening a chat" placement above is handled separately,
-    // so this only ever fires for genuinely new activity.
-    //
-    // This MUST be useLayoutEffect, not useEffect. A new message mounting
-    // extends the container's scrollHeight immediately on commit, but
-    // plain useEffect only runs AFTER the browser paints. That gap meant
-    // every send/receive painted one real frame with the new bubble
-    // sitting at its unscrolled position (often half-clipped at the
-    // bottom edge) before this effect fired and snapped scrollTop down —
-    // which is exactly the "jumps for a second, then settles" flash being
-    // reported. useLayoutEffect runs synchronously after the DOM mutation
-    // but before paint, so the scroll correction is applied before the
-    // browser ever shows the unscrolled frame.
     useLayoutEffect(() => {
         if (!scrollStateRef.current.placedAtBottom) return;
         const last = messages[messages.length - 1];
         if (!last) return;
         const key = rowKey(last);
-        if (key === lastMessageIdRef.current) return; // prepend or status tick, not a new message
+        if (key === lastMessageIdRef.current) return;
         lastMessageIdRef.current = key;
 
         const mine = last.sender_id === profile?.id;
@@ -829,29 +773,13 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         }
     }, [messages, isNearBottom, profile?.id, jumpToBottom]);
 
-    // same reasoning as above — the typing bubble also grows content
-    // height, so this needs to resolve before paint too.
     useLayoutEffect(() => {
         if (otherTyping && isNearBottom) jumpToBottom(false);
     }, [otherTyping, isNearBottom, jumpToBottom]);
 
-    // keep a ref mirror of `isNearBottom` so the ResizeObserver callback
-    // below (which fires outside React's render cycle) always reads the
-    // latest "was the user pinned to the bottom" value without needing to
-    // be re-subscribed on every change.
     const pinnedRef = useRef(true);
     useEffect(() => { pinnedRef.current = isNearBottom; }, [isNearBottom]);
 
-    // re-pin to the bottom whenever the scroll container's own box size
-    // changes for reasons that have nothing to do with new messages:
-    // CreditBar / TransportBar mounting once their async fetch resolves
-    // (or unmounting when a credit is revoked / transport is cleared), or
-    // the composer's textarea growing/shrinking. None of these change
-    // `messages`, so the effects above never fire for them — scrollTop
-    // stays fixed while clientHeight shifts under it, which is exactly
-    // what reads as "the thread slid to make room". This only re-pins if
-    // the user was already at the bottom; if they'd scrolled up to read
-    // history, a layout shift elsewhere won't yank them down.
     useEffect(() => {
         const el = scrollRef.current;
         if (!el || typeof ResizeObserver === "undefined") return;
@@ -877,20 +805,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         setNewIncoming(0);
     };
 
-    // Lenis (or any similar window/body-level smooth-scroll library)
-    // attaches its own wheel/touch listeners further up the DOM tree and
-    // calls preventDefault() there to drive its virtual scroll. Because
-    // those events bubble up from this div, Lenis was seeing them before
-    // this container's native scroll ever got a chance to run,
-    // effectively hijacking scroll for the whole page instead of letting
-    // the thread scroll on its own. Stopping propagation here (NOT
-    // preventDefault — we still want the browser's native scroll on this
-    // element) cuts Lenis off from ever seeing the event for this
-    // container, without touching how Lenis behaves anywhere else on the
-    // page. `data-lenis-prevent` is added too, for setups that configure
-    // Lenis with `prevent: (node) => node.closest('[data-lenis-prevent]')`
-    // — but the stopPropagation handlers are what guarantee the fix
-    // regardless of how (or whether) Lenis was configured for that.
     const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
 
     let lastDay = null;
@@ -908,6 +822,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 credit={credit} viewerRole={viewerRole} otherName={meta?.otherShopName || meta?.title || "them"}
                 onRequestCredit={handleRequestCredit} onToggleCredit={toggle} onDecideCredit={decide} requestingCredit={requestingCredit}
                 transportPref={transportPref} onOpenTransportSheet={openTransportSheet}
+                disabled={isLockedOut}
             />
 
             <div className="relative min-h-0 flex-1">
@@ -965,6 +880,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                                             transportPref={transportPref}
                                             onTransportDecision={decideTransport}
                                             onOpenTransportSheet={openTransportSheet}
+                                            disabled={isLockedOut}
                                         />
                                     </div>
                                 );
@@ -972,7 +888,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                         </AnimatePresence>
                     )}
                     <AnimatePresence>
-                        {otherTyping && <TypingBubble key="typing-bubble" />}
+                        {otherTyping && !isLockedOut && <TypingBubble key="typing-bubble" />}
                     </AnimatePresence>
                     <div ref={bottomRef} />
                 </div>
@@ -991,11 +907,20 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 </AnimatePresence>
             </div>
 
+            {sendError && !isLockedOut && (
+                <div className="px-3.5 py-1.5 text-[11.5px] font-semibold" style={{ color: C.danger, background: C.dangerBg }}>
+                    {sendError}
+                </div>
+            )}
+
+            {isLockedOut && <DeletedSellerNotice shopName={meta?.otherShopName} />}
+
             <ChatComposer
                 onSend={send}
                 sending={sending}
                 onTypingChange={notifyTyping}
                 onOpenTransport={openTransportSheet}
+                disabled={isLockedOut}
             />
             <TransportProposeSheet
                 open={transportSheetOpen}

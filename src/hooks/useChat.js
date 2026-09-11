@@ -40,8 +40,12 @@ function previewFor(body) {
 // paints instantly from cache while a background refetch quietly
 // reconciles it — the same "stale while revalidate" feel WhatsApp Web
 // has when you flip between chats.
+//
+// `canSend` is cached too now (see DELETED-SELLER LOCKOUT below) so a
+// re-opened thread doesn't briefly flash "sending allowed" before the
+// background refetch resolves — it inherits the last known value first.
 // ---------------------------------------------------------------------
-const messageCache = new Map(); // conversationId -> { entries, hasMore, cursor, watermarks }
+const messageCache = new Map(); // conversationId -> { entries, hasMore, cursor, watermarks, canSend }
 
 export default function useChatMessages(conversationId, otherUserId) {
     const { token, profile } = useAuth();
@@ -57,6 +61,28 @@ export default function useChatMessages(conversationId, otherUserId) {
     const [loadingOlder, setLoadingOlder] = useState(false);
     const [hasMore, setHasMore] = useState(cached?.hasMore ?? true);
     const [sending, setSending] = useState(false);
+
+    // ---------------------------------------------------------------
+    // DELETED-SELLER LOCKOUT
+    // `canSend` mirrors the `canSend` flag the server now returns from
+    // GET /messages (see chat.controller.js listMessages) — it's the
+    // authoritative, freshly-checked-on-every-load answer to "is the
+    // other party's account still active", as opposed to the
+    // conversations-list flag ChatWindow also checks, which is only as
+    // fresh as the last conversations reload. Starts `null` (not `true`
+    // or `false`) so ChatWindow can tell "haven't heard from the server
+    // yet" apart from "server confirmed sending is fine" — the composer
+    // treats null the same as true (not locked) so it doesn't flash
+    // disabled on every open, but a component that cares about the
+    // distinction can still see it.
+    //
+    // `sendError` surfaces the server's rejection message when a send
+    // slips through anyway (stale client state, a race with the seller
+    // being deleted mid-conversation) so the person sees exactly why it
+    // failed instead of a generic error or a silently vanished message.
+    // ---------------------------------------------------------------
+    const [canSend, setCanSend] = useState(cached?.canSend ?? null);
+    const [sendError, setSendError] = useState(null);
 
     const oldestCursorRef = useRef(cached?.cursor || null);
     const typingTimeoutRef = useRef(null);
@@ -130,6 +156,8 @@ export default function useChatMessages(conversationId, otherUserId) {
         oldestCursorRef.current = next?.cursor || null;
         setLoading(!next);
         setOtherTyping(false);
+        setCanSend(next?.canSend ?? null);
+        setSendError(null);
     }, [conversationId]);
 
     // initial fetch (or silent background revalidation if we hydrated from cache)
@@ -168,6 +196,12 @@ export default function useChatMessages(conversationId, otherUserId) {
             setHasMore(res.hasMore);
             oldestCursorRef.current = res.oldestCursor || null;
             if (res.otherWatermarks) setOtherWatermarks(res.otherWatermarks);
+            // Server re-checks this on every load, so it's always the
+            // freshest signal available — a `false` here means the other
+            // party's account is currently deleted, `true`/`undefined`
+            // (older backends that don't send this field yet) means
+            // sending is fine.
+            setCanSend(res.canSend !== false);
             setLoading(false);
         });
         return () => { cancelled = true; };
@@ -181,8 +215,9 @@ export default function useChatMessages(conversationId, otherUserId) {
             hasMore,
             cursor: oldestCursorRef.current,
             watermarks: otherWatermarks,
+            canSend,
         });
-    }, [conversationId, messageMap, hasMore, otherWatermarks]);
+    }, [conversationId, messageMap, hasMore, otherWatermarks, canSend]);
 
     const loadOlder = useCallback(async () => {
         if (loadingOlder || !hasMore || !oldestCursorRef.current) return;
@@ -199,6 +234,10 @@ export default function useChatMessages(conversationId, otherUserId) {
             });
             setHasMore(res.hasMore);
             oldestCursorRef.current = res.oldestCursor || oldestCursorRef.current;
+            // a loadOlder response carries the same fresh canSend value —
+            // no reason to ignore it just because this was a pagination
+            // call rather than the initial load.
+            if (typeof res.canSend !== "undefined") setCanSend(res.canSend !== false);
         }
         setLoadingOlder(false);
     }, [conversationId, token, hasMore, loadingOlder]);
@@ -282,6 +321,10 @@ export default function useChatMessages(conversationId, otherUserId) {
                         return next;
                     });
                     if (res.otherWatermarks) setOtherWatermarks(res.otherWatermarks);
+                    // a reconnect is exactly the kind of moment the other
+                    // party's account could have been deleted while this
+                    // tab was disconnected — resync the flag too.
+                    setCanSend(res.canSend !== false);
                 }
             });
         }
@@ -341,6 +384,7 @@ export default function useChatMessages(conversationId, otherUserId) {
 
     const send = useCallback(async (body) => {
         if (!body?.trim() || !conversationId) return;
+        setSendError(null);
         setSending(true);
         const clientMessageId = makeClientMessageId();
         const tempId = `temp-${clientMessageId}`;
@@ -373,11 +417,24 @@ export default function useChatMessages(conversationId, otherUserId) {
                 // it in place since nothing else is re-sorted.
                 next.set(res.message.id, { ...res.message });
             } else {
-                // keep the bubble but mark it failed so the person can see the
-                // send didn't go through and retry it, instead of the message
-                // just vanishing.
-                const existing = next.get(tempId);
-                if (existing) next.set(tempId, { ...existing, status: "failed" });
+                // DELETED-SELLER LOCKOUT: this specific failure means the
+                // send was correctly rejected, not a transient network
+                // problem — the optimistic bubble is removed entirely
+                // (not marked "failed" with a Retry option) since
+                // retrying would just fail again the same way, and
+                // `canSend` flips to false so the composer locks itself
+                // for any further attempts without waiting on a reload.
+                if (res?.code === "SELLER_DELETED") {
+                    next.delete(tempId);
+                    setCanSend(false);
+                    setSendError(res.message || "This seller's account has been deleted. You can no longer send messages here.");
+                } else {
+                    // keep the bubble but mark it failed so the person can see
+                    // the send didn't go through and retry it, instead of the
+                    // message just vanishing.
+                    const existing = next.get(tempId);
+                    if (existing) next.set(tempId, { ...existing, status: "failed" });
+                }
             }
             return next;
         });
@@ -420,6 +477,7 @@ export default function useChatMessages(conversationId, otherUserId) {
         messages, loading, loadingOlder, hasMore, loadOlder,
         send, retry, deleteMessage, sending,
         otherTyping, notifyTyping, connected,
+        canSend, sendError, // NEW — see DELETED-SELLER LOCKOUT above
     };
 }
 
