@@ -11,6 +11,12 @@
 //     and toast from the center of the screen (OrderNotificationToast).
 //   - everything else stays in the bell dropdown and keeps the existing
 //     bell-origin toast (NotificationIsland).
+//
+// The bell itself is admin-only (see Header.jsx). Non-admin users should
+// neither see the bell nor be interrupted by it, so its sound and its
+// toast/dropdown dispatch are both gated on profile.role === "admin" here
+// — notifications are still fetched/stored/markable for everyone, just
+// not surfaced through the bell's UI for non-admins.
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "./AuthContext.jsx";
 import { useSocket } from "./SocketContext.jsx";
@@ -34,7 +40,8 @@ export function useNotifications() {
 }
 
 export function NotificationsProvider({ children }) {
-    const { token } = useAuth();
+    const { token, profile } = useAuth();
+    const isAdmin = profile?.role === "admin";
     const { socket } = useSocket();
     const [notifications, setNotifications] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -70,15 +77,23 @@ export function NotificationsProvider({ children }) {
             if (isAutoApprovedListingNotification(payload)) return;
 
             setNotifications((prev) => (prev.some((n) => n.id === payload.id) ? prev : [payload, ...prev]));
-            playNotificationSound();
-            const targets = isOrderNotification(payload) ? orderListenersRef.current : nonOrderListenersRef.current;
+
+            const isOrder = isOrderNotification(payload);
+            // Bell notifications (sound + toast/dropdown dispatch) are
+            // admin-only — normal users never hear or see these ring.
+            // Order notifications keep their existing behavior for
+            // everyone (they toast center-screen, not via the bell).
+            if (isOrder || isAdmin) playNotificationSound();
+
+            const targets = isOrder ? orderListenersRef.current : nonOrderListenersRef.current;
             // Listings/wallet notifications still get stored (so markRead/history
             // work) but never dispatched to the bell's own toast/dropdown listeners.
-            if (!isListingsSectionNotification(payload)) targets.forEach((cb) => cb(payload));
+            // Non-order dispatch is further restricted to admins only.
+            if (!isListingsSectionNotification(payload) && (isOrder || isAdmin)) targets.forEach((cb) => cb(payload));
         };
         socket.on("notification:new", onNotif);
         return () => socket.off("notification:new", onNotif);
-    }, [socket]);
+    }, [socket, isAdmin]);
 
     const subscribeChat = useCallback((cb) => {
         chatListenersRef.current.add(cb);

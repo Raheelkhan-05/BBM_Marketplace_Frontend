@@ -263,7 +263,8 @@ export default function Header({ onOpenRfq }) {
           <div ref={rightRef} className="flex shrink-0 items-center gap-3">
             {effectiveLoggedIn ? (
               <>
-                <NotificationBell />
+                {/* Notification bell is admin-only — normal users neither see it nor get its toasts/sound (see NotificationsContext, which gates playback on role). */}
+                {isAdmin && <NotificationBell />}
                 <div className="relative hidden md:block" ref={accountRef}>
                   <button
                     onClick={() => setAccountOpen((v) => !v)}

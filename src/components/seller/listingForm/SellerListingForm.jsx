@@ -290,12 +290,16 @@ function computeThreeTierPrices(basis, rawPrice, packSize, masterPackSize) {
     return { perUnit: round2(perUnit), perPack: round2(perPack), perMaster: round2(perMaster) };
 }
 
-// Fields that only apply conditionally — a function of the current form,
-// returning true if that field is actually shown/required right now.
+// Fields hidden outright when the product is a locked catalog match
+// (brandItemMatch set) — these get replaced by the read-only "Fixed by
+// this product" summary, so they should never be counted at all.
+const LOCKED_WHEN_MATCHED_FIELDS = ["unit", "packSize", "hasOuterPack", "masterPackSize"];
+
 const CONDITIONAL_FIELD_VISIBILITY = {
-    masterPackSize: (f) => f.hasOuterPack === true,
+    masterPackSize: (f) => !f.brandItemMatch && f.hasOuterPack === true,
     sampleQuantity: (f) => f.sampleAvailable === true,
 };
+
 
 // Mutually-exclusive field groups — exactly one of these will end up being
 // required once the controlling choice is made, so for COUNTING purposes
@@ -306,6 +310,7 @@ const EXCLUSIVE_FIELD_GROUPS = {
 };
 
 function isFieldVisible(key, form) {
+    if (LOCKED_WHEN_MATCHED_FIELDS.includes(key) && form.brandItemMatch) return false;
     const check = CONDITIONAL_FIELD_VISIBILITY[key];
     return check ? check(form) : true;
 }
@@ -315,8 +320,6 @@ function totalForSection(fields, form) {
     const consumedGroups = new Set();
 
     fields.forEach((key) => {
-        // Is this field part of an exclusive group whose controller is also
-        // in this section? Count the group once, not per-field.
         const groupEntry = Object.entries(EXCLUSIVE_FIELD_GROUPS).find(
             ([, members]) => members.includes(key)
         );
@@ -324,13 +327,12 @@ function totalForSection(fields, form) {
             const [controllerKey] = groupEntry;
             if (!consumedGroups.has(controllerKey)) {
                 consumedGroups.add(controllerKey);
-                total += 1; // always exactly 1, regardless of selection state
+                total += 1;
             }
             return;
         }
 
-        const check = CONDITIONAL_FIELD_VISIBILITY[key];
-        if (!check || check(form)) total += 1;
+        if (isFieldVisible(key, form)) total += 1;
     });
 
     return total;
