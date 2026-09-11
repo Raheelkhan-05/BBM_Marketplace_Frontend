@@ -13,6 +13,10 @@ export default function NotificationBell() {
   const { bellNotifications, bellUnreadCount, markRead, subscribeNonOrder } = useNotifications();
   const [open, setOpen] = useState(false);
   const bellRef = useRef(null);
+  // Wraps both the bell button AND the dropdown — outside-click detection
+  // below checks against this, not bellRef, so a click on the dropdown
+  // itself never counts as "outside" and closes it out from under you.
+  const containerRef = useRef(null);
 
   // Toasts still mid-flight through the island animation. Their ids stay in
   // `pendingIds` (and out of the visible badge count) until the island
@@ -56,8 +60,27 @@ export default function NotificationBell() {
 
   const handleClick = (n) => { if (!n.read) markRead(n.id); setOpen(false); };
 
+  // Same pattern as Header.jsx's account dropdown (accountRef) — close on
+  // a click/tap outside the bell+dropdown, or on Escape, instead of only
+  // toggling via the bell button itself.
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         ref={bellRef}
         onClick={() => setOpen((v) => !v)}
@@ -89,8 +112,17 @@ export default function NotificationBell() {
 
       <AnimatePresence>
         {open && (
-          <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-            className="absolute right-0 mt-2 w-72 max-h-80 overflow-y-auto rounded-xl border border-slate-100 bg-white py-1.5 shadow-xl">
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            // data-lenis-prevent hands scroll control back to this native
+            // container the instant the cursor is over it, instead of the
+            // page's Lenis smooth-scroll eating the wheel event — same
+            // pattern used by the seller dropdown in HomeProductFeed.jsx.
+            data-lenis-prevent
+            className="absolute right-0 mt-2 w-72 max-h-80 overflow-y-auto rounded-xl border border-slate-100 bg-white py-1.5 shadow-xl"
+          >
             {bellNotifications.length === 0 && <p className="px-4 py-6 text-center text-[12.5px] text-slate-400">No notifications yet.</p>}
             {bellNotifications.map((n) => (
               <SmartLink key={n.id} to={n.link || "#"} onClick={() => handleClick(n)}
