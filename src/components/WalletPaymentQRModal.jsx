@@ -73,7 +73,16 @@ export default function WalletPaymentQRModal({ token, amount, onClose, onSubmitt
     return (
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <motion.div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-white sm:rounded-[24px]"
+            <motion.div
+                // data-lenis-prevent hands scroll control back to this
+                // native container the instant the cursor/touch is over
+                // it, instead of the page's Lenis smooth-scroll eating the
+                // wheel/touch event — same pattern used by the seller
+                // dropdown list in HomeProductFeed.jsx and the notification
+                // bell dropdown. Without it, this modal's own overflow-y-
+                // auto never actually gets to scroll on desktop.
+                data-lenis-prevent
+                className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-white sm:rounded-[24px]"
                 initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }}>
 
                 <div className="flex items-center justify-between border-b px-5 py-4" style={{ borderColor: C.hairSoft }}>
