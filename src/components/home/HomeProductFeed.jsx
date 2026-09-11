@@ -428,8 +428,18 @@ function GstToggle({ includeGst, onChange }) {
     );
 }
 
+// A category/subcategory literally named "Pending" is a placeholder bucket
+// for not-yet-classified items — never meant to be shown to a shopper.
+// Blank it out here rather than displaying it, same treatment as
+// CategoryStrip's isHiddenCategory.
+function isHiddenLabel(name) {
+    return typeof name === "string" && name.trim().toLowerCase() === "pending";
+}
+
 function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
+    const categoryLabel = isHiddenLabel(item.category_name) ? null : item.category_name;
+    const subcategoryLabel = isHiddenLabel(item.subcategory_name) ? null : item.subcategory_name;
 
     const packaging = packagingLabel(
         item.lowest_price_pack_size,
@@ -537,10 +547,10 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide"
                     style={{ color: C.muted }}
                 >
-                    {item.category_name
-                        ? `${item.category_name} · `
+                    {categoryLabel
+                        ? `${categoryLabel} · `
                         : ""}
-                    {item.subcategory_name}
+                    {subcategoryLabel}
                 </p>
 
                 {/* Reserve the packaging line's height even when there's no
