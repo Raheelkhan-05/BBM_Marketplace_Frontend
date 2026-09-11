@@ -35,14 +35,19 @@
 //   unconditionally once the sellers fetch settled — including for a
 //   seller who already has their own listing for that exact product,
 //   where "Sell this product" makes no sense (they're already selling
-//   it). Fixed by comparing each loaded seller row's owning user against
-//   the signed-in user (via useAuth()'s `profile.id`, same shape
-//   AuthContext exposes elsewhere) and hiding the button on a match.
-//   NOTE: this only sees sellers in the currently-loaded page
-//   (SELLER_PAGE_SIZE = 30, sorted by price) — if a seller's own listing
-//   happens to be priced far enough down that it hasn't been fetched yet,
-//   the button could still show. Good enough for the common case; flag if
-//   you want a dedicated "do I already sell this" check instead.
+//   it).
+// - CHANGED (this revision): that check used to be inferred client-side
+//   by scanning the loaded sellers list for a row belonging to the
+//   signed-in user. That broke the moment wallet-based hiding was added
+//   to catalog_brand_item_sellers (balance_due >= 1) — a wallet-blocked
+//   seller's own row is filtered out of that list along with everyone
+//   else's, so "already selling" silently evaluated to false and the
+//   button reappeared for exactly the sellers it should never show for.
+//   Fixed by reading `item.has_own_listing` straight off the feed row
+//   instead — catalog_browse() already computes this server-side via
+//   p_seller_id, and deliberately does NOT gate it on wallet balance, so
+//   it stays true regardless of whether the seller is currently hidden
+//   from buyers. See catalog_browse in fix_wallet_hidden_sellers.sql.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -327,10 +332,12 @@ function toBuyerSellerPayload(s) {
     };
 }
 
-// Whether a given seller row belongs to the signed-in user — the row may
-// carry the owning user id under either `user_id` (typical) or
-// `seller_user_id` depending on which query populated it, so check both
-// rather than assuming one name.
+// Whether a given seller row (from the sellers dropdown) belongs to the
+// signed-in user — used only to label a row "(You)" and disable buying
+// from yourself within an already-loaded sellers list. NOT used to decide
+// whether the "Sell this product" CTA shows — see item.has_own_listing
+// for that (SellerDropdown below), since this list is wallet-filtered and
+// can omit the signed-in seller's own row entirely.
 function isOwnSellerRow(sellerRow, currentUserId) {
     if (!currentUserId) return false;
     const ownerId = sellerRow?.shop_slug ?? null;
@@ -645,9 +652,11 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
 // item's fetch. `data-lenis-prevent` on the scrollable list is what
 // hands scroll control back to the native container the instant the
 // cursor is over it, instead of the page's Lenis smooth-scroll eating
-// the wheel event. `currentUserId` is used only to hide "Sell this
-// product" when the signed-in seller already has a listing among the
-// loaded rows — see the file header note.
+// the wheel event. `currentUserId` is used only to label/disable a
+// row as "(You)" within the loaded sellers list — see the file header
+// note. Whether to show "Sell this product" is decided separately, from
+// `item.has_own_listing` (server-computed, wallet-independent — see
+// file header note), NOT from scanning this (wallet-filtered) list.
 function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId }) {
     const { loading, items = [], error, total = 0, hasMore } = state || {};
 
@@ -676,13 +685,14 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
         return withMeta.map((x) => x.s);
     }, [items, sortMode, includeGst]);
 
-    // If the signed-in seller already lists this exact product (found among
-    // the loaded rows), "Sell this product" is a no-op for them — hide it
-    // instead of inviting them to create a duplicate listing.
-    const alreadySelling = useMemo(
-        () => items.some((s) => isOwnSellerRow(s, currentUserId)),
-        [items, currentUserId]
-    );
+    // CHANGED: source of truth is now item.has_own_listing (computed
+    // server-side in catalog_browse via p_seller_id, deliberately NOT
+    // gated on wallet balance) instead of scanning `items` for the
+    // signed-in seller's own row. That scan used to silently fail once a
+    // wallet-blocked seller's own row got excluded from `items` by the
+    // same wallet filter — making the CTA reappear for the one seller it
+    // must never show for.
+    const alreadySelling = item?.has_own_listing === true;
 
     return (
         <motion.div
@@ -789,9 +799,10 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
 
                 {/* Hidden until the sellers fetch has settled — no more
                     "Sell this product" flashing on screen before we know
-                    who else is already selling it. Also hidden outright
-                    when the signed-in seller is already one of the loaded
-                    sellers for this product (see alreadySelling above). */}
+                    the item's has_own_listing state. Also hidden outright
+                    when the signed-in seller already has a listing for
+                    this product (see alreadySelling above), regardless of
+                    whether that listing is currently wallet-blocked. */}
                 {!loading && !alreadySelling && (
                     <button
                         onClick={onSell}
