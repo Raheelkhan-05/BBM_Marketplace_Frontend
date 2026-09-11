@@ -89,18 +89,18 @@ export const DEFAULT_LISTING_FORM = {
     qualityCertificates: [],
     noteToAdmin: "",
 
-    unit: "", packSize: "", hasOuterPack: false, masterPackSize: "0",
+    unit: "", packSize: "", hasOuterPack: null, masterPackSize: "0",
     brandItemMatch: null,
-    hsnCode: "", gstPercent: 18,
+    hsnCode: "", gstPercent: "",
 
-    basePrice: "", priceBasis: "per_pack", gstInclusive: false,
-    freightIncluded: false,
+    basePrice: "", priceBasis: "per_pack", gstInclusive: null,
+    freightIncluded: null,
 
-    sampleAvailable: false, sampleQuantity: "", sampleUnitBasis: "per_unit", // was "per_pack"
+    sampleAvailable: null, sampleQuantity: "", sampleUnitBasis: "per_unit", // was "per_pack"
 
     priceSlabs: [],
 
-    stockType: "ready_stock", stockQuantity: "", stockQuantityBasis: "per_pack", productionLeadTimeDays: "",
+    stockType: null, stockQuantity: "", stockQuantityBasis: "per_pack", productionLeadTimeDays: "",
     moq: "",
     dispatchDistrict: "", dispatchState: "",
 
@@ -114,17 +114,19 @@ export const DEFAULT_LISTING_FORM = {
 // lets the header show a live "X left" count without opening the section.
 const SECTION_FIELD_MAP = {
     product: ["productName", "brandName", "images"],
-    packaging: ["unit", "packSize", "masterPackSize", "moq", "sampleQuantity"],
-    pricing: ["gstPercent", "basePrice"],
-    fulfilment: ["stockQuantity", "productionLeadTimeDays"],
+    packaging: ["unit", "packSize", "hasOuterPack", "masterPackSize", "moq", "sampleAvailable", "sampleQuantity"],
+    pricing: ["gstPercent", "gstInclusive", "basePrice", "freightIncluded"],
+    fulfilment: ["stockType", "stockQuantity", "productionLeadTimeDays"],
     terms: ["returnPolicyKey", "warrantyKey"],
     delivery: ["dispatchingLocations"],
 };
+
 const FIELD_TO_SECTION = Object.entries(SECTION_FIELD_MAP).reduce((acc, [section, fields]) => {
     fields.forEach((f) => { acc[f] = section; });
     return acc;
 }, {});
 
+FIELD_TO_SECTION["stockTypeAmount"] = "fulfilment";
 // Dynamic MOQ label/hint — mirrors whichever basis the seller is
 // currently thinking in. When there's an outer pack, MOQ is asked for in
 // Master Packs (the unit sellers actually reason in for bulk orders);
@@ -288,6 +290,52 @@ function computeThreeTierPrices(basis, rawPrice, packSize, masterPackSize) {
     return { perUnit: round2(perUnit), perPack: round2(perPack), perMaster: round2(perMaster) };
 }
 
+// Fields that only apply conditionally — a function of the current form,
+// returning true if that field is actually shown/required right now.
+const CONDITIONAL_FIELD_VISIBILITY = {
+    masterPackSize: (f) => f.hasOuterPack === true,
+    sampleQuantity: (f) => f.sampleAvailable === true,
+};
+
+// Mutually-exclusive field groups — exactly one of these will end up being
+// required once the controlling choice is made, so for COUNTING purposes
+// this should always contribute exactly 1 to the total, whether or not the
+// controlling field has been picked yet. Keyed by the controlling field.
+const EXCLUSIVE_FIELD_GROUPS = {
+    stockType: ["stockQuantity", "productionLeadTimeDays"],
+};
+
+function isFieldVisible(key, form) {
+    const check = CONDITIONAL_FIELD_VISIBILITY[key];
+    return check ? check(form) : true;
+}
+
+function totalForSection(fields, form) {
+    let total = 0;
+    const consumedGroups = new Set();
+
+    fields.forEach((key) => {
+        // Is this field part of an exclusive group whose controller is also
+        // in this section? Count the group once, not per-field.
+        const groupEntry = Object.entries(EXCLUSIVE_FIELD_GROUPS).find(
+            ([, members]) => members.includes(key)
+        );
+        if (groupEntry) {
+            const [controllerKey] = groupEntry;
+            if (!consumedGroups.has(controllerKey)) {
+                consumedGroups.add(controllerKey);
+                total += 1; // always exactly 1, regardless of selection state
+            }
+            return;
+        }
+
+        const check = CONDITIONAL_FIELD_VISIBILITY[key];
+        if (!check || check(form)) total += 1;
+    });
+
+    return total;
+}
+
 function computeMissing(form) {
     const missing = [];
     const add = (cond, key, label) => { if (cond) missing.push({ key, label }); };
@@ -299,21 +347,29 @@ function computeMissing(form) {
     if (!form.brandItemMatch) {
         add(!form.unit, "unit", "Unit");
         add(!(Number(form.packSize) > 0), "packSize", "Pack size");
-        // Master pack is only required — and only needs to be >= 2 — when
-        // the seller says this product has an outer pack. Otherwise it's
-        // silently pinned to 1 (see the toggle handler below) so nothing
-        // downstream (backend validation, order math) ever sees a missing
-        // or invalid master pack size.
+        add(form.hasOuterPack == null, "hasOuterPack", "Outer pack");
         add(form.hasOuterPack && !(Number(form.masterPackSize) >= 2), "masterPackSize", "Master pack size");
     }
 
     add(!(Number(form.moq) > 0), "moq", "MOQ");
+    add(form.sampleAvailable == null, "sampleAvailable", "Sample availability");
     add(form.gstPercent === "" || form.gstPercent == null, "gstPercent", "GST %");
+    add(form.gstInclusive == null, "gstInclusive", "Price includes GST");
     add(!(Number(form.basePrice) > 0), "basePrice", "Base price");
+    add(form.freightIncluded == null, "freightIncluded", "Freight included");
     add(form.sampleAvailable && !(Number(form.sampleQuantity) > 0), "sampleQuantity", "Sample quantity");
-    add(form.stockType === "ready_stock" && (form.stockQuantity === "" || form.stockQuantity == null), "stockQuantity", "Available stock");
-    add(form.stockType === "made_to_order" && (form.productionLeadTimeDays === "" || form.productionLeadTimeDays == null), "productionLeadTimeDays", "Lead time");
-    // add(!form.dispatchPincode?.trim(), "dispatchPincode", "Dispatch pincode");
+    add(!form.stockType, "stockType", "Fulfilment type");
+
+    // When stockType hasn't been picked yet, the second slot (stock qty /
+    // lead time) is unknowable too — it should count as missing, not as
+    // "not applicable yet". Without this, filled = total - missing looks
+    // like 1/2 the instant the section renders, before anything is chosen.
+    if (!form.stockType) {
+        add(true, "stockTypeAmount", "Stock or lead time");
+    } else {
+        add(form.stockType === "ready_stock" && (form.stockQuantity === "" || form.stockQuantity == null), "stockQuantity", "Available stock");
+        add(form.stockType === "made_to_order" && (form.productionLeadTimeDays === "" || form.productionLeadTimeDays == null), "productionLeadTimeDays", "Lead time");
+    }
     add(!form.dispatchingLocations?.country, "dispatchingLocations", "Dispatching locations");
     add(!form.returnPolicyKey, "returnPolicyKey", "Return / replacement policy");
     add(!form.warrantyKey, "warrantyKey", "Warranty");
@@ -366,8 +422,10 @@ export default function SellerListingForm({
             } : {}),
         };
 
-        base.hasOuterPack = Number(base.masterPackSize) > 1;
-        if (!base.hasOuterPack) base.masterPackSize = "0";
+        if (initialValues?.masterPackSize !== undefined) {
+            base.hasOuterPack = Number(base.masterPackSize) > 1;
+            if (!base.hasOuterPack) base.masterPackSize = "0";
+        }
 
         // NOTE: incoming moq (from initialValues / backend) already arrives
         // in the listing's canonical SALE UNIT — Master Packs when this
@@ -471,8 +529,13 @@ export default function SellerListingForm({
     }, [missing]);
 
     const totalCountBySection = useMemo(
-        () => Object.fromEntries(Object.entries(SECTION_FIELD_MAP).map(([k, fields]) => [k, fields.length])),
-        []
+        () => Object.fromEntries(
+            Object.entries(SECTION_FIELD_MAP).map(([section, fields]) => [
+                section,
+                totalForSection(fields, form),
+            ])
+        ),
+        [form]
     );
 
     const changeSampleBasis = (newBasis) => {
@@ -585,12 +648,8 @@ export default function SellerListingForm({
                 ...f,
                 dispatchPincode: delivery.dispatchPincode ?? f.dispatchPincode,
                 dispatchingLocations: restoredDispatchingLocations ?? f.dispatchingLocations,
-                freightIncluded: delivery.freightIncluded ?? f.freightIncluded,
-                gstPercent: taxLegal.gstPercent ?? f.gstPercent,
-                gstInclusive: taxLegal.gstInclusive ?? f.gstInclusive,
                 returnPolicyKey: taxLegal.returnPolicyKey ?? f.returnPolicyKey,
                 warrantyKey: taxLegal.warrantyKey ?? f.warrantyKey,
-                priceBasis: commercial.priceBasis ?? f.priceBasis,
             }));
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -706,10 +765,11 @@ export default function SellerListingForm({
         const needsSwitch = section && section !== openSection;
         if (needsSwitch) setOpenSection(section);
 
-        // Wait for the open animation to finish before measuring/scrolling,
-        // otherwise scrollIntoView runs against a 0-height container.
         setTimeout(() => {
-            const target = document.getElementById(`field-${firstMissing.key}`);
+            // stockTypeAmount has no DOM field of its own — fall back to
+            // stockType's anchor, since that's what the seller needs to act on.
+            const targetKey = firstMissing.key === "stockTypeAmount" ? "stockType" : firstMissing.key;
+            const target = document.getElementById(`field-${targetKey}`);
             if (!target) return;
             target.scrollIntoView({ behavior: "smooth", block: "center" });
             target.style.boxShadow = "0 0 0 3px rgba(199,31,17,0.35)";
@@ -767,14 +827,10 @@ export default function SellerListingForm({
         console.log("form", form);
         onSubmit({
             ...form,
-            // NEW — when this listing is for a product that already exists in
-            // the catalog (locked identity, "Already approved" banner), the
-            // backend needs to know WHICH brand item this is for. Without
-            // this, createListingForExistingBrand has no way to resolve the
-            // product and rejects the request outright with "Missing brand
-            // item." — this was being detected on the frontend (brandItemMatch
-            // is what drives the locked/"Already approved" UI) but never
-            // actually sent.
+            hasOuterPack: !!form.hasOuterPack,
+            sampleAvailable: !!form.sampleAvailable,
+            gstInclusive: !!form.gstInclusive,
+            freightIncluded: !!form.freightIncluded,
             genericProductBrandId: form.brandItemMatch?.id || null,
             moq: String(round2ToInt(form.moq)),
             sampleQuantity: form.sampleAvailable ? String(sampleQuantityBaseUnits) : form.sampleQuantity,
@@ -886,18 +942,21 @@ export default function SellerListingForm({
                             </FieldAnchor>
                         </div>
 
-                        <ToggleField2
-                            label="Does this have an Outer Pack?"
-                            value={form.hasOuterPack}
-                            onChange={handleOuterPackToggle}
-                            infoBlock={
-                                <div className="mb-1 flex items-start gap-2 rounded-xl">
-                                    <p className="text-[8.5px] font-semibold leading-snug tracking-wide" style={{ color: C.primary }}>
-                                        An outer pack is a larger pack / <b style={{ color: C.primary }}>Master Pack</b> containing multiple individual Packs.
-                                    </p>
-                                </div>
-                            }
-                        />
+                        <FieldAnchor fieldKey="hasOuterPack">
+                            <ToggleField2
+                                label="Does this have an Outer Pack?"
+                                value={form.hasOuterPack}
+                                onChange={(v) => { handleOuterPackToggle(v); touch("hasOuterPack"); }}
+                                error={isErr("hasOuterPack")}
+                                infoBlock={
+                                    <div className="mb-1 flex items-start gap-2 rounded-xl">
+                                        <p className="text-[8.5px] font-semibold leading-snug tracking-wide" style={{ color: C.primary }}>
+                                            An outer pack is a larger pack / <b style={{ color: C.primary }}>Master Pack</b> containing multiple individual Packs.
+                                        </p>
+                                    </div>
+                                }
+                            />
+                        </FieldAnchor>
 
                         {form.hasOuterPack && (
                             <>
@@ -936,7 +995,14 @@ export default function SellerListingForm({
                             onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" />
                     </FieldAnchor>
                 </div>
-                <ToggleField label="Sample available?" value={form.sampleAvailable} onChange={(v) => setField("sampleAvailable", v)} />
+                <FieldAnchor fieldKey="sampleAvailable">
+                    <ToggleField
+                        label="Sample available?"
+                        value={form.sampleAvailable}
+                        onChange={(v) => { setField("sampleAvailable", v); touch("sampleAvailable"); }}
+                        error={isErr("sampleAvailable")}
+                    />
+                </FieldAnchor>
                 {form.sampleAvailable && (
                     <FieldAnchor fieldKey="sampleQuantity">
                         <TextFieldWithUnitSelect
@@ -961,7 +1027,12 @@ export default function SellerListingForm({
                 open={openSection === "pricing"} onOpenChange={(v) => handleSectionToggle("pricing", v)}
                 missingCount={missingCountBySection.pricing} totalCount={totalCountBySection.pricing}
                 readOnly={readOnly}>
-                <ChipToggleGroup dense label="Applicable GST % for this Product" value={Number(form.gstPercent)} onChange={(v) => setField("gstPercent", Number(v))} options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))} />
+                <ChipToggleGroup
+                    dense label="Applicable GST % for this Product"
+                    value={form.gstPercent === "" || form.gstPercent == null ? "" : Number(form.gstPercent)}
+                    onChange={(v) => setField("gstPercent", Number(v))}
+                    options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))}
+                />
                 {(() => {
                     const showMaster = form.hasOuterPack && Number(form.masterPackSize) >= 2;
                     const hasPrice = form.basePrice !== "" && form.basePrice != null;
@@ -1036,7 +1107,14 @@ export default function SellerListingForm({
                     );
                 })()}
                 <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
-                    <ToggleField3 label="Price includes GST?" value={form.gstInclusive} onChange={(v) => setField("gstInclusive", v)} />
+                    <FieldAnchor fieldKey="gstInclusive">
+                        <ToggleField3
+                            label="Price includes GST?"
+                            value={form.gstInclusive}
+                            onChange={(v) => { setField("gstInclusive", v); touch("gstInclusive"); }}
+                            error={isErr("gstInclusive")}
+                        />
+                    </FieldAnchor>
                 </div>
                 <RepeatableRows2
                     label="Discount slabs"
@@ -1158,7 +1236,14 @@ export default function SellerListingForm({
                     )}
                 </div>
                 <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
-                    <ToggleField label="Freight included?" value={form.freightIncluded} onChange={(v) => setField("freightIncluded", v)} />
+                    <FieldAnchor fieldKey="freightIncluded">
+                        <ToggleField
+                            label="Freight included?"
+                            value={form.freightIncluded}
+                            onChange={(v) => { setField("freightIncluded", v); touch("freightIncluded"); }}
+                            error={isErr("freightIncluded")}
+                        />
+                    </FieldAnchor>
                 </div>
             </SectionCard>
 
@@ -1167,8 +1252,13 @@ export default function SellerListingForm({
                 open={openSection === "fulfilment"} onOpenChange={(v) => handleSectionToggle("fulfilment", v)}
                 missingCount={missingCountBySection.fulfilment} totalCount={totalCountBySection.fulfilment}
                 readOnly={readOnly}>
-                <ChipToggleGroup label="Fulfilment" value={form.stockType} onChange={(v) => setField("stockType", v)}
-                    options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
+                <FieldAnchor fieldKey="stockType">
+                    <ChipToggleGroup label="Fulfilment" value={form.stockType}
+                        onChange={(v) => { setField("stockType", v); touch("stockType"); }}
+                        error={isErr("stockType")}
+                        options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]} />
+
+                </FieldAnchor>
                 {form.stockType === "ready_stock" ? (
                     <FieldAnchor fieldKey="stockQuantity">
                         <TextFieldWithUnitSelect

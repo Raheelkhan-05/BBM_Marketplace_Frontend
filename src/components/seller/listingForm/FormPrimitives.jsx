@@ -557,11 +557,11 @@ export function SelectField({ label, value, onChange, onBlur, options, hint, req
     );
 }
 
-export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No" }) {
+export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", error }) {
     return (
         <div className="flex flex-col gap-1">
             <Label hint={hint}>{label}</Label>
-            <div className="flex gap-1 rounded-lg p-1" style={{ background: C.hairSoft, width: "fit-content" }}>
+            <div className="flex gap-1 rounded-lg p-1" style={{ background: error ? "#fff8f7" : C.hairSoft, width: "fit-content", boxShadow: error ? `0 0 0 1px ${C.danger}40 inset` : "none" }}>
                 {[{ v: true, t: onLabel }, { v: false, t: offLabel }].map(({ v, t }) => (
                     <button
                         key={t}
@@ -578,11 +578,11 @@ export function ToggleField({ label, value, onChange, hint, onLabel = "Yes", off
     );
 }
 
-export function ToggleField3({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No" }) {
+export function ToggleField3({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", error }) {
     return (
         <div className="flex flex-col gap-1 self-end justify-end align-end">
             <Label hint={hint}>{label}</Label>
-            <div className="flex gap-1 rounded-lg p-1 self-end justify-end align-end" style={{ background: C.hairSoft, width: "fit-content" }}>
+            <div className="flex gap-1 rounded-lg p-1" style={{ background: error ? "#fff8f7" : C.hairSoft, width: "fit-content", boxShadow: error ? `0 0 0 1px ${C.danger}40 inset` : "none" }}>
                 {[{ v: true, t: onLabel }, { v: false, t: offLabel }].map(({ v, t }) => (
                     <button
                         key={t}
@@ -874,12 +874,12 @@ export function CompletedBadge() {
 }
 
 
-export function ToggleField2({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", infoBlock }) {
+export function ToggleField2({ label, value, onChange, hint, onLabel = "Yes", offLabel = "No", infoBlock, error }) {
     return (
         <div className="flex flex-col">
             <Label hint={hint}>{label}</Label>
             {infoBlock}
-            <div className="flex gap-1 rounded-lg p-1" style={{ background: C.hairSoft, width: "fit-content" }}>
+            <div className="flex gap-1 rounded-lg p-1" style={{ background: error ? "#fff8f7" : C.hairSoft, width: "fit-content", boxShadow: error ? `0 0 0 1px ${C.danger}40 inset` : "none" }}>
                 {[{ v: true, t: onLabel }, { v: false, t: offLabel }].map(({ v, t }) => (
                     <button
                         key={t}
