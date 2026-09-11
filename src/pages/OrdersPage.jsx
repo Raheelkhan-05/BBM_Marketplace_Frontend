@@ -17,6 +17,9 @@ import {
     StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount,
     StockShortfallNote, shouldShowDelivery, shouldShowShortfall,
 } from "../components/orders/OrderDisplayHelpers.jsx";
+import ConfirmOrderModal from "../components/orders/ConfirmOrderModal.jsx";
+import { confirmSellerOrderWithTransport } from "../utils/api.js"; // see api.js patch
+
 
 // ---------- shared helpers ----------
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
@@ -48,7 +51,7 @@ const TYPE_TABS = [
     { key: "", label: "All orders" }, { key: "standard", label: "Standard" }, { key: "sample", label: "Samples" },
 ];
 const NEXT_ACTION = {
-    pending_confirmation: [{ key: "confirm", label: "Confirm order", fn: confirmSellerOrder, primary: true }, { key: "reject", label: "Reject", fn: rejectSellerOrder, needsReason: true }],
+    pending_confirmation: [{ key: "confirm", label: "Confirm order", primary: true, needsTransportModal: true }, { key: "reject", label: "Reject", fn: rejectSellerOrder, needsReason: true }],
     confirmed: [{ key: "process", label: "Mark as processing", fn: processSellerOrder, primary: true }],
     processing: [{ key: "ship", label: "Mark as shipped", fn: shipSellerOrder, primary: true }],
     shipped: [{ key: "deliver", label: "Mark as delivered", fn: deliverSellerOrder, primary: true }],
@@ -234,6 +237,7 @@ function PurchaseOrdersView() {
 function SalesOrderCard({ order, idx, onAction }) {
     const navigate = useNavigate();
     const [busy, setBusy] = useState(null);
+    const [confirmModalOpen, setConfirmModalOpen] = useState(false);
     const { salesOrderUnreadCounts } = useNotifications();
     const unreadCount = salesOrderUnreadCounts.get(String(order.id)) || 0;
     const actions = NEXT_ACTION[order.status] || [];
@@ -242,6 +246,7 @@ function SalesOrderCard({ order, idx, onAction }) {
     const firstItem = order.items?.[0];
 
     const run = async (action) => {
+        if (action.needsTransportModal) { setConfirmModalOpen(true); return; }
         if (action.needsReason) {
             const reason = window.prompt("Reason for rejecting this order (shown to the buyer):");
             if (reason === null) return;
@@ -343,6 +348,23 @@ function SalesOrderCard({ order, idx, onAction }) {
                         </button>
                     ))}
                 </div>
+            )}
+
+            {confirmModalOpen && (
+                <ConfirmOrderModal
+                    open={confirmModalOpen}
+                    order={order}
+                    onClose={() => setConfirmModalOpen(false)}
+                    onConfirm={async (formData) => {
+                        const res = await confirmSellerOrderWithTransport(order.id, formData);
+                        if (res?.success) {
+                            setConfirmModalOpen(false);
+                            reload(); // SalesOrdersView's reload, threaded down the same
+                            // way `onAction` already gets it — see api.js patch
+                        }
+                        return res;
+                    }}
+                />
             )}
         </motion.div>
     );

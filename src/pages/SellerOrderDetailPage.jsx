@@ -21,13 +21,15 @@ import { ArrowLeft, Package, User, Phone, Mail, ShieldCheck, Loader2, MapPin, In
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
-import { fetchSellerOrderById, confirmSellerOrder, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder } from "../utils/api.js";
+import { fetchSellerOrderById, confirmSellerOrderWithTransport, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder } from "../utils/api.js";
+import ConfirmOrderModal from "../components/orders/ConfirmOrderModal.jsx";
+import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
 import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const NEXT_ACTION = {
-    pending_confirmation: [{ key: "confirm", label: "Confirm order", fn: confirmSellerOrder, primary: true }, { key: "reject", label: "Reject", fn: rejectSellerOrder, needsReason: true }],
+    pending_confirmation: [{ key: "confirm", label: "Confirm order", primary: true, needsTransportModal: true }, { key: "reject", label: "Reject", fn: rejectSellerOrder, needsReason: true }],
     confirmed: [{ key: "process", label: "Mark as processing", fn: processSellerOrder, primary: true }],
     processing: [{ key: "ship", label: "Mark as shipped", fn: shipSellerOrder, primary: true }],
     shipped: [{ key: "deliver", label: "Mark as delivered", fn: deliverSellerOrder, primary: true }],
@@ -101,6 +103,7 @@ export default function SellerOrderDetailPage() {
     const { token } = useAuth();
     const { markOrderRead } = useNotifications();
     const [busy, setBusy] = useState(null);
+    const [confirmModalOpen, setConfirmModalOpen] = useState(false);
 
     const fetcher = useCallback((orderId) => fetchSellerOrderById(token, orderId), [token]);
     const { order, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
@@ -109,6 +112,7 @@ export default function SellerOrderDetailPage() {
 
     const actions = NEXT_ACTION[order?.status] || [];
     const runAction = async (action) => {
+        if (action.needsTransportModal) { setConfirmModalOpen(true); return; }
         let reason;
         if (action.needsReason) {
             reason = window.prompt("Reason for rejecting this order (shown to the buyer):");
@@ -171,21 +175,7 @@ export default function SellerOrderDetailPage() {
                 </Card>
             )}
 
-            {order.transport_mode && (
-                <Card title="Transport">
-                    <p className="flex items-center gap-1.5 text-[13.5px] font-bold tracking-wider" style={{ color: C.ink }}>
-                        <Truck className="h-4 w-4" style={{ color: C.secondary }} />
-                        {transportModeLabel(order.transport_mode)}
-                        {order.transport_company ? ` · ${order.transport_company}` : ""}
-                    </p>
-                    {order.transport_details && (
-                        <p className="mt-1.5 text-[12px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>{order.transport_details}</p>
-                    )}
-                    <p className="mt-1.5 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                        Agreed with the buyer in chat before this order was placed.
-                    </p>
-                </Card>
-            )}
+            <TransportInfoCard order={order} />
 
             <Card title="Items">
                 <div className="flex flex-col gap-3">
@@ -261,6 +251,19 @@ export default function SellerOrderDetailPage() {
                         </button>
                     ))}
                 </div>
+            )}
+
+            {confirmModalOpen && (
+                <ConfirmOrderModal
+                    open={confirmModalOpen}
+                    order={order}
+                    onClose={() => setConfirmModalOpen(false)}
+                    onConfirm={async (formData) => {
+                        const res = await confirmSellerOrderWithTransport(id, formData);
+                        if (res?.success) { setConfirmModalOpen(false); reload(); }
+                        return res;
+                    }}
+                />
             )}
         </div>
     );

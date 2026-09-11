@@ -10,6 +10,7 @@ import {
   requestSellerWhatsappOtp, verifySellerWhatsappOtp,
   saveSellerBankDetails, fetchSellerBankDetails
 } from "../utils/api.js";
+import { TRANSPORT_OPTIONS } from "../../shared/transportOptions.js";
 import useSellerProfileStatus from "../hooks/useSellerProfileStatus.js";
 import { extractColorsFromImage } from "../utils/colorExtract.js";
 import { STEPS, BUSINESS_TYPES, WEEKDAYS, guessBusinessType } from "../components/seller/fieldConfigs.js";
@@ -218,7 +219,7 @@ export default function SellerOnboardingPage() {
 
 function requiredMissing(stepKey, f) {
   const REQ = {
-    operations: ["order_acceptance_start", "order_acceptance_end", "dispatch_pincode"],
+    operations: ["order_acceptance_start", "order_acceptance_end", "dispatch_pincode", "transport_options"],
     bank: ["bank_account_number", "bank_ifsc_code"],
     identity: ["logo_url"],
   }[stepKey] || [];
@@ -480,6 +481,28 @@ function OperationsStep({ form, update }) {
         </div>
       </div>
 
+      <div>
+        <Label>Transport channels you can service</Label>
+        <p className="text-[12.5px] font-medium tracking-wide text-slate-400">
+          Buyers will only be able to request methods you select here.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {TRANSPORT_OPTIONS.map((t) => {
+            const selected = (form.transport_options || []).includes(t.key);
+            return (
+              <button key={t.key} type="button"
+                onClick={() => update("transport_options", selected
+                  ? (form.transport_options || []).filter((k) => k !== t.key)
+                  : [...(form.transport_options || []), t.key])}
+                className="rounded-lg border-2 px-3 py-1.5 text-[13.5px] font-bold tracking-wide"
+                style={{ borderColor: selected ? "#047084" : "#e5e9ea", color: selected ? "#047084" : "#64748b", background: selected ? "#04708410" : "white" }}>
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <TimeField label="Order acceptance starts" value={form.order_acceptance_start} onChange={(v) => update("order_acceptance_start", v)} />
         <TimeField label="Order acceptance ends" value={form.order_acceptance_end} onChange={(v) => update("order_acceptance_end", v)} />
@@ -561,6 +584,8 @@ function ReviewStep({ form }) {
         ["Order hours", form.order_acceptance_start && form.order_acceptance_end
           ? `${form.order_acceptance_start} – ${form.order_acceptance_end}`
           : ""],
+        ["Transport channels", (form.transport_options || [])
+          .map((k) => TRANSPORT_OPTIONS.find((t) => t.key === k)?.label || k).join(", ")],
       ],
     },
     {

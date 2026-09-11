@@ -20,10 +20,10 @@
 //     failing.
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowDown, CreditCard, Truck, Loader2, Pencil, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, Bus, TrainFront, Package, X, ShieldOff } from "lucide-react";
+import { ArrowLeft, ArrowDown, CreditCard, Loader2, Pencil, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, X, ShieldOff } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
-import useChatMessages, { usePresence, useCredit, useTransportPreference } from "../../hooks/useChat.js";
+import useChatMessages, { usePresence, useCredit } from "../../hooks/useChat.js";
 import { useChatContext } from "../../context/ChatContext.jsx";
 
 import { formatLastSeen } from "../../utils/formatLastSeen.js";
@@ -49,18 +49,6 @@ const prefersReducedMotion =
 
 function initials(name) {
     return (name || "?").trim().split(" ").slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
-}
-
-// shared source of truth for mode display — used by TransportBar AND
-// the transport_proposal bubble, so they can never show different
-// labels/icons for the same mode again.
-const TRANSPORT_MODES = {
-    bus: { label: "Bus", Icon: Bus },
-    train: { label: "Train", Icon: TrainFront },
-    other: { label: "Other", Icon: Package },
-};
-function modeMeta(mode) {
-    return TRANSPORT_MODES[mode] || TRANSPORT_MODES.other;
 }
 
 function PendingCreditBanner({ buyerLabel, onClick }) {
@@ -127,8 +115,7 @@ function TypingDots({ color = C.secondary, size = "h-1.5 w-1.5" }) {
 function StatusStrip({
     credit, viewerRole, buyerInfo, otherName,
     onRequestCredit, onToggleCredit, onDecideCredit, requestingCredit,
-    transportPref, onOpenTransportSheet,
-    disabled, // NEW — deleted-seller lockout also freezes credit/transport actions
+    disabled,
 }) {
     const [decidingCredit, setDecidingCredit] = useState(null); // 'approved' | 'rejected' | null
     const [togglingCredit, setTogglingCredit] = useState(false);
@@ -197,28 +184,11 @@ function StatusStrip({
         );
     }
 
-    // ---- transport chip ----
-    let transportCell = null;
-    if (transportPref?.status === "confirmed") {
-        const { label, Icon } = modeMeta(transportPref.mode);
-        transportCell = (
-            <button onClick={onOpenTransportSheet} disabled={disabled}
-                className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-bold transition-colors hover:opacity-80 disabled:opacity-60"
-                style={{ background: C.hairSoft, color: C.ink }}
-                title="Tap to change transport preference">
-                <Icon className="h-3 w-3 shrink-0" style={{ color: C.secondary }} />
-                <span className="max-w-[140px] truncate">{label}{transportPref.transport_company ? ` · ${transportPref.transport_company}` : ""}</span>
-                <Pencil className="h-2.5 w-2.5 shrink-0" style={{ color: C.muted }} />
-            </button>
-        );
-    }
-
-    if (!creditCell && !transportCell) return null;
+    if (!creditCell) return null;
 
     return (
         <div className="flex flex-wrap items-center gap-1.5 border-b px-3 py-1.5" style={{ borderColor: C.hair, background: C.surface }}>
             {creditCell}
-            {transportCell}
         </div>
     );
 }
@@ -393,86 +363,6 @@ function CreditApprovalDialog({ open, onClose, onConfirm, buyerLabel, confirming
     );
 }
 
-function TransportProposeSheet({ open, onClose, current, onSubmit }) {
-    const [mode, setMode] = useState(current?.mode || null);
-    const [company, setCompany] = useState(current?.transport_company || "");
-    const [details, setDetails] = useState(current?.details || "");
-    const [submitting, setSubmitting] = useState(false);
-
-    useEffect(() => {
-        if (open) {
-            setMode(current?.mode || null);
-            setCompany(current?.transport_company || "");
-            setDetails(current?.details || "");
-        }
-    }, [open, current]);
-
-    const handleSubmit = async () => {
-        if (!mode || submitting) return;
-        setSubmitting(true);
-        await onSubmit(mode, company.trim() || null, details.trim() || null);
-        setSubmitting(false);
-        onClose();
-    };
-
-    return (
-        <AnimatePresence>
-            {open && (
-                <motion.div
-                    className="fixed inset-0 z-[999] flex items-end justify-center bg-black/30 sm:items-center"
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
-                    onClick={onClose}
-                >
-                    <motion.div
-                        className="w-full rounded-t-2xl bg-white p-4 sm:max-w-sm sm:rounded-2xl"
-                        initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.2, ease: EASE }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between">
-                            <p className="text-[14px] font-extrabold" style={{ color: C.ink }}>Propose transport</p>
-                            <button onClick={onClose} className="rounded-full p-1 transition-colors hover:bg-black/5">
-                                <X className="h-4 w-4" style={{ color: C.muted }} />
-                            </button>
-                        </div>
-                        <p className="mt-1 text-[11.5px] font-medium" style={{ color: C.muted }}>
-                            They'll see this as a card in the chat and can agree or suggest a different one.
-                        </p>
-
-                        {current?.status === "pending" && (
-                            <p className="mt-2 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: C.warnBg, color: C.warn }}>
-                                There's already a pending proposal — sending a new one replaces it.
-                            </p>
-                        )}
-
-                        <div className="mt-3.5 grid grid-cols-3 gap-2">
-                            {Object.entries(TRANSPORT_MODES).map(([key, { label, Icon }]) => (
-                                <button key={key} onClick={() => setMode(key)}
-                                    className="flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition-colors"
-                                    style={{ borderColor: mode === key ? C.secondary : C.hair, background: mode === key ? `${C.secondary}0f` : "#fff" }}>
-                                    <Icon className="h-4.5 w-4.5" style={{ color: mode === key ? C.secondary : C.muted }} />
-                                    <span className="text-[11.5px] font-bold" style={{ color: mode === key ? C.secondary : C.ink }}>{label}</span>
-                                </button>
-                            ))}
-                        </div>
-
-                        <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Transport company (optional) — e.g. Patel Transport"
-                            className="mt-3 w-full rounded-lg border px-3 py-2 text-[13px] outline-none transition-colors focus:border-[#006F83]" style={{ borderColor: C.hair }} />
-                        <textarea value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Notes (optional) — pickup point, timing, etc." rows={2}
-                            className="mt-2 w-full resize-none rounded-lg border px-3 py-2 text-[13px] outline-none transition-colors focus:border-[#006F83]" style={{ borderColor: C.hair }} />
-
-                        <button onClick={handleSubmit} disabled={!mode || submitting}
-                            className="mt-3.5 flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-[13px] font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
-                            style={{ background: C.secondary }}>
-                            {submitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                            {submitting ? "Sending…" : "Send proposal"}
-                        </button>
-                    </motion.div>
-                </motion.div>
-            )}
-        </AnimatePresence>
-    );
-}
-
 // ---- message bubble -----------------------------------------------------
 
 function TickIcon({ status, onRetry }) {
@@ -490,7 +380,7 @@ function TickIcon({ status, onRetry }) {
 const MessageBubble = memo(function MessageBubble({
     message, isMine, groupPos, onDelete, onRetry,
     credit, buyerInfo, onDecideCredit, onRequestApproval,
-    transportPref, onTransportDecision, onOpenTransportSheet, disabled,
+    disabled,
 }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const [decidingAction, setDecidingAction] = useState(null);
@@ -658,73 +548,6 @@ const MessageBubble = memo(function MessageBubble({
         );
     }
 
-
-    if (message.message_type === "transport_proposal") {
-        const p = message.metadata;
-        const isLiveProposal = transportPref?.request_message_id === message.id;
-        const status = p.finalStatus || (isLiveProposal ? transportPref.status : null);
-
-        const { label, Icon } = modeMeta(p.mode);
-        const statusStyle = {
-            pending: { color: C.warn, bg: C.warnBg, label: "Proposed" },
-            confirmed: { color: C.ok, bg: C.okBg, label: "Agreed" },
-            declined: { color: C.muted, bg: C.hairSoft, label: "Declined" },
-            superseded: { color: C.muted, bg: C.hairSoft, label: "Replaced" },
-        }[status] || { color: C.muted, bg: C.hairSoft, label: "Sent" };
-
-        const time = new Date(message.created_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
-        const senderLabel = isMine ? "You proposed" : "They proposed";
-
-        const handleDecision = async (decision) => {
-            setDecidingAction(decision);
-            await onTransportDecision(p.prefId, decision);
-            setDecidingAction(null);
-            if (decision === "declined") onOpenTransportSheet?.();
-        };
-
-        return (
-            <div className={`mb-3 flex ${isMine ? "justify-end" : "justify-start"}`}>
-                <div className="flex w-full max-w-[280px] flex-col gap-2 rounded-2xl border px-3.5 py-3" style={{ borderColor: C.hair, background: C.surface }}>
-                    <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4" style={{ color: C.secondary }} />
-                        <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>Transport preference</p>
-                    </div>
-                    <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{senderLabel}</p>
-                    <p className="text-[13px] font-semibold" style={{ color: C.ink }}>
-                        {label}{p.transportCompany ? ` · ${p.transportCompany}` : ""}
-                    </p>
-                    {p.details && <p className="text-[11.5px]" style={{ color: C.muted }}>{p.details}</p>}
-                    <div className="flex items-center justify-between">
-                        <span className="w-fit rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>{statusStyle.label}</span>
-                        <span className="text-[10px] font-semibold" style={{ color: C.muted }}>{time}</span>
-                    </div>
-
-                    {isLiveProposal && status === "pending" && !isMine && !disabled && (
-                        <div className="flex gap-1.5">
-                            <button onClick={() => handleDecision("confirmed")} disabled={!!decidingAction}
-                                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] font-bold text-white transition-transform active:scale-95 disabled:opacity-60" style={{ background: C.ok }}>
-                                {decidingAction === "confirmed" && <Loader2 className="h-3 w-3 animate-spin" />}
-                                Agree
-                            </button>
-                            <button onClick={() => handleDecision("declined")} disabled={!!decidingAction}
-                                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-black/[0.03] disabled:opacity-60" style={{ borderColor: C.hair, color: C.muted }}>
-                                {decidingAction === "declined" && <Loader2 className="h-3 w-3 animate-spin" />}
-                                Suggest different
-                            </button>
-                        </div>
-                    )}
-
-                    {isLiveProposal && status === "declined" && isMine && !disabled && (
-                        <button onClick={() => onOpenTransportSheet?.()}
-                            className="rounded-lg border px-3 py-1.5 text-[11.5px] font-bold transition-colors hover:bg-black/[0.03]" style={{ borderColor: C.secondary, color: C.secondary }}>
-                            Propose again
-                        </button>
-                    )}
-                </div>
-            </div>
-        );
-    }
-
     const time = new Date(message.created_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
     const isDeleted = !!message.deleted_at;
     const isFailed = message.status === "failed";
@@ -795,14 +618,12 @@ const MessageBubble = memo(function MessageBubble({
     prev.buyerInfo === next.buyerInfo &&
     prev.onDecideCredit === next.onDecideCredit &&
     prev.onRequestApproval === next.onRequestApproval &&
-    prev.transportPref === next.transportPref &&
-    prev.onOpenTransportSheet === next.onOpenTransportSheet &&
     prev.disabled === next.disabled
 ));
 
 // ---- composer -----------------------------------------------------------
 
-function ChatComposer({ onSend, sending, onTypingChange, onOpenTransport, disabled }) {
+function ChatComposer({ onSend, sending, onTypingChange, disabled }) {
     const [value, setValue] = useState("");
     const textareaRef = useRef(null);
 
@@ -836,9 +657,7 @@ function ChatComposer({ onSend, sending, onTypingChange, onOpenTransport, disabl
 
     return (
         <div className="flex items-end gap-2 border-t px-3 py-2.5 sm:px-4" style={{ borderColor: C.hair, background: C.surface }}>
-            <button onClick={onOpenTransport} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/5" title="Propose transport">
-                <Truck className="h-4 w-4" style={{ color: C.muted }} />
-            </button>
+
             <textarea
                 ref={textareaRef}
                 value={value}
@@ -900,10 +719,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         setConfirmingApproval(false);
         setApprovalDialog(null);
     };
-
-    const { pref: transportPref, propose: proposeTransport, decide: decideTransport } = useTransportPreference(meta?.otherUserId, conversationId);
-    const [transportSheetOpen, setTransportSheetOpen] = useState(false);
-    const openTransportSheet = useCallback(() => setTransportSheetOpen(true), []);
 
     const { credit, viewerRole, buyerInfo, request, decide, toggle } = useCredit(meta?.otherUserId);
     const [requestingCredit, setRequestingCredit] = useState(false);
@@ -1072,7 +887,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 credit={credit} viewerRole={viewerRole} otherName={meta?.otherShopName || meta?.title || "them"}
                 onToggleCredit={toggle} // onDecideCredit + requestingCredit-for-seller no longer needed here
                 onRequestCredit={handleRequestCredit} requestingCredit={requestingCredit}
-                transportPref={transportPref} onOpenTransportSheet={openTransportSheet}
                 disabled={isLockedOut}
             />
 
@@ -1139,9 +953,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                                             buyerInfo={buyerInfo}
                                             onDecideCredit={decide}
                                             onRequestApproval={handleRequestApproval}
-                                            transportPref={transportPref}
-                                            onTransportDecision={decideTransport}
-                                            onOpenTransportSheet={openTransportSheet}
                                             disabled={isLockedOut}
                                         />
                                     </div>
@@ -1181,14 +992,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 onSend={send}
                 sending={sending}
                 onTypingChange={notifyTyping}
-                onOpenTransport={openTransportSheet}
                 disabled={isLockedOut}
-            />
-            <TransportProposeSheet
-                open={transportSheetOpen}
-                onClose={() => setTransportSheetOpen(false)}
-                current={transportPref}
-                onSubmit={(mode, company, details) => proposeTransport(mode, company, details)}
             />
             <CreditApprovalDialog
                 open={!!approvalDialog}

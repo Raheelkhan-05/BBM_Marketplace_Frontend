@@ -12,7 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi, fetchBusinessProfile } from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
-import { getOrCreateDirectConversation, fetchTransportPreference } from "../utils/chatApi.js";
+import { TRANSPORT_OPTIONS } from "../../shared/transportOptions.js";
 import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
 import { clearPaymentSession } from "../utils/paymentSession.js";
 import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./seller/listingForm/FormPrimitives.jsx";
@@ -348,17 +348,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const belowMoq = !isSample && Number(quantity) < minQuantity;
 
-    const [transportPref, setTransportPref] = useState(null);
-    const [transportSellerUserId, setTransportSellerUserId] = useState(null);
-    useEffect(() => {
-        if (!seller?.offerId || !access?.canCheckout) return;
-        fetchTransportPreference(token, { submissionId: seller.offerId }).then((res) => {
-            if (res?.success) {
-                setTransportPref(res.preference?.status === "confirmed" ? res.preference : null);
-                setTransportSellerUserId(res.sellerUserId || null);
-            }
-        });
-    }, [seller?.offerId, access, token]);
+    // Seller's serviceable transport channels — pass `seller.transportOptions`
+    // (array of channel keys, from seller_profiles.transport_options) down
+    // to BuyNowModal from wherever this `seller` prop is built. Falls back
+    // to an empty list (picker hides) if not present.
+    const offeredTransportOptions = TRANSPORT_OPTIONS.filter((t) => (seller?.transportOptions || []).includes(t.key));
+    const [preferredTransportMode, setPreferredTransportMode] = useState(null);
+
 
     useEffect(() => {
         if (!userPickedBasis.current) setBasis(defaultBasis);
@@ -686,9 +682,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
             orderType: effectiveOrderType,
             shippingAddressId: addressId,
             notes: notes.trim() || undefined,
-            transportMode: transportPref?.mode,
-            transportCompany: transportPref?.transport_company,
-            transportDetails: transportPref?.details,
+            transportMode: preferredTransportMode || undefined,
         });
         setSubmitting(false);
         if (!res?.success) return setError(res?.message || "Couldn't place the order.");
@@ -709,6 +703,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 newAddress,
                 notes,
                 orderMode: effectiveOrderType,
+                preferredTransportMode,
             });
             setAwaitingPaymentOrderId(res.orderId);
         } else {
@@ -731,6 +726,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
         setNewAddress(session.newAddress || EMPTY_ADDRESS);
         setNotes(session.notes || "");
         setOrderMode(session.orderMode || "standard");
+        setPreferredTransportMode(session.preferredTransportMode || null);
     };
 
     // If this BuyNowModal was mounted fresh (no live state yet, e.g. by
@@ -1054,41 +1050,31 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         )}
                                     </div>
                                 )}
-                                {transportPref ? (
-                                    <div className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: C.hairSoft }}>
-                                        <span className="text-[12px] font-semibold" style={{ color: C.ink }}>
-                                            🚚 {transportPref.mode === "bus" ? "Bus" : "Train"}{transportPref.transport_company ? ` · ${transportPref.transport_company}` : ""}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={async () => {
-                                                if (!transportSellerUserId) return;
-                                                const res = await getOrCreateDirectConversation(token, transportSellerUserId);
-                                                if (res?.success) { onClose(); navigate(`/chat/${res.conversationId}`); }
-                                            }}
-                                            className="text-[11px] font-bold" style={{ color: C.secondary }}
-                                        >
-                                            Change in chat
-                                        </button>
+
+                                {offeredTransportOptions.length > 0 && (
+                                    <div className="flex flex-col gap-1.5">
+                                        <Label>Preferred transport method (optional)</Label>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <button type="button" onClick={() => setPreferredTransportMode(null)}
+                                                className="rounded-full border px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
+                                                style={!preferredTransportMode ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
+                                                No preference
+                                            </button>
+                                            {offeredTransportOptions.map((t) => (
+                                                <button key={t.key} type="button" onClick={() => setPreferredTransportMode(t.key)}
+                                                    className="rounded-full border px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
+                                                    style={preferredTransportMode === t.key ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
+                                                    {t.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                            Leave unselected and the seller will choose for you.
+                                        </p>
                                     </div>
-                                ) : transportSellerUserId ? (
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            const res = await getOrCreateDirectConversation(token, transportSellerUserId);
-                                            if (res?.success) { onClose(); navigate(`/chat/${res.conversationId}`); }
-                                        }}
-                                        className="flex w-full items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 text-left transition-colors duration-150 hover:bg-black/[0.02]"
-                                        style={{ borderColor: `${C.secondary}40` }}
-                                    >
-                                        <span className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: C.muted }}>
-                                            🚚 No transport preference set yet
-                                        </span>
-                                        <span className="shrink-0 text-[11px] font-bold" style={{ color: C.secondary }}>
-                                            Set in chat
-                                        </span>
-                                    </button>
-                                ) : null}
+                                )}
+
+
                                 <div className="flex flex-col gap-1">
                                     <Label>Note to seller (optional)</Label>
                                     <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any special instructions…"

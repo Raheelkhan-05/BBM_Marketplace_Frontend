@@ -20,6 +20,7 @@ import { useNotifications } from "../context/NotificationsContext.jsx";
 import { fetchOrderById, cancelMyOrder } from "../utils/api.js";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
+import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall, basisLabel } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const TIMELINE_STEPS = ["pending_confirmation", "confirmed", "processing", "shipped", "delivered"];
@@ -73,17 +74,6 @@ function saleUnitLabelFromBasis(basis) {
     if (basis === "per_master_pack") return "Master Pack";
     if (basis === "per_pack") return "Pack";
     return null;
-}
-
-// Turns the raw orders.transport_mode value ("bus"/"train"/"other"/…)
-// into a display label. Falls back to a capitalized version of whatever
-// string is there so an unrecognized future mode still shows something
-// sensible instead of nothing.
-function transportModeLabel(mode) {
-    if (!mode) return null;
-    if (mode === "bus") return "Bus";
-    if (mode === "train") return "Train";
-    return mode.charAt(0).toUpperCase() + mode.slice(1);
 }
 
 function deriveOrderTotals(order) {
@@ -210,21 +200,7 @@ export default function OrderDetailPage() {
                 </Card>
             )}
 
-            {order.transport_mode && (
-                <Card title="Transport">
-                    <p className="flex items-center gap-1.5 text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>
-                        <Truck className="h-4 w-4" style={{ color: C.secondary }} />
-                        {transportModeLabel(order.transport_mode)}
-                        {order.transport_company ? ` · ${order.transport_company}` : ""}
-                    </p>
-                    {order.transport_details && (
-                        <p className="mt-1.5 text-[12px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>{order.transport_details}</p>
-                    )}
-                    <p className="mt-1.5 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                        Agreed with the seller in chat before this order was placed.
-                    </p>
-                </Card>
-            )}
+            <TransportInfoCard order={order} />
 
             <Card title="Items">
                 <div className="flex flex-col gap-3">

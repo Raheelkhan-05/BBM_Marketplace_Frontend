@@ -320,6 +320,7 @@ function toBuyerSellerPayload(s) {
         warranty: s.warranty,
         deliveryTimeline: s.delivery_timeline,
         freightIncluded: s.freight_included,
+        transportOptions: s.seller_profiles?.transport_options || [],
         priceBasis: s.price_basis,
         dispatchOrigin: [s.dispatch_district, s.dispatch_state].filter(Boolean).join(", ") || null,
         dispatchPincode: s.dispatch_pincode,

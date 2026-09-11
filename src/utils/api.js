@@ -158,6 +158,23 @@ export async function submitSellerOnboarding(token, payload) {
   return res.json();
 }
 
+export async function fetchSellerOrderTransportOptions(token) {
+  const res = await fetch(`${API_BASE}/seller/orders/transport-options`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+
+export async function confirmSellerOrderWithTransport(token, orderId, formData) {
+  // NOTE: no "Content-Type" header — the browser sets the multipart
+  // boundary itself when the body is a FormData instance.
+  const res = await fetch(`${API_BASE}/seller/orders/${orderId}/confirm`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  return res.json();
+}
 
 export async function fetchSellerBankDetails(token) {
   const res = await fetch(`${API_BASE}/seller/bank-details`, { headers: { Authorization: `Bearer ${token}` } });
