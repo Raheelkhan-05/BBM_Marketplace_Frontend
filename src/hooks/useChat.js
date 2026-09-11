@@ -602,13 +602,18 @@ export function useCredit(otherUserId) {
     const { socket, connected } = useSocket();
     const [credit, setCredit] = useState(null);
     const [viewerRole, setViewerRole] = useState(null);
+    const [buyerInfo, setBuyerInfo] = useState(null); // NEW
     const [loading, setLoading] = useState(true);
 
     const load = useCallback(() => {
         if (!otherUserId || !token) return;
         setLoading(true);
         fetchCreditStatus(token, { otherUserId }).then((res) => {
-            if (res?.success) { setCredit(res.credit); setViewerRole(res.viewerRole); }
+            if (res?.success) {
+                setCredit(res.credit);
+                setViewerRole(res.viewerRole);
+                setBuyerInfo(res.buyerInfo || null); // NEW
+            }
             setLoading(false);
         });
     }, [otherUserId, token]);
@@ -652,7 +657,7 @@ export function useCredit(otherUserId) {
         return res;
     }, [token, otherUserId, load]);
 
-    return { credit, viewerRole, loading, request, decide, toggle, reload: load };
+    return { credit, viewerRole, buyerInfo, loading, request, decide, toggle, reload: load };
 }
 
 export function useTransportPreference(otherUserId, conversationId) {

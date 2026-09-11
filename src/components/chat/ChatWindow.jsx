@@ -63,6 +63,26 @@ function modeMeta(mode) {
     return TRANSPORT_MODES[mode] || TRANSPORT_MODES.other;
 }
 
+function PendingCreditBanner({ buyerLabel, onClick }) {
+    return (
+        <button
+            onClick={onClick}
+            className="flex w-full items-center gap-2 border-b px-3.5 py-2 text-left transition-colors hover:brightness-95"
+            style={{ borderColor: C.hair, background: C.warnBg }}
+        >
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full" style={{ background: "#fff" }}>
+                <CreditCard className="h-3.5 w-3.5" style={{ color: C.warn }} />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[11.5px] font-bold tracking-wide" style={{ color: C.warn }}>
+                Credit request from {buyerLabel} needs your decision
+            </span>
+            <span className="shrink-0 text-[10.5px] font-bold tracking-wide underline underline-offset-2" style={{ color: C.warn }}>
+                Review
+            </span>
+        </button>
+    );
+}
+
 function dayLabel(iso) {
     const d = new Date(iso), now = new Date();
     const diffDays = Math.round((now.setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 86400000);
@@ -105,7 +125,7 @@ function TypingDots({ color = C.secondary, size = "h-1.5 w-1.5" }) {
 }
 
 function StatusStrip({
-    credit, viewerRole, otherName,
+    credit, viewerRole, buyerInfo, otherName,
     onRequestCredit, onToggleCredit, onDecideCredit, requestingCredit,
     transportPref, onOpenTransportSheet,
     disabled, // NEW — deleted-seller lockout also freezes credit/transport actions
@@ -158,29 +178,14 @@ function StatusStrip({
                 </span>
             );
         }
-    } else if (viewerRole === "seller" && credit?.status === "pending") {
-        creditCell = (
-            <div className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1" style={{ background: C.warnBg }} title={`${otherName} requested to buy on credit`}>
-                <CreditCard className="h-3 w-3 shrink-0" style={{ color: C.warn }} />
-                <span className="text-[11px] font-bold" style={{ color: C.warn }}>Credit request</span>
-                <button onClick={() => handleDecideCredit(credit.id, "approved")} disabled={!!decidingCredit || disabled}
-                    className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold text-white transition-transform active:scale-95 disabled:opacity-60" style={{ background: C.ok }}>
-                    {decidingCredit === "approved" && <Loader2 className="h-2.5 w-2.5 animate-spin" />} Approve
-                </button>
-                <button onClick={() => handleDecideCredit(credit.id, "rejected")} disabled={!!decidingCredit || disabled}
-                    className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-bold transition-colors hover:bg-black/[0.03] disabled:opacity-60" style={{ borderColor: C.hair, color: C.muted, background: "#fff" }}>
-                    {decidingCredit === "rejected" && <Loader2 className="h-2.5 w-2.5 animate-spin" />} Decline
-                </button>
-            </div>
-        );
     } else if (viewerRole === "seller" && credit && (credit.status === "approved" || credit.status === "revoked")) {
         const on = credit.status === "approved";
         creditCell = (
             <button onClick={() => handleToggleCredit(!on)} disabled={togglingCredit || disabled}
-                className="flex items-center gap-1.5 rounded-full py-1 pl-2.5 pr-1.5 text-[11px] font-bold transition-colors disabled:opacity-60"
-                style={{ background: on ? C.okBg : C.hairSoft, color: on ? C.ok : C.muted }}
+                className="flex items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5 text-[11px] font-bold tracking-wide transition-colors disabled:opacity-60"
+                style={{ background: on ? C.okBg : C.hairSoft, color: on ? C.ok : C.muted, border: `1px solid ${on ? "transparent" : C.hair}` }}
                 title={on ? `Credit enabled for ${otherName}` : `Credit off for ${otherName}`}>
-                <CreditCard className="h-3 w-3" /> Credit: {on ? "On" : "Off"}
+                <CreditCard className="h-3 w-3" /> Credit {on ? "enabled" : "off"}
                 {togglingCredit ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                 ) : (
@@ -226,8 +231,27 @@ function ChatHeader({ meta, otherPresence, otherTyping, onBack }) {
                 <ArrowLeft className="h-4 w-4" style={{ color: C.ink }} />
             </button>
             <div className="relative shrink-0">
-                <span className="flex h-10 w-10 items-center justify-center rounded-full text-[12.5px] font-extrabold text-white shadow-sm"
-                    style={{ background: isDeleted ? "#9AA3A8" : "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}>
+                {meta?.otherShopLogo ? (
+                    <img
+                        src={meta.otherShopLogo}
+                        alt={meta.otherShopName || "Shop"}
+                        className="h-10 w-10 rounded-full object-cover shadow-sm"
+                        style={{ border: `1px solid ${C.hair}`, filter: isDeleted ? "grayscale(1)" : "none", opacity: isDeleted ? 0.6 : 1 }}
+                        onError={(e) => {
+                            // logo URL broken/expired — fall back to the initials
+                            // avatar (its sibling span) instead of a broken-image icon
+                            e.currentTarget.style.display = "none";
+                            e.currentTarget.nextSibling.style.display = "flex";
+                        }}
+                    />
+                ) : null}
+                <span
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-[12.5px] font-extrabold tracking-wide text-white shadow-sm"
+                    style={{
+                        display: meta?.otherShopLogo ? "none" : "flex", // hidden by default when a logo exists; onError above reveals it
+                        background: isDeleted ? "#9AA3A8" : "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)",
+                    }}
+                >
                     {meta ? initials(meta.otherShopName) : ""}
                 </span>
                 {otherPresence?.online && !isDeleted && (
@@ -307,6 +331,65 @@ function DeletedSellerNotice({ shopName }) {
                 {shopName || "This seller"}'s account has been deleted. You can no longer send messages here — this thread is kept for your records only.
             </p>
         </div>
+    );
+}
+
+function CreditApprovalDialog({ open, onClose, onConfirm, buyerLabel, confirming }) {
+    return (
+        <AnimatePresence>
+            {open && (
+                <motion.div
+                    className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 sm:items-center"
+                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
+                    onClick={onClose}
+                >
+                    <motion.div
+                        className="w-full rounded-t-2xl bg-white p-5 sm:max-w-[420px] sm:rounded-2xl"
+                        initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.2, ease: EASE }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="flex items-start gap-3">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: C.okBg, color: C.ok }}>
+                                <CreditCard className="h-5 w-5" />
+                            </span>
+                            <div className="min-w-0 flex-1 pt-0.5">
+                                <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>Approve credit for {buyerLabel}?</p>
+                                <p className="mt-0.5 text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                                    They'll be able to place orders with you on credit terms you arrange directly.
+                                </p>
+                            </div>
+                            <button onClick={onClose} className="shrink-0 rounded-full p-1 transition-colors hover:bg-black/5">
+                                <X className="h-4 w-4" style={{ color: C.muted }} />
+                            </button>
+                        </div>
+
+                        <div className="mt-4 rounded-xl px-3.5 py-3" style={{ background: C.canvas, border: `1px solid ${C.hair}` }}>
+                            <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Before you approve</p>
+                            <p className="mt-1.5 text-[12px] font-medium leading-relaxed tracking-wide" style={{ color: C.ink }}>
+                                Credit terms, repayment, and any dispute arising from a credit sale are strictly between you and the buyer.
+                                BBM Marketplace does not process, hold, or guarantee any payment made under a credit arrangement, and is not
+                                a party to it. BBM Marketplace shall not be liable for any loss, non-payment, delay, or dispute connected with
+                                credit extended under this feature. Approving this request is your independent business decision.
+                            </p>
+                        </div>
+
+                        <div className="mt-4 flex gap-2.5">
+                            <button onClick={onClose} disabled={confirming}
+                                className="flex flex-1 items-center justify-center rounded-xl border py-2.5 text-[12.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] disabled:opacity-60"
+                                style={{ borderColor: C.hair, color: C.muted }}>
+                                Cancel
+                            </button>
+                            <button onClick={onConfirm} disabled={confirming}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97] disabled:opacity-60"
+                                style={{ background: C.ok }}>
+                                {confirming && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                I understand, approve
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 }
 
@@ -404,51 +487,177 @@ function TickIcon({ status, onRetry }) {
     return <Check className="h-3.5 w-3.5" style={{ color: "rgba(255,255,255,0.7)" }} />;
 }
 
-const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry, credit, transportPref, onTransportDecision, onOpenTransportSheet, disabled }) {
+const MessageBubble = memo(function MessageBubble({
+    message, isMine, groupPos, onDelete, onRetry,
+    credit, buyerInfo, onDecideCredit, onRequestApproval,
+    transportPref, onTransportDecision, onOpenTransportSheet, disabled,
+}) {
     const [menuOpen, setMenuOpen] = useState(false);
-    const [decidingAction, setDecidingAction] = useState(null); // 'confirmed' | 'declined' | null
+    const [decidingAction, setDecidingAction] = useState(null);
+    const [decidingCredit, setDecidingCredit] = useState(null); // NEW — 'approved' | 'rejected' | null, local to this bubble
     const menuRef = useRef(null);
-    useEffect(() => {
-        if (!menuOpen) return;
-        const close = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
-        document.addEventListener("mousedown", close);
-        return () => document.removeEventListener("mousedown", close);
-    }, [menuOpen]);
+    // ...existing menu-close effect unchanged...
 
     if (message.message_type === "credit_request") {
-        const creditId = message.metadata?.creditRequestId;
-        const isCurrent = credit?.id === creditId;
-        const status = isCurrent ? credit.status : null;
+        const isLiveRequest = credit?.request_message_id === message.id;
+        const frozenStatus = message.metadata?.finalStatus;
+        const status = frozenStatus || (isLiveRequest ? credit?.status : null);
+
         const statusStyle = {
             pending: { color: C.warn, bg: C.warnBg, label: "Pending" },
             approved: { color: C.ok, bg: C.okBg, label: "Approved" },
-            rejected: { color: C.danger, bg: C.dangerBg, label: "Declined" },
-            revoked: { color: C.muted, bg: C.hairSoft, label: "Turned off" },
-        }[status] || { color: C.muted, bg: C.hairSoft, label: "Sent" };
+            rejected: { color: C.danger, bg: C.dangerBg, label: "Declined by seller" },
+            revoked: { color: C.muted, bg: C.hairSoft, label: "Turned off by seller" },
+        }[status] || { color: C.muted, bg: C.hairSoft, label: "Requested" };
 
         const time = new Date(message.created_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
-        const senderLabel = isMine ? "You requested" : "They requested";
+
+        // Superseded by a newer cycle — collapses to a slim reference line,
+        // never competes visually with whatever is actually live.
+        if (!isLiveRequest) {
+            return (
+                <div className={`mb-2 flex ${isMine ? "justify-end" : "justify-start"}`}>
+                    <div className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-wide" style={{ background: C.hairSoft, color: C.muted }}>
+                        <CreditCard className="h-3 w-3 shrink-0" style={{ color: statusStyle.color, opacity: 0.7 }} />
+                        <span>Credit request</span>
+                        <span aria-hidden style={{ opacity: 0.35 }}>•</span>
+                        <span style={{ color: statusStyle.color, fontWeight: 700 }}>{statusStyle.label}</span>
+                        <span aria-hidden style={{ opacity: 0.35 }}>•</span>
+                        <span style={{ fontVariantNumeric: "tabular-nums" }}>{time}</span>
+                    </div>
+                </div>
+            );
+        }
+
+        const buyerLabel = buyerInfo?.businessName || buyerInfo?.name;
+        const needsDecision = !isMine && status === "pending" && !disabled;
+
+        const handleDecide = async (decision) => {
+            setDecidingCredit(decision);
+            await onDecideCredit(credit.id, decision);
+            setDecidingCredit(null);
+        };
+
+        // handleDecide for "rejected" stays direct (no terms to accept for declining);
+        // "approved" now opens the confirmation dialog via a prop instead of deciding inline.
+        const handleDecline = async () => {
+            setDecidingCredit("rejected");
+            await onDecideCredit(credit.id, "rejected");
+            setDecidingCredit(null);
+        };
 
         return (
             <div className={`mb-3 flex ${isMine ? "justify-end" : "justify-start"}`}>
-                <div className="flex w-full max-w-[260px] items-center gap-2.5 rounded-2xl border px-3.5 py-3" style={{ borderColor: C.hair, background: C.surface }}>
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}14`, color: C.secondary }}>
-                        <CreditCard className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                        <p className="text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{senderLabel}</p>
-                        <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>Credit request</p>
-                        <div className="mt-0.5 flex items-center justify-between gap-2">
-                            <span className="inline-block rounded-full px-2 py-0.5 text-[10.5px] font-bold" style={{ background: statusStyle.bg, color: statusStyle.color }}>
-                                {statusStyle.label}
-                            </span>
-                            <span className="text-[10px] font-semibold" style={{ color: C.muted }}>{time}</span>
+                <div
+                    className="w-full max-w-[320px] overflow-hidden rounded-2xl border"
+                    style={{ borderColor: needsDecision ? `${C.warn}35` : C.hair, background: C.surface, boxShadow: "0 1px 3px rgba(11,17,22,0.06)" }}
+                >
+                    {/* header row */}
+                    <div className="flex items-center gap-2.5 px-3.5 pb-2.5 pt-3.5">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}12`, color: C.secondary }}>
+                            <CreditCard className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-[12.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>Credit request</p>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: C.muted }}>{isMine ? "You requested" : "Requested to you"}</p>
                         </div>
+                        <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ background: statusStyle.bg, color: statusStyle.color }}>
+                            {statusStyle.label}
+                        </span>
+                    </div>
+
+                    {/* buyer identity — only shown to the seller, only while this card is the one that matters */}
+                    {!isMine && buyerLabel && (
+                        <div className="mx-3.5 mb-3 rounded-xl px-3 py-2.5" style={{ background: C.canvas, border: `1px solid ${C.hair}` }}>
+                            <div className="flex items-center gap-2.5">
+                                <span className="relative h-8 w-8 shrink-0">
+                                    {buyerInfo?.logoUrl ? (
+                                        <img
+                                            src={buyerInfo.logoUrl}
+                                            alt={buyerLabel || "Buyer"}
+                                            className="h-8 w-8 rounded-full object-cover"
+                                            style={{ border: `1px solid ${C.hair}` }}
+                                            onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }}
+                                        />
+                                    ) : null}
+                                    <span
+                                        className="flex h-8 w-8 items-center justify-center rounded-full text-[10.5px] font-extrabold tracking-wide text-white"
+                                        style={{ display: buyerInfo?.logoUrl ? "none" : "flex", background: "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}
+                                    >
+                                        {initials(buyerLabel)}
+                                    </span>
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-[12px] font-bold tracking-wide" style={{ color: C.ink }}>{buyerLabel}</p>
+                                    {buyerInfo?.name && buyerInfo.businessName && (
+                                        <p className="truncate text-[10.5px] font-medium tracking-wider" style={{ color: C.muted }}>{buyerInfo.name}</p>
+                                    )}
+                                </div>
+                            </div>
+                            {(buyerInfo?.phone || buyerInfo?.email || buyerInfo?.location || buyerInfo?.gstin || buyerInfo?.memberSince) && (
+                                <div className="mt-2.5 grid grid-cols-1 gap-1.5 border-t pt-2.5" style={{ borderColor: C.hair }}>
+                                    {buyerInfo.phone && (
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>Phone</span>
+                                            <span className="text-[11px] font-semibold tracking-wide" style={{ color: C.ink, fontVariantNumeric: "tabular-nums" }}>{buyerInfo.phone}</span>
+                                        </div>
+                                    )}
+                                    {buyerInfo.email && (
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>Email</span>
+                                            <span className="truncate text-[11px] font-semibold tracking-wide" style={{ color: C.ink }}>{buyerInfo.email}</span>
+                                        </div>
+                                    )}
+                                    {buyerInfo.location && (
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>Location</span>
+                                            <span className="truncate text-[11px] font-semibold tracking-wide" style={{ color: C.ink }}>{buyerInfo.location}</span>
+                                        </div>
+                                    )}
+                                    {buyerInfo.gstin && (
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>GSTIN</span>
+                                            <span className="text-[11px] font-semibold tracking-wide" style={{ color: C.ink, fontVariantNumeric: "tabular-nums" }}>{buyerInfo.gstin}</span>
+                                        </div>
+                                    )}
+                                    {buyerInfo.memberSince && (
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>On BBM since</span>
+                                            <span className="text-[11px] font-semibold tracking-wide" style={{ color: C.ink }}>
+                                                {new Date(buyerInfo.memberSince).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* decision — lives here, and only here, for a pending incoming request */}
+                    {needsDecision && (
+                        <div className="flex gap-2 px-3.5 pb-3.5">
+                            <button onClick={() => onRequestApproval(credit.id, buyerLabel || "this buyer")} disabled={!!decidingCredit}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97] disabled:opacity-60"
+                                style={{ background: C.ok }}>
+                                <Check className="h-3.5 w-3.5" /> Approve
+                            </button>
+                            <button onClick={handleDecline} disabled={!!decidingCredit}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] disabled:opacity-60"
+                                style={{ borderColor: C.hair, color: C.muted }}>
+                                {decidingCredit === "rejected" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                Decline
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-end px-3.5 pb-3">
+                        <span className="text-[10px] font-semibold" style={{ color: C.muted, fontVariantNumeric: "tabular-nums" }}>{time}</span>
                     </div>
                 </div>
             </div>
         );
     }
+
 
     if (message.message_type === "transport_proposal") {
         const p = message.metadata;
@@ -583,6 +792,9 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
     prev.isMine === next.isMine &&
     prev.groupPos === next.groupPos &&
     prev.credit === next.credit &&
+    prev.buyerInfo === next.buyerInfo &&
+    prev.onDecideCredit === next.onDecideCredit &&
+    prev.onRequestApproval === next.onRequestApproval &&
     prev.transportPref === next.transportPref &&
     prev.onOpenTransportSheet === next.onOpenTransportSheet &&
     prev.disabled === next.disabled
@@ -674,11 +886,26 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     const presence = usePresence(meta?.otherUserId ? [meta.otherUserId] : []);
     const otherPresence = meta?.otherUserId ? presence[meta.otherUserId] : null;
 
+    const [approvalDialog, setApprovalDialog] = useState(null); // { creditId, buyerLabel } | null
+    const [confirmingApproval, setConfirmingApproval] = useState(false);
+
+    const handleRequestApproval = useCallback((creditId, buyerLabel) => {
+        setApprovalDialog({ creditId, buyerLabel });
+    }, []);
+
+    const handleConfirmApproval = async () => {
+        if (!approvalDialog) return;
+        setConfirmingApproval(true);
+        await decide(approvalDialog.creditId, "approved");
+        setConfirmingApproval(false);
+        setApprovalDialog(null);
+    };
+
     const { pref: transportPref, propose: proposeTransport, decide: decideTransport } = useTransportPreference(meta?.otherUserId, conversationId);
     const [transportSheetOpen, setTransportSheetOpen] = useState(false);
     const openTransportSheet = useCallback(() => setTransportSheetOpen(true), []);
 
-    const { credit, viewerRole, request, decide, toggle } = useCredit(meta?.otherUserId);
+    const { credit, viewerRole, buyerInfo, request, decide, toggle } = useCredit(meta?.otherUserId);
     const [requestingCredit, setRequestingCredit] = useState(false);
 
     const handleRequestCredit = async () => {
@@ -708,6 +935,21 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     const lastMessageIdRef = useRef(null);
     const isPrependingRef = useRef(false);
     const prevScrollHeightRef = useRef(0);
+
+    const messageRefs = useRef(new Map()); // message.id -> DOM node
+    const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+    const highlightTimeoutRef = useRef(null);
+
+    const scrollToMessage = useCallback((messageId) => {
+        const el = messageRefs.current.get(messageId);
+        if (!el) return;
+        el.scrollIntoView({ behavior: prefersReducedMotion ? "auto" : "smooth", block: "center" });
+        clearTimeout(highlightTimeoutRef.current);
+        setHighlightedMessageId(messageId);
+        highlightTimeoutRef.current = setTimeout(() => setHighlightedMessageId(null), 2200);
+    }, []);
+
+    useEffect(() => () => clearTimeout(highlightTimeoutRef.current), []);
 
     const jumpToBottom = useCallback((smooth = false) => {
         bottomRef.current?.scrollIntoView(smooth && !prefersReducedMotion ? { behavior: "smooth", block: "end" } : { block: "end" });
@@ -818,9 +1060,18 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
             )}
 
             <ChatHeader meta={meta} otherPresence={otherPresence} otherTyping={otherTyping} onBack={onBack} />
+
+            {viewerRole === "seller" && credit?.status === "pending" && credit?.request_message_id && (
+                <PendingCreditBanner
+                    buyerLabel={buyerInfo?.businessName || buyerInfo?.name || "a buyer"}
+                    onClick={() => scrollToMessage(credit.request_message_id)}
+                />
+            )}
+
             <StatusStrip
                 credit={credit} viewerRole={viewerRole} otherName={meta?.otherShopName || meta?.title || "them"}
-                onRequestCredit={handleRequestCredit} onToggleCredit={toggle} onDecideCredit={decide} requestingCredit={requestingCredit}
+                onToggleCredit={toggle} // onDecideCredit + requestingCredit-for-seller no longer needed here
+                onRequestCredit={handleRequestCredit} requestingCredit={requestingCredit}
                 transportPref={transportPref} onOpenTransportSheet={openTransportSheet}
                 disabled={isLockedOut}
             />
@@ -862,7 +1113,15 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                                 const groupPos = withinPrevGroup && withinNextGroup ? "middle" : withinPrevGroup ? "last" : withinNextGroup ? "first" : "only";
 
                                 return (
-                                    <div key={rowKey(m)}>
+                                    <div
+                                        key={rowKey(m)}
+                                        ref={(el) => {
+                                            if (el) messageRefs.current.set(m.id, el);
+                                            else messageRefs.current.delete(m.id);
+                                        }}
+                                        className="rounded-2xl transition-colors duration-500"
+                                        style={highlightedMessageId === m.id ? { background: `${C.secondary}0f`, boxShadow: `0 0 0 2px ${C.secondary}30` } : undefined}
+                                    >
                                         {showDay && (
                                             <div className="my-3 flex items-center justify-center">
                                                 <span className="rounded-full px-3 py-1 text-[10.5px] font-bold tracking-wide" style={{ background: "rgba(11,17,22,0.05)", color: C.muted }}>
@@ -877,6 +1136,9 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                                             onDelete={deleteMessage}
                                             onRetry={retry}
                                             credit={credit}
+                                            buyerInfo={buyerInfo}
+                                            onDecideCredit={decide}
+                                            onRequestApproval={handleRequestApproval}
                                             transportPref={transportPref}
                                             onTransportDecision={decideTransport}
                                             onOpenTransportSheet={openTransportSheet}
@@ -927,6 +1189,13 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 onClose={() => setTransportSheetOpen(false)}
                 current={transportPref}
                 onSubmit={(mode, company, details) => proposeTransport(mode, company, details)}
+            />
+            <CreditApprovalDialog
+                open={!!approvalDialog}
+                onClose={() => setApprovalDialog(null)}
+                onConfirm={handleConfirmApproval}
+                buyerLabel={approvalDialog?.buyerLabel}
+                confirming={confirmingApproval}
             />
         </div>
     );
