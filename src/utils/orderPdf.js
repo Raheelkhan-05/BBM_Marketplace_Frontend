@@ -281,6 +281,8 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
     const buyerShopName = order.buyer_business_name || order.buyer_contact_name || "—";
     const buyerGstin = order.buyer_gstin || "—";
 
+    const isDelivered = order.status === "delivered";
+
     const sellerState = vendorInfo?.state || null;
     const buyerState = addr.state || null;
     const isIntraState = !!(sellerState && buyerState && sellerState.trim().toLowerCase() === buyerState.trim().toLowerCase());
@@ -334,7 +336,7 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
         ],
         [
             { label: "Transport Mode", value: transportText(order) },
-            { label: "Estimated Delivery", value: deliveryDateLabel(order, firstItem) },
+            { label: isDelivered ? "Delivered On" : "Estimated Delivery", value: deliveryDateLabel(order, firstItem) },
             { label: "", value: "" },
         ],
     ];

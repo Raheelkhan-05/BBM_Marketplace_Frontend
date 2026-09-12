@@ -73,6 +73,8 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
     const isSellerView = variant === "seller";
     const isSample = order.order_type === "sample";
 
+    const isDelivered = order.status === "delivered";
+
     const vendor = order.seller || vendorOverride || null;
     const vendorName = vendor?.display_name || "—";
     const vendorLocation = [vendor?.city, vendor?.state].filter(Boolean).join(", ");
@@ -125,7 +127,10 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
                 <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b pb-4 sm:grid-cols-4" style={{ borderColor: C.hair }}>
                     <MetaField label="Order No." value={order.order_number} mono />
                     <MetaField label="Order Date" value={fmtDate(order.created_at) || "—"} />
-                    <MetaField label="Estimated Delivery" value={deliveryDateLabel(order, firstItem)} />
+                    <MetaField
+                        label={isDelivered ? "Delivered On" : "Estimated Delivery"}
+                        value={deliveryDateLabel(order, firstItem)}
+                    />
                     <MetaField label="Transport" value={transport.label || "To be decided"} />
                 </div>
 
