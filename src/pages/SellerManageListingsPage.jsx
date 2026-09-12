@@ -1017,107 +1017,118 @@ function ListingRow({
             : "Stock not set";
 
     return (
+        // Mount-only entrance fade — animates opacity/y exactly once when
+        // this row first appears, then never changes again. Kept
+        // completely separate from the highlight pulse below so the two
+        // never share a transition (that's what was making the whole row
+        // look like it was fading in/out along with the highlight).
         <motion.div
             initial={{ opacity: 0, y: 6 }}
-            animate={{
-                opacity: 1, y: 0,
-                backgroundColor: isHighlighted ? ["#FDF3D8", "#FDF3D8", "#ffffff"] : undefined,
-            }}
-            transition={isHighlighted
-                ? { duration: 2.5, times: [0, 0.3, 1], delay: Math.min(idx * 0.02, 0.2) }
-                : { duration: 0.28, delay: Math.min(idx * 0.02, 0.2), ease: EASE }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, delay: Math.min(idx * 0.02, 0.2), ease: EASE }}
         >
-            <div
-                onClick={() => { if (!isExpanded) onOpenDetail(it); }}
-                className="group relative flex items-center gap-3 px-3 py-3.5 sm:px-4 transition-opacity duration-200"
-                style={{ opacity: isActive ? 1 : 0.55, cursor: isExpanded ? "default" : "pointer" }}
+            {/* Highlight pulse — animates ONLY backgroundColor, retriggered
+                independently whenever isHighlighted flips. Snaps on fast
+                (0.2s) and fades out slowly (1.8s) for a proper "flash then
+                fade" instead of one flat blend. Uses the same hue at
+                alpha 0 rather than a hardcoded white, so it fades to
+                transparent instead of stomping the row's real background. */}
+            <motion.div
+                animate={{ backgroundColor: isHighlighted ? "rgba(253,243,216,1)" : "rgba(253,243,216,0)" }}
+                transition={{ duration: isHighlighted ? 0.2 : 1.8, ease: "easeOut" }}
             >
-                <span
-                    aria-hidden
-                    className="absolute inset-y-2.5 left-0 w-[3px] rounded-full"
-                    style={{ background: statusColor, opacity: !isActive || sState === "low" || sState === "out" ? 1 : 0 }}
-                />
-
-                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.hairSoft }}
-                    onClick={(e) => { e.stopPropagation(); if (gallery.length) onOpenImage({ images: gallery, index: 0, alt: name }); }}
+                <div
+                    onClick={() => { if (!isExpanded) onOpenDetail(it); }}
+                    className="group relative flex items-center gap-3 px-3 py-3.5 sm:px-4 transition-opacity duration-200"
+                    style={{ opacity: isActive ? 1 : 0.55, cursor: isExpanded ? "default" : "pointer" }}
                 >
-                    {image
-                        ? <img src={resizedImageUrl(image, { width: 75 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                        : <ImageIcon className="m-auto h-5 w-5" style={{ color: C.hair }} />}
-                    {gallery.length > 1 && (
-                        <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 px-1 text-[8.5px] font-bold text-white">+{gallery.length - 1}</span>
-                    )}
-                </div>
+                    <span
+                        aria-hidden
+                        className="absolute inset-y-2.5 left-0 w-[3px] rounded-full"
+                        style={{ background: statusColor, opacity: !isActive || sState === "low" || sState === "out" ? 1 : 0 }}
+                    />
 
-                <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                        <p className="truncate text-[14px] font-bold leading-tight" style={{ color: C.ink }}>{name}</p>
-                        {!isActive && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wide" style={{ background: C.hairSoft, color: C.muted }}>Deactivated</span>}
-                        {isActive && it.review_status === "pending_review" && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold" style={{ background: "#fef3c7", color: "#b45309" }}>Pending</span>}
-                        {isActive && it.review_status === "rejected" && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold" style={{ background: "#fee2e2", color: "#c71f11" }}>Rejected</span>}
-                    </div>
-                    <p className="mt-0.5 truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
-                        {brandName ? `${brandName} · ` : ""}
-                        MOQ {it.moq} {pluralizeUnit(it.moq, saleUnit)}
-                        {it.lead_time != null && ` · Lead ${it.lead_time}d`}
-                    </p>
-                    {it.rejection_reason && it.review_status === "rejected" && (
-                        <p className="mt-1 truncate text-[11px] font-semibold" style={{ color: "#c71f11" }}>Rejected: {it.rejection_reason}</p>
-                    )}
-                </div>
-
-                {!isExpanded && (
-                    <div className="hidden shrink-0 flex-col items-end pl-2 text-right sm:flex">
-                        <p className="leading-none">
-                            <span className="text-[15.5px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>₹{formatMoney(it.price)}</span>
-                            <span className="ml-0.5 text-[10.5px] font-semibold" style={{ color: C.muted }}>/{saleUnit}</span>
-                        </p>
-                        <p className="mt-1 whitespace-nowrap text-[10.5px] font-bold tabular-nums" style={{ color: statusColor }}>
-                            {isActive ? stockLabel : "Hidden from buyers"}
-                        </p>
-                    </div>
-                )}
-
-                {!isExpanded && it.review_status !== "pending_review" && (
-                    <div onClick={(e) => e.stopPropagation()} className="flex shrink-0 items-center gap-1 pl-1">
-                        <button onClick={() => onQuickEdit(it.id)} aria-label="Quick update"
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]" style={{ color: C.ink }}>
-                            <Pencil className="h-4 w-4" />
-                        </button>
-                        {isActive ? (
-                            <button onClick={() => onAskDeactivate(it.id)} aria-label="Deactivate listing"
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50" style={{ color: "#c71f11" }}>
-                                <PowerOff className="h-4 w-4" />
-                            </button>
-                        ) : (
-                            <button onClick={() => onActivate(it.id)} disabled={togglingId === it.id} aria-label="Activate listing"
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05] disabled:opacity-50" style={{ color: C.secondary }}>
-                                {togglingId === it.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
-                            </button>
+                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.hairSoft }}
+                        onClick={(e) => { e.stopPropagation(); if (gallery.length) onOpenImage({ images: gallery, index: 0, alt: name }); }}
+                    >
+                        {image
+                            ? <img src={resizedImageUrl(image, { width: 75 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                            : <ImageIcon className="m-auto h-5 w-5" style={{ color: C.hair }} />}
+                        {gallery.length > 1 && (
+                            <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 px-1 text-[8.5px] font-bold text-white">+{gallery.length - 1}</span>
                         )}
-                        <ChevronRight className="ml-0.5 h-4 w-4 shrink-0" style={{ color: C.hair }} />
                     </div>
-                )}
-            </div>
 
-            <AnimatePresence mode="wait">
-                {isQuickEditing && (
-                    <motion.div key="quick" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
-                        <QuickUpdatePanel
-                            item={it}
-                            onCancel={onCancelQuickEdit}
-                            onSave={(payload, optimisticPatch) => onQuickSave(it.id, payload, optimisticPatch)}
-                        />
-                    </motion.div>
-                )}
-                {isConfirmingDeactivate && (
-                    <motion.div key="confirm" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
-                        <DeactivateConfirm busy={togglingId === it.id} onConfirm={() => onConfirmDeactivate(it.id)} onCancel={onCancelDeactivate} />
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                            <p className="truncate text-[14px] font-bold leading-tight" style={{ color: C.ink }}>{name}</p>
+                            {!isActive && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wide" style={{ background: C.hairSoft, color: C.muted }}>Deactivated</span>}
+                            {isActive && it.review_status === "pending_review" && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold" style={{ background: "#fef3c7", color: "#b45309" }}>Pending</span>}
+                            {isActive && it.review_status === "rejected" && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold" style={{ background: "#fee2e2", color: "#c71f11" }}>Rejected</span>}
+                        </div>
+                        <p className="mt-0.5 truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
+                            {brandName ? `${brandName} · ` : ""}
+                            MOQ {it.moq} {pluralizeUnit(it.moq, saleUnit)}
+                            {it.lead_time != null && ` · Lead ${it.lead_time}d`}
+                        </p>
+                        {it.rejection_reason && it.review_status === "rejected" && (
+                            <p className="mt-1 truncate text-[11px] font-semibold" style={{ color: "#c71f11" }}>Rejected: {it.rejection_reason}</p>
+                        )}
+                    </div>
 
-            <div className="h-px w-full" style={{ background: C.hairSoft }} />
+                    {!isExpanded && (
+                        <div className="hidden shrink-0 flex-col items-end pl-2 text-right sm:flex">
+                            <p className="leading-none">
+                                <span className="text-[15.5px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>₹{formatMoney(it.price)}</span>
+                                <span className="ml-0.5 text-[10.5px] font-semibold" style={{ color: C.muted }}>/{saleUnit}</span>
+                            </p>
+                            <p className="mt-1 whitespace-nowrap text-[10.5px] font-bold tabular-nums" style={{ color: statusColor }}>
+                                {isActive ? stockLabel : "Hidden from buyers"}
+                            </p>
+                        </div>
+                    )}
+
+                    {!isExpanded && it.review_status !== "pending_review" && (
+                        <div onClick={(e) => e.stopPropagation()} className="flex shrink-0 items-center gap-1 pl-1">
+                            <button onClick={() => onQuickEdit(it.id)} aria-label="Quick update"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]" style={{ color: C.ink }}>
+                                <Pencil className="h-4 w-4" />
+                            </button>
+                            {isActive ? (
+                                <button onClick={() => onAskDeactivate(it.id)} aria-label="Deactivate listing"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50" style={{ color: "#c71f11" }}>
+                                    <PowerOff className="h-4 w-4" />
+                                </button>
+                            ) : (
+                                <button onClick={() => onActivate(it.id)} disabled={togglingId === it.id} aria-label="Activate listing"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05] disabled:opacity-50" style={{ color: C.secondary }}>
+                                    {togglingId === it.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                                </button>
+                            )}
+                            <ChevronRight className="ml-0.5 h-4 w-4 shrink-0" style={{ color: C.hair }} />
+                        </div>
+                    )}
+                </div>
+
+                <AnimatePresence mode="wait">
+                    {isQuickEditing && (
+                        <motion.div key="quick" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
+                            <QuickUpdatePanel
+                                item={it}
+                                onCancel={onCancelQuickEdit}
+                                onSave={(payload, optimisticPatch) => onQuickSave(it.id, payload, optimisticPatch)}
+                            />
+                        </motion.div>
+                    )}
+                    {isConfirmingDeactivate && (
+                        <motion.div key="confirm" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
+                            <DeactivateConfirm busy={togglingId === it.id} onConfirm={() => onConfirmDeactivate(it.id)} onCancel={onCancelDeactivate} />
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <div className="h-px w-full" style={{ background: C.hairSoft }} />
+            </motion.div>
         </motion.div>
     );
 }
