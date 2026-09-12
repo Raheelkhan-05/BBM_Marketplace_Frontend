@@ -165,6 +165,11 @@ export async function fetchSellerOrderTransportOptions(token) {
   return res.json();
 }
 
+export async function fetchSellerTransportOptions(submissionId) {
+  const res = await fetch(`${API_BASE}/orders/transport-options?submissionId=${submissionId}`);
+  return res.json();
+}
+
 export async function confirmSellerOrderWithTransport(token, orderId, formData) {
   // NOTE: no "Content-Type" header — the browser sets the multipart
   // boundary itself when the body is a FormData instance.
@@ -172,6 +177,13 @@ export async function confirmSellerOrderWithTransport(token, orderId, formData) 
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: formData,
+  });
+  return res.json();
+}
+
+export async function fetchSellerOwnTransportOptions(token) {
+  const res = await fetch(`${API_BASE}/seller/orders/transport-options`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
   return res.json();
 }

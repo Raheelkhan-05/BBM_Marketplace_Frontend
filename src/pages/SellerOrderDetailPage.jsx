@@ -15,17 +15,28 @@
 // this order (link === /seller/orders/:id) as read on open, via
 // NotificationsContext — this is what steps down the My Orders badge and
 // the Sales Orders tab count.
+//
+// NEW (PO document pass): the seller's own order fetch has no reason to
+// join seller_profiles (they already know their own shop), so
+// PurchaseOrderDocument's "Vendor" block has nothing to read there. We
+// fill that gap with vendorOverride, sourced from the already-loaded
+// auth `profile` — same place OrdersPage.jsx already reads
+// `profile?.seller_status` from.
+// TODO: confirm these are the actual field names on your AuthContext's
+// profile object (display_name/city/state) — adjust if your seller shop
+// info lives under different keys or needs a separate fetch.
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Package, User, Phone, Mail, ShieldCheck, Loader2, MapPin, IndianRupee, Radio, CheckCircle2, Circle, XCircle, Truck } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
-import { fetchSellerOrderById, confirmSellerOrderWithTransport, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder } from "../utils/api.js";
+import { fetchSellerOrderById, confirmSellerOrderWithTransport, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder, fetchSellerOwnTransportOptions } from "../utils/api.js";
 import ConfirmOrderModal from "../components/orders/ConfirmOrderModal.jsx";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
+import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
 import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const NEXT_ACTION = {
@@ -100,10 +111,26 @@ function Card({ title, children }) {
 export default function SellerOrderDetailPage() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const { token } = useAuth();
+    const { token, profile } = useAuth();
     const { markOrderRead } = useNotifications();
     const [busy, setBusy] = useState(null);
     const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+
+    const [sellerTransportOptions, setSellerTransportOptions] = useState([]);
+
+    useEffect(() => {
+        fetchSellerOwnTransportOptions(token).then((res) => {
+            if (res?.success) setSellerTransportOptions(res.transportOptions || []);
+        });
+    }, [token]);
+
+    // Fills the "Vendor (Seller)" block on the PO document — the seller's
+    // own order fetch doesn't join seller_profiles (see file header note).
+    const vendorOverride = {
+        display_name: profile?.display_name || profile?.shop_name || profile?.business_name || null,
+        city: profile?.city || null,
+        state: profile?.state || null,
+    };
 
     const fetcher = useCallback((orderId) => fetchSellerOrderById(token, orderId), [token]);
     const { order, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
@@ -177,6 +204,8 @@ export default function SellerOrderDetailPage() {
 
             <TransportInfoCard order={order} />
 
+            <PurchaseOrderDocument order={order} variant="seller" vendorOverride={vendorOverride} />
+
             <Card title="Items">
                 <div className="flex flex-col gap-3">
                     {(order.items || []).map((item) => (
@@ -191,7 +220,6 @@ export default function SellerOrderDetailPage() {
                                 </p>
                             </div>
                             <p className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p>
-                            {/* <p className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p> */}
                         </div>
                     ))}
                 </div>
@@ -227,7 +255,6 @@ export default function SellerOrderDetailPage() {
             <Card title="Buyer">
                 <p className="flex items-center gap-1.5 text-[13.5px] font-bold tracking-wider" style={{ color: C.ink }}>
                     <User className="h-3.5 w-3.5" /> {order.buyer_contact_name}
-                    {/* {order.buyer_gst_verified && <span className="flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9.5px] font-bold text-white" style={{ background: C.secondary }}><ShieldCheck className="h-2.5 w-2.5" /> GST Verified</span>} */}
                 </p>
                 {order.buyer_business_name && <p className="mt-1 text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>{order.buyer_business_name}{order.buyer_gstin ? ` · ${order.buyer_gstin}` : ""}</p>}
                 <p className="mt-1 flex flex-wrap items-center gap-x-3 text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>
@@ -257,9 +284,10 @@ export default function SellerOrderDetailPage() {
                 <ConfirmOrderModal
                     open={confirmModalOpen}
                     order={order}
+                    sellerTransportOptions={sellerTransportOptions}
                     onClose={() => setConfirmModalOpen(false)}
                     onConfirm={async (formData) => {
-                        const res = await confirmSellerOrderWithTransport(id, formData);
+                        const res = await confirmSellerOrderWithTransport(token, id, formData);
                         if (res?.success) { setConfirmModalOpen(false); reload(); }
                         return res;
                     }}

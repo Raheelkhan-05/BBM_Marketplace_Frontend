@@ -21,6 +21,7 @@ import { fetchOrderById, cancelMyOrder } from "../utils/api.js";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
+import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
 import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall, basisLabel } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const TIMELINE_STEPS = ["pending_confirmation", "confirmed", "processing", "shipped", "delivered"];
@@ -202,6 +203,8 @@ export default function OrderDetailPage() {
 
             <TransportInfoCard order={order} />
 
+            <PurchaseOrderDocument order={order} variant="buyer" />
+
             <Card title="Items">
                 <div className="flex flex-col gap-3">
                     {(order.items || []).map((item) => (
@@ -277,12 +280,12 @@ export default function OrderDetailPage() {
                 </div>
             </Card>
 
-            <Card title="Shipping address">
+            {/* <Card title="Shipping address">
                 <p className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}><MapPin className="h-3 w-3" /> {addr.label || "Address"}</p>
                 <p className="mt-1.5 text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{addr.contact_name}</p>
                 <p className="text-[12px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>{addr.address_line1}{addr.address_line2 ? `, ${addr.address_line2}` : ""}, {addr.city}, {addr.state} - {addr.pincode}</p>
                 {addr.contact_phone && <p className="mt-1 text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>{addr.contact_phone}</p>}
-            </Card>
+            </Card> */}
 
             {order.buyer_notes && (
                 <Card title="Note to seller">

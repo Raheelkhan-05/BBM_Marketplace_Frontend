@@ -7,7 +7,7 @@
 //   2. Buyer requested a method, not yet confirmed -> shows the request
 //   3. Seller has confirmed -> shows the confirmed method + details
 import { Truck, Clock3, FileText } from "lucide-react";
-import { getTransportOption, transportLabel } from "../../shared/transportOptions.js";
+import { getTransportOption, transportLabel } from "../../../shared/transportOptions.js";
 
 const C = { ink: "#0B1116", muted: "#667077", secondary: "#006F83", hair: "rgba(11,17,22,0.09)", warn: "#a16207", warnBg: "#FDF3D8" };
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   Loader2, Store, Eye, Building2, Camera, Package, Palette, AlertCircle, ShieldCheck,
   Plus, Pencil, X, Check, Trash2, RefreshCw, CheckCircle2, Smartphone, Monitor,
+  Truck, Clock, // NEW
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
@@ -11,14 +12,17 @@ import {
   fetchMySellerSubmissions, createSellerSubmission, updateSellerProductSubmission,
   deleteSellerProductSubmission,
   fetchApprovedCategories, fetchApprovedSubcategories, fetchApprovedGenericProducts,
+  fetchSellerBankDetails, saveSellerBankDetails
 } from "../utils/api.js";
+
+import { TRANSPORT_OPTIONS } from "../../shared/transportOptions.js";
+import { lookupPincode } from "../utils/sellerListingApi.js";
 import ShopPage from "./ShopPage.jsx";
 
 const TABS = [
   { key: "info", label: "Company Info", icon: Building2 },
-  { key: "media", label: "Photos & Certs", icon: Camera },
-  { key: "products", label: "Products", icon: Package },
   { key: "branding", label: "Branding", icon: Palette },
+  { key: "operations", label: "Shop Settings", icon: Truck }, // NEW
 ];
 
 const GST_FIELD_LABELS = { address: "Registered address", city: "City", state: "State", pincode: "PIN code", pan: "PAN" };
@@ -164,20 +168,36 @@ export default function SellerDashboardPage({ slug }) {
           </div>
         ) : (
           <div className="flex flex-col gap-5 lg:flex-row">
-            {/* ...sidebar/tabs unchanged... */}
+            {/* Tab sidebar */}
+            <div className="flex shrink-0 gap-1.5 overflow-x-auto pb-1 lg:w-48 lg:flex-col lg:overflow-visible lg:pb-0">
+              {TABS.map((t) => {
+                const Icon = t.icon;
+                const active = tab === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    onClick={() => setTab(t.key)}
+                    className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2.5 text-[13px] font-bold tracking-wide transition-colors lg:whitespace-normal"
+                    style={{
+                      background: active ? "#047084" : "transparent",
+                      color: active ? "#fff" : "#64748b",
+                    }}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <div className="min-w-0 flex-1 rounded-2xl border border-slate-100 bg-white p-4 sm:p-6">
-              {tab === "info" && (
-                <InfoTab form={form} update={update} onSave={saveInfo} saving={saving} saved={saved} business={dash.business} />
-              )}
-              {tab === "media" && <MediaTab token={token} dash={dash} onChange={load} />}
-              {tab === "products" && (
-                <ProductsTab
-                  token={token}
-                  items={submissions}
-                  onChange={loadSubmissions}
-                />
-              )}
+              {tab === "info" && <InfoTab seller={seller} business={dash.business} email={dash.email} />}
+
               {tab === "branding" && <BrandingTab seller={seller} onSave={saveTheme} />}
+
+              {tab === "operations" && (  // NEW
+                <OperationsSettingsTab token={token} seller={seller} onSave={saveInfo} />
+              )}
             </div>
           </div>
         )}
@@ -186,66 +206,257 @@ export default function SellerDashboardPage({ slug }) {
   );
 }
 
-function InfoTab({ form, update, onSave, saving, saved, business }) {
-  const FIELD_GROUPS = [
-    { title: "Basics", fields: ["display_name", "business_type", "industry", "year_established", "employee_range", "annual_turnover"] },
-    { title: "Contact", fields: ["contact_person", "designation", "whatsapp_number", "website"] },
-    { title: "Dispatch / operating address", fields: ["address", "pincode", "city", "state", "country"] },
-    { title: "Business credentials", fields: ["pan", "iec_code", "udyam_number", "cin"] },
-    { title: "Operations", fields: ["manufacturing_facility", "production_capacity"] },
-    { title: "About", fields: ["description"] },
-  ];
-  const saveGroup = () => {
-    const fields = FIELD_GROUPS.flatMap((g) => g.fields);
-    const payload = {};
-    fields.forEach((f) => { if (form[f] !== undefined) payload[f] = form[f]; });
-    onSave(payload);
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function OperationsSettingsTab({ token, seller, onSave }) {
+  const [form, setForm] = useState({
+    working_days: seller.working_days || [],
+    transport_options: seller.transport_options || [],
+    order_acceptance_start: seller.order_acceptance_start || "",
+    order_acceptance_end: seller.order_acceptance_end || "",
+    dispatch_pincode: seller.dispatch_pincode || "",
+    dispatch_district: seller.dispatch_district || "",
+    dispatch_state: seller.dispatch_state || "",
+  });
+  const [pincodeStatus, setPincodeStatus] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const [bank, setBank] = useState({ bank_account_number: "", bank_ifsc_code: "" });
+  const [bankLoaded, setBankLoaded] = useState(false);
+  const [savingBank, setSavingBank] = useState(false);
+  const [bankSaved, setBankSaved] = useState(false);
+  const [bankErr, setBankErr] = useState(null);
+
+  useEffect(() => {
+    fetchSellerBankDetails(token).then((res) => {
+      if (res?.success && res.bank) {
+        setBank({
+          bank_account_number: res.bank.account_number || "",
+          bank_ifsc_code: res.bank.ifsc_code || "",
+        });
+      }
+      setBankLoaded(true);
+    });
+  }, [token]);
+
+  const update = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setSaved(false); };
+
+  const selected = form.working_days;
+  const isAllWeek = WEEKDAYS.length === selected.length && WEEKDAYS.every((d) => selected.includes(d));
+  const weekdaysOnly = WEEKDAYS.filter((d) => d !== "Sun");
+  const isWeekdaysOnly = weekdaysOnly.length === selected.length && weekdaysOnly.every((d) => selected.includes(d));
+
+  // Same confirm-on-blur pincode lookup as OperationsStep in onboarding.
+  const confirmPincode = async (pincode) => {
+    if (!/^\d{6}$/.test(pincode)) return;
+    setPincodeStatus("checking");
+    const res = await lookupPincode(pincode);
+    if (res?.success) {
+      update("dispatch_district", res.district);
+      update("dispatch_state", res.state);
+      setPincodeStatus("ok");
+    } else {
+      setPincodeStatus("error");
+    }
+  };
+
+  const presetBtnClass = (active) =>
+    `rounded-full border px-3 py-1 text-[12.5px] font-bold tracking-wide transition-colors ${active
+      ? "border-[#047084] bg-[#047084] text-white"
+      : "border-slate-200 bg-white text-slate-500 hover:border-[#047084]/40 hover:text-[#047084]"
+    }`;
+
+  const save = async () => {
+    setSaving(true);
+    await onSave({
+      working_days: form.working_days,
+      transport_options: form.transport_options,
+      order_acceptance_start: form.order_acceptance_start,
+      order_acceptance_end: form.order_acceptance_end,
+      dispatch_pincode: form.dispatch_pincode,
+      dispatch_district: form.dispatch_district,
+      dispatch_state: form.dispatch_state,
+    });
+    setSaving(false);
+    setSaved(true);
+  };
+
+  const saveBankInfo = async () => {
+    setBankErr(null);
+    setSavingBank(true);
+    const res = await saveSellerBankDetails(token, {
+      account_number: bank.bank_account_number,
+      ifsc_code: bank.bank_ifsc_code,
+    });
+    setSavingBank(false);
+    if (!res?.success) return setBankErr(res?.message || "Couldn't save bank details.");
+    setBankSaved(true);
   };
 
   return (
-    <div className="flex flex-col gap-7">
-      <GstReferencePanel gstData={business ? mapBusinessToDisplay(business) : null} />
+    <div className="flex flex-col gap-8">
+      {/* ===== Section 1: mirrors onboarding's OperationsStep exactly ===== */}
 
-      {FIELD_GROUPS.map((g) => (
-        <div key={g.title}>
-          <h3 className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">{g.title}</h3>
-          {g.title === "Dispatch / operating address" && (
-            <p className="mb-2 text-[11.5px] font-medium text-slate-400">This is what buyers see and where shipments originate — it can differ from your GST registered address above.</p>
-          )}
-          <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {g.fields.map((f) => (
-              <div key={f} className={f === "description" ? "sm:col-span-2" : ""}>
-                <label className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{f.replace(/_/g, " ")}</label>
-                {f === "description" ? (
-                  <textarea value={form[f] || ""} onChange={(e) => update(f, e.target.value)} rows={4}
-                    className="mt-1 w-full rounded-md border-2 border-slate-200 px-3 py-2 text-[13px] font-medium focus:border-[#047084] focus:outline-none" />
-                ) : f === "manufacturing_facility" ? (
-                  <div className="mt-1 flex gap-2">
-                    {["Yes", "No"].map((opt) => (
-                      <button key={opt} type="button" onClick={() => update(f, opt === "Yes")}
-                        className="rounded-lg border-2 px-4 py-2 text-[13px] font-bold"
-                        style={{ borderColor: form[f] === (opt === "Yes") ? "#047084" : "#e5e9ea", color: form[f] === (opt === "Yes") ? "#047084" : "#64748b" }}>
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <input value={form[f] || ""} onChange={(e) => update(f, e.target.value)}
-                    className="mt-1 w-full rounded-md border-2 border-slate-200 px-3 py-2 text-[13px] font-semibold focus:border-[#047084] focus:outline-none" />
-                )}
+      {/* Working days — identical presets: All days / Sun off / Clear */}
+      <div>
+        <div className="flex items-center justify-between">
+          <h3 className="text-[13px] font-bold uppercase tracking-wider text-slate-500">Working days</h3>
+          <div className="flex gap-1.5">
+            <button type="button" onClick={() => update("working_days", [...WEEKDAYS])} className={presetBtnClass(isAllWeek)}>All days</button>
+            <button type="button" onClick={() => update("working_days", weekdaysOnly)} className={presetBtnClass(isWeekdaysOnly)}>Sun off</button>
+            <button type="button" onClick={() => update("working_days", [])} className={presetBtnClass(selected.length === 0)}>Clear</button>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {WEEKDAYS.map((d) => {
+            const active = selected.includes(d);
+            return (
+              <button key={d} type="button"
+                onClick={() => update("working_days", active ? selected.filter((x) => x !== d) : [...selected, d])}
+                className="rounded-lg border-2 px-3 py-1.5 text-[13.5px] font-bold tracking-wide"
+                style={{ borderColor: active ? "#047084" : "#e5e9ea", color: active ? "#047084" : "#64748b", background: active ? "#04708410" : "white" }}>
+                {d}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Transport channels — same field, same hint copy, same order as onboarding */}
+      <div>
+        <h3 className="text-[13px] font-bold uppercase tracking-wider text-slate-500">Transport channels you can service</h3>
+        <p className="text-[12.5px] font-medium tracking-wide text-slate-400">
+          Buyers will only be able to request methods you select here.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {TRANSPORT_OPTIONS.map((t) => {
+            const active = (form.transport_options || []).includes(t.key);
+            return (
+              <button key={t.key} type="button"
+                onClick={() => update("transport_options", active
+                  ? form.transport_options.filter((k) => k !== t.key)
+                  : [...(form.transport_options || []), t.key])}
+                className="rounded-lg border-2 px-3 py-1.5 text-[13.5px] font-bold tracking-wide"
+                style={{ borderColor: active ? "#047084" : "#e5e9ea", color: active ? "#047084" : "#64748b", background: active ? "#04708410" : "white" }}>
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Order acceptance hours — same two-field grid as onboarding */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-[13px] font-bold uppercase tracking-wider text-slate-500">Order acceptance starts</label>
+          <input type="time" value={form.order_acceptance_start || ""} onChange={(e) => update("order_acceptance_start", e.target.value)}
+            className="rounded-md border-2 border-slate-200 px-3 py-2 text-[13px] font-semibold focus:border-[#047084] focus:outline-none" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[13px] font-bold uppercase tracking-wider text-slate-500">Order acceptance ends</label>
+          <input type="time" value={form.order_acceptance_end || ""} onChange={(e) => update("order_acceptance_end", e.target.value)}
+            className="rounded-md border-2 border-slate-200 px-3 py-2 text-[13px] font-semibold focus:border-[#047084] focus:outline-none" />
+        </div>
+      </div>
+
+      {/* Dispatch pincode — same lookup + same three status messages, verbatim */}
+      <div className="flex flex-col gap-1">
+        <label className="text-[13px] font-bold uppercase tracking-wider text-slate-500">Dispatch pincode</label>
+        <input
+          value={form.dispatch_pincode || ""}
+          onChange={(e) => { update("dispatch_pincode", e.target.value.replace(/\D/g, "").slice(0, 6)); setPincodeStatus(null); }}
+          onBlur={(e) => confirmPincode(e.target.value)}
+          inputMode="numeric"
+          placeholder="6-digit pincode"
+          className="w-full max-w-[200px] rounded-md border-2 border-slate-200 px-3 py-2 text-[13px] font-semibold focus:border-[#047084] focus:outline-none"
+        />
+        <p className="text-[12.5px] font-medium tracking-wide text-slate-400">
+          Where you'll be dispatching orders from?
+        </p>
+        {pincodeStatus === "checking" && <p className="text-[12px] font-semibold text-slate-400">Checking…</p>}
+        {pincodeStatus === "ok" && <p className="text-[12px] font-bold text-[#047084]">Dispatching from {form.dispatch_district}, {form.dispatch_state}</p>}
+        {pincodeStatus === "error" && <p className="text-[12px] font-medium text-[#c71f11]">Couldn't verify this pincode — you can still continue.</p>}
+        {pincodeStatus === null && form.dispatch_district && (
+          <p className="text-[12px] font-medium text-slate-400">Currently: {form.dispatch_district}, {form.dispatch_state}</p>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={save} disabled={saving}
+          className="rounded-xl px-5 py-2.5 text-[13px] font-bold text-white" style={{ background: "linear-gradient(135deg,#047084,#0a95ab)" }}>
+          {saving ? "Saving…" : "Save changes"}
+        </button>
+        {saved && <span className="text-[12.5px] font-semibold text-emerald-600">Saved.</span>}
+      </div>
+
+      {/* ===== Section 2: mirrors onboarding's BankStep exactly ===== */}
+      <div className="border-t border-slate-100 pt-6">
+        <h3 className="text-[13px] font-bold uppercase tracking-wider text-slate-500">Bank details</h3>
+        <p className="mt-1 text-[13px] font-medium leading-snug text-slate-500">
+          This is the account where your order payouts will be sent.
+        </p>
+        {!bankLoaded ? (
+          <div className="mt-3 flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-[#047084]" /></div>
+        ) : (
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:max-w-sm">
+            <div className="flex flex-col gap-1">
+              <label className="text-[13px] font-bold uppercase tracking-wider text-slate-500">Account number</label>
+              <input value={bank.bank_account_number} inputMode="numeric"
+                onChange={(e) => { setBank((b) => ({ ...b, bank_account_number: e.target.value.replace(/\D/g, "") })); setBankSaved(false); }}
+                className="rounded-md border-2 border-slate-200 px-3 py-2 text-[13px] font-semibold focus:border-[#047084] focus:outline-none" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[13px] font-bold uppercase tracking-wider text-slate-500">IFSC code</label>
+              <input value={bank.bank_ifsc_code} placeholder="e.g. HDFC0001234"
+                onChange={(e) => { setBank((b) => ({ ...b, bank_ifsc_code: e.target.value.toUpperCase() })); setBankSaved(false); }}
+                className="rounded-md border-2 border-slate-200 px-3 py-2 text-[13px] font-semibold focus:border-[#047084] focus:outline-none" />
+            </div>
+            {bankErr && <p className="text-[12px] font-semibold text-[#c71f11]">{bankErr}</p>}
+            <div className="flex items-center gap-3">
+              <button onClick={saveBankInfo} disabled={savingBank}
+                className="w-fit rounded-xl px-5 py-2.5 text-[13px] font-bold text-white" style={{ background: "linear-gradient(135deg,#047084,#0a95ab)" }}>
+                {savingBank ? "Saving…" : "Save bank details"}
+              </button>
+              {bankSaved && <span className="text-[12.5px] font-semibold text-emerald-600">Saved.</span>}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InfoTab({ seller, business, email }) {
+  const gstData = business ? mapBusinessToDisplay(business) : null;
+
+  const contactRows = [
+    ["Contact person", seller.contact_person],
+    ["Contact number", seller.whatsapp_number ? `+91 ${seller.whatsapp_number}` : null],
+    ["Email", email],
+  ].filter(([, v]) => v);
+
+
+  return (
+    <div className="flex flex-col gap-6">
+      <GstReferencePanel gstData={gstData} />
+
+      {contactRows.length > 0 && (
+        <div className="rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.04] p-4">
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck className="h-4 w-4 text-[#047084]" />
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#047084]">Contact details</p>
+          </div>
+          <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {contactRows.map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-3 border-b border-[#047084]/10 py-1.5 text-[12px]">
+                <span className="font-semibold text-slate-500">{label}</span>
+                <span className="max-w-[60%] text-right font-bold text-slate-800">{value}</span>
               </div>
             ))}
           </div>
         </div>
-      ))}
-
-      <div className="flex flex-wrap items-center gap-3">
-        <button onClick={saveGroup} disabled={saving}
-          className="rounded-xl px-5 py-2.5 text-[13px] font-bold text-white" style={{ background: "linear-gradient(135deg,#047084,#0a95ab)" }}>
-          {saving ? "Saving…" : "Save changes"}
-        </button>
-        {saved && <span className="text-[12.5px] font-semibold text-emerald-600">Saved — sent for admin review.</span>}
-      </div>
+      )}
     </div>
   );
 }

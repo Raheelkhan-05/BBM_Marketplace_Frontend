@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi, fetchBusinessProfile } from "../utils/api.js";
+import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi, fetchBusinessProfile, fetchSellerTransportOptions } from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
 import { TRANSPORT_OPTIONS } from "../../shared/transportOptions.js";
 import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
@@ -352,7 +352,17 @@ export default function BuyNowModal({ seller, product, onClose }) {
     // (array of channel keys, from seller_profiles.transport_options) down
     // to BuyNowModal from wherever this `seller` prop is built. Falls back
     // to an empty list (picker hides) if not present.
-    const offeredTransportOptions = TRANSPORT_OPTIONS.filter((t) => (seller?.transportOptions || []).includes(t.key));
+
+    const [offeredTransportOptions, setOfferedTransportOptions] = useState([]);
+    useEffect(() => {
+        if (!seller?.offerId) { setOfferedTransportOptions([]); return; }
+        let cancelled = false;
+        fetchSellerTransportOptions(seller.offerId).then((res) => {
+            if (!cancelled && res?.success) setOfferedTransportOptions(res.transportOptions || []);
+        });
+        return () => { cancelled = true; };
+    }, [seller?.offerId]);
+
     const [preferredTransportMode, setPreferredTransportMode] = useState(null);
 
 

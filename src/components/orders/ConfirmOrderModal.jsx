@@ -66,7 +66,7 @@ export default function ConfirmOrderModal({ open, order, sellerTransportOptions,
                 onClick={onClose}
             >
                 <motion.div
-                    className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 sm:max-w-[460px] sm:rounded-2xl"
+                    className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 sm:max-w-xl sm:rounded-2xl"
                     initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.2 }}
                     onClick={(e) => e.stopPropagation()}
                 >

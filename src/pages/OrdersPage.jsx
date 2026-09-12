@@ -1,7 +1,7 @@
 // pages/OrdersPage.jsx — merges PurchaseOrdersPage + SalesOrdersPage into one
 // route with a top-level tab switcher. "Sales" tab is only shown/rendered
 // when the current user is an approved seller.
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Package, Loader2, ShoppingBag, User, Phone, Mail, Store, IndianRupee } from "lucide-react";
 import { motion } from "framer-motion";
@@ -9,10 +9,11 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import {
     fetchMyOrders, cancelMyOrder,
-    fetchSellerOrders, confirmSellerOrder, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder,
+    fetchSellerOrders, confirmSellerOrder, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder, fetchSellerOwnTransportOptions
 } from "../utils/api.js";
 import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
 import { C, EASE } from "../components/catalog/tokens.js";
+import { transportLabel } from "../../shared/transportOptions.js";
 import {
     StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount,
     StockShortfallNote, shouldShowDelivery, shouldShowShortfall,
@@ -124,11 +125,20 @@ function PurchaseOrderCard({ order, idx, onCancel }) {
             </div>
 
             {(item && shouldShowDelivery(order, item)) || shouldShowShortfall(order) ? (
-                <div className="mt-2.5 flex flex-col gap-1.5">
-                    {item && shouldShowDelivery(order, item) && <DeliveryEstimate order={order} item={item} />}
-                    {shouldShowShortfall(order) && <StockShortfallNote audience="buyer" />}
-                </div>
+                <>
+                    <div className="mt-2.5 flex flex-col gap-1.5">
+                        {item && shouldShowDelivery(order, item) && <DeliveryEstimate order={order} item={item} />}
+                        {shouldShowShortfall(order) && <StockShortfallNote audience="buyer" />}
+                    </div>
+                    {order.buyer_transport_mode && !order.transport_mode && (
+                        <p className="mt-1.5 text-[11px] font-bold tracking-wide" style={{ color: C.secondary }}>
+                            Requested: {transportLabel(order.buyer_transport_mode)}
+                        </p>
+                    )}
+                </>
             ) : null}
+
+
 
             <div className="mt-3 flex items-center justify-between gap-2 border-t pt-2.5" style={{ borderColor: C.hairSoft }}>
                 <p className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
@@ -234,8 +244,9 @@ function PurchaseOrdersView() {
 }
 
 // ---------- Sales (seller) card ----------
-function SalesOrderCard({ order, idx, onAction }) {
+function SalesOrderCard({ order, idx, onAction, sellerTransportOptions }) {
     const navigate = useNavigate();
+    const { token } = useAuth();
     const [busy, setBusy] = useState(null);
     const [confirmModalOpen, setConfirmModalOpen] = useState(false);
     const { salesOrderUnreadCounts } = useNotifications();
@@ -354,14 +365,11 @@ function SalesOrderCard({ order, idx, onAction }) {
                 <ConfirmOrderModal
                     open={confirmModalOpen}
                     order={order}
+                    sellerTransportOptions={sellerTransportOptions} // ADD
                     onClose={() => setConfirmModalOpen(false)}
                     onConfirm={async (formData) => {
-                        const res = await confirmSellerOrderWithTransport(order.id, formData);
-                        if (res?.success) {
-                            setConfirmModalOpen(false);
-                            reload(); // SalesOrdersView's reload, threaded down the same
-                            // way `onAction` already gets it — see api.js patch
-                        }
+                        const res = await confirmSellerOrderWithTransport(token, order.id, formData);
+                        if (res?.success) { setConfirmModalOpen(false); reload(); }
                         return res;
                     }}
                 />
@@ -375,6 +383,15 @@ function SalesOrdersView() {
     const [activeStatus, setActiveStatus] = useState("");
     const [activeType, setActiveType] = useState("");
     const { markOrderRead } = useNotifications();
+
+    const [sellerTransportOptions, setSellerTransportOptions] = useState([]);
+
+    useEffect(() => {
+        fetchSellerOwnTransportOptions(token).then((res) => {
+            if (res?.success) setSellerTransportOptions(res.transportOptions || []);
+        });
+    }, [token]);
+
 
     const fetcher = useCallback(async () => {
         const res = await fetchSellerOrders(token, activeStatus || undefined, activeType || undefined);
@@ -423,7 +440,8 @@ function SalesOrdersView() {
                             <h3 className="mt-4 text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>No orders yet</h3>
                             <p className="mt-1.5 max-w-xs text-[12.5px] font-medium tracking-wide" style={{ color: C.muted }}>Orders buyers place on your listings will show up here in real time.</p>
                         </div>
-                    ) : orders.map((o, i) => <SalesOrderCard key={o.id} order={o} idx={i} onAction={handleAction} />)}
+                    ) : orders.map((o, i) => <SalesOrderCard key={o.id} order={o} idx={i} onAction={handleAction} sellerTransportOptions={sellerTransportOptions} />
+                    )}
             </div>
         </>
     );
