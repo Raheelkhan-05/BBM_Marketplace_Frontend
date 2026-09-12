@@ -50,7 +50,7 @@ export function ItemQuantityLine({ item, mutedColor = "#667077" }) {
     if (bLabel && item.pack_quantity_snapshot != null) {
         const packQty = item.pack_quantity_snapshot;
         return (
-            <span>
+            <span className="text-xs font-extrabold tracking-wider capitalize">
                 {packQty} {bLabel}{Number(packQty) === 1 ? "" : "s"}
                 <span style={{ color: mutedColor }}> ({item.quantity} {item.unit})</span>
             </span>

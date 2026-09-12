@@ -2,218 +2,536 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { transportLabel } from "../../shared/transportOptions.js";
+import { parseDeliveryDate } from "../components/orders/OrderDisplayHelpers.jsx";
 
-// ---- design tokens, matching PurchaseOrderDocument.jsx ----
-const INK = [11, 17, 22];
-const MUTED = [102, 112, 119];
-const ACCENT = [11, 114, 133]; // #0B7285
-const HAIR = [225, 229, 230];
-const PANEL = [250, 251, 251];
+// ---- design tokens — mirrors PurchaseOrderDocument.jsx's `C` object ----
+const INK = [11, 17, 22];        // #0B1116
+const MUTED = [102, 112, 119];   // #667077
+const HAIR = [214, 217, 219];    // ~ rgba(11,17,22,0.12) over white
+const HAIR_SOFT = [232, 234, 235];
+const ACCENT = [11, 114, 133];   // #0B7285
+const PANEL_FILL = [250, 251, 251]; // matches the web card's #fafbfb panels
 
-// Same rate used in PurchaseOrderDocument.jsx — see the comment there for
-// why this is a back-calculated breakup of the existing total rather than
-// an added charge.
 const GST_PERCENT = 18;
+const RADIUS = 8; // corner radius used for all soft panels, matches rounded-lg/xl in the UI
+
+// ---- Font ----
+// Same "Amazon Ember" family the app declares in index.css, fetched from
+// the same /fonts/ path at runtime and embedded directly into the PDF.
+// jsPDF's built-in "helvetica" is never actually embedded — it just
+// references a standard PDF font name and trusts the reader to supply it,
+// which is why some renderers silently substitute a serif font. Embedding
+// the real TTF bytes removes that risk entirely and guarantees the PDF
+// matches the app's own typography, not an approximation of it.
+//
+// jsPDF only supports the styles normal / bold / italic / bolditalic, so
+// only the 400 (Rg) and 700 (Bd) weights map onto it directly. The 500
+// (Medium) weight declared in index.css has no equivalent PDF "style" slot
+// and is intentionally not embedded — everything in this document already
+// only ever needs normal or bold.
+const FONT_FAMILY = "AmazonEmber";
+const FONT_FILES = {
+    normal: "/fonts/AmazonEmber_Rg.ttf",
+    bold: "/fonts/AmazonEmber_Bd.ttf",
+};
+
+let cachedFontBase64 = null; // { normal, bold } | false (unavailable) | null (not attempted)
+
+async function fetchFontBase64(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch font: ${url}`);
+    const buffer = await res.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+}
+
+async function loadFontData() {
+    if (cachedFontBase64 !== null) return cachedFontBase64;
+    try {
+        const [normal, bold] = await Promise.all([
+            fetchFontBase64(FONT_FILES.normal),
+            fetchFontBase64(FONT_FILES.bold),
+        ]);
+        cachedFontBase64 = { normal, bold };
+    } catch {
+        cachedFontBase64 = false;
+    }
+    return cachedFontBase64;
+}
+
+// Registers the font on a *specific* jsPDF instance — this has to run for
+// every new document (font VFS data isn't shared across jsPDF instances),
+// but the base64 payload itself is fetched once and cached above.
+// Returns the font family name to use for the rest of this document.
+async function registerFont(doc) {
+    const data = await loadFontData();
+    if (!data) return "helvetica"; // fonts missing/unreachable — fall back rather than fail
+    doc.addFileToVFS("AmazonEmber-Regular.ttf", data.normal);
+    doc.addFileToVFS("AmazonEmber-Bold.ttf", data.bold);
+    doc.addFont("AmazonEmber-Regular.ttf", FONT_FAMILY, "normal");
+    doc.addFont("AmazonEmber-Bold.ttf", FONT_FAMILY, "bold");
+    doc.setFont(FONT_FAMILY, "normal");
+    return FONT_FAMILY;
+}
+
+const LOGO_URL = "/Logo.png";
+let cachedLogoBase64 = null;
+let cachedLogoAttempted = false;
+
+async function fetchLogoBase64() {
+    if (cachedLogoAttempted) return cachedLogoBase64;
+    cachedLogoAttempted = true;
+    try {
+        const res = await fetch(LOGO_URL);
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        cachedLogoBase64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result || null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+        });
+        return cachedLogoBase64;
+    } catch {
+        return null;
+    }
+}
+
+function drawLogo(doc, x, y, size, logoBase64, font) {
+    if (logoBase64) {
+        try {
+            doc.addImage(logoBase64, "PNG", x, y, size, size);
+            return;
+        } catch {
+            // fall through to placeholder if the image fails to decode
+        }
+    }
+    doc.setDrawColor(...HAIR);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(x, y, size, size, 3, 3);
+    doc.setTextColor(...MUTED);
+    doc.setFont(font, "normal");
+    doc.setFontSize(6.5);
+    doc.setCharSpace(0.4);
+    doc.text("LOGO", x + size / 2, y + size / 2 + 2, { align: "center" });
+    doc.setCharSpace(0);
+}
 
 function fmtDate(d) {
     if (!d) return null;
     const dt = new Date(d);
     return isNaN(dt) ? null : dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
-function deliveryDateLabel(order) {
-    const min = fmtDate(order.estimated_delivery_date);
-    if (!min) return "Pending confirmation";
-    const max = fmtDate(order.estimated_delivery_date_max);
-    if (max && max !== min) return `${min} - ${max}`;
-    return min;
+
+// Mirrors the on-screen "Fulfilment" card exactly (DeliveryEstimate /
+// shouldShowDelivery in OrderDisplayHelpers.jsx): once delivered, show the
+// delivered date; otherwise parse item.lead_time_snapshot (a "DD Mon" date
+// or a "DD Mon - DD Mon" range) via the same shared parseDeliveryDate
+// helper — so the PDF can never disagree with the page again.
+function deliveryDateLabel(order, item) {
+    if (order.status === "delivered") {
+        const ts = order.updated_at;
+        return ts ? fmtDate(ts) : "Delivered";
+    }
+    return parseDeliveryDate(item?.lead_time_snapshot) || "To be confirmed";
 }
+
 function inr(n) {
     return (Number(n) || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function round2(n) {
     return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
-function gstBreakup(totalInclGst) {
-    const taxable = round2(totalInclGst / (1 + GST_PERCENT / 100));
-    const gstAmount = round2(totalInclGst - taxable);
-    const half = round2(gstAmount / 2);
-    return { taxable, cgst: half, sgst: round2(gstAmount - half), igst: gstAmount };
-}
 
-// Mirrors the exact same logic OrderDetailPage.jsx already uses to label
-// pack / master-pack quantities, so the PDF matches the on-screen bill
-// instead of falling back to raw base-unit counts.
 function saleUnitLabelFromBasis(basis) {
     if (basis === "per_master_pack") return "Master Pack";
     if (basis === "per_pack") return "Pack";
     return null;
 }
+function saleQtyOf(item) {
+    return Number(item.pack_quantity_snapshot) || Number(item.quantity) || 0;
+}
 function itemQtyText(item) {
     const label = saleUnitLabelFromBasis(item.purchase_basis);
     const saleQty = Number(item.pack_quantity_snapshot) || 0;
     const baseQty = Number(item.quantity) || 0;
-    if (label && saleQty > 0) {
-        return `${saleQty} ${label}${saleQty === 1 ? "" : "s"} (${baseQty} ${item.unit || ""})`.trim();
-    }
+    if (label && saleQty > 0) return `${saleQty} ${label}${saleQty === 1 ? "" : "s"} (${baseQty} ${item.unit || ""})`.trim();
     return `${baseQty} ${item.unit || ""}`.trim();
+}
+
+function baseRateInclGst(item) {
+    return Number(item.base_price_applied ?? item.unit_price) || 0;
+}
+function baseRateExclGst(item) {
+    return round2(baseRateInclGst(item) / (1 + GST_PERCENT / 100));
+}
+function amountExclGst(item) {
+    return round2(baseRateExclGst(item) * saleQtyOf(item));
 }
 
 function transportText(order) {
     if (order.transport_mode) return transportLabel(order.transport_mode);
-    if (order.buyer_transport_mode) return `${transportLabel(order.buyer_transport_mode)} (requested by buyer)`;
-    return "To be decided by seller";
+    if (order.buyer_transport_mode) return `${transportLabel(order.buyer_transport_mode)} (requested)`;
+    return "To be decided";
 }
 
-export async function generateOrderPdf(order, { vendor } = {}) {
+// Soft rounded panel with a light fill. Fields laid out with generous
+// spacing, separated only by thin hairlines between rows — no vertical
+// grid lines.
+function drawInfoPanel(doc, x, y, w, rows, cols, font) {
+    const rowH = 32;
+    const h = rowH * rows.length;
+
+    doc.setFillColor(...PANEL_FILL);
+    doc.setDrawColor(...HAIR);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(x, y, w, h, RADIUS, RADIUS, "FD");
+
+    for (let r = 1; r < rows.length; r++) {
+        doc.setDrawColor(...HAIR_SOFT);
+        doc.setLineWidth(0.5);
+        doc.line(x + 12, y + rowH * r, x + w - 12, y + rowH * r);
+    }
+
+    const colW = w / cols;
+    rows.forEach((pair, ri) => {
+        pair.forEach((f, ci) => {
+            if (!f.label) return;
+            const cx = x + colW * ci + 14;
+            const cy = y + rowH * ri;
+            doc.setFont(font, "normal");
+            doc.setFontSize(7);
+            doc.setTextColor(...MUTED);
+            doc.setCharSpace(0.6);
+            doc.text(f.label.toUpperCase(), cx, cy + 13);
+            doc.setCharSpace(0);
+            doc.setFont(font, "bold");
+            doc.setFontSize(9.5);
+            doc.setTextColor(...INK);
+            doc.setCharSpace(0.4);
+            const lines = doc.splitTextToSize(String(f.value ?? "—"), colW - 24);
+            doc.text(lines.slice(0, 2), cx, cy + 25);
+            doc.setCharSpace(0);
+        });
+    });
+    return h;
+}
+
+export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
     const doc = new jsPDF({ unit: "pt", format: "a4" });
+    const font = await registerFont(doc);
+
     const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 40;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 42;
+    const contentWidth = pageWidth - margin * 2;
     const addr = order.shipping_address_snapshot || {};
     const items = order.items || [];
     const isSample = order.order_type === "sample";
+    const firstItem = items[0];
 
     const vendorInfo = order.seller || vendor || null;
-    const vendorName = vendorInfo?.display_name || "Your Shop";
+    const vendorName = vendorInfo?.display_name || "—";
     const vendorLocation = [vendorInfo?.city, vendorInfo?.state].filter(Boolean).join(", ");
+
+    const buyerShopName = order.buyer_business_name || order.buyer_contact_name || "—";
+    const buyerGstin = order.buyer_gstin || "—";
 
     const sellerState = vendorInfo?.state || null;
     const buyerState = addr.state || null;
     const isIntraState = !!(sellerState && buyerState && sellerState.trim().toLowerCase() === buyerState.trim().toLowerCase());
-    const gst = gstBreakup(Number(order.total_amount) || 0);
 
-    // ---- Header band ----
-    doc.setFillColor(...ACCENT);
-    doc.rect(0, 0, pageWidth, 64, "F");
+    const resolvedLogo = logoBase64 || (await fetchLogoBase64());
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFont(undefined, "bold");
-    doc.setFontSize(18);
-    doc.text("PURCHASE ORDER", margin, 38);
-
-    doc.setFont(undefined, "normal");
-    doc.setFontSize(9);
-    doc.text(`Order No.: ${order.order_number || "-"}`, pageWidth - margin, 26, { align: "right" });
-    doc.text(`Date: ${fmtDate(order.created_at) || "-"}`, pageWidth - margin, 40, { align: "right" });
-    doc.text(`Delivery: ${deliveryDateLabel(order)}`, pageWidth - margin, 54, { align: "right" });
-
-    // ---- Transport strip ----
-    let y = 86;
-    doc.setFillColor(...PANEL);
-    doc.roundedRect(margin, y - 14, pageWidth - margin * 2, 22, 4, 4, "F");
-    doc.setTextColor(...MUTED);
-    doc.setFontSize(9);
-    doc.text(`Transport: ${transportText(order)}`, margin + 10, y + 1);
-
-    // ---- Vendor / Deliver-to panels ----
-    y += 34;
-    const colW = (pageWidth - margin * 2 - 16) / 2;
-    doc.setDrawColor(...HAIR);
-    doc.roundedRect(margin, y, colW, 78, 4, 4, "S");
-    doc.roundedRect(margin + colW + 16, y, colW, 78, 4, 4, "S");
-
-    doc.setTextColor(...MUTED);
-    doc.setFontSize(8);
-    doc.text("VENDOR (SELLER)", margin + 10, y + 16);
-    doc.text("DELIVER TO", margin + colW + 26, y + 16);
+    // ---- Header ----
+    let y = 28;
+    drawLogo(doc, margin, y, 30, resolvedLogo, font);
 
     doc.setTextColor(...INK);
-    doc.setFont(undefined, "bold");
-    doc.setFontSize(11);
-    doc.text(vendorName, margin + 10, y + 32);
-    doc.text(addr.contact_name || order.buyer_contact_name || "-", margin + colW + 26, y + 32);
-    doc.setFont(undefined, "normal");
+    doc.setFont(font, "bold");
+    doc.setFontSize(13);
+    doc.setCharSpace(0.1);
+    doc.text("BBM Marketplace", margin + 40, y + 12);
+    doc.setFont(font, "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...ACCENT);
+    doc.setCharSpace(1.1);
+    doc.text("PURCHASE ORDER", margin + 40, y + 24);
+    doc.setCharSpace(0);
+
+    doc.setTextColor(...INK);
+    doc.setFont(font, "bold");
+    doc.setFontSize(10);
+    doc.setCharSpace(0.2);
+    doc.text(order.order_number || "-", pageWidth - margin, y + 8, { align: "right" });
+    doc.setFont(font, "normal");
+    doc.setFontSize(8.5);
+    doc.setTextColor(...MUTED);
+    doc.text(fmtDate(order.created_at) || "-", pageWidth - margin, y + 22, { align: "right" });
+    doc.setCharSpace(0);
+
+    y += 42;
+    doc.setDrawColor(...ACCENT);
+    doc.setLineWidth(1.25);
+    doc.line(margin, y, pageWidth - margin, y);
+
+    // ---- Buyer / order info panel ----
+    y += 16;
+    const infoRows = [
+        [
+            { label: "Shop Name (Buyer)", value: buyerShopName },
+            { label: "Buyer GSTIN", value: buyerGstin },
+            { label: "Buyer Phone", value: order.buyer_contact_phone },
+        ],
+        [
+            { label: "Order No.", value: order.order_number },
+            { label: "Order Date", value: fmtDate(order.created_at) },
+            { label: "Buyer Email", value: order.buyer_contact_email },
+        ],
+        [
+            { label: "Transport Mode", value: transportText(order) },
+            { label: "Estimated Delivery", value: deliveryDateLabel(order, firstItem) },
+            { label: "", value: "" },
+        ],
+    ];
+    const infoH = drawInfoPanel(doc, margin, y, contentWidth, infoRows, 3, font);
+    y += infoH + 18;
+
+    // ---- Vendor / Deliver-to — height computed from actual wrapped
+    // content so the address never spills past the panel's rounded border.
+    const colW = (contentWidth - 16) / 2;
+    const colPad = 14;
+    const deliverAddrText = `${addr.address_line1 || ""}${addr.address_line2 ? ", " + addr.address_line2 : ""}, ${addr.city || ""}, ${addr.state || ""} - ${addr.pincode || ""}`;
+    const deliverLines = doc.splitTextToSize(deliverAddrText, colW - colPad * 2);
+    const vendorNameLines = doc.splitTextToSize(vendorName, colW - colPad * 2);
+    const deliverNameLines = doc.splitTextToSize(addr.contact_name || order.buyer_contact_name || "-", colW - colPad * 2);
+
+    const vendorColH = 18 + vendorNameLines.length * 13 + (vendorLocation ? 13 : 0) + 14;
+    const deliverColH = 18 + deliverNameLines.length * 13 + deliverLines.length * 11 + 14;
+    const vBoxH = Math.max(74, vendorColH, deliverColH);
+
+    doc.setFillColor(...PANEL_FILL);
+    doc.setDrawColor(...HAIR);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(margin, y, colW, vBoxH, RADIUS, RADIUS, "FD");
+    doc.roundedRect(margin + colW + 16, y, colW, vBoxH, RADIUS, RADIUS, "FD");
 
     doc.setTextColor(...MUTED);
-    doc.setFontSize(9);
-    if (vendorLocation) doc.text(vendorLocation, margin + 10, y + 46);
+    doc.setFont(font, "normal");
+    doc.setFontSize(7);
+    doc.setCharSpace(0.6);
+    doc.text("VENDOR (SELLER)", margin + colPad, y + 18);
+    doc.text("DELIVER TO", margin + colW + 16 + colPad, y + 18);
+    doc.setCharSpace(0);
 
-    const deliverLines = doc.splitTextToSize(
-        `${order.buyer_business_name ? order.buyer_business_name + (order.buyer_gstin ? " · " + order.buyer_gstin : "") + "\n" : ""}${addr.address_line1 || ""}${addr.address_line2 ? ", " + addr.address_line2 : ""}, ${addr.city || ""}, ${addr.state || ""} - ${addr.pincode || ""}`,
-        colW - 20
-    );
-    doc.text(deliverLines, margin + colW + 26, y + 46);
+    doc.setTextColor(...INK);
+    doc.setFont(font, "bold");
+    doc.setFontSize(11);
+    doc.setCharSpace(0.1);
+    doc.text(vendorNameLines, margin + colPad, y + 34);
+    doc.text(deliverNameLines, margin + colW + 16 + colPad, y + 34);
+    doc.setCharSpace(0);
+
+    doc.setFont(font, "normal");
+    doc.setTextColor(...MUTED);
+    doc.setFontSize(8.5);
+    const vendorLocY = y + 34 + vendorNameLines.length * 13;
+    if (vendorLocation) doc.text(vendorLocation, margin + colPad, vendorLocY);
+
+    const deliverAddrY = y + 34 + deliverNameLines.length * 13;
+    doc.text(deliverLines, margin + colW + 16 + colPad, deliverAddrY);
+
+    y += vBoxH + 20;
 
     // ---- Items table ----
-    const tableStartY = y + 96;
+    // Column 1's body text is kept as the real content (name + brand) so
+    // autoTable computes the correct row height from it, but rendered
+    // invisible (white) — the actual styled version (bold name, accent
+    // brand line) is drawn on top in didDrawCell, avoiding a duplicated
+    // "product name" line.
+    // ---- Items table ----
+    const tableStartY = y;
+    const headRowH = 30; // matches your headStyles cellPadding + 2 lines of 7.5pt text
+
+    // Pre-draw the header as a rounded-TOP-only panel so the header's fill
+    // doesn't leave square corners under the frame stroke.
+    doc.setFillColor(...ACCENT);
+    doc.roundedRect(margin, tableStartY, contentWidth, headRowH, RADIUS, RADIUS, "F");
+    doc.rect(margin, tableStartY + RADIUS, contentWidth, headRowH - RADIUS, "F"); // square off the bottom of the header block so it meets the body flush
+
     autoTable(doc, {
         startY: tableStartY,
-        head: [["Sr", "Description of Goods", "Qty", "Rate", "Amount"]],
+        head: [["SR", "DESCRIPTION OF GOODS", "QTY", "BASE PRICE\n(EXCL. GST)", "AMOUNT\n(EXCL. GST)"]],
         body: items.map((it, i) => [
             i + 1,
-            `${it.product_name_snapshot || ""}${it.brand_name_snapshot ? " (" + it.brand_name_snapshot + ")" : ""}`,
+            `${it.product_name_snapshot || ""}`,
             itemQtyText(it),
-            `Rs. ${inr(it.unit_price)}`,
-            `Rs. ${inr(it.line_total)}`,
+            `Rs. ${inr(baseRateExclGst(it))}`,
+            `Rs. ${inr(amountExclGst(it))}`,
         ]),
         margin: { left: margin, right: margin },
-        styles: { fontSize: 9, cellPadding: 7, textColor: INK, lineColor: HAIR, lineWidth: 0.5 },
-        headStyles: { fillColor: ACCENT, textColor: [255, 255, 255], fontStyle: "bold" },
-        alternateRowStyles: { fillColor: [250, 251, 251] },
+        tableWidth: contentWidth,
+        styles: {
+            font,
+            fontSize: 8.5,
+            cellPadding: { top: 5, bottom: 9, left: 9, right: 9 },
+            textColor: INK,
+            lineColor: HAIR_SOFT,
+            lineWidth: { top: 0, left: 0, right: 0, bottom: 0.5 },
+            valign: "top",
+            overflow: "linebreak",
+        },
+        headStyles: {
+            fillColor: false,          // we already painted the header background ourselves above
+            textColor: [255, 255, 255],
+            fontStyle: "bold",
+            valign: "middle",
+            fontSize: 7.5,
+            lineWidth: 0,
+            cellPadding: { top: 8, bottom: 8, left: 9, right: 9 },
+            minCellHeight: headRowH,
+        },
         columnStyles: {
-            0: { cellWidth: 26 },
-            2: { cellWidth: 130 },
-            3: { halign: "right", cellWidth: 80 },
-            4: { halign: "right", cellWidth: 90 },
+            0: { cellWidth: 30, halign: "center" },
+            1: { cellWidth: "auto" },
+            2: { cellWidth: 114 },
+            3: { halign: "right", cellWidth: 82 },
+            4: { halign: "right", cellWidth: 88 },
+        },
+        didParseCell: (data) => {
+            if (data.section === "head") {
+                data.cell.styles.halign = data.column.index >= 3 ? "right" : (data.column.index === 0 ? "center" : "left");
+            }
+            if (data.section === "body") {
+                if (data.row.index % 2 === 1) data.cell.styles.fillColor = PANEL_FILL;
+                if (data.column.index === 1) data.cell.styles.textColor = [255, 255, 255];
+            }
+        },
+        willDrawCell: (data) => {
+            if (data.section === "head") doc.setCharSpace(0.3);
+        },
+        didDrawCell: (data) => {
+            doc.setCharSpace(0);
+            if (data.section !== "body" || data.column.index !== 1) return;
+            const item = items[data.row.index];
+            if (!item) return;
+            const { x, y: cy, width } = data.cell;
+            doc.setFont(font, "bold");
+            doc.setFontSize(9);
+            doc.setTextColor(...INK);
+            doc.setCharSpace(0.05);
+            const nameLines = doc.splitTextToSize(item.product_name_snapshot || "", width - 18);
+            doc.text(nameLines, x + 9, cy + 14);
+            if (item.brand_name_snapshot) {
+                doc.setFont(font, "normal");
+                doc.setFontSize(8);
+                doc.setTextColor(...ACCENT);
+                const brandY = cy + 14 + nameLines.length * 11 + 3;
+                doc.text(`Brand: ${item.brand_name_snapshot}`, x + 9, brandY);
+            }
+            doc.setCharSpace(0);
         },
     });
 
-    // ---- Totals box ----
+    const tableEndY = doc.lastAutoTable.finalY;
+
+    // Round the bottom corners of the last body row similarly, then stroke
+    // the whole frame — now both top and bottom corners are genuinely rounded.
+    doc.setDrawColor(...HAIR);
+    doc.setLineWidth(0.75);
+    doc.roundedRect(margin, tableStartY, contentWidth, tableEndY - tableStartY, RADIUS, RADIUS, "S");
+
+    y = tableEndY + 18;
+
+    // ---- Totals ----
+    const subtotal = round2(items.reduce((s, it) => s + amountExclGst(it), 0));
+    const gstAmount = round2(Math.max(Number(order.total_amount) - subtotal, 0));
+    const half = round2(gstAmount / 2);
+
     const finalY = doc.lastAutoTable.finalY + 20;
-    const boxW = 230;
+    const boxW = 240;
     const boxX = pageWidth - margin - boxW;
     const gstLines = isSample ? 0 : (isIntraState ? 2 : 1);
-    const boxH = isSample ? 34 : 30 + gstLines * 16 + 34;
+    const noteLines = isSample ? [] : doc.splitTextToSize(
+        // `GST is calculated on the base (pre-discount) price at the standard ${GST_PERCENT}% rate.`,
+        boxW
+    );
+    const boxH = (isSample ? 20 : 20 * (1 + gstLines) + 12 + 24) + (noteLines.length * 10);
 
-    doc.setDrawColor(...HAIR);
-    doc.roundedRect(boxX, finalY, boxW, boxH, 4, 4, "S");
+    let boxTop = finalY;
+    if (boxTop + boxH > pageHeight - 70) {
+        doc.addPage();
+        await registerFont(doc);
+        boxTop = 50;
+    }
 
-    let ty = finalY + 20;
-    doc.setFontSize(9);
-    doc.setTextColor(...MUTED);
-
+    // No fill/border panel here anymore — plain rows on the page background,
+    // same as the web card.
+    let ty = boxTop + 10;
     function row(label, value, opts = {}) {
-        doc.setFont(undefined, opts.bold ? "bold" : "normal");
+        doc.setFont(font, opts.bold ? "bold" : "normal");
+        doc.setFontSize(opts.size || 9.5);
         doc.setTextColor(...(opts.color || MUTED));
-        doc.text(label, boxX + 12, ty);
-        doc.text(value, boxX + boxW - 12, ty, { align: "right" });
-        ty += 16;
+        doc.setCharSpace(0.15);
+        doc.text(label, boxX, ty);
+        doc.text(value, boxX + boxW, ty, { align: "right" });
+        doc.setCharSpace(0);
+        ty += 18;
     }
 
     if (isSample) {
-        row("Total", `Rs. ${inr(order.total_amount)}`, { bold: true, color: INK });
+        row("Total", `Rs. ${inr(order.total_amount)}`, { bold: true, color: INK, size: 11 });
     } else {
-        row("Taxable Value", `Rs. ${inr(gst.taxable)}`);
+        row("Subtotal", `Rs. ${inr(subtotal)}`);
         if (isIntraState) {
-            row(`CGST (${GST_PERCENT / 2}%)`, `Rs. ${inr(gst.cgst)}`);
-            row(`SGST (${GST_PERCENT / 2}%)`, `Rs. ${inr(gst.sgst)}`);
+            row(`CGST (${GST_PERCENT / 2}%)`, `Rs. ${inr(half)}`);
+            row(`SGST (${GST_PERCENT / 2}%)`, `Rs. ${inr(round2(gstAmount - half))}`);
         } else {
-            row(`IGST (${GST_PERCENT}%)`, `Rs. ${inr(gst.igst)}`);
+            row(`IGST (${GST_PERCENT}%)`, `Rs. ${inr(gstAmount)}`);
         }
+        // thin divider, then bold Total Payable — matches the web's border-t
         doc.setDrawColor(...HAIR);
-        doc.line(boxX + 12, ty - 6, boxX + boxW - 12, ty - 6);
-        ty += 4;
-        doc.setFontSize(11);
-        row("Total Payable", `Rs. ${inr(order.total_amount)}`, { bold: true, color: ACCENT });
+        doc.setLineWidth(0.75);
+        doc.line(boxX, ty - 6, boxX + boxW, ty - 6);
+        ty += 14;
+        row("Total Payable", `Rs. ${inr(order.total_amount)}`, { bold: true, color: ACCENT, size: 12 });
+
+        // italic footnote, right-aligned under the totals, same as web
+        ty += 6;
+        doc.setFont(font, "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...MUTED);
+        doc.text(noteLines, boxX + boxW, ty, { align: "right" });
+        ty += noteLines.length * 10;
     }
 
+    // let footerY = ty + 14;
     // ---- Footer note ----
-    let footerY = finalY + boxH + 24;
-    doc.setFont(undefined, "italic");
-    doc.setFontSize(8);
+    let footerY = boxTop + boxH + 26;
+    doc.setFont(font, "normal");
+    doc.setFontSize(7.5);
     doc.setTextColor(...MUTED);
+    doc.setCharSpace(0.15);
     if (!isSample) {
-        doc.text(`GST shown is a breakup of the total at the standard ${GST_PERCENT}% rate, for invoicing reference.`, margin, footerY);
-        footerY += 14;
+        // doc.text(`GST is calculated on the base (pre-discount) price at the standard ${GST_PERCENT}% rate.`, margin, footerY);
+        footerY += 13;
     }
 
     if (order.buyer_notes) {
-        doc.setFont(undefined, "bold");
+        doc.setFont(font, "bold");
+        doc.setFontSize(8.5);
         doc.setTextColor(...INK);
         doc.text("Notes:", margin, footerY);
-        doc.setFont(undefined, "normal");
+        doc.setFont(font, "normal");
         doc.setTextColor(...MUTED);
-        doc.text(doc.splitTextToSize(order.buyer_notes, pageWidth - margin * 2), margin, footerY + 14);
+        doc.text(doc.splitTextToSize(order.buyer_notes, contentWidth), margin, footerY + 13);
     }
+    doc.setCharSpace(0);
 
     doc.save(`${order.order_number || "order"}.pdf`);
 }

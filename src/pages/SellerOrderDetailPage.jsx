@@ -216,40 +216,14 @@ export default function SellerOrderDetailPage() {
                             <div className="min-w-0 flex-1">
                                 <p className="truncate text-[14.5px] font-extrabold tracking-wider" style={{ color: C.ink }}>{item.product_name_snapshot}</p>
                                 <p className="text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>
-                                    <ItemQuantityLine item={item} mutedColor={C.muted} /> × {displayAmount(item.unit_price, { isSample })}
+                                    @{displayAmount(item.unit_price, { isSample })}
                                 </p>
                             </div>
-                            <p className="text-[15px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p>
+                            <ItemQuantityLine item={item} mutedColor={C.muted} />
                         </div>
                     ))}
                 </div>
 
-                <div className="mt-3 flex flex-col gap-2 rounded-xl p-3" style={{ background: isSample ? "#7c3aed08" : `${C.primary}08` }}>
-                    {isSample ? (
-                        <div className="flex items-center justify-between">
-                            <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                Free sample · no platform fee
-                            </span>
-                            <p className="flex items-center gap-0.5 text-[14px] font-extrabold tabular-nums" style={{ color: "#7c3aed" }}>
-                                <IndianRupee className="h-3.5 w-3.5" />
-                                {inr(order.seller_payout_amount)}
-                            </p>
-                        </div>
-                    ) : (
-                        <>
-                            <div className="flex items-center justify-between">
-                                <span className="text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>You'll receive</span>
-                                <p className="flex items-center gap-0.5 text-[15.5px] font-extrabold tabular-nums" style={{ color: C.primary }}>
-                                    <IndianRupee className="h-3.5 w-3.5" />
-                                    {inr(order.subtotal_amount)}
-                                </p>
-                            </div>
-                            <p className="mt-1 text-[13px] italic font-medium tracking-wide" style={{ color: C.muted }}>
-                                Wallet deduction: ₹{inr(round2(order.subtotal_amount * order.platform_fee_percent / 100 * 1.18))} (0.25% commission + 18% GST)
-                            </p>
-                        </>
-                    )}
-                </div>
             </Card>
 
             <Card title="Buyer">
@@ -261,10 +235,7 @@ export default function SellerOrderDetailPage() {
                     <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{order.buyer_contact_phone}</span>
                     {order.buyer_contact_email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{order.buyer_contact_email}</span>}
                 </p>
-                <div className="mt-3 border-t pt-3" style={{ borderColor: C.hairSoft }}>
-                    <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em]" style={{ color: C.muted }}><MapPin className="h-3 w-3" /> Ship to</p>
-                    <p className="mt-1 text-[12.5px] font-medium leading-relaxed tracking-wide" style={{ color: C.ink }}>{addr.contact_name}, {addr.address_line1}{addr.address_line2 ? `, ${addr.address_line2}` : ""}, {addr.city}, {addr.state} - {addr.pincode}</p>
-                </div>
+
                 {order.buyer_notes && <p className="mt-2 text-[12.5px] font-medium italic tracking-wide" style={{ color: C.muted }}>"{order.buyer_notes}"</p>}
             </Card>
 

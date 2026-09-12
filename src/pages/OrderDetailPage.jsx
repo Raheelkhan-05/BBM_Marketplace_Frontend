@@ -215,68 +215,13 @@ export default function OrderDetailPage() {
                             <div className="min-w-0 flex-1">
                                 <p className="truncate text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>{item.product_name_snapshot}</p>
                                 <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                    <ItemQuantityLine item={item} mutedColor={C.muted} /> × {displayAmount(item.unit_price, { isSample })}
+                                    @{displayAmount(item.unit_price, { isSample })}
                                 </p>
                             </div>
-                            <p className="text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p>
+                            <ItemQuantityLine item={item} mutedColor={C.muted} />
                             {/* <p className="text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>{displayAmount(item.line_total, { isSample })}</p> */}
                         </div>
                     ))}
-                </div>
-
-                <div className="mt-3 flex flex-col gap-2.5 rounded-xl p-3" style={{ background: isSample ? "#7c3aed08" : `${C.primary}08` }}>
-                    {isSample ? (
-                        <div className="flex items-center justify-between">
-                            <span className="text-[12.5px] font-bold tracking-wide" style={{ color: C.muted }}>Total</span>
-                            <span className="text-[16px] font-extrabold tabular-nums" style={{ color: "#7c3aed" }}>
-                                {displayAmount(order.total_amount, { isSample })}
-                            </span>
-                        </div>
-                    ) : (() => {
-                        const t = deriveOrderTotals(order);
-                        return (
-                            <>
-
-                                {t.saleUnitLabel ? (
-                                    <p className="text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>
-                                        {inr(t.saleUnitQuantity)} {t.saleUnitLabel}{t.saleUnitQuantity === 1 ? "" : "s"} · {inr(t.baseQuantity)} {t.unit}
-                                        <span className="ml-1.5" style={{ color: C.muted }}>
-                                            (₹{inr(t.basePriceApplied)} / {t.saleUnitLabel} ≈ ₹{inr(t.perBaseUnitRate)} / {t.unit})
-                                        </span>
-                                    </p>
-                                ) : (
-                                    <p className="text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>
-                                        {inr(t.baseQuantity)} {t.unit} × ₹{inr(t.perBaseUnitRate)} / {t.unit}
-                                    </p>
-                                )}
-
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Subtotal</span>
-                                    <span className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(t.grossSubtotal)}</span>
-                                </div>
-
-                                {t.discountAmount > 0 && (
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.secondary }}>
-                                            Discount{t.discountPercent ? ` (${t.discountPercent}% off)` : ""}
-                                        </span>
-                                        <span className="text-[13.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>
-                                            − ₹{inr(t.discountAmount)}
-                                        </span>
-                                    </div>
-                                )}
-
-                                <div className="my-0.5 h-px" style={{ background: C.hair }} />
-
-                                <div className="flex items-center justify-between">
-                                    <span className="text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>Total payable</span>
-                                    <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.primary }}>
-                                        {displayAmount(order.total_amount, { isSample })}
-                                    </span>
-                                </div>
-                            </>
-                        );
-                    })()}
                 </div>
             </Card>
 

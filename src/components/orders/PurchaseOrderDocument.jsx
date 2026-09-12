@@ -2,19 +2,9 @@
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { transportLabel } from "../../../shared/transportOptions.js";
-import { ItemQuantityLine, displayAmount } from "./OrderDisplayHelpers.jsx";
+import { ItemQuantityLine, parseDeliveryDate } from "./OrderDisplayHelpers.jsx";
 
 const C = { ink: "#0B1116", muted: "#667077", hair: "rgba(11,17,22,0.12)", accent: "#0B7285" };
-
-// Standard GST rate. Matches the 18% figure already used elsewhere in this
-// codebase (see the "0.25% commission + 18% GST" wallet-deduction line in
-// SellerOrderDetailPage / SalesOrderCard). Since order.total_amount is NOT
-// currently charged with GST on top (the platform only taxes its own
-// commission), this is treated as a back-calculated breakup of the existing
-// total for invoicing/documentation purposes — it never changes what the
-// buyer actually owes. If you instead want GST added ON TOP as a real extra
-// charge, this needs to change (ask before flipping this, since it changes
-// amounts shown as due).
 const GST_PERCENT = 18;
 
 function fmtDate(d) {
@@ -23,19 +13,19 @@ function fmtDate(d) {
     return isNaN(dt) ? null : dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-// Handles the (min, max) estimated-delivery-date pair the same way the
-// backend's own daysFromDistance/estimateDeliveryDate logic produces it.
-// Falls back to "Pending confirmation" rather than a blank dash so it's
-// clear this isn't a rendering bug — if this keeps showing "Pending
-// confirmation" for orders that DO have a delivery estimate elsewhere in
-// the app, the order-fetch endpoint backing this page isn't returning
-// estimated_delivery_date / estimated_delivery_date_max.
-function deliveryDateLabel(order) {
-    const minLabel = fmtDate(order.estimated_delivery_date);
-    if (!minLabel) return "Pending confirmation";
-    const maxLabel = fmtDate(order.estimated_delivery_date_max);
-    if (maxLabel && maxLabel !== minLabel) return `${minLabel} – ${maxLabel}`;
-    return minLabel;
+// FIX: this used to read order.estimated_delivery_date / _max, which are
+// not the fields the "Fulfilment" card (DeliveryEstimate in
+// OrderDisplayHelpers.jsx) actually reads — that card parses
+// item.lead_time_snapshot via the shared parseDeliveryDate helper. The two
+// were drifting: Fulfilment could show "13 Sep - 14 Sep" while this block
+// said "Pending confirmation" for the exact same order. Now both read the
+// same source through the same parser, so they can't disagree.
+function deliveryDateLabel(order, firstItem) {
+    if (order.status === "delivered") {
+        const ts = order.updated_at;
+        return ts ? fmtDate(ts) : "Delivered";
+    }
+    return parseDeliveryDate(firstItem?.lead_time_snapshot) || "To be confirmed";
 }
 
 function inr(n) {
@@ -47,24 +37,24 @@ function round2(n) {
 
 function transportSummary(order) {
     if (order.transport_mode) return { confirmed: true, label: transportLabel(order.transport_mode) };
-    if (order.buyer_transport_mode) return { confirmed: false, label: transportLabel(order.buyer_transport_mode), requested: true };
+    if (order.buyer_transport_mode) return { confirmed: false, label: transportLabel(order.buyer_transport_mode) };
     return { confirmed: false, label: null };
 }
 
-// Back-calculates a GST breakup from an amount that already includes GST
-// (see GST_PERCENT comment above for why). Returns the pre-tax taxable
-// value plus CGST/SGST (intra-state) and IGST (inter-state) components —
-// the caller picks whichever pair applies.
-function gstBreakup(totalInclGst) {
-    const taxable = round2(totalInclGst / (1 + GST_PERCENT / 100));
-    const gstAmount = round2(totalInclGst - taxable);
-    const half = round2(gstAmount / 2);
-    return { taxable, cgst: half, sgst: round2(gstAmount - half), igst: gstAmount };
+function saleQtyOf(item) {
+    return Number(item.pack_quantity_snapshot) || Number(item.quantity) || 0;
+}
+function baseRateExclGst(item) {
+    const inclGst = Number(item.base_price_applied ?? item.unit_price) || 0;
+    return round2(inclGst / (1 + GST_PERCENT / 100));
+}
+function amountExclGst(item) {
+    return round2(baseRateExclGst(item) * saleQtyOf(item));
 }
 
 function TotalRow({ label, value, bold, color }) {
     return (
-        <div className="flex w-full max-w-[280px] justify-between text-[12.5px] font-semibold" style={{ color: color || C.muted }}>
+        <div className="flex w-full max-w-[300px] justify-between text-[12.5px] font-semibold tracking-wide" style={{ color: color || C.muted }}>
             <span className={bold ? "font-extrabold" : ""}>{label}</span>
             <span className={`tabular-nums ${bold ? "font-extrabold" : ""}`} style={{ color: bold ? C.ink : (color || C.ink) }}>{value}</span>
         </div>
@@ -77,25 +67,32 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
 
     const addr = order.shipping_address_snapshot || {};
     const items = order.items || [];
+    const firstItem = items[0];
     const transport = transportSummary(order);
-    const totalQty = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
     const isBuyerView = variant === "buyer";
+    const isSellerView = variant === "seller";
     const isSample = order.order_type === "sample";
 
-    // order.seller is populated on the buyer's fetch (live join). On the
-    // seller's own order fetch there's no such join (they know their own
-    // shop), so vendorOverride — sourced from the logged-in seller's own
-    // profile — fills that gap. See SellerOrderDetailPage.jsx for where
-    // this comes from.
     const vendor = order.seller || vendorOverride || null;
-    const vendorName = vendor?.display_name || (isBuyerView ? "—" : "Your Shop");
+    const vendorName = vendor?.display_name || "—";
     const vendorLocation = [vendor?.city, vendor?.state].filter(Boolean).join(", ");
     const deliverToName = addr.contact_name || order.buyer_contact_name || "";
 
     const sellerState = vendor?.state || null;
     const buyerState = addr.state || null;
     const isIntraState = !!(sellerState && buyerState && sellerState.trim().toLowerCase() === buyerState.trim().toLowerCase());
-    const gst = gstBreakup(Number(order.total_amount) || 0);
+
+    const subtotal = round2(items.reduce((s, it) => s + amountExclGst(it), 0));
+    const gstAmount = round2(Math.max((Number(order.total_amount) || 0) - subtotal, 0));
+    const half = round2(gstAmount / 2);
+
+
+    // NEW — same formula already used in SellerOrderDetailPage's Items
+    // card; surfaced here too since sellers view this card as their
+    // primary order summary and the wallet impact belongs next to
+    // Total Payable, not buried lower on the page.
+    const walletDeduction = round2((Number(order.subtotal_amount) || 0) * (Number(order.platform_fee_percent) || 0) / 100 * 1.18);
+
 
     const handleDownload = async () => {
         setDownloading(true);
@@ -125,11 +122,11 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
             </div>
 
             <div className="p-4 sm:p-5">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-b pb-4 sm:grid-cols-4" style={{ borderColor: C.hair }}>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-b pb-4 sm:grid-cols-4" style={{ borderColor: C.hair }}>
                     <MetaField label="Order No." value={order.order_number} mono />
-                    <MetaField label="Date" value={fmtDate(order.created_at) || "—"} />
-                    <MetaField label="Delivery Date" value={deliveryDateLabel(order)} />
-                    <MetaField label="Transport" value={transport.label ? `${transport.label}${transport.confirmed ? "" : " (requested)"}` : "To be decided"} />
+                    <MetaField label="Order Date" value={fmtDate(order.created_at) || "—"} />
+                    <MetaField label="Estimated Delivery" value={deliveryDateLabel(order, firstItem)} />
+                    <MetaField label="Transport" value={transport.label || "To be decided"} />
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-4 border-b pb-4 sm:grid-cols-2" style={{ borderColor: C.hair }}>
@@ -156,25 +153,29 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
                 <div className="mt-4 hidden overflow-hidden rounded-lg border sm:block" style={{ borderColor: C.hair }}>
                     <table className="w-full text-[12.5px]">
                         <thead>
-                            <tr style={{ background: "#f3f5f5" }}>
+                            <tr style={{ background: C.accent }}>
                                 <Th className="w-10">Sr</Th>
                                 <Th>Description of Goods</Th>
-                                <Th className="w-40">Qty</Th>
-                                <Th className="w-24 text-right">Rate</Th>
-                                <Th className="w-28 text-right">Amount</Th>
+                                <Th className="w-44">Qty</Th>
+                                <Th className="w-28 text-right">Base Price<br /><span className="font-normal normal-case opacity-80">(Excl. GST)</span></Th>
+                                <Th className="w-32 text-right">Amount<br /><span className="font-normal normal-case opacity-80">(Excl. GST)</span></Th>
                             </tr>
                         </thead>
                         <tbody>
                             {items.map((it, i) => (
-                                <tr key={it.id || i} className="border-t align-top" style={{ borderColor: C.hair }}>
+                                <tr key={it.id || i} className="border-t align-top" style={{ borderColor: C.hair, background: i % 2 === 1 ? "#fafbfb" : "#fff" }}>
                                     <Td>{i + 1}</Td>
                                     <Td>
-                                        <span className="font-bold" style={{ color: C.ink }}>{it.product_name_snapshot}</span>
-                                        {it.brand_name_snapshot && <span className="ml-1 font-medium" style={{ color: C.muted }}>({it.brand_name_snapshot})</span>}
+                                        <span className="block font-bold tracking-wide" style={{ color: C.ink }}>{it.product_name_snapshot}</span>
+                                        {it.brand_name_snapshot && (
+                                            <span className="mt-0.5 block text-[11px] font-bold tracking-wide" style={{ color: C.accent }}>
+                                                Brand: {it.brand_name_snapshot}
+                                            </span>
+                                        )}
                                     </Td>
                                     <Td><ItemQuantityLine item={it} mutedColor={C.muted} /></Td>
-                                    <Td className="text-right tabular-nums">{displayAmount(it.unit_price, { isSample })}</Td>
-                                    <Td className="text-right tabular-nums font-bold">{displayAmount(it.line_total, { isSample })}</Td>
+                                    <Td className="text-right tabular-nums">₹{inr(baseRateExclGst(it))}</Td>
+                                    <Td className="text-right tabular-nums font-bold">₹{inr(amountExclGst(it))}</Td>
                                 </tr>
                             ))}
                         </tbody>
@@ -183,46 +184,81 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
 
                 {/* Mobile stacked rows */}
                 <div className="mt-4 flex flex-col gap-2 sm:hidden">
+                    {/* Shared column headers — mirrors the desktop table's header row
+        (Description of Goods / Amount), just simplified for the stacked
+        mobile card layout so each card's content lines up under a label
+        instead of repeating "Amount" per card. */}
+                    {items.length > 0 && (
+                        <div className="flex items-center justify-between px-1">
+                            <span className="text-[10px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Items</span>
+                            <span className="text-[10px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Amount</span>
+                        </div>
+                    )}
+
                     {items.map((it, i) => (
                         <div key={it.id || i} className="rounded-lg border p-2.5" style={{ borderColor: C.hair }}>
-                            <p className="text-[13px] font-bold" style={{ color: C.ink }}>{i + 1}. {it.product_name_snapshot}</p>
-                            <div className="mt-1 flex items-center justify-between text-[11.5px] font-semibold" style={{ color: C.muted }}>
-                                <span><ItemQuantityLine item={it} mutedColor={C.muted} /> × {displayAmount(it.unit_price, { isSample })}</span>
-                                <span className="font-extrabold" style={{ color: C.ink }}>{displayAmount(it.line_total, { isSample })}</span>
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-[14px] font-extrabold tracking-wide" style={{ color: C.ink }}>{i + 1}. {it.product_name_snapshot}</p>
+                                    {it.brand_name_snapshot && (
+                                        <p className="mt-0 text-[11px] font-bold tracking-wide" style={{ color: C.accent }}>Brand: {it.brand_name_snapshot}</p>
+                                    )}
+                                </div>
+                                <span className="shrink-0 text-[14px] font-extrabold tracking-wide" style={{ color: C.ink }}>₹{inr(amountExclGst(it))}</span>
+                            </div>
+
+                            <div className="mt-1.5 flex flex-col gap-0.5 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                <span>Quantity: <ItemQuantityLine item={it} mutedColor={C.muted} /></span>
+                                <span>Base Price: ₹{inr(baseRateExclGst(it))}</span>
                             </div>
                         </div>
                     ))}
                 </div>
 
-                <div className="mt-4 flex flex-col items-end gap-1">
-                    <TotalRow label="Total Qty" value={totalQty} />
+                <div className="mt-4 flex flex-col items-end gap-1.5 border-t pt-4" style={{ borderColor: C.hair }}>
                     {isSample ? (
-                        <TotalRow label="Total" value={displayAmount(order.total_amount, { isSample })} bold />
+                        <TotalRow label="Total" value={`₹${inr(order.total_amount)}`} bold />
                     ) : (
                         <>
-                            <TotalRow label="Taxable Value" value={`₹${inr(gst.taxable)}`} />
+                            <TotalRow label="Subtotal" value={`₹${inr(subtotal)}`} />
                             {isIntraState ? (
                                 <>
-                                    <TotalRow label={`CGST (${GST_PERCENT / 2}%)`} value={`₹${inr(gst.cgst)}`} />
-                                    <TotalRow label={`SGST (${GST_PERCENT / 2}%)`} value={`₹${inr(gst.sgst)}`} />
+                                    <TotalRow label={`CGST (${GST_PERCENT / 2}%)`} value={`₹${inr(half)}`} />
+                                    <TotalRow label={`SGST (${GST_PERCENT / 2}%)`} value={`₹${inr(round2(gstAmount - half))}`} />
                                 </>
                             ) : (
-                                <TotalRow label={`IGST (${GST_PERCENT}%)`} value={`₹${inr(gst.igst)}`} />
+                                <TotalRow label={`IGST (${GST_PERCENT}%)`} value={`₹${inr(gstAmount)}`} />
                             )}
-                            <div className="mt-1 flex w-full max-w-[280px] justify-between border-t pt-1.5 text-[14px] font-extrabold" style={{ borderColor: C.hair, color: C.ink }}>
-                                <span>Total Payable</span><span className="tabular-nums" style={{ color: C.accent }}>{displayAmount(order.total_amount, { isSample })}</span>
+                            <div className="mt-1 flex w-full max-w-[300px] justify-between border-t pt-2 text-[15px] font-extrabold tracking-wide" style={{ borderColor: C.hair, color: C.ink }}>
+                                <span>Total Payable</span><span className="tabular-nums" style={{ color: C.accent }}>₹{inr(order.total_amount)}</span>
                             </div>
-                            <p className="mt-1 max-w-[280px] text-right text-[10.5px] font-medium italic" style={{ color: C.muted }}>
-                                GST shown is a breakup of the total at the standard {GST_PERCENT}% rate, for invoicing reference.
-                            </p>
+                            {/* <p className="mt-1 max-w-[300px] text-right text-[10.5px] font-medium italic tracking-wide" style={{ color: C.muted }}>
+                                GST is calculated on the base (pre-discount) price at the standard {GST_PERCENT}% rate.
+                            </p> */}
                         </>
+                    )}
+
+                    {/* NEW — seller-only, screen-only wallet/commission note.
+                        Not passed to generateOrderPdf, so the PDF stays clean.
+                        Styled to match TotalRow's tracking/weight language,
+                        just muted + italic to read as a secondary note
+                        rather than another line item. */}
+                    {isSellerView && !isSample && (
+                        <p className="mt-1 max-w-[350px] text-right text-[12px] font-medium italic tracking-wide" style={{ color: C.muted }}>
+                            Wallet deduction: ₹{inr(walletDeduction)} (0.25% commission + 18% GST)
+                        </p>
+                    )}
+                    {isSellerView && isSample && (
+                        <p className="mt-1 max-w-[300px] text-right text-[11px] font-medium italic tracking-wide" style={{ color: C.muted }}>
+                            Free sample · no platform fee
+                        </p>
                     )}
                 </div>
 
                 {order.buyer_notes && (
                     <div className="mt-4 border-t pt-3" style={{ borderColor: C.hair }}>
                         <p className="text-[10.5px] font-extrabold uppercase tracking-[0.1em]" style={{ color: C.muted }}>Notes</p>
-                        <p className="mt-1 text-[12.5px] font-medium italic" style={{ color: C.ink }}>"{order.buyer_notes}"</p>
+                        <p className="mt-1 text-[12.5px] font-medium italic tracking-wide" style={{ color: C.ink }}>"{order.buyer_notes}"</p>
                     </div>
                 )}
             </div>
@@ -234,13 +270,13 @@ function MetaField({ label, value, mono }) {
     return (
         <div>
             <p className="text-[10px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>{label}</p>
-            <p className={`text-[12.5px] font-bold tracking-wide ${mono ? "font-mono" : ""}`} style={{ color: C.ink }}>{value || "—"}</p>
+            <p className={`mt-0.5 text-[12.5px] font-bold tracking-wide ${mono ? "font-mono" : ""}`} style={{ color: C.ink }}>{value || "—"}</p>
         </div>
     );
 }
 function Th({ children, className = "" }) {
-    return <th className={`px-3 py-2 text-left text-[10.5px] font-extrabold uppercase tracking-wide ${className}`} style={{ color: C.muted }}>{children}</th>;
+    return <th className={`px-3 py-2 text-left text-[10.5px] font-extrabold uppercase tracking-wide leading-tight text-white ${className}`}>{children}</th>;
 }
 function Td({ children, className = "" }) {
-    return <td className={`px-3 py-2 ${className}`} style={{ color: C.ink }}>{children}</td>;
+    return <td className={`px-3 py-2.5 tracking-wide ${className}`} style={{ color: C.ink }}>{children}</td>;
 }
