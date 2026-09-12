@@ -279,7 +279,7 @@ function BrandBadge({ name, image }) {
     const initials = name.trim().slice(0, 2).toUpperCase();
     return image ? (
         <img
-            src={resizedImageUrl(image, { width: 48 })}
+            src={resizedImageUrl(image, { width: 128 })}
             alt=""
             loading="lazy"
             decoding="async"
@@ -364,7 +364,7 @@ function ProductImage({ src, alt, onOpen, priority = false }) {
         <img
             // Displayed at 64px (h-16 w-16) — 128px covers retina without
             // shipping a multi-megabyte original for a thumbnail.
-            src={resizedImageUrl(src, { width: 128 })}
+            src={resizedImageUrl(src, { width: 256 })}
             alt={alt}
             referrerPolicy="no-referrer"
             loading={priority ? "eager" : "lazy"}
