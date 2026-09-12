@@ -183,43 +183,82 @@ function transportText(order) {
 // Soft rounded panel with a light fill. Fields laid out with generous
 // spacing, separated only by thin hairlines between rows — no vertical
 // grid lines.
+// Plain fields laid out with generous spacing, separated only by thin
+// hairlines between rows — no vertical grid lines, no filled/bordered
+// background panel (that was static roundedRect "FD" fill, removed
+// below). Row height is now computed per-row from the actual wrapped
+// line count of whichever field is longest in that row, instead of a
+// fixed 32pt guess — so a long buyer/shop name or email that wraps to
+// 2 lines no longer gets clipped or overlaps the next row.
 function drawInfoPanel(doc, x, y, w, rows, cols, font) {
-    const rowH = 32;
-    const h = rowH * rows.length;
+    const colW = w / cols;
+    const topPad = 10;
+    const bottomPad = 10;
+    const labelHeight = 9;        // space the label line itself occupies
+    const valueTopPad = 6;        // NEW — explicit gap between label and value, on top of labelHeight
+    const valueLineHeight = 11;
 
-    doc.setFillColor(...PANEL_FILL);
-    doc.setDrawColor(...HAIR);
-    doc.setLineWidth(0.75);
-    doc.roundedRect(x, y, w, h, RADIUS, RADIUS, "FD");
+    // Pass 1 — measure EACH row independently. rowHeights[i] depends only
+    // on rows[i]'s own fields — nothing here reuses or copies another
+    // row's measurement.
+    doc.setFont(font, "bold");
+    doc.setFontSize(9.5);
+    const rowHeights = rows.map((pair, ri) => {
+        let maxLinesInThisRow = 1;
+        pair.forEach((f) => {
+            if (!f.label) return;
+            const lines = doc.splitTextToSize(String(f.value ?? "—"), colW - 24);
+            maxLinesInThisRow = Math.max(maxLinesInThisRow, lines.length);
+        });
+        const thisRowHeight = topPad + labelHeight + valueTopPad + maxLinesInThisRow * valueLineHeight + bottomPad;
+        return thisRowHeight; // independent per row — row 0's result never affects row 1 or row 2
+    });
 
+    const totalH = rowHeights.reduce((sum, h) => sum + h, 0);
+
+    // Divider lines — placed using a running cursor built from each row's
+    // OWN height, so a taller row 1 correctly pushes row 2's divider down,
+    // without changing row 1's or row 0's own heights.
+    let dividerY = y;
     for (let r = 1; r < rows.length; r++) {
+        dividerY += rowHeights[r - 1];
         doc.setDrawColor(...HAIR_SOFT);
         doc.setLineWidth(0.5);
-        doc.line(x + 12, y + rowH * r, x + w - 12, y + rowH * r);
+        doc.line(x + 12, dividerY, x + w - 12, dividerY);
     }
 
-    const colW = w / cols;
+    // Pass 2 — draw each row at its own top (cy), using its own height to
+    // advance the cursor for the next row.
+    let cy = y;
     rows.forEach((pair, ri) => {
+        const rowH = rowHeights[ri];
         pair.forEach((f, ci) => {
             if (!f.label) return;
             const cx = x + colW * ci + 14;
-            const cy = y + rowH * ri;
+
             doc.setFont(font, "normal");
             doc.setFontSize(7);
             doc.setTextColor(...MUTED);
             doc.setCharSpace(0.6);
-            doc.text(f.label.toUpperCase(), cx, cy + 13);
+            doc.text(f.label.toUpperCase(), cx, cy + topPad + 3);
             doc.setCharSpace(0);
+
             doc.setFont(font, "bold");
             doc.setFontSize(9.5);
             doc.setTextColor(...INK);
             doc.setCharSpace(0.4);
             const lines = doc.splitTextToSize(String(f.value ?? "—"), colW - 24);
-            doc.text(lines.slice(0, 2), cx, cy + 25);
+            // NEW — value now starts topPad + labelHeight + valueTopPad below
+            // the row's top, instead of a tight fixed 12pt gap from the
+            // label baseline. This is the added breathing room under the
+            // heading you asked for.
+            doc.text(lines, cx, cy + topPad + labelHeight + valueTopPad);
             doc.setCharSpace(0);
         });
+        cy += rowH; // advance by THIS row's own height only
     });
-    return h;
+
+    return totalH;
 }
 
 export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
