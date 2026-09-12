@@ -348,7 +348,6 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
 
     y += vBoxH + 20;
 
-    // ---- Items table ----
     // Column 1's body text is kept as the real content (name + brand) so
     // autoTable computes the correct row height from it, but rendered
     // invisible (white) — the actual styled version (bold name, accent
@@ -356,30 +355,61 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
     // "product name" line.
     // ---- Items table ----
     const tableStartY = y;
-    const headRowH = 30; // matches your headStyles cellPadding + 2 lines of 7.5pt text
+    const headRowH = 30;
 
-    // Pre-draw the header as a rounded-TOP-only panel so the header's fill
-    // doesn't leave square corners under the frame stroke.
     doc.setFillColor(...ACCENT);
     doc.roundedRect(margin, tableStartY, contentWidth, headRowH, RADIUS, RADIUS, "F");
-    doc.rect(margin, tableStartY + RADIUS, contentWidth, headRowH - RADIUS, "F"); // square off the bottom of the header block so it meets the body flush
+    doc.rect(margin, tableStartY + RADIUS, contentWidth, headRowH - RADIUS, "F");
+
+    // Column widths are all fixed except column 1 ("auto"), so its real
+    // width can be computed up front — this lets us precompute exactly how
+    // many lines the name + brand will wrap to, and therefore the exact
+    // row height each item needs, WITHOUT putting that text into the table's
+    // actual cell content (which was the source of the duplicate-text bug:
+    // autoTable was measuring a real copy of the name+brand string that
+    // then also got drawn a second time in didDrawCell — invisible to the
+    // eye via white-on-white, but very much present twice in the PDF's
+    // text layer, which is why copying/selecting text pulled it out twice).
+    const FIXED_COL_WIDTHS = { 0: 30, 2: 114, 3: 82, 4: 88 };
+    const col1Width = contentWidth - FIXED_COL_WIDTHS[0] - FIXED_COL_WIDTHS[2] - FIXED_COL_WIDTHS[3] - FIXED_COL_WIDTHS[4];
+    const col1Pad = 18; // matches the 9pt left/right cellPadding used below
+
+    function computeItemBlock(item) {
+        doc.setFont(font, "bold");
+        doc.setFontSize(9);
+        const nameLines = doc.splitTextToSize(item.product_name_snapshot || "", col1Width - col1Pad);
+        let brandLines = [];
+        if (item.brand_name_snapshot) {
+            doc.setFont(font, "normal");
+            doc.setFontSize(8);
+            brandLines = doc.splitTextToSize(`Brand: ${item.brand_name_snapshot}`, col1Width - col1Pad);
+        }
+        const textHeight = nameLines.length * 11 + (brandLines.length ? brandLines.length * 11 + 3 : 0);
+        return { nameLines, brandLines, cellHeight: textHeight + 18 }; // +18 = 9pt top/bottom padding
+    }
 
     autoTable(doc, {
         startY: tableStartY,
         head: [["SR", "DESCRIPTION OF GOODS", "QTY", "BASE PRICE\n(EXCL. GST)", "AMOUNT\n(EXCL. GST)"]],
-        body: items.map((it, i) => [
-            i + 1,
-            `${it.product_name_snapshot || ""}`,
-            itemQtyText(it),
-            `Rs. ${inr(baseRateExclGst(it))}`,
-            `Rs. ${inr(amountExclGst(it))}`,
-        ]),
+        body: items.map((it, i) => {
+            const { cellHeight } = computeItemBlock(it);
+            return [
+                i + 1,
+                // FIX: content is now genuinely empty — nothing for autoTable to
+                // add to the PDF's text layer here. Row height is forced via
+                // minCellHeight instead of being inferred from hidden text.
+                { content: "", styles: { minCellHeight: cellHeight } },
+                itemQtyText(it),
+                `Rs. ${inr(baseRateExclGst(it))}`,
+                `Rs. ${inr(amountExclGst(it))}`,
+            ];
+        }),
         margin: { left: margin, right: margin },
         tableWidth: contentWidth,
         styles: {
             font,
             fontSize: 8.5,
-            cellPadding: { top: 5, bottom: 9, left: 9, right: 9 },
+            cellPadding: { top: 9, bottom: 9, left: 9, right: 9 },
             textColor: INK,
             lineColor: HAIR_SOFT,
             lineWidth: { top: 0, left: 0, right: 0, bottom: 0.5 },
@@ -387,7 +417,7 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
             overflow: "linebreak",
         },
         headStyles: {
-            fillColor: false,          // we already painted the header background ourselves above
+            fillColor: false,
             textColor: [255, 255, 255],
             fontStyle: "bold",
             valign: "middle",
@@ -397,20 +427,21 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
             minCellHeight: headRowH,
         },
         columnStyles: {
-            0: { cellWidth: 30, halign: "center" },
+            0: { cellWidth: FIXED_COL_WIDTHS[0], halign: "center" },
             1: { cellWidth: "auto" },
-            2: { cellWidth: 114 },
-            3: { halign: "right", cellWidth: 82 },
-            4: { halign: "right", cellWidth: 88 },
+            2: { cellWidth: FIXED_COL_WIDTHS[2] },
+            3: { halign: "right", cellWidth: FIXED_COL_WIDTHS[3] },
+            4: { halign: "right", cellWidth: FIXED_COL_WIDTHS[4] },
         },
         didParseCell: (data) => {
             if (data.section === "head") {
                 data.cell.styles.halign = data.column.index >= 3 ? "right" : (data.column.index === 0 ? "center" : "left");
             }
-            if (data.section === "body") {
-                if (data.row.index % 2 === 1) data.cell.styles.fillColor = PANEL_FILL;
-                if (data.column.index === 1) data.cell.styles.textColor = [255, 255, 255];
+            if (data.section === "body" && data.row.index % 2 === 1) {
+                data.cell.styles.fillColor = PANEL_FILL;
             }
+            // NOTE: no more textColor:[255,255,255] hack needed on column 1 —
+            // there's no real text there to hide anymore.
         },
         willDrawCell: (data) => {
             if (data.section === "head") doc.setCharSpace(0.3);
@@ -421,18 +452,21 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
             const item = items[data.row.index];
             if (!item) return;
             const { x, y: cy, width } = data.cell;
+            const { nameLines, brandLines } = computeItemBlock(item);
+
+            // The ONLY place this text is ever written into the PDF.
             doc.setFont(font, "bold");
             doc.setFontSize(9);
             doc.setTextColor(...INK);
             doc.setCharSpace(0.05);
-            const nameLines = doc.splitTextToSize(item.product_name_snapshot || "", width - 18);
             doc.text(nameLines, x + 9, cy + 14);
-            if (item.brand_name_snapshot) {
+
+            if (brandLines.length) {
                 doc.setFont(font, "normal");
                 doc.setFontSize(8);
                 doc.setTextColor(...ACCENT);
                 const brandY = cy + 14 + nameLines.length * 11 + 3;
-                doc.text(`Brand: ${item.brand_name_snapshot}`, x + 9, brandY);
+                doc.text(brandLines, x + 9, brandY);
             }
             doc.setCharSpace(0);
         },
@@ -446,7 +480,7 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
     doc.setLineWidth(0.75);
     doc.roundedRect(margin, tableStartY, contentWidth, tableEndY - tableStartY, RADIUS, RADIUS, "S");
 
-    y = tableEndY + 18;
+    y = tableEndY + 14;
 
     // ---- Totals ----
     const subtotal = round2(items.reduce((s, it) => s + amountExclGst(it), 0));
@@ -459,7 +493,8 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
     const gstLines = isSample ? 0 : (isIntraState ? 2 : 1);
     const noteLines = isSample ? [] : doc.splitTextToSize(
         // `GST is calculated on the base (pre-discount) price at the standard ${GST_PERCENT}% rate.`,
-        boxW
+        // boxW
+        ``
     );
     const boxH = (isSample ? 20 : 20 * (1 + gstLines) + 12 + 24) + (noteLines.length * 10);
 
