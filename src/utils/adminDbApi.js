@@ -33,6 +33,8 @@ export const adminDbApi = {
         req(`/admin/db/tables/${table}/rows/${encodeURIComponent(id)}?pk=${pk}`, token, { method: "PATCH", body: JSON.stringify(body) }),
     deleteRow: (token, table, id, { pk = "id", cascade = false } = {}) =>
         req(`/admin/db/tables/${table}/rows/${encodeURIComponent(id)}?pk=${pk}&cascade=${cascade}`, token, { method: "DELETE" }),
+    purgeRow: (token, table, id, { pk = "id", cascade = false } = {}) =>
+        req(`/admin/db/tables/${table}/rows/${encodeURIComponent(id)}?pk=${pk}&purge=true&cascade=${cascade}`, token, { method: "DELETE" }),
     getDependents: (token, table, id, pk = "id") =>
         req(`/admin/db/tables/${table}/rows/${encodeURIComponent(id)}/dependents?pk=${pk}`, token),
 };

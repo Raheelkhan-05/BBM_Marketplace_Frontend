@@ -243,12 +243,13 @@ function FieldInput({ col, value, onChange, disabled }) {
 // ---------------------------------------------------------------------------
 // Cascade-aware delete confirmation
 // ---------------------------------------------------------------------------
-function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onDeleted }) {
+function DeleteConfirmModal({ table, row, pkCol, dependents, token, mode = "delete", onClose, onDeleted }) {
     const [confirmText, setConfirmText] = useState("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState(null);
     const totalDependents = (dependents || []).reduce((s, d) => s + Number(d.count || 0), 0);
     const needsCascade = totalDependents > 0;
+    const isPurge = mode === "purge";
 
     const hasSkipped = (dependents || []).some((d) => d.action === "skipped");
     const canConfirm = confirmText.trim().toUpperCase() === "DELETE";
@@ -257,7 +258,11 @@ function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onD
         setBusy(true);
         setError(null);
         try {
-            await adminDbApi.deleteRow(token, table, row[pkCol], { pk: pkCol, cascade });
+            if (isPurge) {
+                await adminDbApi.purgeRow(token, table, row[pkCol], { pk: pkCol, cascade });
+            } else {
+                await adminDbApi.deleteRow(token, table, row[pkCol], { pk: pkCol, cascade });
+            }
             onDeleted();
         } catch (e) {
             setError(e.data?.message || e.message);
@@ -283,7 +288,9 @@ function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onD
                         <AlertTriangle className="h-4.5 w-4.5" style={{ color: C.danger }} />
                     </span>
                     <div className="min-w-0 flex-1">
-                        <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>Delete this record?</p>
+                        <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                            {isPurge ? "Permanently delete this record?" : "Delete this record?"}
+                        </p>
                         <p className="mt-0.5 text-[12.5px] font-medium tracking-wide" style={{ color: C.muted }}>
                             {prettify(table)} · {String(row[pkCol]).slice(0, 24)}
                         </p>
@@ -292,10 +299,17 @@ function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onD
                 </div>
 
                 <div className="max-h-[50vh] overflow-y-auto px-5 py-4">
+                    {isPurge && !needsCascade && (
+                        <p className="mb-3 text-[12.5px] font-bold" style={{ color: C.danger }}>
+                            This cannot be undone — the data will be gone, not just hidden.
+                        </p>
+                    )}
                     {needsCascade ? (
                         <div className="flex flex-col gap-2">
                             <p className="text-[13px] font-semibold tracking-wide" style={{ color: C.ink }}>
-                                This record is still referenced elsewhere. Deleting it will also remove:
+                                {isPurge
+                                    ? "This record is still referenced elsewhere. Permanently deleting it will also remove:"
+                                    : "This record is still referenced elsewhere. Deleting it will also remove:"}
                             </p>
                             <div className="flex flex-col gap-1.5 rounded-xl border p-3" style={{ borderColor: C.hair, background: C.bg }}>
                                 {dependents.map((d, i) => (
@@ -316,7 +330,7 @@ function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onD
                                 Rows marked <strong>will be deleted</strong> only belong to this record and are removed with it.
                                 Rows marked <strong>will be delinked</strong> are shared data — they're kept, just unlinked from this record.
                                 Rows marked <strong>left untouched</strong> involve other people or transactions and won't be touched at all.
-                                {hasSkipped ? " " : " "}Type <strong>DELETE</strong> below to confirm.
+                                {isPurge ? " This cannot be undone." : " "}Type <strong>DELETE</strong> below to confirm.
                             </p>
                         </div>
                     ) : (
@@ -350,7 +364,7 @@ function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onD
                         style={{ background: C.danger }}
                     >
                         <Trash2 className="h-3.5 w-3.5" />
-                        {needsCascade ? "Delete & cascade" : "Delete"}
+                        {needsCascade ? (isPurge ? "Permanently delete & cascade" : "Delete & cascade") : (isPurge ? "Permanently delete" : "Delete")}
                     </button>
                 </div>
             </motion.div>
@@ -361,7 +375,7 @@ function DeleteConfirmModal({ table, row, pkCol, dependents, token, onClose, onD
 // ---------------------------------------------------------------------------
 // Row edit / create drawer
 // ---------------------------------------------------------------------------
-function RowDrawer({ table, schema, row, pkCol, mode, token, onClose, onSaved, onRequestDelete }) {
+function RowDrawer({ table, schema, row, pkCol, mode, token, onClose, onSaved, onRequestDelete, onRequestPurge }) {
     const [draft, setDraft] = useState(() => row || {});
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
@@ -464,13 +478,24 @@ function RowDrawer({ table, schema, row, pkCol, mode, token, onClose, onSaved, o
 
                 <div className="flex items-center justify-between gap-2 border-t px-5 py-3.5" style={{ borderColor: C.hairSoft }}>
                     {mode === "edit" ? (
-                        <button
-                            onClick={() => onRequestDelete(row)}
-                            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors hover:bg-red-50"
-                            style={{ color: C.danger }}
-                        >
-                            <Trash2 className="h-3.5 w-3.5" /> Delete
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => onRequestDelete(row)}
+                                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors hover:bg-red-50"
+                                style={{ color: C.danger }}
+                            >
+                                <Trash2 className="h-3.5 w-3.5" /> Delete
+                            </button>
+                            {row?.deleted_at && (
+                                <button
+                                    onClick={() => onRequestPurge(row)}
+                                    className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors hover:bg-red-50"
+                                    style={{ color: C.danger }}
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" /> Permanently delete
+                                </button>
+                            )}
+                        </div>
                     ) : <span />}
                     <div className="flex items-center gap-2">
                         <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-[13px] font-bold tracking-wide" style={{ color: C.muted }}>
@@ -703,6 +728,7 @@ export default function AdminDatabasePanel() {
     const [sort, setSort] = useState({ sortBy: null, sortDir: "asc" });
     const [rowsLoading, setRowsLoading] = useState(false);
     const [rowsError, setRowsError] = useState(null);
+    const [purgeTarget, setPurgeTarget] = useState(null);
     const [liveTick, setLiveTick] = useState(false);
 
     const [drawer, setDrawer] = useState(null); // { mode: 'edit'|'create', row }
@@ -770,7 +796,7 @@ export default function AdminDatabasePanel() {
     //      clobbers an in-progress edit ----
     useEffect(() => {
         const id = setInterval(() => {
-            if (!drawerOpenRef.current && !deleteTarget) loadRows(true);
+            if (!drawerOpenRef.current && !deleteTarget && !purgeTarget) loadRows(true);
         }, AUTO_REFRESH_MS);
         return () => clearInterval(id);
     }, [loadRows, deleteTarget]);
@@ -780,6 +806,17 @@ export default function AdminDatabasePanel() {
 
     const handleSaved = () => {
         setDrawer(null);
+        loadRows(true);
+    };
+
+    const requestPurge = async (row) => {
+        setDrawer(null);
+        const { dependents } = await adminDbApi.getDependents(token, activeTable, row[pkCol], pkCol);
+        setPurgeTarget({ row, dependents: dependents || [] });
+    };
+
+    const handlePurged = () => {
+        setPurgeTarget(null);
         loadRows(true);
     };
 
@@ -897,6 +934,8 @@ export default function AdminDatabasePanel() {
                         onClose={() => setDrawer(null)}
                         onSaved={handleSaved}
                         onRequestDelete={requestDelete}
+                        onRequestPurge={requestPurge}
+
                     />
                 )}
                 {deleteTarget && (
@@ -908,6 +947,18 @@ export default function AdminDatabasePanel() {
                         token={token}
                         onClose={() => setDeleteTarget(null)}
                         onDeleted={handleDeleted}
+                    />
+                )}
+                {purgeTarget && (
+                    <DeleteConfirmModal
+                        table={activeTable}
+                        row={purgeTarget.row}
+                        pkCol={pkCol}
+                        dependents={purgeTarget.dependents}
+                        token={token}
+                        mode="purge"
+                        onClose={() => setPurgeTarget(null)}
+                        onDeleted={handlePurged}
                     />
                 )}
             </AnimatePresence>

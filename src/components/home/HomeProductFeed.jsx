@@ -1106,7 +1106,22 @@ export default function HomeProductFeed({ category, q = "" }) {
                             ))}
                         </div>
                     )}
-                {hasMore && !loading && <div ref={sentinelRef} className="h-1" />}
+                {hasMore && !loading && (
+                    <>
+                        {loadingMore && (
+                            <div className="flex divide-x border-t" style={{ borderColor: C.hair }}>
+                                {Array.from({ length: columnCount }).map((_, colIdx) => (
+                                    <div key={colIdx} className="min-w-0 flex-1 divide-y" style={{ borderColor: C.hairSoft }}>
+                                        {Array.from({ length: Math.ceil(PAGE_SIZE / columnCount) }).map((_, i) => (
+                                            <RowSkeleton key={i} />
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <div ref={sentinelRef} className="h-1" />
+                    </>
+                )}
             </div>
 
             {infoItemId && (
