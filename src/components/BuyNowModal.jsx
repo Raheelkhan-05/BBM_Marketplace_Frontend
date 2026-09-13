@@ -370,6 +370,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [error, setError] = useState(null);
     const [done, setDone] = useState(null);
     const quoteTimer = useRef(null);
+    const isFirstQuoteRef = useRef(true);
     const requestIdRef = useRef(0);
     const pendingQuoteRef = useRef(Promise.resolve());
     const standardBasisRef = useRef(defaultBasis);
@@ -390,10 +391,14 @@ export default function BuyNowModal({ seller, product, onClose }) {
     }, [isSample]);
 
     const [creditStatus, setCreditStatus] = useState(null);
+
+    // No longer waits for access to resolve first; fires the moment
+    // seller.offerId/token are known, in parallel with fetchCheckoutStatus
+    // instead of after it. Removes one full round trip of pure waiting.
     useEffect(() => {
-        if (!seller?.offerId || !access?.canCheckout) return;
+        if (!seller?.offerId || !token) return;
         fetchCreditStatus(token, { submissionId: seller.offerId }).then((res) => setCreditStatus(res?.credit || null));
-    }, [seller?.offerId, access, token]);
+    }, [seller?.offerId, token]);
 
     const canBuyOnCredit = creditStatus?.status === "approved";
 
@@ -429,11 +434,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const [constraints, setConstraints] = useState(null);
     useEffect(() => {
-        if (!seller?.offerId || !access?.canCheckout) return;
-        fetchOrderConstraints(seller.offerId).then((res) => {
-            if (res?.success) setConstraints(res);
-        });
-    }, [seller?.offerId, access]);
+        if (!seller?.offerId) return;
+        fetchOrderConstraints(seller.offerId).then((res) => { if (res?.success) setConstraints(res); });
+    }, [seller?.offerId]);
 
     const [clockTick, setClockTick] = useState(0);
     useEffect(() => {
@@ -461,8 +464,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const blockedByConstraints = !locationStatus.serviceable;
 
+    // Only needs a token to exist, not the full checkout-status
+    // round trip to resolve first. If access later comes back as not-eligible,
+    // the gate screen still shows correctly — this fetch running early just
+    // means addresses are ready the instant the form actually renders instead
+    // of after a second serial round trip.
     useEffect(() => {
-        if (!access?.canCheckout) return;
+        if (!token) return;
         let cancelled = false;
         (async () => {
             const res = await fetchBuyerAddresses(token);
@@ -480,7 +488,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
             }
         })();
         return () => { cancelled = true; };
-    }, [access, token]);
+    }, [token]);
 
     useEffect(() => {
         if (isSample) {
@@ -499,6 +507,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
         });
     }, [seller, quantity, basis, isSample, effectivePincode, effectiveState]);
 
+
+    // In the quote-fetch effect — only the setTimeout delay changes:
     useEffect(() => {
         if (!seller?.offerId || !(Number(quantity) > 0)) return;
         clearTimeout(quoteTimer.current);
@@ -507,6 +517,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
         const basisAtSchedule = basis;
         const sampleAtSchedule = isSample;
         const addressAtSchedule = selectedAddressId;
+
+        // CHANGED: first quote fetch on modal open fires immediately instead
+        // of waiting the full 300ms debounce — that delay exists to avoid
+        // spamming the endpoint while someone's actively changing quantity,
+        // which doesn't apply to the very first render.
+        const delay = isFirstQuoteRef.current ? 0 : 300;
+        isFirstQuoteRef.current = false;
 
         pendingQuoteRef.current = new Promise((resolve) => {
             quoteTimer.current = setTimeout(async () => {
@@ -522,7 +539,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 } else {
                     resolve(null);
                 }
-            }, 300);
+            }, delay);
         });
 
         return () => clearTimeout(quoteTimer.current);
