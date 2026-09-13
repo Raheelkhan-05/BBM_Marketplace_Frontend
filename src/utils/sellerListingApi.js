@@ -106,10 +106,10 @@ export async function searchGeoLocations(q) {
     const res = await fetch(`${API_BASE}/geo/search?q=${encodeURIComponent(q)}`);
     return res.json();
 }
-export async function fetchGeoCities(stateId, q = "") {
-    const res = await fetch(`${API_BASE}/geo/cities?stateId=${stateId}&q=${encodeURIComponent(q)}`);
-    return res.json();
-}
+// Geo section of utils/sellerListingApi.js — replace the existing geo
+// functions in that file with these (adds fetchGeoVillages; searchGeo now
+// also returns `ancestors` per item, used by the picker's quick-search bar).
+
 export async function fetchGeoCountries() {
     const res = await fetch(`${API_BASE}/geo/countries`);
     return res.json();
@@ -118,10 +118,23 @@ export async function fetchGeoStates(countryId, q = "") {
     const res = await fetch(`${API_BASE}/geo/states?countryId=${countryId}&q=${encodeURIComponent(q)}`);
     return res.json();
 }
+export async function fetchGeoDistricts(stateId, q = "") {
+    const res = await fetch(`${API_BASE}/geo/districts?stateId=${stateId}&q=${encodeURIComponent(q)}`);
+    return res.json();
+}
+export async function fetchGeoAreas(districtId, q = "") {
+    const res = await fetch(`${API_BASE}/geo/areas?districtId=${districtId}&q=${encodeURIComponent(q)}`);
+    return res.json();
+}
+export async function fetchGeoVillages(talukaId, q = "") {
+    const res = await fetch(`${API_BASE}/geo/villages?talukaId=${talukaId}&q=${encodeURIComponent(q)}`);
+    return res.json();
+}
 export async function lookupPincode(pincode) {
     const res = await fetch(`${API_BASE}/geo/pincode/${pincode}`);
     return res.json();
 }
+// Returns items shaped { id, type, name, parent_id, ancestors: [{type,name}] }
 export async function searchGeoLocationsByType(q, type) {
     const params = new URLSearchParams({ q, ...(type ? { type } : {}) });
     const res = await fetch(`${API_BASE}/geo/search?${params}`);
