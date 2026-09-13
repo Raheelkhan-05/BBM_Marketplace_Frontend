@@ -1045,13 +1045,10 @@ export async function fetchBrandItemDetail(brandItemId, { signal } = {}) {
 
 export async function fetchBrandItemSellers(brandItemId, { sort = "relevance", limit = 24, offset = 0, signal } = {}) {
   const params = new URLSearchParams({ sort, limit, offset });
-
+  // const t0 = performance.now();
   const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}/sellers?${params}`, { signal });
-
-  if (!res.ok) {
-    throw new Error(`Request failed with status ${res.status}`);
-  }
-
+  // console.log(`[timing] sellers fetch: ${(performance.now() - t0).toFixed(0)}ms`);
+  if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
   return res.json();
 }
 

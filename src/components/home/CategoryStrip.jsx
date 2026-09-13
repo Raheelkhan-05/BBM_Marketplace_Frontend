@@ -3,8 +3,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Box, LayoutGrid } from "lucide-react";
 import { searchCategories } from "../../utils/api";
-import { resizedImageUrl } from "../../utils/imageUrl";
-import { supabase } from "../../utils/supabaseClient"; // adjust to your actual frontend client path
+import { supabase } from "../../utils/supabaseClient";
 
 const C = {
     ink: "#141B22",
@@ -87,48 +86,61 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
     // strip immediately without a refetch or page reload. Runs once per
     // mount; cleaned up on unmount so switching pages doesn't leak
     // subscriptions.
+    // components/home/CategoryStrip.jsx — only the second useEffect changes
+
     useEffect(() => {
-        const channel = supabase
-            .channel("category-strip-live")
-            .on(
-                "postgres_changes",
-                { event: "INSERT", schema: "public", table: "hs_categories" },
-                (payload) => {
-                    console.log("[CategoryStrip] INSERT received:", payload.new);
-                    const row = payload.new;
-                    if (row.review_status !== "approved") return;
-                    if (isHiddenCategory(row.name)) return;
-                    setCategories((prev) => {
-                        const next = upsertSorted(prev, { id: row.id, name: row.name, slug: row.slug, image: row.image });
-                        writeCache(next);
-                        return next;
-                    });
-                }
-            )
-            .on(
-                "postgres_changes",
-                { event: "UPDATE", schema: "public", table: "hs_categories" },
-                (payload) => {
-                    console.log("[CategoryStrip] UPDATE received:", payload.new);
-                    const row = payload.new;
-                    setCategories((prev) => {
-                        let next;
-                        if (row.review_status === "approved" && !isHiddenCategory(row.name)) {
-                            next = upsertSorted(prev, { id: row.id, name: row.name, slug: row.slug, image: row.image });
-                        } else {
-                            next = prev.filter((c) => c.id !== row.id);
-                        }
-                        writeCache(next);
-                        return next;
-                    });
-                }
-            )
-            .subscribe((status, err) => {
-                console.log("[CategoryStrip] channel status:", status, err || "");
-            });
+        // CHANGED: was subscribing immediately on mount, opening a websocket
+        // connection that competes with the category fetch and the product
+        // feed fetch for the network during the page's most latency-sensitive
+        // window. A category being approved live is not something that needs
+        // to reach this component within the first second of page load — a
+        // short defer (mirrors the DeferredMount pattern already used in
+        // App.jsx for InstallAppPrompt etc.) lets the above-the-fold content
+        // finish its own fetches first.
+        let cancelled = false;
+        let channel = null;
+        const timer = setTimeout(() => {
+            if (cancelled) return;
+            channel = supabase
+                .channel("category-strip-live")
+                .on(
+                    "postgres_changes",
+                    { event: "INSERT", schema: "public", table: "hs_categories" },
+                    (payload) => {
+                        const row = payload.new;
+                        if (row.review_status !== "approved") return;
+                        if (isHiddenCategory(row.name)) return;
+                        setCategories((prev) => {
+                            const next = upsertSorted(prev, { id: row.id, name: row.name, slug: row.slug, image: row.image });
+                            writeCache(next);
+                            return next;
+                        });
+                    }
+                )
+                .on(
+                    "postgres_changes",
+                    { event: "UPDATE", schema: "public", table: "hs_categories" },
+                    (payload) => {
+                        const row = payload.new;
+                        setCategories((prev) => {
+                            let next;
+                            if (row.review_status === "approved" && !isHiddenCategory(row.name)) {
+                                next = upsertSorted(prev, { id: row.id, name: row.name, slug: row.slug, image: row.image });
+                            } else {
+                                next = prev.filter((c) => c.id !== row.id);
+                            }
+                            writeCache(next);
+                            return next;
+                        });
+                    }
+                )
+                .subscribe();
+        }, 2000);
 
         return () => {
-            supabase.removeChannel(channel);
+            cancelled = true;
+            clearTimeout(timer);
+            if (channel) supabase.removeChannel(channel);
         };
     }, []);
 
