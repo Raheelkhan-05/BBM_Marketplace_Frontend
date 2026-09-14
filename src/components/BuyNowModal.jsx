@@ -19,6 +19,7 @@ import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./selle
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, hasOuterPack, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
 import { fetchOrderConstraints } from "../utils/api.js";
+import { usePincodeResolution } from "../hooks/usePincodeResolution.js";
 
 /* ============================================================
    All logic below (constants, pure functions, computeLocalQuote,
@@ -28,13 +29,13 @@ import { fetchOrderConstraints } from "../utils/api.js";
 
 const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 
-function seedFromBusinessProfile(bp) {
+function seedFromBusinessProfile(bp, phone) {
     if (!bp) return null;
     const useDispatch = bp.dispatch_same_as_registered === false && bp.dispatch_address;
     return {
         label: "Deliver To: ",
         contact_name: bp.legal_name || bp.trade_name || "",
-        contact_phone: "",
+        contact_phone: phone || "",
         address_line1: useDispatch ? bp.dispatch_address : (bp.registered_address || ""),
         address_line2: "",
         city: bp.district || "",
@@ -372,6 +373,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const quoteTimer = useRef(null);
     const isFirstQuoteRef = useRef(true);
     const requestIdRef = useRef(0);
+    const { resolved: pincodeGeo, status: pincodeStatus, message: pincodeMessage } =
+        usePincodeResolution(showNewAddress ? newAddress.pincode : null);
     const pendingQuoteRef = useRef(Promise.resolve());
     const standardBasisRef = useRef(defaultBasis);
 
@@ -392,6 +395,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const [creditStatus, setCreditStatus] = useState(null);
 
+    useEffect(() => {
+        if (pincodeGeo) {
+            setNewAddress((a) => ({ ...a, city: pincodeGeo.district, state: pincodeGeo.state }));
+        }
+    }, [pincodeGeo]);
+
     // No longer waits for access to resolve first; fires the moment
     // seller.offerId/token are known, in parallel with fetchCheckoutStatus
     // instead of after it. Removes one full round trip of pure waiting.
@@ -408,11 +417,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const effectivePincode = showNewAddress ? newAddress.pincode : selectedAddress?.pincode;
     const effectiveState = showNewAddress ? newAddress.state : selectedAddress?.state;
+    const effectiveCity = showNewAddress ? newAddress.city : selectedAddress?.city;
 
     useEffect(() => {
         if (!(Number(quantity) > 0)) { setQuote(null); return; }
         setQuote((prev) => {
-            const local = computeLocalQuote(seller, quantity, basis, isSample, effectivePincode, effectiveState);
+            const local = computeLocalQuote(seller, quantity, basis, isSample, effectivePincode, effectiveState, effectiveCity);
             return local ? normalizeQuote(local) : prev;
         });
     }, [seller, quantity, basis, isSample, effectivePincode, effectiveState]);
@@ -444,8 +454,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return () => clearInterval(id);
     }, []);
 
-    const effectiveCity = showNewAddress ? newAddress.city : selectedAddress?.city;
-
     const windowStatus = useMemo(
         () => checkOrderWindow(constraints ? {
             workingDays: constraints.workingDays,
@@ -457,10 +465,26 @@ export default function BuyNowModal({ seller, product, onClose }) {
         [constraints, clockTick]
     );
 
-    const locationStatus = useMemo(
-        () => checkLocationServiceable(constraints?.dispatchingLocations, { state: effectiveState, city: effectiveCity }),
-        [constraints, effectiveState, effectiveCity]
-    );
+    // Only evaluate serviceability once the buyer has finished entering a
+    // pincode — checking on every city/state keystroke was noisy and could
+    // flash a false "not serviceable" notice mid-typing.
+    const PINCODE_RE = /^\d{6}$/;
+
+    const locationStatus = useMemo(() => {
+        if (!PINCODE_RE.test(effectivePincode || "")) {
+            return { serviceable: true };
+        }
+        const result = checkLocationServiceable(constraints?.dispatchingLocations, { state: effectiveState, city: effectiveCity });
+        console.log("[locationStatus]", {
+            pincode: effectivePincode,
+            state: effectiveState,
+            city: effectiveCity,
+            constraintsLoaded: !!constraints,
+            dispatchingLocations: constraints?.dispatchingLocations,
+            result,
+        });
+        return result;
+    }, [constraints, effectivePincode, effectiveState, effectiveCity]);
 
     const blockedByConstraints = !locationStatus.serviceable;
 
@@ -482,7 +506,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
             } else {
                 const bpRes = await fetchBusinessProfile(token);
                 if (cancelled) return;
-                const seeded = bpRes?.success ? seedFromBusinessProfile(bpRes.profile) : null;
+                const seeded = bpRes?.success ? seedFromBusinessProfile(bpRes.profile, access?.profile?.phone) : null;
                 setNewAddress(seeded || EMPTY_ADDRESS);
                 setShowNewAddress(true);
             }
@@ -644,12 +668,20 @@ export default function BuyNowModal({ seller, product, onClose }) {
         setPreferredTransportMode(session.preferredTransportMode || null);
     };
 
+    // useEffect(() => {
+    //     const session = loadOrderFormSession();
+    //     if (session && session.seller?.offerId === seller?.offerId) {
+    //         restoreFromSession(session);
+    //     }
+    //     // eslint-disable-next-line react-hooks/exhaustive-deps
+    // }, []);
+
     useEffect(() => {
         const session = loadOrderFormSession();
-        if (session && session.seller?.offerId === seller?.offerId) {
+        if (session && session.seller?.offerId === seller?.offerId && session.orderId) {
+            // only restore if this session corresponds to a still-pending order
             restoreFromSession(session);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const handleCloseToEdit = () => {
@@ -942,21 +974,56 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                             </div>
                                             <TextField dense label="Address line 1" value={newAddress.address_line1} onChange={(v) => setAddrField("address_line1", v)} />
                                             <TextField dense label="Address line 2 (optional)" value={newAddress.address_line2} onChange={(v) => setAddrField("address_line2", v)} />
-                                            <div
-                                                className="grid grid-cols-3 gap-2.5 rounded-lg transition-colors duration-150"
-                                                style={constraints && !locationStatus.serviceable
-                                                    ? { background: "#FDECEC", boxShadow: "0 0 0 1px rgba(179,38,30,0.25)", padding: 8, margin: -8 }
-                                                    : undefined}
-                                            >
-                                                <TextField dense label="City" value={newAddress.city} onChange={(v) => setAddrField("city", v)} />
-                                                <TextField dense label="State" value={newAddress.state} onChange={(v) => setAddrField("state", v)} />
-                                                <TextField dense label="Pincode" value={newAddress.pincode} onChange={(v) => setAddrField("pincode", v)} />
+                                            <div className="flex flex-col gap-2.5">
+                                                <TextField
+                                                    dense
+                                                    label="Pincode"
+                                                    value={newAddress.pincode}
+                                                    onChange={(v) => {
+                                                        const digits = v.replace(/\D/g, "").slice(0, 6);
+                                                        setNewAddress((a) => ({ ...a, pincode: digits, city: "", state: "" }));
+                                                    }}
+                                                    // Just a red ring on the input itself — no separate message box here.
+                                                    style={
+                                                        pincodeStatus === "ok" && constraints && !locationStatus.serviceable
+                                                            ? { borderColor: "#B3261E", boxShadow: "0 0 0 1px #B3261E33" }
+                                                            : undefined
+                                                    }
+                                                />
+
+                                                {pincodeStatus === "loading" && (
+                                                    <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>Looking up location…</p>
+                                                )}
+
+                                                {pincodeStatus === "error" && (
+                                                    <p className="text-[11.5px] font-medium" style={{ color: "#B3261E" }}>{pincodeMessage}</p>
+                                                )}
+
+                                                {pincodeStatus === "ok" && newAddress.city && (
+                                                    <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5">
+                                                        <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                                        <p className="text-[13px] font-semibold tracking-wide" style={{ color: C.ink }}>
+                                                            {newAddress.city}, {newAddress.state}
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                             {addresses.length > 0 && (
                                                 <button type="button" onClick={() => setShowNewAddress(false)} className="w-fit text-[12.5px] font-bold" style={{ color: C.muted }}>
                                                     Use a saved address instead
                                                 </button>
                                             )}
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    const id = await handleSaveNewAddress();
+                                                    if (id) setShowNewAddress(false); // handleSaveNewAddress already does this, but be explicit
+                                                }}
+                                                className="w-fit rounded-lg px-3 py-1.5 text-[12.5px] font-bold text-white"
+                                                style={{ background: C.secondary }}
+                                            >
+                                                Save address
+                                            </button>
                                         </div>
                                     )}
 

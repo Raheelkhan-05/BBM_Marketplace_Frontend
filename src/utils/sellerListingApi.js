@@ -122,6 +122,10 @@ export async function lookupPincode(pincode) {
     const res = await fetch(`${API_BASE}/geo/pincode/${pincode}`);
     return res.json();
 }
+export async function fetchPincodeLookup(pincode) {
+    const res = await fetch(`/api/geo/pincode/${pincode}`);
+    return res.json();
+}
 export async function searchGeoLocationsByType(q, type) {
     const params = new URLSearchParams({ q, ...(type ? { type } : {}) });
     const res = await fetch(`${API_BASE}/geo/search?${params}`);
