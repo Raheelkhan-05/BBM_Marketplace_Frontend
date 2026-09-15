@@ -76,7 +76,7 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate, o
                 }),
             match: (p) => p.startsWith("/orders"),
         } : null,
-        {
+        isLoggedIn ? {
             id: "transport-library",
             label: "Transport Library",
             icon: Truck,
@@ -84,7 +84,7 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate, o
             badge: transportBadgeCount > 0 ? (transportBadgeCount > 9 ? "9+" : transportBadgeCount) : null,
             onClick: () => navigate("/transport-library"),
             match: (p) => p === "/transport-library" || p.startsWith("/transport-library/"),
-        }
+        } : null,
 
     ].filter(Boolean);
 }

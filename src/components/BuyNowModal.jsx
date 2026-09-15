@@ -10,7 +10,11 @@ import {
     CreditCard, Boxes, ShoppingCart, Clock, ChevronDown, PackageCheck, AlertCircle
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi, fetchBusinessProfile } from "../utils/api.js";
+import {
+    fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress,
+    placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi,
+    fetchBusinessProfile, requestCreditIncrease as requestCreditIncreaseApi, // NEW
+} from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
 import { TRANSPORT_OPTIONS } from "../../shared/transportOptions.js";
 import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
@@ -414,6 +418,28 @@ export default function BuyNowModal({ seller, product, onClose }) {
     }, [seller?.offerId, token]);
 
     const canBuyOnCredit = creditStatus?.status === "approved";
+    const [requestingIncrease, setRequestingIncrease] = useState(false); // NEW
+
+    // NEW — "crosses limit" is based on THIS order's total vs what's left,
+    // not on the limit being fully drained already.
+    const creditRemaining = creditStatus
+        ? Math.max(Number(creditStatus.credit_limit || 0) - Number(creditStatus.credit_used || 0), 0)
+        : 0;
+    const crossesCreditLimit = canBuyOnCredit && !!quote && Number(quote.subtotal || 0) > creditRemaining;
+    const limitIncreasePending = !!creditStatus?.limit_increase_request_message_id;
+    const limitIncreaseCooldownActive = !!creditStatus?.limit_increase_cooldown_until
+        && new Date(creditStatus.limit_increase_cooldown_until) > new Date();
+
+    const handleRequestCreditIncrease = async () => {
+        if (!creditStatus?.id) return;
+        setRequestingIncrease(true);
+        const res = await requestCreditIncreaseApi(token, creditStatus.id);
+        setRequestingIncrease(false);
+        if (!res?.success) { setError(res?.message || "Couldn't send the request for a higher limit."); return; }
+        // reflect "pending" immediately so the button swaps to the waiting state
+        setCreditStatus((prev) => (prev ? { ...prev, limit_increase_request_message_id: "pending" } : prev));
+    };
+
 
     useEffect(() => {
         if (isCredit && !canBuyOnCredit) setOrderMode("standard");
@@ -1431,11 +1457,34 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                                     {!isSample && (
                                         canBuyOnCredit ? (
-                                            <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq || outOfStock || exceedsStock}
-                                                className="mb-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-3 text-[13.5px] font-bold disabled:opacity-50"
-                                                style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
-                                                <CreditCard className="h-3.5 w-3.5" /> {submitting ? "Placing…" : "Buy on credit"}
-                                            </button>
+                                            crossesCreditLimit ? (
+                                                limitIncreasePending ? (
+                                                    <div className="mb-2.5">
+                                                        <Notice tone="info">
+                                                            You've asked {seller.display_name} for a higher credit limit — waiting for their response.
+                                                        </Notice>
+                                                    </div>
+                                                ) : limitIncreaseCooldownActive ? (
+                                                    <div className="mb-2.5">
+                                                        <Notice tone="warn">
+                                                            This order is above your remaining credit. Your last request was declined — you can ask again
+                                                            after {new Date(creditStatus.limit_increase_cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.
+                                                        </Notice>
+                                                    </div>
+                                                ) : (
+                                                    <button type="button" onClick={handleRequestCreditIncrease} disabled={requestingIncrease}
+                                                        className="mb-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-3 text-[13.5px] font-bold disabled:opacity-50"
+                                                        style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                                        <CreditCard className="h-3.5 w-3.5" /> {requestingIncrease ? "Requesting…" : "Ask for a higher credit limit"}
+                                                    </button>
+                                                )
+                                            ) : (
+                                                <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq || outOfStock || exceedsStock}
+                                                    className="mb-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-3 text-[13.5px] font-bold disabled:opacity-50"
+                                                    style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                                    <CreditCard className="h-3.5 w-3.5" /> {submitting ? "Placing…" : "Buy on credit"}
+                                                </button>
+                                            )
                                         ) : creditStatus?.status === "pending" ? (
                                             <div className="mb-2.5"><Notice tone="info">Your credit request to {seller.display_name} is awaiting their response — check your chat with them.</Notice></div>
                                         ) : creditCooldownActive ? (

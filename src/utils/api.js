@@ -895,12 +895,42 @@ export async function requestCredit(token, payload) {
   });
   return res.json();
 }
-export async function decideCredit(token, creditId, decision) {
+export async function decideCredit(token, creditId, decision, creditLimit) {
   const res = await fetch(`${API_BASE}/credit/${creditId}/decide`, {
-    method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ decision }),
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ decision, creditLimit }),   // creditLimit was missing
   });
   return res.json();
 }
+
+export async function requestCreditIncrease(token, creditId) {
+  const res = await fetch(`${API_BASE}/credit/${creditId}/request-increase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ creditId }),
+  });
+  return res.json();
+}
+
+export async function updateCreditLimit(token, creditId, newLimit, resetUsed = true) {
+  const res = await fetch(`${API_BASE}/credit/${creditId}/update-limit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ newLimit, resetUsed }),
+  });
+  return res.json();
+}
+
+export async function declineCreditIncrease(token, creditId, cooldownDays) {
+  const res = await fetch(`${API_BASE}/credit/${creditId}/decline-increase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ cooldownDays }),
+  });
+  return res.json();
+}
+
 export async function toggleCredit(token, buyerId, enabled) {
   const res = await fetch(`${API_BASE}/credit/toggle`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ buyerId, enabled }),

@@ -11,7 +11,13 @@ import {
     fetchMessages, sendChatMessage, markConversationRead,
     deleteChatMessage, fetchConversations,
 } from "../utils/chatApi.js";
-import { fetchCreditStatus, requestCredit as requestCreditApi, decideCredit as decideCreditApi, toggleCredit as toggleCreditApi } from "../utils/api.js";
+
+import {
+    fetchCreditStatus, requestCredit as requestCreditApi, decideCredit as decideCreditApi,
+    toggleCredit as toggleCreditApi, updateCreditLimit as updateCreditLimitApi,
+    requestCreditIncrease as requestCreditIncreaseApi,     // NEW
+    declineCreditIncrease as declineCreditIncreaseApi,     // NEW
+} from "../utils/api.js";
 
 function makeClientMessageId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -642,10 +648,31 @@ export function useCredit(otherUserId) {
         return res;
     }, [token, otherUserId, load]);
 
-    const decide = useCallback(async (creditId, decision) => {
+    const decide = useCallback(async (creditId, decision, creditLimit) => {
         setCredit((prev) => (prev ? { ...prev, status: decision } : prev)); // optimistic
-        const res = await decideCreditApi(token, creditId, decision);
+        const res = await decideCreditApi(token, creditId, decision, creditLimit);
         if (!res?.success) load();
+        return res;
+    }, [token, load]);
+
+    const requestIncrease = useCallback(async (creditId) => {
+        const res = await requestCreditIncreaseApi(token, creditId);
+        if (res?.success) load();
+        return res;
+    }, [token, load]);
+
+    const declineIncrease = useCallback(async (creditId, cooldownDays) => {
+        const res = await declineCreditIncreaseApi(token, creditId, cooldownDays);
+        load(); // pull the frozen message + cooldown regardless of outcome
+        return res;
+    }, [token, load]);
+
+
+    const updateLimit = useCallback(async (creditId, newLimit, resetUsed) => {
+        setCredit((prev) => (prev ? { ...prev, credit_limit: newLimit } : prev)); // optimistic
+        const res = await updateCreditLimitApi(token, creditId, newLimit, resetUsed);
+        if (res?.success) load(); // pick up the server's authoritative row (status, cooldown, etc.)
+        else load();
         return res;
     }, [token, load]);
 
@@ -656,5 +683,10 @@ export function useCredit(otherUserId) {
         return res;
     }, [token, otherUserId, load]);
 
-    return { credit, viewerRole, buyerInfo, loading, request, decide, toggle, reload: load };
+    return {
+        credit, viewerRole, buyerInfo, loading,
+        request, decide, toggle, updateLimit,
+        requestIncrease, declineIncrease,
+        reload: load,
+    };
 }
