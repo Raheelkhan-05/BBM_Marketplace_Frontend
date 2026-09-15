@@ -1,6 +1,7 @@
 // components/BuyNowModal.jsx — REDESIGNED (UI/UX only, logic untouched)
 
 import { useEffect, useState, useRef, useMemo } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import PaymentQRModal from "./PaymentQRModal.jsx";
 import {
@@ -8,7 +9,6 @@ import {
     Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
     CreditCard, Boxes, ShoppingCart, Clock, ChevronDown, PackageCheck, AlertCircle
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi, fetchBusinessProfile } from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
@@ -21,6 +21,8 @@ import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConst
 import { fetchOrderConstraints } from "../utils/api.js";
 import { usePincodeResolution } from "../hooks/usePincodeResolution.js";
 import TransportPreferenceModal from "./transport/TransportPreferenceModal.jsx";
+import { Share2 } from "lucide-react";
+import { shareProductLink } from "../utils/share.js";
 import { routeTransportModeLabel, getRouteTransportFields } from "../../shared/routeTransportFields.js";
 import { fetchBuyerTransportPreference, fetchSellerRouteOptions } from "../utils/api.transport.js";
 
@@ -300,6 +302,7 @@ function Panel({ icon: Icon, title, subtitle, children }) {
 export default function BuyNowModal({ seller, product, onClose }) {
     const { token } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
 
     /* ---- ALL STATE, EFFECTS, AND HANDLERS BELOW ARE UNCHANGED FROM
        THE ORIGINAL FILE — copy verbatim. Only the JSX return differs. ---- */
@@ -797,8 +800,22 @@ export default function BuyNowModal({ seller, product, onClose }) {
     };
 
     const gateContent = {
-        NOT_AUTHENTICATED: { title: "Sign in to place an order", body: "You'll need to sign in to your BBM Marketplace account first.", cta: "Sign in", action: () => navigate("/login") },
-        NOT_VERIFIED: { title: "Verify your contact details", body: "We need a verified email or phone so sellers know you're a genuine buyer.", cta: "Verify now", action: () => navigate("/account") },
+        NOT_AUTHENTICATED: {
+            title: "Sign in to place an order",
+            body: "You'll need to sign in to your BBM Marketplace account first.",
+            cta: "Sign in",
+            // CHANGED: carry the current path (the shared product link, or
+            // wherever else BuyNowModal was opened from) so AuthPage can send
+            // the person back here once they're signed in, instead of
+            // dumping them on /home.
+            action: () => navigate("/login", { state: { from: location.pathname + location.search } }),
+        },
+        NOT_VERIFIED: {
+            title: "Verify your contact details",
+            body: "We need a verified email or phone so sellers know you're a genuine buyer.",
+            cta: "Verify now",
+            action: () => navigate("/account", { state: { from: location.pathname + location.search } }),
+        },
     }[access?.reason] || { title: "Can't place an order right now", body: "Please try again in a moment.", cta: "Close", action: onClose };
 
     const [requestingCredit, setRequestingCredit] = useState(false);
@@ -946,6 +963,20 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 <h2 className="mt-0.5 truncate text-[18px] font-bold tracking-wide" style={{ color: C.ink }}>{product?.name}</h2>
                                 <p className="truncate text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>from {seller?.display_name}</p>
                             </div>
+                            <button
+                                onClick={async () => {
+                                    const result = await shareProductLink({
+                                        submissionId: seller.offerId,
+                                        productName: product?.name,
+                                        sellerName: seller?.display_name,
+                                    });
+                                    if (result === "copied") setToastMsg?.("Link copied!"); // or your own toast
+                                }}
+                                aria-label="Share this seller's listing"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]"
+                            >
+                                <Share2 className="h-4 w-4" style={{ color: C.muted }} />
+                            </button>
                             <button onClick={onClose} aria-label="Close"
                                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]">
                                 <X className="h-4.5 w-4.5" style={{ color: C.muted }} />

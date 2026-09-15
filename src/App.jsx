@@ -64,6 +64,7 @@ const AdminProductCommissionsPage = lazy(() => import("./pages/admin/AdminProduc
 const SellerEditListingPage = lazy(() => import("./pages/SellerEditListingPage.jsx"));
 const TransportLibraryPage = lazy(() => import("./pages/TransportLibraryPage.jsx"));
 const AdminHelpRequestsPage = lazy(() => import("./pages/admin/AdminHelpRequestsPage.jsx"));
+const SharedProductPage = lazy(() => import("./pages/SharedProductPage.jsx"));
 
 function CatalogLevelPageWithKey({ configKey }) {
   const { idOrSlug } = useParams();
@@ -185,6 +186,8 @@ function App() {
                 <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
                 <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
                 <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} />
+
+                <Route path="/p/:submissionId" element={<SharedProductPage />} />
 
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               </Route>

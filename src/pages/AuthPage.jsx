@@ -1,6 +1,6 @@
 // pages/AuthPage.jsx
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight, Loader2, Mail, Phone, CheckCircle2, Pencil,
@@ -53,7 +53,10 @@ export default function AuthPage() {
   const [error, setError] = useState(null);
   const { setAuthSession, refreshProfile, profile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isNewUser, setIsNewUser] = useState(null);
+
+  const redirectTo = location.state?.from || "/home";
 
   const handleBack = () => {
     if (step === "identifier") {
@@ -105,7 +108,7 @@ export default function AuthPage() {
       if (res.isNewUser) {
         setStep("onboarding");
       } else {
-        navigate("/home");
+        navigate(redirectTo);
       }
     });
 
@@ -132,7 +135,7 @@ export default function AuthPage() {
       if (!res.success) return setError(res.message || "Couldn't save your details. Try again.");
       await refreshProfile?.();
       // setStep("done");
-      navigate("/home");
+      navigate(redirectTo);
     });
 
   return (

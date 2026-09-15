@@ -69,6 +69,8 @@ import {
 import { fetchWalletStatus } from "../utils/walletApi.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
+import { Share2 } from "lucide-react";
+import { shareProductLink } from "../utils/share.js";
 // NOTE: SmoothScrollProvider itself is NOT imported/used here anymore —
 // main.jsx already wraps the whole app in exactly one global instance.
 // This page used to ALSO wrap its own content in a second, local
@@ -1090,6 +1092,22 @@ function ListingRow({
 
                     {!isExpanded && it.review_status !== "pending_review" && (
                         <div onClick={(e) => e.stopPropagation()} className="flex shrink-0 items-center gap-1 pl-1">
+                            <button
+                                onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const result = await shareProductLink({
+                                        submissionId: it.id,
+                                        productName: name,
+                                        sellerName: "you", // seller is sharing their own listing
+                                    });
+                                    // surface via your existing toast state, e.g. setToastMsg
+                                }}
+                                aria-label="Share listing link"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]"
+                                style={{ color: C.secondary }}
+                            >
+                                <Share2 className="h-4 w-4" />
+                            </button>
                             <button onClick={() => onQuickEdit(it.id)} aria-label="Quick update"
                                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]" style={{ color: C.ink }}>
                                 <Pencil className="h-4 w-4" />

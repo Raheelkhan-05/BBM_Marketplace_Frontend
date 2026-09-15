@@ -1160,3 +1160,7 @@ export async function adminResolveHelpRequest(token, id, notes) {
     return await res.json();
   } catch { return { success: false, message: "Network error." }; }
 }
+
+export function fetchSharedProductLink(submissionId) {
+  return fetch(`${API_BASE}/catalog/shared/${submissionId}`).then((r) => r.json());
+}
