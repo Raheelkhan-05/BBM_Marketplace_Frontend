@@ -541,6 +541,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
         const basisAtSchedule = basis;
         const sampleAtSchedule = isSample;
         const addressAtSchedule = selectedAddressId;
+        const destPincodeAtSchedule = effectivePincode;   // NEW
+        const destStateAtSchedule = effectiveState;       // NEW
+
 
         // CHANGED: first quote fetch on modal open fires immediately instead
         // of waiting the full 300ms debounce — that delay exists to avoid
@@ -555,6 +558,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
                     purchaseBasis: basisAtSchedule,
                     orderType: sampleAtSchedule ? "sample" : "standard",
                     addressId: addressAtSchedule || undefined,
+                    destPincode: addressAtSchedule ? undefined : destPincodeAtSchedule,  // NEW
+                    destState: addressAtSchedule ? undefined : destStateAtSchedule,      // NEW
                 });
                 if (myRequestId === requestIdRef.current && res?.success) {
                     const confirmed = normalizeQuote({ ...res, isEstimate: false });
@@ -567,7 +572,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
         });
 
         return () => clearTimeout(quoteTimer.current);
-    }, [seller?.offerId, quantity, basis, isSample, selectedAddressId]);
+    }, [seller?.offerId, quantity, basis, isSample, selectedAddressId, effectivePincode, effectiveState]);
 
     const setAddrField = (key, value) => setNewAddress((a) => ({ ...a, [key]: value }));
 
