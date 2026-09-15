@@ -124,7 +124,7 @@ function App() {
               </Route>
 
               <Route element={<Layout />}>
-                <Route path="/" element={<RequireGuest><LandingPage /></RequireGuest>} />
+                <Route path="/" element={<HomePage />} />
 
                 <Route path="/search" element={<SearchResultsPage />} />
                 <Route path="/home" element={<HomePage />} />

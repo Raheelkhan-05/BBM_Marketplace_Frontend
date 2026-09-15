@@ -52,7 +52,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2 } from "lucide-react";
+import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2, Lock } from "lucide-react";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -77,6 +77,15 @@ const SELLER_PAGE_SIZE = 30;
 const DEBOUNCE_MS = 250;
 // See "DUPLICATE-FETCH GUARD" note above.
 const DUPLICATE_GUARD_MS = 300;
+
+// Deterministic-but-fake price per item, so it doesn't jump around on
+// re-render — never derived from the real price, purely cosmetic.
+function dummyPriceFor(seed) {
+    const str = String(seed || "x");
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+    return 199 + (h % 4300);
+}
 
 function inr(n) {
     const val = Number(n) || 0;
@@ -230,6 +239,92 @@ function packagingLabel(packSize, masterPackSize, unit) {
 
     return `1 Pack = ${pack} ${unit}`;
 }
+
+
+
+// LockedPriceBlock — render as div, not button, so it's safe to nest anywhere
+function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
+    const rows = [
+        unit ? { label: unit, value: dummyPriceFor(seed + "u") } : null,
+        { label: "Pack", value: dummyPriceFor(seed + "p") },
+    ].filter(Boolean);
+
+    const valueClass =
+        size === "row"
+            ? "text-[12px] font-extrabold tabular-nums"
+            : "text-[11.5px] font-extrabold tabular-nums";
+
+    return (
+        <div
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+                e.stopPropagation();
+                onClick?.();
+            }}
+            onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onClick?.();
+                }
+            }}
+            className="flex flex-col items-end gap-1 cursor-pointer group"
+            aria-label="Login to view price"
+        >
+            <div className="flex flex-col items-end gap-0.5">
+                {rows.map((r) => (
+                    <div
+                        key={r.label}
+                        className="flex items-baseline gap-1"
+                    >
+                        {/* ₹ stays sharp and clearly visible */}
+                        <span
+                            className={`${valueClass} whitespace - nowrap`}
+                            style={{ color: C.ink }}
+                        >
+                            ₹
+                        </span>
+
+                        {/* Only the price number is blurred */}
+                        <span
+                            className={`${valueClass} text - right whitespace - nowrap`}
+                            style={{
+                                color: C.ink,
+                                filter: "blur(5px)",
+                                userSelect: "none",
+                                pointerEvents: "none",
+                                opacity: 0.65,
+                            }}
+                        >
+                            {inr(r.value)}
+                        </span>
+
+                        <span
+                            className="text-[9px] font-semibold tracking-wide whitespace-nowrap"
+                            style={{ color: C.muted }}
+                        >
+                            /{r.label}
+                        </span>
+                    </div>
+                ))}
+            </div>
+
+            <span
+                className="flex items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-extrabold tracking-wide transition-colors duration-150 group-hover:brightness-95"
+                style={{
+                    background: `${C.primary} 14`,
+                    color: C.primary,
+                    border: `1px solid ${C.primary} 35`,
+                }}
+            >
+                <Lock className="h-2.5 w-2.5" strokeWidth={2.5} />
+                Login to view
+            </span>
+        </div>
+    );
+}
+
 
 
 // Compact, reusable price-breakdown block — shows whichever of
@@ -442,7 +537,8 @@ function isHiddenLabel(name) {
     return typeof name === "string" && name.trim().toLowerCase() === "pending";
 }
 
-function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance }) {
+function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin }) {
+
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
     const categoryLabel = isHiddenLabel(item.category_name) ? null : item.category_name;
     const subcategoryLabel = isHiddenLabel(item.subcategory_name) ? null : item.subcategory_name;
@@ -570,22 +666,27 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             </div>
 
             {/* COL 3 — PRICE BREAKDOWN (unit / pack / master pack) */}
-            <button
+            <div
+                role="button"
+                tabIndex={0}
                 onClick={onToggle}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
                 aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
-                className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right"
+                className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right cursor-pointer"
             >
                 {isOutOfStock ? (
                     <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
                         OUT OF STOCK
                     </span>
+                ) : !isLoggedIn ? (
+                    <LockedPriceBlock seed={item.id} unit={item.lowest_price_unit} size="row" onClick={onRequireLogin} />
                 ) : (
                     <>
                         {breakdown && <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>}
                         <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
                     </>
                 )}
-            </button>
+            </div>
         </motion.div>
     );
 }
@@ -656,6 +757,55 @@ function bestAchievablePricing(seller, includeGst) {
     return best || computeEffectivePricing(seller, moqInSaleUnits(seller), includeGst);
 }
 
+function LoginPromptModal({ open, message, onConfirm, onCancel }) {
+    if (!open) return null;
+    return (
+        <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4"
+            onClick={onCancel}
+        >
+            <motion.div
+                initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.97 }}
+                transition={{ duration: 0.18, ease: EASE }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-[320px] rounded-2xl bg-white p-5 shadow-xl"
+            >
+                <div
+                    className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full"
+                    style={{ background: `${C.primary}14` }}
+                >
+                    <Lock className="h-5 w-5" style={{ color: C.primary }} strokeWidth={2.5} />
+                </div>
+                <p className="text-center text-[14.5px] font-extrabold" style={{ color: C.ink }}>
+                    Login required
+                </p>
+                <p className="mt-1.5 text-center text-[12.5px] font-medium leading-snug" style={{ color: C.muted }}>
+                    {message || "You need to login to view seller pricing and place an order."}
+                </p>
+                <div className="mt-5 flex gap-2">
+                    <button
+                        onClick={onCancel}
+                        className="flex-1 rounded-xl border py-2.5 text-[12.5px] font-bold"
+                        style={{ borderColor: C.hair, color: C.ink }}
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        className="flex-1 rounded-xl py-2.5 text-[12.5px] font-bold text-white"
+                        style={{ background: C.primary }}
+                    >
+                        Login
+                    </button>
+                </div>
+            </motion.div>
+        </motion.div>
+    );
+}
+
 function sellerPricingForMode(seller, sortMode, includeGst) {
     if (sortMode === "min_moq") {
         return computeEffectivePricing(seller, moqInSaleUnits(seller), includeGst);
@@ -673,7 +823,7 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
 // note. Whether to show "Sell this product" is decided separately, from
 // `item.has_own_listing` (server-computed, wallet-independent — see
 // file header note), NOT from scanning this (wallet-filtered) list.
-function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId }) {
+function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId, onRequireLogin, isLoggedIn }) {
     const { loading, items = [], error, total = 0, hasMore } = state || {};
 
     // Re-sort whichever page of sellers we've already fetched. Note: this
@@ -773,12 +923,17 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                         const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
                                         const isOwn = isOwnSellerRow(s, currentUserId);
                                         return (
-                                            <button
+                                            <div
                                                 key={s.submission_id}
+                                                role="button"
+                                                tabIndex={0}
                                                 onClick={() => !outOfStock && !isOwn && onBuySeller(s)}
-                                                disabled={outOfStock || isOwn}
-                                                className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] disabled:cursor-not-allowed"
-                                                style={outOfStock || isOwn ? { opacity: 0.45 } : undefined}
+                                                onKeyDown={(e) => {
+                                                    if ((e.key === "Enter" || e.key === " ") && !outOfStock && !isOwn) { e.preventDefault(); onBuySeller(s); }
+                                                }}
+                                                aria-disabled={outOfStock || isOwn}
+                                                className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer"
+                                                style={outOfStock || isOwn ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
                                             >
                                                 <div className="min-w-0 flex-1">
                                                     <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
@@ -796,10 +951,15 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                     <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
                                                         OUT OF STOCK
                                                     </span>
+                                                ) : !isLoggedIn ? (
+                                                    <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
                                                 ) : (
-                                                    <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                                    <>
+
+                                                        <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                                    </>
                                                 )}
-                                            </button>
+                                            </div>
                                         );
                                     })}
                                     {hasMore && (
@@ -873,6 +1033,14 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     const [sellItem, setSellItem] = useState(null);
     const [buyState, setBuyState] = useState(null); // { item, seller }
+
+    const [loginPrompt, setLoginPrompt] = useState(null);
+    const isLoggedIn = !!token;
+
+    const requireLogin = useCallback((message) => setLoginPrompt({ message }), []);
+    const confirmLogin = useCallback(() => { setLoginPrompt(null); navigate("/login"); }, [navigate]);
+    const cancelLogin = useCallback(() => setLoginPrompt(null), []);
+
 
     const abortRef = useRef(null);
     const debounceRef = useRef(null);
@@ -1015,6 +1183,10 @@ export default function HomeProductFeed({ category, q = "" }) {
     const handleBuySeller = async (item, seller) => {
         closeDropdown();
 
+        if (!token) {
+            requireLogin("You need to login to place an order with this seller.");
+            return;
+        }
         const addrRes = await fetchBuyerAddresses(token);
         const defaultAddr = addrRes?.addresses?.find((a) => a.is_default) || addrRes?.addresses?.[0];
 
@@ -1140,6 +1312,8 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                     onInfo={() => setInfoItemId(item.id)}
                                                     onImageOpen={setLightboxSrc}
                                                     includeGst={includeGst}
+                                                    isLoggedIn={isLoggedIn}
+                                                    onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
                                                     animateEntrance={newlyAppearedIds.has(item.id)}
                                                 />
                                                 <AnimatePresence initial={false}>
@@ -1151,6 +1325,8 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                             onSell={() => handleSell(item)}
                                                             includeGst={includeGst}
                                                             sortMode={sellerSortMode}
+                                                            isLoggedIn={isLoggedIn}
+                                                            onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
                                                             onSortModeChange={setSellerSortMode}
                                                             currentUserId={currentUserId}
                                                         />
@@ -1190,6 +1366,14 @@ export default function HomeProductFeed({ category, q = "" }) {
             )}
 
             <AnimatePresence>
+                {loginPrompt && (
+                    <LoginPromptModal
+                        open
+                        message={loginPrompt.message}
+                        onConfirm={confirmLogin}
+                        onCancel={cancelLogin}
+                    />
+                )}
                 {sellItem && (
                     <SellThisItemModal brand={sellItem} onClose={() => setSellItem(null)} />
                 )}
