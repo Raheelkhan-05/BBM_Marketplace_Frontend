@@ -240,19 +240,19 @@ function packagingLabel(packSize, masterPackSize, unit) {
     return `1 Pack = ${pack} ${unit}`;
 }
 
-
-
-// LockedPriceBlock — render as div, not button, so it's safe to nest anywhere
+// Premium locked pricing component
+// Render as div so it is safe to nest inside cards / rows / clickable containers.
 function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
     const rows = [
         unit ? { label: unit, value: dummyPriceFor(seed + "u") } : null,
         { label: "Pack", value: dummyPriceFor(seed + "p") },
     ].filter(Boolean);
 
-    const valueClass =
-        size === "row"
-            ? "text-[12px] font-extrabold tabular-nums"
-            : "text-[11.5px] font-extrabold tabular-nums";
+    const isCompact = size !== "row";
+
+    const valueClass = isCompact
+        ? "text-[11.5px]"
+        : "text-[12px]";
 
     return (
         <div
@@ -269,63 +269,138 @@ function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
                     onClick?.();
                 }
             }}
-            className="flex flex-col items-end gap-1 cursor-pointer group"
             aria-label="Login to view price"
+            className="
+                group
+                flex
+                min-w-[112px]
+                flex-col
+                items-end
+                gap-1.5
+                cursor-pointer
+                select-none
+            "
         >
-            <div className="flex flex-col items-end gap-0.5">
-                {rows.map((r) => (
-                    <div
-                        key={r.label}
-                        className="flex items-baseline gap-1"
-                    >
-                        {/* ₹ stays sharp and clearly visible */}
-                        <span
-                            className={`${valueClass} whitespace - nowrap`}
-                            style={{ color: C.ink }}
-                        >
-                            ₹
-                        </span>
-
-                        {/* Only the price number is blurred */}
-                        <span
-                            className={`${valueClass} text - right whitespace - nowrap`}
+            {/* Pricing area */}
+            <div
+                className="
+                    rounded-md
+                    px-2
+                    py-1.5
+                    transition-all
+                    duration-150
+                    group-hover:bg-black/[0.018]
+                "
+            >
+                <div className="flex flex-col gap-[4px]">
+                    {rows.map((r) => (
+                        <div
+                            key={r.label}
+                            className="
+                                grid
+                                items-baseline
+                                gap-x-1
+                                leading-none
+                            "
                             style={{
-                                color: C.ink,
-                                filter: "blur(5px)",
-                                userSelect: "none",
-                                pointerEvents: "none",
-                                opacity: 0.65,
+                                gridTemplateColumns:
+                                    "10px minmax(42px, auto) 38px",
                             }}
                         >
-                            {inr(r.value)}
-                        </span>
+                            {/* Currency */}
+                            <span
+                                className={`${valueClass} font-extrabold`}
+                                style={{ color: C.ink }}
+                            >
+                                ₹
+                            </span>
 
-                        <span
-                            className="text-[9px] font-semibold tracking-wide whitespace-nowrap"
-                            style={{ color: C.muted }}
-                        >
-                            /{r.label}
-                        </span>
-                    </div>
-                ))}
+                            {/* Protected amount */}
+                            <span
+                                className={`
+                                    ${valueClass}
+                                    min-w-0
+                                    text-right
+                                    whitespace-nowrap
+                                    font-extrabold
+                                    tabular-nums
+                                `}
+                                style={{
+                                    color: C.ink,
+                                    filter: "blur(4.5px)",
+                                    opacity: 0.55,
+                                    userSelect: "none",
+                                    pointerEvents: "none",
+                                }}
+                            >
+                                {inr(r.value)}
+                            </span>
+
+                            {/* Unit */}
+                            <span
+                                className="
+                                    text-[9px]
+                                    font-semibold
+                                    tracking-[0.01em]
+                                    whitespace-nowrap
+                                "
+                                style={{ color: C.muted }}
+                            >
+                                /{r.label}
+                            </span>
+                        </div>
+                    ))}
+                </div>
             </div>
 
+            {/* Login CTA */}
             <span
-                className="flex items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-extrabold tracking-wide transition-colors duration-150 group-hover:brightness-95"
+                className="
+                    inline-flex
+                    items-center
+                    gap-1.5
+                    rounded-md
+                    px-2.5
+                    py-[4px]
+                    text-[9.5px]
+                    font-extrabold
+                    leading-none
+                    tracking-wide
+                    whitespace-nowrap
+                    transition-all
+                    duration-150
+                    group-hover:-translate-y-[1px]
+                "
                 style={{
-                    background: `${C.primary} 14`,
                     color: C.primary,
-                    border: `1px solid ${C.primary} 35`,
+                    background: `${C.primary}0D`,
+                    border: `1px solid ${C.primary}28`,
                 }}
             >
-                <Lock className="h-2.5 w-2.5" strokeWidth={2.5} />
+                <span
+                    className="
+                        flex
+                        h-3.5
+                        w-3.5
+                        items-center
+                        justify-center
+                        rounded-full
+                    "
+                    style={{
+                        background: `${C.primary}16`,
+                    }}
+                >
+                    <Lock
+                        className="h-2.5 w-2.5"
+                        strokeWidth={2.6}
+                    />
+                </span>
+
                 Login to view
             </span>
         </div>
     );
 }
-
-
 
 // Compact, reusable price-breakdown block — shows whichever of
 // unit/pack/master-pack prices are available, smallest to largest.
@@ -354,10 +429,10 @@ function PriceBreakdown({ breakdown, unit, size = "row" }) {
         <div className="grid items-baseline gap-x-1 gap-y-0.5" style={{ gridTemplateColumns: "auto auto" }}>
             {rows.map((r) => (
                 <div key={r.label} className="contents">
-                    <span className={`${valueClass} text-right whitespace-nowrap`} style={{ color: C.ink }}>
+                    <span className={`${valueClass} text - right whitespace - nowrap`} style={{ color: C.ink }}>
                         ₹{inr(r.value)}
                     </span>
-                    <span className={`${labelClass} text-left whitespace-nowrap`} style={{ color: C.muted }}>
+                    <span className={`${labelClass} text - left whitespace - nowrap`} style={{ color: C.muted }}>
                         /{r.label}
                     </span>
                 </div>
@@ -385,7 +460,7 @@ function BrandBadge({ name, image }) {
     ) : (
         <span
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[8.5px] font-extrabold leading-none"
-            style={{ background: `${C.secondary}18`, color: C.secondary }}
+            style={{ background: `${C.secondary} 18`, color: C.secondary }}
         >
             {initials}
         </span>
@@ -485,7 +560,7 @@ function GstToggle({ includeGst, onChange }) {
             type="button"
             role="switch"
             aria-checked={includeGst}
-            aria-label={`GST ${includeGst ? "included" : "excluded"}`}
+            aria-label={`GST ${includeGst ? "included" : "excluded"} `}
             onClick={() => onChange(!includeGst)}
             className="group inline-flex items-center gap-2.5 rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer"
 
@@ -775,7 +850,7 @@ function LoginPromptModal({ open, message, onConfirm, onCancel }) {
             >
                 <div
                     className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full"
-                    style={{ background: `${C.primary}14` }}
+                    style={{ background: `${C.primary} 14` }}
                 >
                     <Lock className="h-5 w-5" style={{ color: C.primary }} strokeWidth={2.5} />
                 </div>
@@ -815,7 +890,7 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
 
 // Inline seller accordion. Renders directly under the row it belongs
 // to. `state` is { loading, items, error, total, hasMore } for this
-// item's fetch. `data-lenis-prevent` on the scrollable list is what
+// item's fetch. `data - lenis - prevent` on the scrollable list is what
 // hands scroll control back to the native container the instant the
 // cursor is over it, instead of the page's Lenis smooth-scroll eating
 // the wheel event. `currentUserId` is used only to label/disable a
@@ -940,10 +1015,10 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                         {s.display_name}{isOwn ? " (You)" : ""}
                                                     </p>
                                                     <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                        {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
+                                                        {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
                                                         {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
                                                         {pricing?.discountPercent > 0
-                                                            ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
+                                                            ? ` · ${pricing.saleQty} + ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
                                                             : ""}
                                                     </p>
                                                 </div>
@@ -983,7 +1058,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                     <button
                         onClick={onSell}
                         className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors duration-150 hover:bg-black/[0.03]"
-                        style={{ borderColor: `${C.primary}40`, color: C.primary }}
+                        style={{ borderColor: `${C.primary} 40`, color: C.primary }}
                     >
                         <Store className="h-3.5 w-3.5" /> Sell this product
                     </button>
@@ -1132,7 +1207,7 @@ export default function HomeProductFeed({ category, q = "" }) {
     }, [category?.id, q]);
 
     useEffect(() => {
-        const key = `${category?.id || ""}::${q}`;
+        const key = `${category?.id || ""}::${q} `;
         const now = Date.now();
         const isDuplicateInvocation =
             lastRunRef.current.key === key &&
@@ -1175,7 +1250,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         { lookahead: 800, disabled: loading || loadingMore || !hasMore }
     );
 
-    const goToSellers = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
+    const goToSellers = (item) => navigate(`/ brand - item / ${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
 
     // Only shows TransportPreferenceModal the first time this buyer deals
     // with this seller. The decision (or explicit "no preference") is
