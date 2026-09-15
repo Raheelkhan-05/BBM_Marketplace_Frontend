@@ -22,6 +22,7 @@ import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Truck, Search, Loader2, Plus, Check, X as XIcon, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useTransportLibrary } from "../context/TransportLibraryContext.jsx";
 import {
     browseTransportLibrary, fetchMyRouteOptions, fetchPendingProposals,
     createOwnRouteOption, deleteOwnRouteOption, approveProposal, rejectProposal,
@@ -40,12 +41,9 @@ const CAP = "capitalize tracking-wide";
 
 // Normalizes a single piece of a dedup key: trims edges, collapses any
 // run of internal whitespace to one space, and lowercases. Applied to
-// EVERY part of the key (city, mode, identity) — previously only the
-// identity was normalized, so two rows for the same real-world route
-// that merely differed in casing (e.g. "Rajkot" vs "rajkot") were treated
-// as different routes: dedup failed to merge them, "mine" detection
-// missed the seller's own row, and the same option rendered twice — once
-// as "Use", once as "Remove".
+// EVERY part of the key (city, mode, identity) so two rows for the same
+// real-world route that merely differ in casing (e.g. "Rajkot" vs
+// "rajkot") are still recognised as the same route.
 function normPart(value) {
     return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
@@ -387,6 +385,7 @@ function AddRouteModal({ open, onClose, onAdded, token }) {
 
 function ManageTab() {
     const { token } = useAuth();
+    const { markProposalResolved, syncPendingCount } = useTransportLibrary();
     const [options, setOptions] = useState([]);
     const [proposals, setProposals] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -396,17 +395,30 @@ function ManageTab() {
         setLoading(true);
         Promise.all([fetchMyRouteOptions(token), fetchPendingProposals(token)]).then(([optRes, propRes]) => {
             setOptions(optRes?.options?.filter((o) => o.status === "approved") || []);
-            setProposals(propRes?.proposals || []);
+            const pending = propRes?.proposals || [];
+            setProposals(pending);
+            // Resync the nav badge to the authoritative count every time
+            // this tab loads — self-heals any drift from the optimistic
+            // socket increments/decrements in TransportLibraryContext.
+            syncPendingCount(pending.length);
             setLoading(false);
         });
-    }, [token]);
+    }, [token, syncPendingCount]);
 
     useEffect(() => { load(); }, [load]);
 
-    const handleApprove = async (id) => { await approveProposal(id, token); load(); };
+    // Approve/reject both resolve the proposal, so both clear it from the
+    // "needs action" badge immediately — the badge tracks pending action,
+    // not approval outcome.
+    const handleApprove = async (id) => {
+        await approveProposal(id, token);
+        markProposalResolved();
+        load();
+    };
     const handleReject = async (id) => {
         const reason = window.prompt("Reason for declining (shown to the buyer, optional):") || "";
         await rejectProposal(id, reason, token);
+        markProposalResolved();
         load();
     };
     const handleDelete = async (id) => { await deleteOwnRouteOption(id, token); load(); };

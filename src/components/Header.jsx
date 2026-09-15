@@ -10,6 +10,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { TAGLINE } from "../../data/content";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
+import { useTransportLibrary } from "../context/TransportLibraryContext.jsx";
 import NotificationBell from "../components/NotificationBell.jsx";
 import SmartLink from "./SmartLink.jsx";
 import { NAV_ITEMS } from "./navItems.js";
@@ -131,6 +132,7 @@ export default function Header({ onOpenRfq }) {
   const { cartCount } = useCart();
   const { unreadTotal: chatUnreadTotal } = useChatContext();
   const { totalBadgeCount: productsBadgeCount } = useListings();
+  const { pendingProposalsCount } = useTransportLibrary();
 
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -234,6 +236,10 @@ export default function Header({ onOpenRfq }) {
     cartBadgeCount: cartCount,
     chatBadgeCount: chatUnreadTotal,
     productsBadgeCount: productsBadgeCount,
+    // Only ever meaningful for an approved seller — a buyer-only account
+    // has nothing pending to action here, so the badge stays hidden for
+    // everyone else regardless of what the context happens to hold.
+    transportBadgeCount: isApprovedSeller ? pendingProposalsCount : 0,
   });
 
 

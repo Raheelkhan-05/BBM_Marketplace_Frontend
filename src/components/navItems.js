@@ -19,8 +19,15 @@ import {
 // Header.jsx (desktop) and BottomNavStrip.jsx (mobile) as a small badge
 // on the "My Orders" pill. Clamped to "9+" the same way the bell's badge
 // is, for consistency.
+//
+// transportBadgeCount: count of the SELLER's pending transport proposals
+// awaiting approve/reject — see TransportLibraryContext. Unlike the other
+// badges here, this isn't a "you haven't seen this" count; it's a "this
+// still needs your action" count, so it only clears once the seller
+// actually resolves the proposal, not just once they've viewed it. Callers
+// should only pass a non-zero value for approved sellers.
 
-export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate, ordersBadgeCount = 0, cartBadgeCount = 0, chatBadgeCount = 0, productsBadgeCount = 0 }) {
+export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate, ordersBadgeCount = 0, cartBadgeCount = 0, chatBadgeCount = 0, productsBadgeCount = 0, transportBadgeCount = 0 }) {
     return [
         isLoggedIn ? {
             id: "home",
@@ -74,6 +81,7 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate, o
             label: "Transport Library",
             icon: Truck,
             to: "/transport-library",
+            badge: transportBadgeCount > 0 ? (transportBadgeCount > 9 ? "9+" : transportBadgeCount) : null,
             onClick: () => navigate("/transport-library"),
             match: (p) => p === "/transport-library" || p.startsWith("/transport-library/"),
         }

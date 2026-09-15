@@ -67,6 +67,19 @@ export function isListingsSectionNotification(n) {
         || isWalletTopupNotification(n) || isWalletLowBalanceNotification(n);
 }
 
+// The three transport-library lifecycle events (see notifyUser calls in
+// transportLibrary.controller.js): a buyer proposing a new route to a
+// seller, and a buyer's own proposal getting approved/rejected. Matched
+// by type rather than link — unlike orders, all three share the same kind
+// of "/transport-library..." link shape (seller side always goes to
+// ?tab=manage, buyer side to /orders), so link alone can't tell them apart
+// from an ordinary transport-library page visit the way order links can.
+export function isTransportProposalNotification(n) {
+    return n?.type === "transport_proposal_received"
+        || n?.type === "transport_proposal_approved"
+        || n?.type === "transport_proposal_rejected";
+}
+
 // approveSellerSubmission/rejectSellerSubmission/notifySellerListingLive
 // all embed the submission id as ?highlight=<id> in their link — this
 // pulls it back out so the list page can flash the right row.

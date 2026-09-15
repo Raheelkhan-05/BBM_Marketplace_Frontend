@@ -27,7 +27,7 @@ import {
     isListingsSectionNotification, isAutoApprovedListingNotification,
     isListingApprovedNotification, isListingRejectedNotification,
     isWalletTopupNotification, isWalletLowBalanceNotification,
-    extractHighlightId, orderIdFromLink
+    extractHighlightId, orderIdFromLink, isTransportProposalNotification,
 } from "../utils/notificationTypes.js";
 
 
@@ -188,6 +188,11 @@ export function NotificationsProvider({ children }) {
         [notifications]
     );
 
+    const transportProposalNotification = useMemo(
+        () => notifications.filter((n) => isTransportProposalNotification(n) && !n.read).length,
+        [notifications]
+    );
+
     const purchaseOrderUnreadCounts = useMemo(() => {
         const map = new Map();
         for (const n of notifications) {
@@ -220,7 +225,7 @@ export function NotificationsProvider({ children }) {
         subscribeNonOrder, subscribeOrder, subscribeChat,
         listingApprovalUnreadCount, listingRejectionUnreadCount,
         walletTopupUnreadCount, unreadWalletLowBalanceNotifications,
-        markListingsViewed, markWalletTopupViewed,
+        markListingsViewed, markWalletTopupViewed, transportProposalNotification
     };
 
     return <NotificationsContext.Provider value={value}>{children}</NotificationsContext.Provider>;
