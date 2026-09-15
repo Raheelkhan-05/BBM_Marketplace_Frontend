@@ -38,8 +38,20 @@ const EASE = [0.16, 1, 0.3, 1];
 // visually uniform no matter what case the underlying string is in.
 const CAP = "capitalize tracking-wide";
 
+// Normalizes a single piece of a dedup key: trims edges, collapses any
+// run of internal whitespace to one space, and lowercases. Applied to
+// EVERY part of the key (city, mode, identity) — previously only the
+// identity was normalized, so two rows for the same real-world route
+// that merely differed in casing (e.g. "Rajkot" vs "rajkot") were treated
+// as different routes: dedup failed to merge them, "mine" detection
+// missed the seller's own row, and the same option rendered twice — once
+// as "Use", once as "Remove".
+function normPart(value) {
+    return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 function normKey(originCity, destCity, mode, identity) {
-    return `${originCity}::${destCity}::${mode}::${(identity || "").toLowerCase()}`;
+    return `${normPart(originCity)}::${normPart(destCity)}::${normPart(mode)}::${normPart(identity)}`;
 }
 
 // ---------------------------------------------------------------------
