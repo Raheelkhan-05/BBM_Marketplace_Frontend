@@ -20,7 +20,8 @@ import {
 } from "../components/orders/OrderDisplayHelpers.jsx";
 import ConfirmOrderModal from "../components/orders/ConfirmOrderModal.jsx";
 import { confirmSellerOrderWithTransport } from "../utils/api.js"; // see api.js patch
-
+import ShipOrderModal from "../components/orders/ShipOrderModal.jsx";
+import { shipSellerOrderWithTransport } from "../utils/api.transport.js";
 
 // ---------- shared helpers ----------
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
@@ -45,17 +46,23 @@ const PURCHASE_STATUS_TABS = [
 ];
 const SALES_STATUS_TABS = [
     { key: "", label: "All" }, { key: "pending_confirmation", label: "New" }, { key: "confirmed", label: "Confirmed" },
-    { key: "processing", label: "Processing" }, { key: "shipped", label: "Shipped" }, { key: "delivered", label: "Delivered" },
+    { key: "shipped", label: "Shipped" }, { key: "delivered", label: "Delivered" },
     { key: "rejected", label: "Rejected" }, { key: "cancelled", label: "Cancelled" },
 ];
 const TYPE_TABS = [
     { key: "", label: "All orders" }, { key: "standard", label: "Standard" }, { key: "sample", label: "Samples" },
 ];
 const NEXT_ACTION = {
-    pending_confirmation: [{ key: "confirm", label: "Confirm order", primary: true, needsTransportModal: true }, { key: "reject", label: "Reject", fn: rejectSellerOrder, needsReason: true }],
-    confirmed: [{ key: "process", label: "Mark as processing", fn: processSellerOrder, primary: true }],
-    processing: [{ key: "ship", label: "Mark as shipped", fn: shipSellerOrder, primary: true }],
-    shipped: [{ key: "deliver", label: "Mark as delivered", fn: deliverSellerOrder, primary: true }],
+    pending_confirmation: [
+        { key: "confirm", label: "Confirm order", fn: confirmSellerOrder, primary: true },
+        { key: "reject", label: "Reject", fn: rejectSellerOrder, needsReason: true },
+    ],
+    confirmed: [
+        { key: "ship", label: "Mark as shipped", needsShipModal: true, primary: true },
+    ],
+    shipped: [
+        { key: "deliver", label: "Mark as delivered", fn: deliverSellerOrder, primary: true },
+    ],
 };
 // Shared unread indicator for an individual order row. Renders a number
 // badge if there's more than one unread notification queued for this
@@ -244,7 +251,7 @@ function PurchaseOrdersView() {
 }
 
 // ---------- Sales (seller) card ----------
-function SalesOrderCard({ order, idx, onAction, sellerTransportOptions }) {
+function SalesOrderCard({ order, idx, onAction, sellerTransportOptions, reload }) {
     const navigate = useNavigate();
     const { token } = useAuth();
     const [busy, setBusy] = useState(null);
@@ -255,9 +262,11 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions }) {
     const addr = order.shipping_address_snapshot || {};
     const isSample = order.order_type === "sample";
     const firstItem = order.items?.[0];
+    const [shipModalOpen, setShipModalOpen] = useState(false);
 
     const run = async (action) => {
         if (action.needsTransportModal) { setConfirmModalOpen(true); return; }
+        if (action.needsShipModal) { setShipModalOpen(true); return; }
         if (action.needsReason) {
             const reason = window.prompt("Reason for rejecting this order (shown to the buyer):");
             if (reason === null) return;
@@ -374,6 +383,18 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions }) {
                     }}
                 />
             )}
+            {shipModalOpen && (
+                <ShipOrderModal
+                    open={shipModalOpen}
+                    order={order}
+                    onClose={() => setShipModalOpen(false)}
+                    onConfirm={async (formData) => {
+                        const res = await shipSellerOrderWithTransport(token, order.id, formData);
+                        if (res?.success) { setShipModalOpen(false); reload(); }
+                        return res;
+                    }}
+                />
+            )}
         </motion.div>
     );
 }
@@ -440,7 +461,7 @@ function SalesOrdersView() {
                             <h3 className="mt-4 text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>No orders yet</h3>
                             <p className="mt-1.5 max-w-xs text-[12.5px] font-medium tracking-wide" style={{ color: C.muted }}>Orders buyers place on your listings will show up here in real time.</p>
                         </div>
-                    ) : orders.map((o, i) => <SalesOrderCard key={o.id} order={o} idx={i} onAction={handleAction} sellerTransportOptions={sellerTransportOptions} />
+                    ) : orders.map((o, i) => <SalesOrderCard key={o.id} order={o} idx={i} onAction={handleAction} sellerTransportOptions={sellerTransportOptions} reload={reload} />
                     )}
             </div>
         </>
@@ -480,6 +501,7 @@ export default function OrdersPage() {
             )}
 
             {activeTab === "sales" && isApprovedSeller ? <SalesOrdersView /> : <PurchaseOrdersView />}
+
         </div>
     );
 }

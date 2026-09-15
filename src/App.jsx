@@ -16,6 +16,7 @@ import { routeImports, preloadRoutesWhenIdle } from "./routePreload.js";
 import OnboardingGate from "./components/OnboardingGate.jsx";
 
 
+
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
 // visitor's home-page load. Pages registered in routeImports use that
@@ -61,6 +62,7 @@ const SellerWalletPage = lazy(routeImports["/seller/wallet"]);
 const AdminDatabasePanel = lazy(() => import("./pages/admin/AdminDatabasePanel.jsx"));
 const AdminProductCommissionsPage = lazy(() => import("./pages/admin/AdminProductCommissionsPage.jsx"));
 const SellerEditListingPage = lazy(() => import("./pages/SellerEditListingPage.jsx"));
+const TransportLibraryPage = lazy(() => import("./pages/TransportLibraryPage.jsx"));
 const AdminHelpRequestsPage = lazy(() => import("./pages/admin/AdminHelpRequestsPage.jsx"));
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -153,6 +155,8 @@ function App() {
                 <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />
 
                 <Route path="/cart" element={<CartPage />} />
+
+                <Route path="/transport-library" element={<TransportLibraryPage />} />
 
                 <Route path="/admin/wallets" element={<AdminWalletSellersPage />} />
 

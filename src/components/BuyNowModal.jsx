@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi, fetchBusinessProfile, fetchSellerTransportOptions } from "../utils/api.js";
+import { fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress, placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi, fetchBusinessProfile } from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
 import { TRANSPORT_OPTIONS } from "../../shared/transportOptions.js";
 import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
@@ -20,6 +20,9 @@ import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, hasOuterPack, saleUni
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
 import { fetchOrderConstraints } from "../utils/api.js";
 import { usePincodeResolution } from "../hooks/usePincodeResolution.js";
+import TransportPreferenceModal from "./transport/TransportPreferenceModal.jsx";
+import { routeTransportModeLabel, getRouteTransportFields } from "../../shared/routeTransportFields.js";
+import { fetchBuyerTransportPreference, fetchSellerRouteOptions } from "../utils/api.transport.js";
 
 /* ============================================================
    All logic below (constants, pure functions, computeLocalQuote,
@@ -230,7 +233,7 @@ function Notice({ tone = "warn", children }) {
     const t = tones[tone] || tones.warn;
     const Icon = t.icon;
     return (
-        <div className="flex items-start gap-2 rounded-xl px-3.5 py-3" style={{ background: t.background }}>
+        <div className="flex items-start gap-2 rounded-xl px-2.5 py-2" style={{ background: t.background }}>
             <Icon className="mt-[1px] h-4 w-4 shrink-0" style={{ color: t.color }} />
             <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: t.color }}>{children}</p>
         </div>
@@ -323,17 +326,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const userPickedBasis = useRef(false);
     const belowMoq = !isSample && Number(quantity) < minQuantity;
 
-    const [offeredTransportOptions, setOfferedTransportOptions] = useState([]);
-    useEffect(() => {
-        if (!seller?.offerId) { setOfferedTransportOptions([]); return; }
-        let cancelled = false;
-        fetchSellerTransportOptions(seller.offerId).then((res) => {
-            if (!cancelled && res?.success) setOfferedTransportOptions(res.transportOptions || []);
-        });
-        return () => { cancelled = true; };
-    }, [seller?.offerId]);
+    const [transportPreference, setTransportPreference] = useState(seller?.transportPreference ?? null);
+    const [pendingTransportProposal, setPendingTransportProposal] = useState(seller?.transportPendingProposal ?? null); // was already declared — now actually seeded
 
-    const [preferredTransportMode, setPreferredTransportMode] = useState(null);
+    useEffect(() => {
+        setTransportPreference(seller?.transportPreference ?? null);
+        setPendingTransportProposal(seller?.transportPendingProposal ?? null); // NEW
+    }, [seller?.transportPreference, seller?.transportPendingProposal]);
 
     useEffect(() => {
         if (!userPickedBasis.current) setBasis(defaultBasis);
@@ -371,6 +370,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [error, setError] = useState(null);
     const [done, setDone] = useState(null);
     const quoteTimer = useRef(null);
+    const [showTransportModal, setShowTransportModal] = useState(false);
+    const [transportRemovedNotice, setTransportRemovedNotice] = useState(null); // NEW — summary of what was removed, or null
     const isFirstQuoteRef = useRef(true);
     const requestIdRef = useRef(0);
     const { resolved: pincodeGeo, status: pincodeStatus, message: pincodeMessage } =
@@ -432,6 +433,19 @@ export default function BuyNowModal({ seller, product, onClose }) {
         lenis?.stop?.();
         return () => { lenis?.start?.(); };
     }, []);
+
+    // Preference was resolved for a specific destination route. If the buyer
+    // changes the shipping address to a different city/state inside the
+    // modal, that preference no longer applies to the (new) route — clear it
+    // so "Set preference" reappears instead of silently keeping a stale pick.
+    useEffect(() => {
+        if (!transportPreference?.destCity || !transportPreference?.destState) return;
+        if (!effectiveCity || !effectiveState) return;
+        const sameRoute =
+            transportPreference.destCity.trim().toLowerCase() === effectiveCity.trim().toLowerCase() &&
+            transportPreference.destState.trim().toLowerCase() === effectiveState.trim().toLowerCase();
+        if (!sameRoute) setTransportPreference(null);
+    }, [effectiveCity, effectiveState]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         let cancelled = false;
@@ -574,6 +588,93 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return () => clearTimeout(quoteTimer.current);
     }, [seller?.offerId, quantity, basis, isSample, selectedAddressId, effectivePincode, effectiveState]);
 
+
+    // REPLACE the old "clear preference on address change" effect with this:
+    //
+    // Whenever the buyer's effective destination (city/state) changes — either
+    // by picking a different saved address or by a new address's pincode
+    // resolving — the transport preference is no longer guaranteed to apply,
+    // since it's keyed per (buyer, seller, destination route). Re-resolve it:
+    //   1. If the preference already in state was resolved for this exact
+    //      route (e.g. it came in pre-attached from the feed for the default
+    //      address), trust it — no need to re-fetch.
+    //   2. Otherwise, ask the backend whether a decision already exists for
+    //      this seller on this new route. If yes, adopt it immediately.
+    //   3. If no decision exists yet for this route, clear the stale
+    //      preference AND open the picker automatically so the buyer isn't
+    //      left silently defaulting to "seller decides" without being asked.
+    const lastCheckedRouteRef = useRef(null);
+
+    useEffect(() => {
+        if (!effectiveCity || !effectiveState || !seller?.sellerId) return;
+
+        const routeKey = `${effectiveState.trim().toLowerCase()}::${effectiveCity.trim().toLowerCase()}`;
+        if (lastCheckedRouteRef.current === routeKey) return;
+        lastCheckedRouteRef.current = routeKey;
+
+        const sameAsCurrent =
+            transportPreference?.destCity?.trim().toLowerCase() === effectiveCity.trim().toLowerCase() &&
+            transportPreference?.destState?.trim().toLowerCase() === effectiveState.trim().toLowerCase();
+        if (sameAsCurrent) return;
+
+        let cancelled = false;
+        (async () => {
+            const res = await fetchBuyerTransportPreference(seller.sellerId, effectiveState, effectiveCity, token);
+            if (cancelled) return;
+
+            const pendingProposal = res?.pendingProposal
+                ? { ...res.pendingProposal, destCity: effectiveCity, destState: effectiveState }
+                : null;
+            setPendingTransportProposal(pendingProposal);
+
+            if (res?.rejectedNotice) {
+                // NEW: an unacknowledged rejection always wins — clear whatever
+                // else was showing and force the picker open with the reason,
+                // regardless of the decided/pending state otherwise returned.
+                setTransportPreference(null);
+                setTransportRemovedNotice(`Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`);
+                setShowTransportModal(true);
+                return;
+            }
+
+            if (res?.success && res.decided) {
+                setTransportPreference(res.preference ? { ...res.preference, destCity: effectiveCity, destState: effectiveState } : null);
+                setTransportRemovedNotice(null);
+            } else {
+                setTransportPreference(null);
+                setTransportRemovedNotice(res?.invalidated ? "The seller no longer offers your previously selected transport option." : null);
+                if (!pendingProposal) setShowTransportModal(true);
+            }
+        })();
+
+        return () => { cancelled = true; };
+    }, [effectiveCity, effectiveState, seller?.sellerId, token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // One-time validation of whatever preference the modal opened with — it
+    // may have been resolved earlier (e.g. by HomeProductFeed before the
+    // modal opened) and the seller could have removed it since then.
+    const initialPreferenceCheckedRef = useRef(false);
+    useEffect(() => {
+        if (initialPreferenceCheckedRef.current) return;
+        if (!seller?.sellerId || !effectiveCity || !effectiveState) return;
+        initialPreferenceCheckedRef.current = true;
+
+        (async () => {
+            const res = await fetchBuyerTransportPreference(seller.sellerId, effectiveState, effectiveCity, token);
+            if (res?.rejectedNotice) {
+                setTransportPreference(null);
+                setTransportRemovedNotice(`Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`);
+                setShowTransportModal(true);
+                return;
+            }
+            if (res?.invalidated) {
+                setTransportPreference(null);
+                setTransportRemovedNotice("The seller no longer offers your previously selected transport option.");
+                setShowTransportModal(true);
+            }
+        })();
+    }, [seller?.sellerId, effectiveCity, effectiveState, token]);
+
     const setAddrField = (key, value) => setNewAddress((a) => ({ ...a, [key]: value }));
 
     const handleSaveNewAddress = async () => {
@@ -635,7 +736,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
             orderType: effectiveOrderType,
             shippingAddressId: addressId,
             notes: notes.trim() || undefined,
-            transportMode: preferredTransportMode || undefined,
+            transportRouteOptionId: transportPreference?.routeOptionId || undefined,
         });
         setSubmitting(false);
         if (!res?.success) return setError(res?.message || "Couldn't place the order.");
@@ -651,8 +752,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 showNewAddress,
                 newAddress,
                 notes,
-                orderMode: effectiveOrderType,
-                preferredTransportMode,
+                orderMode: effectiveOrderType
             });
             setAwaitingPaymentOrderId(res.orderId);
         } else {
@@ -670,7 +770,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
         setNewAddress(session.newAddress || EMPTY_ADDRESS);
         setNotes(session.notes || "");
         setOrderMode(session.orderMode || "standard");
-        setPreferredTransportMode(session.preferredTransportMode || null);
     };
 
     // useEffect(() => {
@@ -712,6 +811,51 @@ export default function BuyNowModal({ seller, product, onClose }) {
         onClose();
         navigate(`/chat/${reqRes.conversationId}`);
     };
+
+    // If the buyer has a proposal awaiting seller approval for this route,
+    // check whether it's since been approved — the seller's approved-options
+    // list will include it once approveProposal flips its status. If so,
+    // silently adopt it as the active preference instead of leaving the
+    // buyer stuck on a stale "awaiting approval" notice.
+    // While a proposal is awaiting the seller's decision, poll its live
+    // status periodically (piggybacking on the existing 30s clockTick) so
+    // this modal picks up an approval or rejection even if it happened while
+    // the modal was already open, not just once on mount.
+    useEffect(() => {
+        if (!pendingTransportProposal?.routeOptionId || !seller?.sellerId || !effectiveCity || !effectiveState) return;
+
+        let cancelled = false;
+        (async () => {
+            const res = await fetchBuyerTransportPreference(
+                seller.sellerId, effectiveState, effectiveCity, token, pendingTransportProposal.routeOptionId
+            );
+            if (cancelled || !res?.success) return;
+
+            if (res.checkedProposalStatus === "approved") {
+                const resolved = {
+                    routeOptionId: pendingTransportProposal.routeOptionId,
+                    mode: pendingTransportProposal.mode,
+                    fields: pendingTransportProposal.fields,
+                    summary: pendingTransportProposal.summary,
+                    destCity: effectiveCity, destState: effectiveState,
+                };
+                setTransportPreference(resolved);
+                setPendingTransportProposal(null);
+                setTransportRemovedNotice(null);
+            } else if (res.checkedProposalStatus === "rejected") {
+                setPendingTransportProposal(null);
+                setTransportPreference(null);
+                setTransportRemovedNotice(`Your proposed transport option (${pendingTransportProposal.summary}) wasn't accepted by the seller.`);
+                setShowTransportModal(true);
+            }
+            // "proposed" (still pending) or "removed"/"not_found" (edge case,
+            // e.g. seller deleted the row outright) — leave state as-is for
+            // "proposed"; "removed"/"not_found" is rare enough to just fall
+            // through and get caught by the next full route re-check instead.
+        })();
+
+        return () => { cancelled = true; };
+    }, [clockTick, pendingTransportProposal?.routeOptionId, seller?.sellerId, effectiveCity, effectiveState, token]);
 
     const handleBackToEdit = async () => {
         if (awaitingPaymentOrderId) {
@@ -1031,27 +1175,59 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                             </button>
                                         </div>
                                     )}
-
-                                    {offeredTransportOptions.length > 0 && (
-                                        <div className="flex flex-col gap-1.5 border-t pt-3" style={{ borderColor: C.hairSoft }}>
-                                            <Label>Preferred transport method (optional)</Label>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                <button type="button" onClick={() => setPreferredTransportMode(null)}
-                                                    className="rounded-full border px-3 py-1.5 text-[11.5px] font-bold"
-                                                    style={!preferredTransportMode ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
-                                                    No preference
-                                                </button>
-                                                {offeredTransportOptions.map((t) => (
-                                                    <button key={t.key} type="button" onClick={() => setPreferredTransportMode(t.key)}
-                                                        className="rounded-full border px-3 py-1.5 text-[11.5px] font-bold"
-                                                        style={preferredTransportMode === t.key ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
-                                                        {t.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <p className="text-[11px] font-medium" style={{ color: C.muted }}>Leave unselected and the seller will choose for you.</p>
+                                    <div className="flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hairSoft }}>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>Preferred transport</p>
+                                            <button type="button" onClick={() => setShowTransportModal(true)} className="shrink-0 text-[12px] font-bold tracking-wide" style={{ color: C.secondary }}>
+                                                {transportPreference || pendingTransportProposal ? "Change" : "Set preference"}
+                                            </button>
                                         </div>
-                                    )}
+
+                                        {transportPreference ? (
+                                            <div className="flex flex-col gap-1.5">
+                                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                    {routeTransportModeLabel(transportPreference.mode)}
+                                                </p>
+                                                <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+                                                    {getRouteTransportFields(transportPreference.mode).map((f) => {
+                                                        const val = transportPreference.fields?.[f.key];
+                                                        if (!val) return null;
+                                                        const displayLabel = f.label.replace(/\s*\(if any\)\s*/i, "");
+                                                        return (
+                                                            <div key={f.key} className="flex items-baseline gap-1.5">
+                                                                <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{displayLabel}:</span>
+                                                                <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ) : pendingTransportProposal ? (
+                                            <div className="flex flex-col gap-1.5">
+                                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                    {routeTransportModeLabel(pendingTransportProposal.mode)}
+                                                </p>
+                                                <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+                                                    {getRouteTransportFields(pendingTransportProposal.mode).map((f) => {
+                                                        const val = pendingTransportProposal.fields?.[f.key];
+                                                        if (!val) return null;
+                                                        const displayLabel = f.label.replace(/\s*\(if any\)\s*/i, "");
+                                                        return (
+                                                            <div key={f.key} className="flex items-baseline gap-1.5">
+                                                                <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{displayLabel}:</span>
+                                                                <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                                <Notice tone="warn">
+                                                    Your proposed transport option is still awaiting the seller's approval. If you place the order now, it'll go through the same as "No preference set" — the seller will choose the transport for now.
+                                                </Notice>
+                                            </div>
+                                        ) : (
+                                            <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>No preference set — the seller will choose for you.</p>
+                                        )}
+                                    </div>
 
                                     <div className="flex flex-col gap-1 border-t pt-3" style={{ borderColor: C.hairSoft }}>
                                         <Label>Note to seller (optional)</Label>
@@ -1290,6 +1466,27 @@ export default function BuyNowModal({ seller, product, onClose }) {
                     </>
                 )}
             </motion.div>
+            {showTransportModal && (
+                <TransportPreferenceModal
+                    open
+                    seller={seller}
+                    destCity={effectiveCity}
+                    destState={effectiveState}
+                    removedNotice={transportRemovedNotice}
+                    onClose={() => { setShowTransportModal(false); setTransportRemovedNotice(null); }}
+                    onResolved={(result) => {
+                        if (result?.pending) {
+                            setTransportPreference(null);
+                            setPendingTransportProposal(result);
+                        } else {
+                            setTransportPreference(result);
+                            setPendingTransportProposal(null);
+                        }
+                        setTransportRemovedNotice(null);
+                        setShowTransportModal(false);
+                    }}
+                />
+            )}
         </motion.div>
     );
 }

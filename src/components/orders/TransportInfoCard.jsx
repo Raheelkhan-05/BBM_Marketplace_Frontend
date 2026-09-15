@@ -1,70 +1,75 @@
-// components/orders/TransportInfoCard.jsx — NEW
+// components/orders/TransportInfoCard.jsx
 //
-// Renders whatever transport info exists on an order — used on both
-// OrderDetailPage.jsx (buyer) and SellerOrderDetailPage.jsx (seller).
-// Handles three states:
-//   1. Nothing yet, buyer had no preference  -> renders nothing
-//   2. Buyer requested a method, not yet confirmed -> shows the request
-//   3. Seller has confirmed -> shows the confirmed method + details
-import { Truck, Clock3, FileText } from "lucide-react";
-import { getTransportOption, transportLabel } from "../../../shared/transportOptions.js";
+// NOTE: this repo already imports a TransportInfoCard in
+// OrderDetailPage.jsx and SellerOrderDetailPage.jsx, but its source
+// wasn't in scope for this pass. This is a fresh implementation covering
+// what's new: the pre-agreed transport preference (order.transport_mode /
+// transport_fields, set at place_order time from the Transport Library)
+// plus, once shipped, the LR number/notes and downloadable LR + bill
+// files (order.ship_lr_number / ship_lr_notes / ship_lr_proof_url /
+// ship_bill_url). Merge this with whatever your existing card already
+// shows (e.g. buyer_transport_mode "requested" note) rather than
+// replacing it outright if it has other responsibilities.
+import { Truck, FileText, Receipt, Download, Clock3 } from "lucide-react";
+import { routeOptionSummary, routeTransportModeLabel } from "../../../shared/routeTransportFields.js";
+import { transportLabel } from "../../../shared/transportOptions.js";
 
-const C = { ink: "#0B1116", muted: "#667077", secondary: "#006F83", hair: "rgba(11,17,22,0.09)", warn: "#a16207", warnBg: "#FDF3D8" };
+const C = { ink: "#0B1116", muted: "#667077", secondary: "#006F83", hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)" };
+
+function Row({ icon: Icon, label, value }) {
+    if (!value) return null;
+    return (
+        <div className="flex items-center gap-2.5">
+            <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+            <div className="min-w-0">
+                <p className="text-[10.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>{label}</p>
+                <p className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{value}</p>
+            </div>
+        </div>
+    );
+}
+
+function DownloadLink({ href, label }) {
+    if (!href) return null;
+    return (
+        <a href={href} target="_blank" rel="noreferrer"
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[12px] font-bold"
+            style={{ borderColor: C.hair, color: C.secondary }}>
+            <Download className="h-3.5 w-3.5" /> {label}
+        </a>
+    );
+}
 
 export default function TransportInfoCard({ order }) {
-    const { buyer_transport_mode: buyerMode, transport_mode: confirmedMode, transport_fields: fields, transport_notes: notes, transport_proof_url: proofUrl, transport_confirmed_at: confirmedAt } = order || {};
+    if (!order?.transport_mode && !order?.buyer_transport_mode) return null;
 
-    if (!buyerMode && !confirmedMode) return null;
-
-    if (!confirmedMode) {
-        return (
-            <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: C.hair }}>
-                <p className="text-[12px] font-extrabold uppercase tracking-[0.08em]" style={{ color: "#4A535B" }}>Transport</p>
-                <div className="mt-2 flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: C.warnBg }}>
-                    <Clock3 className="h-3.5 w-3.5 shrink-0" style={{ color: C.warn }} />
-                    <p className="text-[12.5px] font-semibold" style={{ color: C.warn }}>
-                        Requested: <b>{transportLabel(buyerMode)}</b> — awaiting seller confirmation.
-                    </p>
-                </div>
-            </div>
-        );
-    }
-
-    const schema = getTransportOption(confirmedMode);
-    const isImage = proofUrl && /\.(png|jpe?g|webp|gif)$/i.test(proofUrl);
+    const agreedSummary = order.transport_mode ? routeOptionSummary(order.transport_mode, order.transport_fields || {}) : null;
+    const isShipped = !!order.ship_details_confirmed_at;
 
     return (
-        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: C.hair }}>
+        <div className="mt-4 rounded-2xl border bg-white p-4" style={{ borderColor: C.hair }}>
             <p className="text-[12px] font-extrabold uppercase tracking-[0.08em]" style={{ color: "#4A535B" }}>Transport</p>
 
-            <p className="mt-2.5 flex items-center gap-1.5 text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>
-                <Truck className="h-4 w-4" style={{ color: C.secondary }} /> {transportLabel(confirmedMode)}
-            </p>
+            <div className="mt-3 flex flex-col gap-2.5">
+                {agreedSummary && (
+                    <Row icon={Truck} label="Agreed transport" value={`${agreedSummary} · ${routeTransportModeLabel(order.transport_mode)}`} />
+                )}
+                {!order.transport_mode && order.buyer_transport_mode && (
+                    <Row icon={Clock3} label="Requested" value={transportLabel(order.buyer_transport_mode)} />
+                )}
 
-            {schema && fields && (
-                <div className="mt-2 flex flex-col gap-1">
-                    {schema.fields.filter((f) => fields[f.key]).map((f) => (
-                        <div key={f.key} className="flex items-start justify-between gap-3 text-[12.5px]">
-                            <span className="font-semibold" style={{ color: C.muted }}>{f.label}</span>
-                            <span className="text-right font-bold" style={{ color: C.ink }}>{fields[f.key]}</span>
+                {isShipped && (
+                    <>
+                        <div className="h-px" style={{ background: C.hairSoft }} />
+                        <Row icon={FileText} label="LR / tracking number" value={order.ship_lr_number} />
+                        {order.ship_lr_notes && <Row icon={FileText} label="Notes" value={order.ship_lr_notes} />}
+                        <div className="mt-1 flex flex-wrap gap-2">
+                            <DownloadLink href={order.ship_lr_proof_url} label="Download LR" />
+                            <DownloadLink href={order.ship_bill_url} label="Download bill" />
                         </div>
-                    ))}
-                </div>
-            )}
-
-            {notes && <p className="mt-2 text-[12px] font-medium italic leading-relaxed" style={{ color: C.muted }}>"{notes}"</p>}
-
-            {proofUrl && (
-                <a href={proofUrl} target="_blank" rel="noreferrer" className="mt-2.5 flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: C.secondary }}>
-                    <FileText className="h-3.5 w-3.5" /> {isImage ? "View proof image" : "View proof file"}
-                </a>
-            )}
-
-            {buyerMode && (
-                <p className="mt-2.5 text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                    Buyer requested this method{confirmedAt ? ` · confirmed ${new Date(confirmedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}.
-                </p>
-            )}
+                    </>
+                )}
+            </div>
         </div>
     );
 }

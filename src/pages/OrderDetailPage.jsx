@@ -24,7 +24,7 @@ import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
 import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall, basisLabel } from "../components/orders/OrderDisplayHelpers.jsx";
 
-const TIMELINE_STEPS = ["pending_confirmation", "confirmed", "processing", "shipped", "delivered"];
+const TIMELINE_STEPS = ["pending_confirmation", "confirmed", "shipped", "delivered"];
 
 function Timeline({ status, events }) {
     const isTerminalBad = status === "cancelled" || status === "rejected";

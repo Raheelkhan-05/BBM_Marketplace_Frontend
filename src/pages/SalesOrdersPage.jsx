@@ -22,7 +22,7 @@ const TYPE_TABS = [
 const NEXT_ACTION = {
     pending_confirmation: [{ key: "confirm", label: "Confirm order", fn: confirmSellerOrder, primary: true }, { key: "reject", label: "Reject", fn: rejectSellerOrder, needsReason: true }],
     confirmed: [{ key: "process", label: "Mark as processing", fn: processSellerOrder, primary: true }],
-    processing: [{ key: "ship", label: "Mark as shipped", fn: shipSellerOrder, primary: true }],
+    // processing: [{ key: "ship", label: "Mark as shipped", fn: shipSellerOrder, primary: true }],
     shipped: [{ key: "deliver", label: "Mark as delivered", fn: deliverSellerOrder, primary: true }],
 };
 

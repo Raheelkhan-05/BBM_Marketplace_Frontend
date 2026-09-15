@@ -11,6 +11,7 @@ import {
     ShoppingCart,
     ChartNoAxesCombined,
     Wallet,
+    Truck,
 } from "lucide-react";
 
 // ordersBadgeCount: total unread order notifications (purchase + sales
@@ -68,6 +69,14 @@ export function NAV_ITEMS({ isLoggedIn, isApprovedSeller, onOpenRfq, navigate, o
                 }),
             match: (p) => p.startsWith("/orders"),
         } : null,
+        {
+            id: "transport-library",
+            label: "Transport Library",
+            icon: Truck,
+            to: "/transport-library",
+            onClick: () => navigate("/transport-library"),
+            match: (p) => p === "/transport-library" || p.startsWith("/transport-library/"),
+        }
 
     ].filter(Boolean);
 }

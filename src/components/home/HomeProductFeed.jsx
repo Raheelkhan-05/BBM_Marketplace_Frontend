@@ -53,14 +53,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2 } from "lucide-react";
-import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged } from "../../utils/api";
+import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
 import SellThisItemModal from "../catalog/SellThisItemModal";
 import BuyNowModal from "../BuyNowModal";
 import { resizedImageUrl } from "../../utils/imageUrl";
+import TransportPreferenceModal from "../transport/TransportPreferenceModal.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { fetchBuyerTransportPreference } from "../../utils/api.transport.js";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
@@ -302,6 +304,7 @@ function BrandBadge({ name, image }) {
 function toBuyerSellerPayload(s) {
     return {
         offerId: s.submission_id,
+        sellerId: s.seller_id,
         display_name: s.display_name,
         unit: s.unit,
         moq: s.moq,
@@ -310,6 +313,8 @@ function toBuyerSellerPayload(s) {
         availableStock: s.stock_quantity ?? null,
         stockType: s.stock_type,
         leadTime: effectiveLeadTime(s),
+        transportPreference: s.transportPreference || null,
+        transportPendingProposal: s.transportPendingProposal || null,
         dispatchTimeDays: s.dispatch_time_days,
         productionLeadTimeDays: s.production_lead_time_days,
         priceSlabs: s.price_slabs || [],
@@ -845,7 +850,7 @@ function RowSkeleton() {
 // same unfiltered behavior as before. Passing it wires up live search.
 export default function HomeProductFeed({ category, q = "" }) {
     const navigate = useNavigate();
-    const { profile } = useAuth();
+    const { profile, token } = useAuth();
     const currentUserId = profile?.shop_slug ?? null;
     const [items, setItems] = useState([]);
     const seenItemIdsRef = useRef(new Set());
@@ -863,6 +868,8 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [openItemId, setOpenItemId] = useState(null);
     const [sellerState, setSellerState] = useState({});
     const sellerAbortRef = useRef(null);
+
+    const [transportFlow, setTransportFlow] = useState(null); // { item, seller }
 
     const [sellItem, setSellItem] = useState(null);
     const [buyState, setBuyState] = useState(null); // { item, seller }
@@ -1002,10 +1009,60 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     const goToSellers = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
 
-    const handleBuySeller = (item, seller) => {
+    // Only shows TransportPreferenceModal the first time this buyer deals
+    // with this seller. The decision (or explicit "no preference") is
+    // looked up from the DB, per buyer-seller pair — not per device.
+    const handleBuySeller = async (item, seller) => {
         closeDropdown();
-        setBuyState({ item, seller });
+
+        const addrRes = await fetchBuyerAddresses(token);
+        const defaultAddr = addrRes?.addresses?.find((a) => a.is_default) || addrRes?.addresses?.[0];
+
+        if (!defaultAddr?.city || !defaultAddr?.state) {
+            setTransportFlow({ item, seller, destCity: null, destState: null, removedNotice: null });
+            return;
+        }
+
+        const res = await fetchBuyerTransportPreference(seller.seller_id, defaultAddr.state, defaultAddr.city, token);
+
+        if (res?.rejectedNotice) {
+            setTransportFlow({
+                item, seller,
+                destCity: defaultAddr.city, destState: defaultAddr.state,
+                removedNotice: `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`,
+            });
+            return;
+        }
+
+        if (res?.success && !res.invalidated && (res.decided || res.pendingProposal)) {
+            setBuyState({
+                item,
+                seller: {
+                    ...seller,
+                    transportPreference: res.preference ? { ...res.preference, destCity: defaultAddr.city, destState: defaultAddr.state } : null,
+                    transportPendingProposal: res.pendingProposal ? { ...res.pendingProposal, destCity: defaultAddr.city, destState: defaultAddr.state } : null,
+                },
+            });
+            return;
+        }
+
+        setTransportFlow({
+            item, seller,
+            destCity: defaultAddr.city, destState: defaultAddr.state,
+            removedNotice: res?.invalidated ? "The seller no longer offers your previously selected transport option." : null,
+        });
     };
+
+    const handleTransportResolved = (result) => {
+        const { item, seller } = transportFlow;
+        setTransportFlow(null);
+        if (result?.pending) {
+            setBuyState({ item, seller: { ...seller, transportPreference: null, transportPendingProposal: result } });
+        } else {
+            setBuyState({ item, seller: { ...seller, transportPreference: result, transportPendingProposal: null } });
+        }
+    };
+
     const handleSell = (item) => {
         closeDropdown();
         setSellItem(item);
@@ -1141,6 +1198,17 @@ export default function HomeProductFeed({ category, q = "" }) {
                         seller={buyerSellerPayload}
                         product={{ name: buyState.item.name, brand_name: buyState.item.brand_name }}
                         onClose={() => setBuyState(null)}
+                    />
+                )}
+                {transportFlow && (
+                    <TransportPreferenceModal
+                        open
+                        seller={toBuyerSellerPayload(transportFlow.seller)}
+                        destCity={transportFlow.destCity}
+                        destState={transportFlow.destState}
+                        removedNotice={transportFlow.removedNotice}
+                        onClose={() => setTransportFlow(null)}
+                        onResolved={handleTransportResolved}
                     />
                 )}
             </AnimatePresence>
