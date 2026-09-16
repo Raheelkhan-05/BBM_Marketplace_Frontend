@@ -270,7 +270,7 @@ export default function Header({ onOpenRfq }) {
             {effectiveLoggedIn ? (
               <>
                 {/* Notification bell is admin-only — normal users neither see it nor get its toasts/sound (see NotificationsContext, which gates playback on role). */}
-                {isAdmin && <NotificationBell />}
+
                 <div className="relative hidden md:block" ref={accountRef}>
                   <button
                     onClick={() => setAccountOpen((v) => !v)}
@@ -305,44 +305,6 @@ export default function Header({ onOpenRfq }) {
                             <Store className="h-3.5 w-3.5 text-[#0B7285]" />
                             My Shop
                           </SmartLink>
-                        )}
-
-                        {isAdmin && (
-                          <>
-                            {isApprovedSeller && <div className="my-1 border-t border-[rgba(20,27,34,0.08)]" />}
-                            <SmartLink to="/admin/sellers" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <ShieldCheck className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Seller Applications
-                            </SmartLink>
-                            <SmartLink to="/admin/catalog" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <BookOpen className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Catalog
-                            </SmartLink>
-                            <SmartLink to="/admin/admins" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <Users className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Manage Admins
-                            </SmartLink>
-                            <SmartLink to="/admin/listings" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <ListChecks className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Product Review Requests
-                            </SmartLink>
-                            <SmartLink to="/admin/support" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <Lightbulb className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Support Requests
-                            </SmartLink>
-                            <SmartLink to="/admin/payments" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <IndianRupee className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Payment Verification
-                            </SmartLink>
-                            <SmartLink to="/admin/database" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <Skull className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Database
-                            </SmartLink>
-                            <SmartLink to="/admin/product-commisions" onClick={() => setAccountOpen(false)} className={DROPDOWN_ITEM}>
-                              <Boxes className="h-3.5 w-3.5 text-[#0B7285]" />
-                              Product Commissions
-                            </SmartLink>
-                          </>
                         )}
 
                         <div className="my-1 border-t border-[rgba(20,27,34,0.08)]" />
@@ -423,44 +385,6 @@ export default function Header({ onOpenRfq }) {
                           <Store className="h-4 w-4 text-[#0B7285]" />
                           My Shop
                         </SmartLink>
-                      )}
-
-                      {isAdmin && (
-                        <>
-                          <p className="mb-1 mt-3 px-3 text-[11px] font-bold uppercase tracking-wide text-slate-400">Admin</p>
-                          <SmartLink to="/admin/sellers" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <ShieldCheck className="h-4 w-4 text-slate-400" />
-                            Seller Applications
-                          </SmartLink>
-                          <SmartLink to="/admin/catalog" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <BookOpen className="h-4 w-4 text-slate-400" />
-                            Catalog
-                          </SmartLink>
-                          <SmartLink to="/admin/admins" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <Users className="h-4 w-4 text-slate-400" />
-                            Manage Admins
-                          </SmartLink>
-                          <SmartLink to="/admin/listings" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <ListChecks className="h-4 w-4 text-slate-400" />
-                            Product Review Requests
-                          </SmartLink>
-                          <SmartLink to="/admin/support" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <Lightbulb className="h-4 w-4 text-slate-400" />
-                            Support Requests
-                          </SmartLink>
-                          <SmartLink to="/admin/payments" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <IndianRupee className="h-4 w-4 text-slate-400" />
-                            Payment Verification
-                          </SmartLink>
-                          <SmartLink to="/admin/database" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <Skull className="h-4 w-4 text-slate-400" />
-                            Database
-                          </SmartLink>
-                          <SmartLink to="/admin/product-commisions" onClick={() => setOpen(false)} className={MOBILE_ROW}>
-                            <Boxes className="h-4 w-4 text-slate-400" />
-                            Product Commissions
-                          </SmartLink>
-                        </>
                       )}
 
                       <div className="my-2 border-t border-slate-100" />

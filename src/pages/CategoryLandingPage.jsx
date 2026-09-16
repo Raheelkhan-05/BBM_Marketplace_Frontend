@@ -117,7 +117,7 @@ export default function CategoryLandingPage() {
     const goSubcategory = (sub) => navigate(`/subcategory/${sub.slug || sub.id}`);
 
     return (
-        <div className="min-h-screen bg-[#f7f9fc]">
+        <div className="min-h-screen bg-[#FCFBF9]">
             {/* ─── HERO ─── */}
             <HeroBanner
                 category={category}
@@ -661,7 +661,7 @@ function PageSkeleton() {
     };
 
     return (
-        <div className="min-h-screen bg-[#f7f9fc]">
+        <div className="min-h-screen bg-[#FCFBF9]">
             {/* Hero skeleton */}
             <div style={{ background: `linear-gradient(145deg, ${TEAL} 0%, ${TEAL_DARK} 100%)` }} className="pb-12 pt-5">
                 <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">

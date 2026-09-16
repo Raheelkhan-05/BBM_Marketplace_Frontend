@@ -68,7 +68,7 @@ export default function AdminCatalogReviewPage() {
     function refresh() { setRefreshKey((k) => k + 1); }
 
     async function handleDelete(entry) {
-        if (!window.confirm(`Delete "${entry.name}"? This can't be undone.`)) return;
+        if (!window.confirm(`Delete "${entry.name}"? This will also remove everything nested under it (subcategories, generic products, brand items) from view.`)) return;
         const res = await adminDeleteCatalogEntry(token, level, entry.id);
         if (!res?.success) return alert(res?.message || "Couldn't delete that.");
         refresh();
