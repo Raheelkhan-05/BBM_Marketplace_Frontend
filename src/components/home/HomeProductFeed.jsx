@@ -757,13 +757,9 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
     pill when this specific buyer has a negotiated price on the cheapest
     seller for this item. */}
                         {breakdown && (
-                            breakdown.isCustomPriced ? (
-                                <span className="rounded-full px-2 py-[3px] text-[9px] font-extrabold uppercase tracking-wider" style={{ background: `${C.secondary}14`, color: C.secondary }}>
-                                    Your price
-                                </span>
-                            ) : (
-                                <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
-                            )
+
+                            <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
+
                         )}
                         <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
                     </>
@@ -1043,11 +1039,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                     <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
                                                 ) : (
                                                     <div className="flex flex-col items-end gap-1">
-                                                        {s.is_custom_priced && (
-                                                            <span className="rounded-full px-1.5 py-[1px] text-[8.5px] font-extrabold uppercase tracking-wider" style={{ background: `${C.secondary}14`, color: C.secondary }}>
-                                                                Your price
-                                                            </span>
-                                                        )}
+
                                                         <SellerPriceBlock pricing={pricing} unit={s.unit} />
                                                     </div>
                                                 )}
