@@ -630,6 +630,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
 
     // Recomputed only when the underlying price fields or the GST toggle
     // change — cheap pure arithmetic, so this stays effectively instant.
+    // ProductRow — inside the useMemo call
     const breakdown = useMemo(() => {
         if (item.lowest_price == null) return null;
         return computePriceBreakdown({
@@ -638,14 +639,9 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             masterPackSize: item.lowest_price_master_pack_size,
             gstPercent: item.lowest_price_gst_percent,
             includeGst,
+            isCustomPriced: item.lowest_price_is_custom, // NEW
         });
-    }, [
-        item.lowest_price,
-        item.lowest_price_pack_size,
-        item.lowest_price_master_pack_size,
-        item.lowest_price_gst_percent,
-        includeGst,
-    ]);
+    }, [item.lowest_price, item.lowest_price_pack_size, item.lowest_price_master_pack_size, item.lowest_price_gst_percent, item.lowest_price_is_custom, includeGst]);
 
     return (
         <motion.div
@@ -757,7 +753,18 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     <LockedPriceBlock seed={item.id} unit={item.lowest_price_unit} size="row" onClick={onRequireLogin} />
                 ) : (
                     <>
-                        {breakdown && <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>}
+                        {/* COL 3 price block — swap the generic "from" label for a "Your price"
+    pill when this specific buyer has a negotiated price on the cheapest
+    seller for this item. */}
+                        {breakdown && (
+                            breakdown.isCustomPriced ? (
+                                <span className="rounded-full px-2 py-[3px] text-[9px] font-extrabold uppercase tracking-wider" style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                                    Your price
+                                </span>
+                            ) : (
+                                <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
+                            )
+                        )}
                         <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
                     </>
                 )}
@@ -768,13 +775,18 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
 
 import { deriveDisplayPrices, hasOuterPack, getSaleUnit } from "../../shared/packUnits.js";
 
-function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, includeGst }) {
+
+function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, includeGst, isCustomPriced }) {
     const sourcePrice = Number(price);
     if (!(sourcePrice > 0)) return null;
     const gst = Number(gstPercent) || 0;
     const priceExGst = includeGst ? sourcePrice : sourcePrice / (1 + gst / 100);
     const { perBaseUnit, perPack, perMasterPack } = deriveDisplayPrices(priceExGst, packSize, masterPackSize);
-    return { unitPrice: perBaseUnit, packPrice: perPack, masterPackPrice: perMasterPack, hasMasterPack: hasOuterPack(masterPackSize), basis: getSaleUnit(masterPackSize) };
+    return {
+        unitPrice: perBaseUnit, packPrice: perPack, masterPackPrice: perMasterPack,
+        hasMasterPack: hasOuterPack(masterPackSize), basis: getSaleUnit(masterPackSize),
+        isCustomPriced: !!isCustomPriced, // NEW
+    };
 }
 
 // REMOVE these two — dead/legacy, superseded below:
@@ -1022,6 +1034,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                             : ""}
                                                     </p>
                                                 </div>
+
                                                 {outOfStock ? (
                                                     <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
                                                         OUT OF STOCK
@@ -1029,10 +1042,14 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                 ) : !isLoggedIn ? (
                                                     <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
                                                 ) : (
-                                                    <>
-
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        {s.is_custom_priced && (
+                                                            <span className="rounded-full px-1.5 py-[1px] text-[8.5px] font-extrabold uppercase tracking-wider" style={{ background: `${C.secondary}14`, color: C.secondary }}>
+                                                                Your price
+                                                            </span>
+                                                        )}
                                                         <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                                    </>
+                                                    </div>
                                                 )}
                                             </div>
                                         );
@@ -1139,7 +1156,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         setOpenItemId(item.id);
         setSellerState((prev) => ({ ...prev, [item.id]: { loading: true, items: [], error: null } }));
 
-        fetchBrandItemSellers(item.id, { sort: "price_asc", limit: SELLER_PAGE_SIZE, offset: 0, signal: controller.signal })
+        fetchBrandItemSellers(item.id, { sort: "price_asc", limit: SELLER_PAGE_SIZE, offset: 0, signal: controller.signal, token })
             .then((res) => {
                 if (!res?.success) {
                     setSellerState((prev) => ({ ...prev, [item.id]: { loading: false, items: [], error: "Couldn't load sellers." } }));
@@ -1176,8 +1193,8 @@ export default function HomeProductFeed({ category, q = "" }) {
         // (product -> subcategory -> category matches, in that order) —
         // global across categories, not filtered by the active category tab.
         const request = trimmed
-            ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, categoryId: category?.id || null, signal: controller.signal })
-            : fetchBrandItemsFeed({ categoryId: category?.id || null, q: "", limit: PAGE_SIZE, offset, signal: controller.signal });
+            ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, categoryId: category?.id || null, signal: controller.signal, token })
+            : fetchBrandItemsFeed({ categoryId: category?.id || null, q: "", limit: PAGE_SIZE, offset, signal: controller.signal, token });
 
         request
             .then((res) => {

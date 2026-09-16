@@ -602,7 +602,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
                     orderType: sampleAtSchedule ? "sample" : "standard",
                     addressId: addressAtSchedule || undefined,
                     destPincode: addressAtSchedule ? undefined : destPincodeAtSchedule,  // NEW
-                    destState: addressAtSchedule ? undefined : destStateAtSchedule,      // NEW
+                    destState: addressAtSchedule ? undefined : destStateAtSchedule,
+                    token,
                 });
                 if (myRequestId === requestIdRef.current && res?.success) {
                     const confirmed = normalizeQuote({ ...res, isEstimate: false });

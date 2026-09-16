@@ -457,12 +457,6 @@ export async function fetchAutocomplete(q, limit = 8, signal) {
   return res.json();
 }
 
-export async function fetchProductSearchMerged(q, { limit = 20, offset = 0, categoryId, signal } = {}) {
-  const params = new URLSearchParams({ q, limit, offset });
-  if (categoryId) params.set("categoryId", categoryId);
-  const res = await fetch(`${API_BASE}/catalog-search/products-merged?${params}`, { signal });
-  return res.json();
-}
 
 export async function fetchProductDetail(id) {
   const res = await fetch(`${API_BASE}/search/products/${id}`);
@@ -813,17 +807,55 @@ export async function fetchCheckoutStatus(token) {
   return res.json();
 }
 export async function fetchOrderQuote(submissionId, quantity, opts = {}) {
-  const { purchaseBasis = "per_pack", orderType = "standard", addressId } = opts;
+  const { purchaseBasis = "per_pack", orderType = "standard", addressId, destPincode, destState, token } = opts;
   const params = new URLSearchParams({
-    submissionId,
-    quantity,
-    purchaseBasis,
-    orderType,
+    submissionId, quantity, purchaseBasis, orderType,
     ...(addressId ? { addressId } : {}),
+    ...(destPincode ? { destPincode } : {}),
+    ...(destState ? { destState } : {}),
   });
-  const res = await fetch(`${API_BASE}/orders/quote?${params}`);
+  const res = await fetch(`${API_BASE}/orders/quote?${params}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   return res.json();
 }
+
+export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, signal, token } = {}) {
+  const params = new URLSearchParams({ q, sort, limit, offset });
+  if (categoryId) params.set("categoryId", categoryId);
+
+  const res = await fetch(`${API_BASE}/catalog/brand-items-feed?${params}`, {
+    signal,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!res.ok) {
+    throw new Error(`Request failed with status ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export async function fetchBrandItemSellers(brandItemId, { sort = "relevance", limit = 24, offset = 0, signal, token } = {}) {
+  const params = new URLSearchParams({ sort, limit, offset });
+  const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}/sellers?${params}`, {
+    signal,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+  return res.json();
+}
+
+export async function fetchProductSearchMerged(q, { limit = 20, offset = 0, categoryId, signal, token } = {}) {
+  const params = new URLSearchParams({ q, limit, offset });
+  if (categoryId) params.set("categoryId", categoryId);
+  const res = await fetch(`${API_BASE}/catalog-search/products-merged?${params}`, {
+    signal,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  return res.json();
+}
+
 export async function placeOrder(token, payload) {
   const res = await fetch(`${API_BASE}/orders`, {
     method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload),
@@ -1047,19 +1079,6 @@ export async function fetchGenericProductBrands(genericProductId, { q = "", sort
   return res.json();
 }
 
-export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, signal } = {}) {
-  const params = new URLSearchParams({ q, sort, limit, offset });
-  if (categoryId) params.set("categoryId", categoryId);
-
-  const res = await fetch(`${API_BASE}/catalog/brand-items-feed?${params}`, { signal });
-
-  if (!res.ok) {
-    throw new Error(`Request failed with status ${res.status}`);
-  }
-
-  return res.json();
-}
-
 export async function fetchBrandItemDetail(brandItemId, { signal } = {}) {
   const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}`, { signal });
 
@@ -1073,14 +1092,6 @@ export async function fetchBrandItemDetail(brandItemId, { signal } = {}) {
   return res.json();
 }
 
-export async function fetchBrandItemSellers(brandItemId, { sort = "relevance", limit = 24, offset = 0, signal } = {}) {
-  const params = new URLSearchParams({ sort, limit, offset });
-  // const t0 = performance.now();
-  const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}/sellers?${params}`, { signal });
-  // console.log(`[timing] sellers fetch: ${(performance.now() - t0).toFixed(0)}ms`);
-  if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
-  return res.json();
-}
 
 export async function fetchGenericProductsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, subcategoryIds, signal } = {}) {
   const params = new URLSearchParams({ q, sort, limit, offset });
@@ -1193,4 +1204,31 @@ export async function adminResolveHelpRequest(token, id, notes) {
 
 export function fetchSharedProductLink(submissionId) {
   return fetch(`${API_BASE}/catalog/shared/${submissionId}`).then((r) => r.json());
+}
+
+// ---------------------------------------------------------------------
+// Buyer-seller custom pricing (chat-driven, per-buyer price overrides)
+// ---------------------------------------------------------------------
+
+// GET — full picker list: every approved listing for this seller, each
+// merged with its existing override (if any) for this buyer.
+export async function fetchCustomPricing(token, buyerId) {
+  return apiGet(`/seller/custom-pricing/${buyerId}`, token);
+}
+
+// POST — upsert one or more overrides in a single call.
+// items: [{ submissionId, overrideType: 'percent'|'fixed', value, inputMode?: 'typed_price'|'percent'|'absolute' }]
+export async function saveCustomPricing(token, buyerId, items) {
+  return apiPost(`/seller/custom-pricing/${buyerId}`, token, { items });
+}
+
+// DELETE — clear the override on exactly one listing for this buyer.
+export async function deleteCustomPricing(token, buyerId, submissionId) {
+  return apiDelete(`/seller/custom-pricing/${buyerId}/${submissionId}`, token);
+}
+
+// POST — bulk clear. Omit submissionIds (or pass []) to clear EVERY
+// custom price this seller has set for this buyer.
+export async function bulkClearCustomPricing(token, buyerId, submissionIds) {
+  return apiPost(`/seller/custom-pricing/${buyerId}/bulk-clear`, token, { submissionIds: submissionIds || [] });
 }

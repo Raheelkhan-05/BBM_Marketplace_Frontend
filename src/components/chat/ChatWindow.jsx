@@ -20,12 +20,12 @@
 // useChat.js yet, add it there before this will work end-to-end.
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowDown, CreditCard, Loader2, Pencil, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, X, ShieldOff } from "lucide-react";
+import { ArrowLeft, ArrowDown, CreditCard, Loader2, Tag, Pencil, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, X, ShieldOff } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useNavigate } from "react-router-dom";
 import useChatMessages, { usePresence, useCredit } from "../../hooks/useChat.js";
 import { useChatContext } from "../../context/ChatContext.jsx";
-
+import CustomPricingModal from "./CustomPricingModal.jsx";
 import { formatLastSeen } from "../../utils/formatLastSeen.js";
 
 // Single token system for the whole module — every color used anywhere
@@ -236,7 +236,12 @@ function StatusStrip({
     );
 }
 
-function ChatHeader({ meta, otherPresence, otherTyping, onBack }) {
+// components/chat/ChatWindow.jsx
+
+// ChatHeader now takes the trigger as props and renders it as a compact
+// icon button at the end of the header row — same visual weight as the
+// rest of the header, not a second bar competing for attention above it.
+function ChatHeader({ meta, otherPresence, otherTyping, onBack, showCustomPricing, onOpenCustomPricing }) {
     const isDeleted = !!meta?.otherIsDeletedSeller;
     return (
         <div className="flex items-center gap-3 border-b px-3.5 py-2.5" style={{ borderColor: C.hair, background: C.surface }}>
@@ -314,6 +319,22 @@ function ChatHeader({ meta, otherPresence, otherTyping, onBack }) {
                     </>
                 )}
             </div>
+
+            {/* NEW — folded into the header row itself, icon-only so it reads
+                as a header action (like a settings/menu button would) rather
+                than a second competing bar. aria-label carries the meaning
+                for screen readers since there's no visible text. */}
+            {showCustomPricing && (
+                <button
+                    onClick={onOpenCustomPricing}
+                    aria-label="Custom pricing for this buyer"
+                    title="Custom pricing"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/5"
+                    style={{ color: C.secondary }}
+                >
+                    <Tag className="h-4 w-4" />
+                </button>
+            )}
         </div>
     );
 }
@@ -884,7 +905,7 @@ function ThreadSkeleton() {
 // ---- main -----------------------------------------------------------------
 
 export default function ChatWindow({ conversationId, meta, onBack }) {
-    const { profile } = useAuth();
+    const { profile, token } = useAuth();
     const { markLocalRead } = useChatContext();
     const scrollRef = useRef(null);
     const bottomRef = useRef(null);
@@ -960,6 +981,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     // ---- scroll behavior ---------------------------------------------
     const [isNearBottom, setIsNearBottom] = useState(true);
     const [newIncoming, setNewIncoming] = useState(0);
+    const [customPricingOpen, setCustomPricingOpen] = useState(false);
 
     const scrollStateRef = useRef({ convId: null, placedAtBottom: false });
     const lastMessageIdRef = useRef(null);
@@ -1089,7 +1111,14 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 </div>
             )}
 
-            <ChatHeader meta={meta} otherPresence={otherPresence} otherTyping={otherTyping} onBack={onBack} />
+            <ChatHeader
+                meta={meta}
+                otherPresence={otherPresence}
+                otherTyping={otherTyping}
+                onBack={onBack}
+                showCustomPricing={viewerRole === "seller"}
+                onOpenCustomPricing={() => setCustomPricingOpen(true)}
+            />
 
             {viewerRole === "seller" && credit?.status === "pending" && credit?.request_message_id && (
                 <PendingCreditBanner
@@ -1228,6 +1257,14 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 buyerLabel={limitDialog?.buyerLabel}
                 currentLimit={limitDialog?.currentLimit}
                 confirming={confirmingLimit}
+            />
+
+            <CustomPricingModal
+                open={customPricingOpen}
+                onClose={() => setCustomPricingOpen(false)}
+                buyerId={meta?.otherUserId}
+                buyerLabel={buyerInfo?.businessName || buyerInfo?.name || meta?.otherShopName || "this buyer"}
+                token={token}
             />
         </div>
     );
