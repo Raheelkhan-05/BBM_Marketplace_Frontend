@@ -824,6 +824,9 @@ export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "r
   const params = new URLSearchParams({ q, sort, limit, offset });
   if (categoryId) params.set("categoryId", categoryId);
 
+  console.log(token);
+
+
   const res = await fetch(`${API_BASE}/catalog/brand-items-feed?${params}`, {
     signal,
     headers: token ? { Authorization: `Bearer ${token}` } : {},

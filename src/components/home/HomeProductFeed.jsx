@@ -1095,6 +1095,7 @@ function RowSkeleton() {
 export default function HomeProductFeed({ category, q = "" }) {
     const navigate = useNavigate();
     const { profile, token } = useAuth();
+    console.log("HomeProductFeed token:", token);
     const currentUserId = profile?.shop_slug ?? null;
     const [items, setItems] = useState([]);
     const seenItemIdsRef = useRef(new Set());
@@ -1171,19 +1172,18 @@ export default function HomeProductFeed({ category, q = "" }) {
             });
     }, [openItemId, closeDropdown]);
 
+
+
     // Single runQuery — the primary feed fetch, with tiered fallback
     // (subcategory, then category) when a live search comes up empty.
     const runQuery = useCallback((offset, { append }) => {
         abortRef.current?.abort();
         const controller = new AbortController();
         abortRef.current = controller;
-        const token = queryTokenRef.current;
+        const requestToken = queryTokenRef.current;
         (append ? setLoadingMore : setLoading)(true);
 
         const trimmed = q.trim();
-        // A live search term always goes through the merged, tiered search
-        // (product -> subcategory -> category matches, in that order) —
-        // global across categories, not filtered by the active category tab.
         const request = trimmed
             ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, categoryId: category?.id || null, signal: controller.signal, token })
             : fetchBrandItemsFeed({ categoryId: category?.id || null, q: "", limit: PAGE_SIZE, offset, signal: controller.signal, token });
@@ -1191,7 +1191,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         request
             .then((res) => {
                 if (!res?.success) return;
-                if (token !== queryTokenRef.current) return;
+                if (requestToken !== queryTokenRef.current) return
 
                 const incoming = res.items || [];
                 setItems((prev) => {
@@ -1209,20 +1209,21 @@ export default function HomeProductFeed({ category, q = "" }) {
             })
             .catch((err) => { if (err?.name !== "AbortError") setHasMore(false); })
             .finally(() => {
-                if (token !== queryTokenRef.current) return;
+                if (requestToken !== queryTokenRef.current) return;
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [category?.id, q]);
+    }, [category?.id, q, token]);
 
     useEffect(() => {
-        const key = `${category?.id || ""}::${q} `;
+        const key = `${category?.id || ""}::${q}::${token || ""}`;
         const now = Date.now();
         const isDuplicateInvocation =
             lastRunRef.current.key === key &&
             (now - lastRunRef.current.time) < DUPLICATE_GUARD_MS;
 
         if (isDuplicateInvocation) return;
+
         lastRunRef.current = { key, time: now };
 
         clearTimeout(debounceRef.current);
@@ -1250,7 +1251,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         );
         return () => clearTimeout(debounceRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [category?.id, q]);
+    }, [category?.id, q, token]);
 
     useEffect(() => () => sellerAbortRef.current?.abort(), []);
 
