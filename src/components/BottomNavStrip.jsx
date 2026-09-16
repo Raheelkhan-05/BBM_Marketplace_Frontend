@@ -4,6 +4,11 @@
 // single horizontally-scrollable strip fixed to the bottom of the
 // screen — replaces stuffing these into the slide-out "more" menu,
 // which buried primary navigation behind an extra tap.
+//
+// CHANGED: HelpBulb is now the last item in this same scrollable row
+// (rendered `inline`), instead of floating separately over the page —
+// it scrolls away with the rest of the nav items exactly like any
+// other entry here.
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
@@ -11,6 +16,7 @@ import { NAV_ITEMS } from "./navItems.js";
 import { useCart } from "../context/CartContext.jsx";
 import { useChatContext } from "../context/ChatContext.jsx";
 import { useListings } from "../context/ListingsContext.jsx";
+import HelpBulb from "./HelpBulb.jsx";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)" };
 
@@ -37,7 +43,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
             className="fixed inset-x-0 bottom-0 z-40 border-t bg-white backdrop-blur-md md:hidden"
             style={{ borderColor: C.hair, paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-            <div className="flex gap-1.5 overflow-x-auto px-3 py-2 pb-4 -mt-2 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex items-center gap-1.5 overflow-x-auto px-3 py-2 pb-4 -mt-2 pt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {items.map((it) => {
                     const Icon = it.icon;
                     const active = it.match(pathname);
@@ -61,6 +67,10 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         </button>
                     );
                 })}
+
+                {/* Last item in the row — scrolls away with everything else,
+                    rather than floating fixed over the page. */}
+                <HelpBulb inline />
             </div>
         </nav>
     );

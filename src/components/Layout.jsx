@@ -71,7 +71,12 @@ export default function Layout() {
                 Portals to document.body, so placement in the tree doesn't
                 matter — it just needs to be inside NotificationsProvider and
                 inside the Router (it uses useNavigate). */}
-                    <HelpBulb />
+                    {/* Desktop only now — mobile's copy is rendered inline as the
+                        last item inside BottomNavStrip's own row, so it scrolls
+                        with the rest of the nav instead of floating separately. */}
+                    <div className="hidden md:block">
+                      <HelpBulb />
+                    </div>
                     <OrderNotificationToast />
                     <ChatNotificationToast />
                   </div>
