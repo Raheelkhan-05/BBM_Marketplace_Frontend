@@ -50,13 +50,15 @@ function ModeToggle({ mode, onChange, size = "sm" }) {
 // ---------------------------------------------------------------------
 // Screen 1 — List
 // ---------------------------------------------------------------------
-function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, toggleSelect, onEditSingle, onEditSelected, onClearSelected, onClearAll, customCount, saveWarning, onDismissWarning }) {
+function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, toggleSelect, onToggleSelectAll, onEditSingle, onEditSelected, onClearSelected, onClearAll, customCount, saveWarning, onDismissWarning }) {
     const q = query.trim().toLowerCase();
     const filtered = rows.filter((r) => {
         if (tab === "custom" && !r.override) return false;
         if (q && !r.name?.toLowerCase().includes(q) && !r.brandName?.toLowerCase().includes(q)) return false;
         return true;
     });
+    const filteredIds = filtered.map((r) => r.submissionId);
+    const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
 
     return (
         <>
@@ -76,6 +78,17 @@ function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, tog
                             </button>
                         ))}
                     </div>
+                    {filteredIds.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => onToggleSelectAll(filteredIds, !allFilteredSelected)}
+                            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] font-bold tracking-wide sm:text-[11.5px]"
+                            style={{ color: C.secondary }}
+                        >
+                            <input type="checkbox" readOnly checked={allFilteredSelected} className="h-3.5 w-3.5 accent-[#006F83]" />
+                            {allFilteredSelected ? "Deselect all" : "Select all"}
+                        </button>
+                    )}
                     {customCount > 0 && (
                         <button onClick={onClearAll} className="ml-auto shrink-0 whitespace-nowrap text-[11px] font-bold tracking-wide underline underline-offset-2 sm:text-[11.5px]" style={{ color: C.primary }}>
                             Clear all
@@ -475,6 +488,12 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
 
     const toggleSelect = (id) => setSelected((s) => { const next = new Set(s); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
+    const toggleSelectAll = (ids, shouldSelect) => setSelected((s) => {
+        const next = new Set(s);
+        ids.forEach((id) => (shouldSelect ? next.add(id) : next.delete(id)));
+        return next;
+    });
+
     const handleDraftChange = (submissionId, updater) => setDrafts((prev) => ({ ...prev, [submissionId]: updater(prev[submissionId]) }));
 
     const applyBulkPercent = () => {
@@ -604,13 +623,14 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
                                     <ListScreen
                                         rows={rows} loading={loading} query={query} setQuery={setQuery} tab={tab} setTab={setTab}
                                         selected={selected} toggleSelect={toggleSelect}
+                                        onToggleSelectAll={toggleSelectAll}
                                         onEditSingle={(id) => openEditor([id])}
                                         onEditSelected={() => openEditor([...selected])}
                                         onClearSelected={clearSelected}
                                         onClearAll={clearAll}
                                         customCount={customCount}
-                                        saveWarning={saveWarning}          // NEW
-                                        onDismissWarning={() => setSaveWarning(null)} // NEW
+                                        saveWarning={saveWarning}
+                                        onDismissWarning={() => setSaveWarning(null)}
                                     />
                                 )}
                                 {screen === "edit" && (
