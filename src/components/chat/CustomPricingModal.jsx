@@ -50,7 +50,7 @@ function ModeToggle({ mode, onChange, size = "sm" }) {
 // ---------------------------------------------------------------------
 // Screen 1 — List
 // ---------------------------------------------------------------------
-function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, toggleSelect, onEditSingle, onEditSelected, onClearSelected, onClearAll, customCount }) {
+function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, toggleSelect, onEditSingle, onEditSelected, onClearSelected, onClearAll, customCount, saveWarning, onDismissWarning }) {
     const q = query.trim().toLowerCase();
     const filtered = rows.filter((r) => {
         if (tab === "custom" && !r.override) return false;
@@ -83,6 +83,14 @@ function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, tog
                     )}
                 </div>
             </div>
+
+            {saveWarning && (
+                <div className="mx-4 mt-3 flex items-start gap-2 rounded-lg px-3 py-2.5 text-[11.5px] font-bold leading-snug tracking-wide sm:mx-5" style={{ background: C.warnBg, color: C.warn }}>
+                    <AlertTriangle className="mt-[1px] h-3.5 w-3.5 shrink-0" />
+                    <span className="flex-1">{saveWarning}</span>
+                    <button onClick={onDismissWarning} className="shrink-0 text-[11px] underline underline-offset-2">Dismiss</button>
+                </div>
+            )}
 
             <div className="flex-1 overflow-y-auto px-4 sm:px-5">
                 {loading ? (
@@ -422,6 +430,7 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
     const [drafts, setDrafts] = useState({});
     const [bulkPercent, setBulkPercent] = useState("");
     const [saving, setSaving] = useState(false);
+    const [saveWarning, setSaveWarning] = useState(null);
 
     const load = useCallback(async () => {
         if (!buyerId) return;
@@ -432,7 +441,7 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
     }, [buyerId, token]);
 
     useEffect(() => {
-        if (open) { load(); setSelected(new Set()); setQuery(""); setScreen("list"); setDrafts({}); setBulkPercent(""); }
+        if (open) { load(); setSelected(new Set()); setQuery(""); setScreen("list"); setDrafts({}); setBulkPercent(""); setSaveWarning(null); }
     }, [open, load]);
 
     const rowById = useMemo(() => Object.fromEntries(rows.map((r) => [r.submissionId, r])), [rows]);
@@ -459,6 +468,8 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
         ids.forEach((id) => { if (rowById[id]) next[id] = initDraftFor(rowById[id]); });
         setDrafts(next);
         setEditingIds(ids);
+        setBulkSkippedCount(0);
+        setSaveWarning(null); // NEW
         setScreen("edit");
     };
 
@@ -497,29 +508,30 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
         const items = editingIds
             .map((id) => ({ id, row: rowById[id], draft: drafts[id] }))
             .filter((x) => x.draft?.canonicalPrice != null)
-            .filter((x) => !violatesMinUnitPrice(x.draft.canonicalPrice, x.row.packSize, x.row.masterPackSize)) // defensive, see comment above
+            .filter((x) => !violatesMinUnitPrice(x.draft.canonicalPrice, x.row.packSize, x.row.masterPackSize))
             .map(({ id, row, draft }) => ({
                 submissionId: id,
-                overrideType: "percent",
-                value: percentFromCustomPrice(row.defaultPrice, draft.canonicalPrice),
-                inputMode: "percent",
+                // Amount mode: the seller typed an exact number — send it as
+                // "fixed" so it's stored and charged byte-for-byte as entered.
+                // Percent mode: no absolute number was ever entered, so percent
+                // IS the source of truth here — send it as "percent".
+                overrideType: draft.mode === "amount" ? "fixed" : "percent",
+                value: draft.mode === "amount" ? draft.canonicalPrice : Number(draft.percentValue),
+                inputMode: draft.mode === "amount" ? "fixed_price" : "percent",
             }));
 
         if (!items.length) return;
         setSaving(true);
         const res = await saveCustomPricing(token, buyerId, items);
         setSaving(false);
-        // NEW — surface a partial-save rejection from the backend, in case
-        // something changed server-side (e.g. seller's own default price
-        // dropped) between opening the editor and hitting confirm.
         if (res?.rejected?.length) {
             setSaveWarning(`${res.rejected.length} product${res.rejected.length === 1 ? "" : "s"} couldn't be saved — price would go below ₹${MIN_UNIT_PRICE}/unit.`);
         } else {
             setSaveWarning(null);
         }
+        await load();
         setSelected(new Set());
         setScreen("list");
-        await load();
     };
 
     const clearSelected = async () => {
@@ -579,27 +591,41 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
                             </button>
                         </div>
 
-                        {screen === "list" && (
-                            <ListScreen
-                                rows={rows} loading={loading} query={query} setQuery={setQuery} tab={tab} setTab={setTab}
-                                selected={selected} toggleSelect={toggleSelect}
-                                onEditSingle={(id) => openEditor([id])}
-                                onEditSelected={() => openEditor([...selected])}
-                                onClearSelected={clearSelected}
-                                onClearAll={clearAll}
-                                customCount={customCount}
-                            />
-                        )}
-                        {screen === "edit" && (
-                            <EditScreen
-                                selectedRows={editingRows} drafts={drafts} onDraftChange={handleDraftChange}
-                                onReview={() => setScreen("review")}
-                                bulkPercent={bulkPercent} setBulkPercent={setBulkPercent} onApplyBulkPercent={applyBulkPercent}
-                            />
-                        )}
-                        {screen === "review" && (
-                            <ReviewScreen selectedRows={editingRows} drafts={drafts} onConfirm={confirmSave} saving={saving} />
-                        )}
+                        <AnimatePresence mode="wait" initial={false}>
+                            <motion.div
+                                key={screen}
+                                initial={{ opacity: 0, x: 12 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -12 }}
+                                transition={{ duration: 0.18, ease: EASE }}
+                                className="flex flex-1 flex-col overflow-hidden"
+                            >
+                                {screen === "list" && (
+                                    <ListScreen
+                                        rows={rows} loading={loading} query={query} setQuery={setQuery} tab={tab} setTab={setTab}
+                                        selected={selected} toggleSelect={toggleSelect}
+                                        onEditSingle={(id) => openEditor([id])}
+                                        onEditSelected={() => openEditor([...selected])}
+                                        onClearSelected={clearSelected}
+                                        onClearAll={clearAll}
+                                        customCount={customCount}
+                                        saveWarning={saveWarning}          // NEW
+                                        onDismissWarning={() => setSaveWarning(null)} // NEW
+                                    />
+                                )}
+                                {screen === "edit" && (
+                                    <EditScreen
+                                        selectedRows={editingRows} drafts={drafts} onDraftChange={handleDraftChange}
+                                        onReview={() => setScreen("review")}
+                                        bulkPercent={bulkPercent} setBulkPercent={setBulkPercent} onApplyBulkPercent={applyBulkPercent}
+                                        bulkSkippedCount={bulkSkippedCount}
+                                    />
+                                )}
+                                {screen === "review" && (
+                                    <ReviewScreen selectedRows={editingRows} drafts={drafts} onConfirm={confirmSave} saving={saving} />
+                                )}
+                            </motion.div>
+                        </AnimatePresence>
                     </motion.div>
                 </motion.div>
             )}
