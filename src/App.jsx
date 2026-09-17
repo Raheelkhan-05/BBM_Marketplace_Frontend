@@ -1,5 +1,6 @@
 // src/App.jsx
 import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { lazy, Suspense, useEffect } from "react";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { RequireAuth, RequireGuest, RequireAdmin } from "./components/RouteGuards.jsx";
@@ -124,7 +125,7 @@ function App() {
               </Route>
 
               <Route element={<Layout />}>
-                <Route path="/" element={<HomePage />} />
+                <Route path="/" element={<Navigate to="/home" replace />} />
 
                 <Route path="/search" element={<SearchResultsPage />} />
                 <Route path="/home" element={<HomePage />} />

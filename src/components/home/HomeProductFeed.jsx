@@ -1134,31 +1134,25 @@ export default function HomeProductFeed({ category, q = "" }) {
     const isFirstRun = useRef(true);
     const lastRunRef = useRef({ key: null, time: 0 });
 
-    const closeDropdown = useCallback(() => {
-        sellerAbortRef.current?.abort();
-        setOpenItemId(null);
-    }, []);
+    const [highlightedItemId, setHighlightedItemId] = useState(null);
+    const rowRefs = useRef({});
+    const highlightTimeoutRef = useRef(null);
 
-    const toggleDropdown = useCallback((item) => {
-        if (openItemId === item.id) {
-            closeDropdown();
-            return;
-        }
+    const loadSellersFor = useCallback((itemId) => {
         sellerAbortRef.current?.abort();
         const controller = new AbortController();
         sellerAbortRef.current = controller;
-        setOpenItemId(item.id);
-        setSellerState((prev) => ({ ...prev, [item.id]: { loading: true, items: [], error: null } }));
+        setSellerState((prev) => ({ ...prev, [itemId]: { loading: true, items: [], error: null } }));
 
-        fetchBrandItemSellers(item.id, { sort: "price_asc", limit: SELLER_PAGE_SIZE, offset: 0, signal: controller.signal, token })
+        fetchBrandItemSellers(itemId, { sort: "price_asc", limit: SELLER_PAGE_SIZE, offset: 0, signal: controller.signal, token })
             .then((res) => {
                 if (!res?.success) {
-                    setSellerState((prev) => ({ ...prev, [item.id]: { loading: false, items: [], error: "Couldn't load sellers." } }));
+                    setSellerState((prev) => ({ ...prev, [itemId]: { loading: false, items: [], error: "Couldn't load sellers." } }));
                     return;
                 }
                 setSellerState((prev) => ({
                     ...prev,
-                    [item.id]: {
+                    [itemId]: {
                         loading: false,
                         items: res.items || [],
                         error: null,
@@ -1169,11 +1163,44 @@ export default function HomeProductFeed({ category, q = "" }) {
             })
             .catch((err) => {
                 if (err?.name === "AbortError") return;
-                setSellerState((prev) => ({ ...prev, [item.id]: { loading: false, items: [], error: "Couldn't load sellers." } }));
+                setSellerState((prev) => ({ ...prev, [itemId]: { loading: false, items: [], error: "Couldn't load sellers." } }));
             });
-    }, [openItemId, closeDropdown]);
+    }, [token]);
+
+    const closeDropdown = useCallback(() => {
+        sellerAbortRef.current?.abort();
+        setOpenItemId(null);
+    }, []);
+
+    const toggleDropdown = useCallback((item) => {
+        if (openItemId === item.id) {
+            closeDropdown();
+            return;
+        }
+        setOpenItemId(item.id);
+        loadSellersFor(item.id);
+    }, [openItemId, closeDropdown, loadSellersFor]);
 
 
+    const openSellersInline = useCallback((item) => {
+        if (openItemId !== item.id) {
+            setOpenItemId(item.id);
+            loadSellersFor(item.id);
+        }
+
+        // Wait a tick so the dropdown/row has room to lay out before we scroll.
+        requestAnimationFrame(() => {
+            rowRefs.current[item.id]?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+
+        clearTimeout(highlightTimeoutRef.current);
+        setHighlightedItemId(item.id);
+        highlightTimeoutRef.current = setTimeout(() => {
+            setHighlightedItemId((cur) => (cur === item.id ? null : cur));
+        }, 1800);
+    }, [openItemId, loadSellersFor]);
+
+    useEffect(() => () => clearTimeout(highlightTimeoutRef.current), []);
 
     // Single runQuery — the primary feed fetch, with tiered fallback
     // (subcategory, then category) when a live search comes up empty.
@@ -1389,7 +1416,13 @@ export default function HomeProductFeed({ category, q = "" }) {
                                         const isOpen = openItemId === item.id;
                                         const i = items.indexOf(item);
                                         return (
-                                            <motion.div key={item.id} layout="position" transition={{ duration: 0.24, ease: EASE }}>
+                                            <motion.div
+                                                key={item.id}
+                                                ref={(el) => { if (el) rowRefs.current[item.id] = el; }}
+                                                layout="position"
+                                                transition={{ duration: 0.24, ease: EASE }}
+                                                className="relative"
+                                            >
                                                 <ProductRow
                                                     item={item}
                                                     idx={i}
@@ -1402,6 +1435,21 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                     onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
                                                     animateEntrance={newlyAppearedIds.has(item.id)}
                                                 />
+
+                                                <AnimatePresence>
+                                                    {highlightedItemId === item.id && (
+                                                        <motion.div
+                                                            key="highlight"
+                                                            initial={{ opacity: 0 }}
+                                                            animate={{ opacity: [0, 1, 1, 0] }}
+                                                            exit={{ opacity: 0 }}
+                                                            transition={{ duration: 1.8, times: [0, 0.15, 0.8, 1], ease: "easeInOut" }}
+                                                            className="pointer-events-none absolute inset-0 z-10 rounded-xl"
+                                                            style={{ background: `${C.primary}07`, boxShadow: `0 0 0 2px ${C.primary}55 inset` }}
+                                                        />
+                                                    )}
+                                                </AnimatePresence>
+
                                                 <AnimatePresence initial={false}>
                                                     {isOpen && (
                                                         <SellerDropdown
@@ -1447,7 +1495,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                 <BrandItemDetailModal
                     brandItemId={infoItemId}
                     onClose={() => setInfoItemId(null)}
-                    onViewSellers={(item) => { setInfoItemId(null); goToSellers(item); }}
+                    onViewSellers={(item) => { setInfoItemId(null); openSellersInline(item); }}
                 />
             )}
 
