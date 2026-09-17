@@ -633,6 +633,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
     // ProductRow — inside the useMemo call
     const breakdown = useMemo(() => {
         if (item.lowest_price == null) return null;
+        // console.log("has_own_listing debug:", item.name, item.has_own_listing, item.id);
         return computePriceBreakdown({
             price: item.lowest_price,
             packSize: item.lowest_price_pack_size,
@@ -1095,7 +1096,7 @@ function RowSkeleton() {
 export default function HomeProductFeed({ category, q = "" }) {
     const navigate = useNavigate();
     const { profile, token } = useAuth();
-    console.log("HomeProductFeed token:", token);
+    // console.log("HomeProductFeed token:", token);
     const currentUserId = profile?.shop_slug ?? null;
     const [items, setItems] = useState([]);
     const seenItemIdsRef = useRef(new Set());

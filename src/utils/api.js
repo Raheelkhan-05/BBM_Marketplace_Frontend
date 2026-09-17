@@ -619,7 +619,7 @@ export async function fetchMySellerSubmissions(token, status) {
   const params = new URLSearchParams(status ? { status } : {});
   const res = await fetch(`${API_BASE}/seller/catalog/submissions?${params}`, { headers: { Authorization: `Bearer ${token}` } });
   const data = await res.json();
-  console.log("fetchMySellerSubmissions", data);
+  // console.log("fetchMySellerSubmissions", data);
   return data;
 }
 
@@ -848,7 +848,8 @@ export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "r
   const params = new URLSearchParams({ q, sort, limit, offset });
   if (categoryId) params.set("categoryId", categoryId);
 
-  console.log(token);
+  // console.log(token);
+  // console.log("Params : ", params)
 
 
   const res = await fetch(`${API_BASE}/catalog/brand-items-feed?${params}`, {
