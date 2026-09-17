@@ -250,7 +250,7 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
                         rather than another line item. */}
                     {isSellerView && !isSample && (
                         <p className="mt-1 max-w-[350px] text-right text-[12px] font-medium italic tracking-wide" style={{ color: C.muted }}>
-                            Wallet deduction: ₹{inr(walletDeduction)} (0.25% commission + 18% GST)
+                            Wallet deduction: ₹{inr(walletDeduction)} ({order.platform_fee_percent}% Marketing Commission + 18%GST)
                         </p>
                     )}
                     {isSellerView && isSample && (
