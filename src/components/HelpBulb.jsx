@@ -60,7 +60,7 @@
 // to you shortly.") is left as-is, since that one *is* describing a
 // fresh submission and shouldn't be confused with the repeat-tap copy.
 //
-// DOCKED-IN-BOTTOM-NAV MODE
+// DOCKED-IN-BOTTOM-NAV MODE (this pass)
 // On mobile the bulb no longer floats loose above the left edge of the
 // screen — it now renders as an ordinary item inside BottomNavStrip's
 // horizontally-scrollable row (passed `inline`), sized to match the
@@ -71,27 +71,7 @@
 // runs the exact same firePull() flow as before. Desktop is completely
 // unchanged: still rendered as its own fixed, floating, draggable
 // element from Layout.jsx.
-//
-// WHY THE HINT/TOAST/STATUS TEXT WAS GETTING CLIPPED (this pass)
-// BottomNavStrip's scrollable row sets `overflow-x-auto` and nothing
-// else — but per the CSS spec, once one axis is auto/scroll, the OTHER
-// axis (here, overflow-y) is forced to `auto` too, even though it was
-// never explicitly set. That means the row was secretly clipping
-// vertically as well as horizontally. The hint/status/toast panels are
-// positioned `bottom-full` — i.e. ABOVE the button, outside the row's
-// own height — so they were being cut off by that invisible vertical
-// clip. No amount of z-index or CSS overflow tweaking on the panel
-// itself can escape a clipping ancestor; the panel has to actually
-// leave that ancestor's DOM subtree. Fixed (inline mode only) by
-// rendering those three panels through a React portal straight onto
-// document.body, positioned with `position: fixed` at coordinates read
-// off the real button's on-screen position (getBoundingClientRect),
-// recomputed on resize and on ANY scroll in the page (captured via the
-// capture phase, so it also catches the nav row's own internal scroll,
-// which doesn't bubble to window). Desktop's panels were never inside
-// a scrolling ancestor, so they're untouched.
-import { useState, useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, animate, useMotionValue, useTransform } from "framer-motion";
 import { Lightbulb, X } from "lucide-react";
 import { useHelpRequest } from "../context/HelpRequestContext.jsx";
@@ -127,11 +107,6 @@ const HINT_SEEN_KEY = "bbm_help_bulb_hint_seen_v1";
 const DRAG_TRIGGER_DISTANCE = 90;
 const REST_CORD_LENGTH = 25;
 const STATUS_AUTOHIDE_MS = 6000;
-// Gap between the button and the panel above it, in px — used for the
-// portaled (inline/mobile) panels' fixed-position offset. Kept as a
-// constant instead of Tailwind's mb-2 since the portal panels are
-// positioned with inline styles, not document flow.
-const PANEL_GAP_PX = 8;
 
 function usePrefersReducedMotion() {
     const [reduced, setReduced] = useState(false);
@@ -174,7 +149,6 @@ export default function HelpBulb({ inline = false }) {
     const prevStageRef = useRef(stage);
     const inFlightRef = useRef(false); // guards against double-fire on rapid double click/tap/Enter
     const rootRef = useRef(null); // outer container, used for mobile tap-outside-to-dismiss
-    const buttonRef = useRef(null); // inline mode only — real button position, for the portal panels
 
     const dragX = useMotionValue(0);
     const dragY = useMotionValue(0);
@@ -228,22 +202,15 @@ export default function HelpBulb({ inline = false }) {
     // open — hint, toast, or status. (The resolution card is deliberately
     // excluded: that one requires an explicit "Got it" so it can't be
     // missed.)
-    //
-    // Panels are now portaled to document.body in inline mode (see file
-    // header note), so their DOM nodes are no longer descendants of
-    // rootRef — checking rootRef.contains() alone would treat every tap
-    // INSIDE the panel as "outside" and close it instantly. The
-    // `.help-bulb-portal-panel` marker class (added to each portaled
-    // panel below) is the second check that fixes that.
     useEffect(() => {
         if (isDesktop) return;
         if (!hint && !toast && !statusVisible) return;
         function onOutside(e) {
-            if (rootRef.current && rootRef.current.contains(e.target)) return;
-            if (e.target.closest && e.target.closest(".help-bulb-portal-panel")) return;
-            setHint(false);
-            setToast(null);
-            setStatusVisible(false);
+            if (rootRef.current && !rootRef.current.contains(e.target)) {
+                setHint(false);
+                setToast(null);
+                setStatusVisible(false);
+            }
         }
         document.addEventListener("touchstart", onOutside, { passive: true });
         document.addEventListener("mousedown", onOutside);
@@ -252,38 +219,6 @@ export default function HelpBulb({ inline = false }) {
             document.removeEventListener("mousedown", onOutside);
         };
     }, [isDesktop, hint, toast, statusVisible]);
-
-    // Inline-mode only: where the real button currently sits on screen,
-    // in viewport (fixed) coordinates — recomputed whenever a panel is
-    // about to show, and kept in sync while one is open since the
-    // button can move out from under it (the nav row scrolling
-    // horizontally, a resize/orientation change, etc).
-    const [anchor, setAnchor] = useState(null);
-
-    const updateAnchor = useCallback(() => {
-        if (!inline || !buttonRef.current) return;
-        const rect = buttonRef.current.getBoundingClientRect();
-        setAnchor({
-            right: Math.max(8, window.innerWidth - rect.right),
-            bottom: Math.max(8, window.innerHeight - rect.top + PANEL_GAP_PX),
-        });
-    }, [inline]);
-
-    const anyPanelOpenInline = inline && (hint || toast || statusVisible || !!resolutionMessage);
-
-    useEffect(() => {
-        if (!anyPanelOpenInline) return;
-        updateAnchor();
-        window.addEventListener("resize", updateAnchor);
-        // `true` = capture phase — this is what catches the nav row's own
-        // internal horizontal scroll, since a scroll event on that inner
-        // scrollable element does not bubble up to window on its own.
-        document.addEventListener("scroll", updateAnchor, true);
-        return () => {
-            window.removeEventListener("resize", updateAnchor);
-            document.removeEventListener("scroll", updateAnchor, true);
-        };
-    }, [anyPanelOpenInline, updateAnchor]);
 
     if (!isLoggedIn || loading) return null;
 
@@ -366,14 +301,6 @@ export default function HelpBulb({ inline = false }) {
     /* INLINE (mobile, docked as a BottomNavStrip row item)              */
     /* ---------------------------------------------------------------- */
     if (inline) {
-        // Shared fixed-position style for every portaled panel — anchor
-        // is null until updateAnchor() has run at least once, so panels
-        // simply don't render before then (see the `anchor &&` guards
-        // below) rather than flashing at (0,0).
-        const portalPanelBaseStyle = anchor
-            ? { position: "fixed", right: anchor.right, bottom: anchor.bottom }
-            : null;
-
         return (
             <div
                 ref={rootRef}
@@ -381,7 +308,6 @@ export default function HelpBulb({ inline = false }) {
                 style={{ height: 36 }} // matches the nav pills' rendered height
             >
                 <button
-                    ref={buttonRef}
                     onClick={() => firePull()}
                     onFocus={() => { if (!active) setHint(true); revealStatus(); }}
                     onPointerDown={() => setPressed(true)}
@@ -460,25 +386,12 @@ export default function HelpBulb({ inline = false }) {
                     )}
                 </button>
 
-                {/* Panels below are portaled straight to document.body and
-                    positioned `fixed` from `anchor` (computed off the real
-                    button position) — see file header note on why this is
-                    required to escape BottomNavStrip's implicit vertical
-                    clipping. The `.help-bulb-portal-panel` class marks them
-                    for the tap-outside-to-dismiss check above. */}
-
                 <AnimatePresence>
-                    {hint && !messageKind && anchor && createPortal(
+                    {hint && !messageKind && (
                         <motion.div
                             {...slide(4)}
-                            className="help-bulb-portal-panel flex items-center gap-1.5 rounded-lg py-1.5 pl-2.5 pr-1.5 shadow-lg"
-                            style={{
-                                ...portalPanelBaseStyle,
-                                width: "clamp(220px, 68vw, 300px)",
-                                maxWidth: "calc(100vw - 24px)",
-                                background: C.ink,
-                                zIndex: 60,
-                            }}
+                            className="absolute bottom-0 mb-2 right-0 flex items-center gap-1.5 rounded-lg py-1.5 pl-2.5 pr-1.5 shadow-lg"
+                            style={{ width: "clamp(220px, 50vw, 300px)", maxWidth: "calc(100vw - 24px)", background: C.ink, zIndex: 10 }}
                         >
                             <span style={{ fontSize: "clamp(11px, 3vw, 12px)", fontWeight: 600, lineHeight: 1.35, letterSpacing: "0.025em", color: "#fff", flex: 1 }}>
                                 Got an issue? Tap the bulb.
@@ -496,24 +409,22 @@ export default function HelpBulb({ inline = false }) {
                             >
                                 <X className="h-3 w-3" style={{ color: "#fff" }} />
                             </button>
-                        </motion.div>,
-                        document.body
+                        </motion.div>
                     )}
                 </AnimatePresence>
 
                 <AnimatePresence mode="wait">
-                    {messageKind === "resolution" && anchor && createPortal(
+                    {messageKind === "resolution" && (
                         <motion.div
                             key="resolution"
                             {...slide(6)}
-                            className="help-bulb-portal-panel rounded-2xl border p-4 shadow-xl"
+                            className="absolute bottom-full mb-2 right-0 rounded-2xl border p-4 shadow-xl"
                             style={{
-                                ...portalPanelBaseStyle,
                                 width: "clamp(240px, 90vw, 340px)",
                                 maxWidth: "calc(100vw - 24px)",
                                 background: "#fff",
                                 borderColor: `${STATUS_COLORS.resolved.icon}44`,
-                                zIndex: 60,
+                                zIndex: 10,
                             }}
                         >
                             <div className="flex items-start justify-between gap-2">
@@ -539,23 +450,15 @@ export default function HelpBulb({ inline = false }) {
                             >
                                 Got it
                             </button>
-                        </motion.div>,
-                        document.body
+                        </motion.div>
                     )}
 
-                    {messageKind === "toast" && anchor && createPortal(
+                    {messageKind === "toast" && (
                         <motion.div
                             key="toast" role="status" aria-live="polite"
                             {...slide(6)}
-                            className="help-bulb-portal-panel rounded-xl border px-3 py-2.5 shadow-lg"
-                            style={{
-                                ...portalPanelBaseStyle,
-                                width: "clamp(220px, 68vw, 300px)",
-                                maxWidth: "calc(100vw - 24px)",
-                                background: toastMeta.bg,
-                                borderColor: `${toastMeta.icon}33`,
-                                zIndex: 60,
-                            }}
+                            className="absolute bottom-full mb-2 right-0 rounded-xl border px-3 py-2.5 shadow-lg"
+                            style={{ width: "clamp(220px, 68vw, 300px)", maxWidth: "calc(100vw - 24px)", background: toastMeta.bg, borderColor: `${toastMeta.icon}33`, zIndex: 10 }}
                         >
                             <p style={{
                                 fontSize: "clamp(12px, 3.2vw, 13px)", fontWeight: 700, lineHeight: 1.4, letterSpacing: "0.025em", margin: 0, textAlign: "center",
@@ -563,25 +466,17 @@ export default function HelpBulb({ inline = false }) {
                             }}>
                                 {toast.text}
                             </p>
-                        </motion.div>,
-                        document.body
+                        </motion.div>
                     )}
 
-                    {messageKind === "status" && anchor && createPortal(
+                    {messageKind === "status" && (
                         <motion.div
                             key="status"
                             role="status"
                             aria-live="polite"
                             {...slide(6)}
-                            className="help-bulb-portal-panel rounded-xl border px-3 py-2 shadow-md"
-                            style={{
-                                ...portalPanelBaseStyle,
-                                width: "clamp(220px, 68vw, 300px)",
-                                maxWidth: "calc(100vw - 24px)",
-                                background: meta.bg,
-                                borderColor: `${meta.icon}44`,
-                                zIndex: 60,
-                            }}
+                            className="absolute bottom-full mb-2 right-0 rounded-xl border px-3 py-2 shadow-md"
+                            style={{ width: "clamp(220px, 68vw, 300px)", maxWidth: "calc(100vw - 24px)", background: meta.bg, borderColor: `${meta.icon}44`, zIndex: 10 }}
                         >
                             <div className="flex items-start justify-between gap-2">
                                 <p style={{ fontSize: "clamp(11.5px, 3vw, 12px)", fontWeight: 700, lineHeight: 1.35, letterSpacing: "0.025em", color: meta.text, margin: 0 }}>
@@ -596,8 +491,7 @@ export default function HelpBulb({ inline = false }) {
                                     <X className="h-3 w-3" style={{ color: meta.text }} />
                                 </button>
                             </div>
-                        </motion.div>,
-                        document.body
+                        </motion.div>
                     )}
                 </AnimatePresence>
             </div>
