@@ -1484,6 +1484,61 @@ export default function SellerListingForm({
                         />
                     </FieldAnchor>
                 </div>
+                <FieldAnchor fieldKey="marketingCommissionPercent">
+                    <div
+                        className="flex flex-col gap-2.5 rounded-2xl border p-3"
+                        style={{
+                            borderColor: isErr("marketingCommissionPercent") ? "rgba(199,31,17,0.35)" : C.hairSoft,
+                            background: `${C.secondary}06`,
+                        }}
+                    >
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
+                                    Marketing commission <span style={{ color: C.primary }}>*</span>
+                                </span>
+                                <span className="text-[10px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                                    Platform fee deducted from your payout on every order
+                                </span>
+                            </div>
+
+                            <div
+                                className="flex shrink-0 flex-col items-end justify-center rounded-xl px-3 py-1.5"
+                                style={{ background: form.marketingCommissionPercent !== "" ? `${C.muted}14` : "transparent" }}
+                            >
+                                <span
+                                    className="text-[18px] font-extrabold leading-none tabular-nums"
+                                    style={{ color: form.marketingCommissionPercent !== "" ? C.muted : C.muted }}
+                                >
+                                    {form.marketingCommissionPercent !== "" ? `${form.marketingCommissionPercent}%` : "—"}
+                                </span>
+                            </div>
+                        </div>
+
+                        <ChipToggleGroup
+                            dense
+                            value={form.marketingCommissionPercent === "" ? "" : Number(form.marketingCommissionPercent)}
+                            onChange={(v) => { setField("marketingCommissionPercent", String(v)); touch("marketingCommissionPercent"); }}
+                            options={[0.25, 5, 10, 20, 35, 50].map((p) => ({ value: p, label: `${p}%` }))}
+                            onEnterKey={(dir) => handleFieldAdvance("marketingCommissionPercent", dir)}
+                        />
+
+                        <button
+                            type="button"
+                            onClick={() => setCommissionWheelOpen(true)}
+                            className="flex items-center justify-center gap-1.5 rounded-xl border py-2 text-[12px] font-bold tracking-wide transition-colors duration-150 active:scale-[0.99]"
+                            style={{ borderColor: `${C.secondary}35`, color: C.secondary, background: "white" }}
+                        >
+                            <IndianRupee className="h-3.5 w-3.5" /> Dial in a custom rate
+                        </button>
+
+                        {isErr("marketingCommissionPercent") && (
+                            <p className="text-[11px] font-bold" style={{ color: C.danger }}>
+                                Choose a commission % between 0.25 and 100.
+                            </p>
+                        )}
+                    </div>
+                </FieldAnchor>
                 <RepeatableRows2
                     label="Discount slabs"
                     hint={form.hasOuterPack ? "Extra % off above a quantity threshold, in Master Packs" : "Extra % off above a quantity threshold, in Packs"}
@@ -1597,7 +1652,7 @@ export default function SellerListingForm({
                                 </span>
                             </div> */}
                             {moqPreview.commissionPercent > 0 && (
-                                <div className="flex items-center justify-between gap-2 text-[11px] font-semibold" style={{ color: C.muted }}>
+                                <div className="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                     <span>Marketing commission ({moqPreview.commissionPercent}% + {form.gstPercent}% GST on fee)</span>
                                     <span className="tabular-nums font-bold" style={{ color: "#c71f11" }}>
                                         − ₹{moqPreview.totalCommissionDeducted.toLocaleString("en-IN")}
@@ -1628,44 +1683,7 @@ export default function SellerListingForm({
                         />
                     </FieldAnchor>
                 </div>
-                <FieldAnchor fieldKey="marketingCommissionPercent">
-                    <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
-                                Marketing commission % <span style={{ color: C.primary }}>*</span>
-                            </span>
-                            {form.marketingCommissionPercent !== "" && (
-                                <span className="text-[12.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>
-                                    {form.marketingCommissionPercent}%
-                                </span>
-                            )}
-                        </div>
-                        <p className="text-[11px] font-medium leading-snug" style={{ color: C.muted }}>
-                            The share of each order BBM Marketplace keeps to promote this listing — deducted from your
-                            payout only when you actually get an order, never a flat recurring fee. Choose 0.25%–100%.
-                        </p>
-                        <ChipToggleGroup
-                            dense
-                            value={form.marketingCommissionPercent === "" ? "" : Number(form.marketingCommissionPercent)}
-                            onChange={(v) => { setField("marketingCommissionPercent", String(v)); touch("marketingCommissionPercent"); }}
-                            options={[0.25, 5, 10, 20, 35, 50].map((p) => ({ value: p, label: `${p}%` }))}
-                            onEnterKey={(dir) => handleFieldAdvance("marketingCommissionPercent", dir)}
-                        />
-                        <button
-                            type="button"
-                            onClick={() => setCommissionWheelOpen(true)}
-                            className="mt-0.5 self-start rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold"
-                            style={{ background: `${C.secondary}12`, color: C.secondary }}
-                        >
-                            Set a custom %…
-                        </button>
-                        {isErr("marketingCommissionPercent") && (
-                            <p className="text-[11px] font-bold" style={{ color: C.danger }}>
-                                Choose a commission % between 0.25 and 100.
-                            </p>
-                        )}
-                    </div>
-                </FieldAnchor>
+
 
                 {commissionWheelOpen && (
                     <PriceWheelPicker

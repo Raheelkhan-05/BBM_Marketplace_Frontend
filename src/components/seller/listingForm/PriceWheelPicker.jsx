@@ -17,8 +17,9 @@ const CURRENCY_STEPS = [
     { value: 10000, label: "₹10,000" },
 ];
 const PERCENT_STEPS = [
+    { value: 0.05, label: "0.05%" },
+    { value: 0.1, label: "0.1%" },
     { value: 1, label: "1%" },
-    { value: 5, label: "5%" },
     { value: 10, label: "10%" },
 ];
 const PERCENT_DECREASE_MAX = 99;
