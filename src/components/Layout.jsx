@@ -39,7 +39,8 @@ export default function Layout() {
   // bottom nav, same as the header shows them as a guest (see Header.jsx's
   // effectiveLoggedIn). The one-time redirect on initial app load lives in
   // OnboardingGate (App.jsx) instead.
-  const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step !== "done";
+  // const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step !== "done";
+  const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step != null && profile.onboarding_step !== "done";
 
   const showBottomNav = !isLandingPage && !isAdminPage && !isWalletPage && !isChatDetailPage && !lightboxOpen && !onboardingIncomplete;
 
