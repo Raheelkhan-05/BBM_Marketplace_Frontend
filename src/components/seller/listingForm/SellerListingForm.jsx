@@ -108,6 +108,8 @@ export const DEFAULT_LISTING_FORM = {
     basePrice: "", priceBasis: "per_pack", gstInclusive: null,
     freightIncluded: null,
 
+    marketingCommissionPercent: "",
+
     sampleAvailable: null, sampleQuantity: "", sampleUnitBasis: "per_unit", // was "per_pack"
 
     priceSlabs: [],
@@ -120,6 +122,7 @@ export const DEFAULT_LISTING_FORM = {
     dispatchingLocations: null,
 
     returnPolicyKey: "", warrantyKey: "",
+
 };
 
 // Maps each section to the field keys computeMissing() can flag for it —
@@ -127,7 +130,7 @@ export const DEFAULT_LISTING_FORM = {
 const SECTION_FIELD_MAP = {
     product: ["productName", "brandName", "images"],
     packaging: ["unit", "packSize", "hasOuterPack", "masterPackSize", "moq", "sampleAvailable", "sampleQuantity"],
-    pricing: ["gstPercent", "gstInclusive", "basePrice", "freightIncluded"],
+    pricing: ["gstPercent", "gstInclusive", "basePrice", "freightIncluded", "marketingCommissionPercent"],
     fulfilment: ["stockType", "stockQuantity", "productionLeadTimeDays"],
     terms: ["returnPolicyKey", "warrantyKey"],
     delivery: ["dispatchingLocations"],
@@ -154,7 +157,7 @@ const FIELD_ORDER = [
     // Packaging
     "unit", "packSize", "hasOuterPack", "masterPackSize", "moq", "sampleAvailable", "sampleQuantity",
     // Pricing
-    "gstPercent", "basePrice", "gstInclusive", "freightIncluded",
+    "gstPercent", "basePrice", "gstInclusive", "freightIncluded", "marketingCommissionPercent",
     // Fulfilment
     "stockType", "stockQuantity", "productionLeadTimeDays",
     // Terms
@@ -411,6 +414,11 @@ function computeMissing(form) {
     add(form.gstInclusive == null, "gstInclusive", "Price includes GST");
     add(!(Number(form.basePrice) > 0), "basePrice", "Base price");
     add(form.freightIncluded == null, "freightIncluded", "Freight included");
+    add(
+        !(Number(form.marketingCommissionPercent) >= 0.25 && Number(form.marketingCommissionPercent) <= 100),
+        "marketingCommissionPercent",
+        "Marketing commission %"
+    );
     add(form.sampleAvailable && !(Number(form.sampleQuantity) > 0), "sampleQuantity", "Sample quantity");
     add(!form.stockType, "stockType", "Fulfilment type");
 
@@ -504,7 +512,30 @@ export default function SellerListingForm({
     });
 
     const [uploadingImage, setUploadingImage] = useState(false);
-    const [commissionPercent, setCommissionPercent] = useState(2.5);
+    // const [commissionPercent, setCommissionPercent] = useState(2.5);
+    const [platformDefaultCommissionPercent, setPlatformDefaultCommissionPercent] = useState(0.25);
+    const [commissionWheelOpen, setCommissionWheelOpen] = useState(false);
+
+    // The rate that actually drives every calculation below — the seller's
+    // own choice, not a platform-wide flat rate anymore.
+    const effectiveCommissionPercent = Number(form.marketingCommissionPercent) || 0;
+
+    useEffect(() => {
+        fetchCommissionInfo().then((res) => {
+            if (!res?.success) return;
+            setPlatformDefaultCommissionPercent(res.commissionPercent);
+            // Pre-fill new listings with the platform default so the field
+            // isn't blank — seller can still change it. Edit mode already has
+            // its own value from initialValues, so never overwrite that.
+            if (mode !== "edit") {
+                setForm((f) => (f.marketingCommissionPercent === ""
+                    ? { ...f, marketingCommissionPercent: String(res.commissionPercent) }
+                    : f));
+            }
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const [error, setError] = useState(null);
     const [touched, setTouched] = useState({});
     const [checkingBrandMatch, setCheckingBrandMatch] = useState(false);
@@ -758,14 +789,24 @@ export default function SellerListingForm({
             subtotalAfterGst = round2(basePricePerSaleUnit + gstAmount);
         }
 
-        const commissionAmount = round2(subtotalAfterGst * (commissionPercent / 100));
-        const finalPricePerSaleUnit = round2(subtotalAfterGst + commissionAmount);
+        // Buyer-facing price — matches exactly what toListingRow/normalizeEnteredPrice
+        // stores as `price`. Commission is NEVER added on top for the buyer.
+        const finalPricePerSaleUnit = subtotalAfterGst;
 
-        return { basePricePerSaleUnit, gstPercent: gst, gstAmount, subtotalAfterGst, commissionPercent, commissionAmount, finalPricePerSaleUnit };
-    }, [form.basePrice, form.gstPercent, form.packSize, form.masterPackSize, form.hasOuterPack, form.gstInclusive, form.priceBasis, commissionPercent]);
+        // Commission is deducted from what the SELLER keeps — mirrors
+        // getOrderQuote's sellerPayoutAmount: subtotal - platformFee.
+        const commissionAmount = round2(subtotalAfterGst * (effectiveCommissionPercent / 100));
+        const sellerPayoutPerSaleUnit = round2(subtotalAfterGst - commissionAmount);
+
+        return {
+            basePricePerSaleUnit, gstPercent: gst, gstAmount, subtotalAfterGst,
+            commissionPercent: effectiveCommissionPercent, commissionAmount,
+            finalPricePerSaleUnit, sellerPayoutPerSaleUnit,
+        };
+    }, [form.basePrice, form.gstPercent, form.packSize, form.masterPackSize, form.hasOuterPack, form.gstInclusive, form.priceBasis, effectiveCommissionPercent]);
 
     const moqPreview = useMemo(() => {
-        const moqSaleUnits = Number(form.moq) || 1; // already sale-unit qty
+        const moqSaleUnits = Number(form.moq) || 1;
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
         const gst = Number(form.gstPercent) || 0;
@@ -773,19 +814,24 @@ export default function SellerListingForm({
         const totalUnits = round2(form.hasOuterPack ? moqSaleUnits * master * pack : moqSaleUnits * pack);
         const grossSubtotal = round2(pricePreview.basePricePerSaleUnit * moqSaleUnits);
 
-        const slab = getApplicableSlab(form.priceSlabs, moqSaleUnits); // minQty already sale-unit qty, no conversion
+        const slab = getApplicableSlab(form.priceSlabs, moqSaleUnits);
         const discountPercent = slab ? Number(slab.discountPercent) : 0;
         const discountAmount = round2(grossSubtotal * (discountPercent / 100));
         const netSubtotal = round2(grossSubtotal - discountAmount);
 
         const gstAmount = round2(netSubtotal * (gst / 100));
-        const totalAmount = round2(netSubtotal + gstAmount);
-        const commissionAmount = round2(totalAmount * (commissionPercent / 100));
-        const commissionGstAmount = round2(commissionAmount * (gst / 100));
-        const totalCommissionForReference = round2(commissionAmount + commissionGstAmount);
+        const totalAmount = round2(netSubtotal + gstAmount); // what the buyer pays
+        const commissionAmount = round2(totalAmount * (effectiveCommissionPercent / 100));
+        const commissionGstAmount = round2(commissionAmount * (gst / 100)); // GST on the platform's fee invoice
+        const totalCommissionDeducted = round2(commissionAmount + commissionGstAmount);
+        const netPayout = round2(totalAmount - totalCommissionDeducted);
 
-        return { saleUnitQty: moqSaleUnits, totalUnits, grossSubtotal, discountPercent, discountAmount, netSubtotal, gstAmount, totalAmount, commissionAmount, commissionGstAmount, totalCommissionForReference };
-    }, [form.moq, form.packSize, form.masterPackSize, form.hasOuterPack, form.priceSlabs, form.gstPercent, pricePreview, commissionPercent]);
+        return {
+            saleUnitQty: moqSaleUnits, totalUnits, grossSubtotal, discountPercent, discountAmount,
+            netSubtotal, gstAmount, totalAmount, commissionPercent: effectiveCommissionPercent,
+            commissionAmount, commissionGstAmount, totalCommissionDeducted, netPayout,
+        };
+    }, [form.moq, form.packSize, form.masterPackSize, form.hasOuterPack, form.priceSlabs, form.gstPercent, pricePreview, effectiveCommissionPercent]);
 
     const discountedPreview = (slab) => {
         if (!slab?.discountPercent) return null;
@@ -1047,6 +1093,7 @@ export default function SellerListingForm({
             sampleAvailable: !!form.sampleAvailable,
             gstInclusive: !!form.gstInclusive,
             freightIncluded: !!form.freightIncluded,
+            marketingCommissionPercent: String(round2(Number(form.marketingCommissionPercent))),
             genericProductBrandId: form.brandItemMatch?.id || null,
             moq: String(round2ToInt(form.moq)),
             sampleQuantity: form.sampleAvailable ? String(sampleQuantityBaseUnits) : form.sampleQuantity,
@@ -1543,10 +1590,24 @@ export default function SellerListingForm({
                                 </span>
                             </div>
 
-                            <div className="flex items-center justify-between gap-2 text-[11px] font-semibold" style={{ color: C.muted }}>
-                                <span>Platform commission ({commissionPercent}% + {form.gstPercent}% GST) <span className="italic font-medium">— for reference</span></span>
+                            {/* <div className="flex items-center justify-between gap-2 text-[11px] font-semibold" style={{ color: C.muted }}>
+                                <span>Platform commission ({effectiveCommissionPercent}% + {form.gstPercent}% GST) <span className="italic font-medium">— for reference</span></span>
                                 <span className="tabular-nums font-bold" style={{ color: C.primary }}>
-                                    ₹{moqPreview.totalCommissionForReference.toLocaleString("en-IN")}
+                                    ₹{moqPreview.totalCommissionDeducted.toLocaleString("en-IN")}
+                                </span>
+                            </div> */}
+                            {moqPreview.commissionPercent > 0 && (
+                                <div className="flex items-center justify-between gap-2 text-[11px] font-semibold" style={{ color: C.muted }}>
+                                    <span>Marketing commission ({moqPreview.commissionPercent}% + {form.gstPercent}% GST on fee)</span>
+                                    <span className="tabular-nums font-bold" style={{ color: "#c71f11" }}>
+                                        − ₹{moqPreview.totalCommissionDeducted.toLocaleString("en-IN")}
+                                    </span>
+                                </div>
+                            )}
+                            <div className="flex items-center justify-between gap-2 border-t pt-1.5" style={{ borderColor: C.hair }}>
+                                <span className="text-[13px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>You'll receive</span>
+                                <span className="text-[15px] font-extrabold tabular-nums" style={{ color: "#15803d" }}>
+                                    ₹{moqPreview.netPayout.toLocaleString("en-IN")}
                                 </span>
                             </div>
                         </div>
@@ -1567,6 +1628,64 @@ export default function SellerListingForm({
                         />
                     </FieldAnchor>
                 </div>
+                <FieldAnchor fieldKey="marketingCommissionPercent">
+                    <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
+                                Marketing commission % <span style={{ color: C.primary }}>*</span>
+                            </span>
+                            {form.marketingCommissionPercent !== "" && (
+                                <span className="text-[12.5px] font-extrabold tabular-nums" style={{ color: C.secondary }}>
+                                    {form.marketingCommissionPercent}%
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[11px] font-medium leading-snug" style={{ color: C.muted }}>
+                            The share of each order BBM Marketplace keeps to promote this listing — deducted from your
+                            payout only when you actually get an order, never a flat recurring fee. Choose 0.25%–100%.
+                        </p>
+                        <ChipToggleGroup
+                            dense
+                            value={form.marketingCommissionPercent === "" ? "" : Number(form.marketingCommissionPercent)}
+                            onChange={(v) => { setField("marketingCommissionPercent", String(v)); touch("marketingCommissionPercent"); }}
+                            options={[0.25, 5, 10, 20, 35, 50].map((p) => ({ value: p, label: `${p}%` }))}
+                            onEnterKey={(dir) => handleFieldAdvance("marketingCommissionPercent", dir)}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setCommissionWheelOpen(true)}
+                            className="mt-0.5 self-start rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold"
+                            style={{ background: `${C.secondary}12`, color: C.secondary }}
+                        >
+                            Set a custom %…
+                        </button>
+                        {isErr("marketingCommissionPercent") && (
+                            <p className="text-[11px] font-bold" style={{ color: C.danger }}>
+                                Choose a commission % between 0.25 and 100.
+                            </p>
+                        )}
+                    </div>
+                </FieldAnchor>
+
+                {commissionWheelOpen && (
+                    <PriceWheelPicker
+                        open
+                        unit="percent"
+                        direction="increase"
+                        min={0.25}
+                        max={100}
+                        unitLabel="Commission"
+                        referenceLabel="Platform minimum"
+                        referenceValue={platformDefaultCommissionPercent}
+                        initialValue={Number(form.marketingCommissionPercent) || platformDefaultCommissionPercent}
+                        onClose={() => setCommissionWheelOpen(false)}
+                        onConfirm={(v) => {
+                            setField("marketingCommissionPercent", String(v));
+                            touch("marketingCommissionPercent");
+                            setCommissionWheelOpen(false);
+                        }}
+                    />
+                )}
             </SectionCard>
 
             {/* ---------------- Fulfilment ---------------- */}

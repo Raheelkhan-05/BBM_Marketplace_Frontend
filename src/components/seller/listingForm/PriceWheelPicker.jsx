@@ -198,24 +198,27 @@ function NudgeButton({ icon: Icon, onClick }) {
 export default function PriceWheelPicker({
     open, onClose, onConfirm,
     initialValue, referenceValue, loadingReference,
-    unit = "currency", // "currency" | "percent"
-    unitLabel = "Pack", // used for currency mode headings
+    unit = "currency",
+    unitLabel = "Pack",
     referenceLabel = "Default price",
-    direction = "decrease", // "decrease" | "increase" — percent mode only
+    direction = "decrease",
+    min,   // NEW — percent mode only, overrides the built-in 0 floor
+    max,   // NEW — percent mode only, overrides the built-in 99/∞ ceiling
 }) {
     const isPercent = unit === "percent";
     const isIncrease = isPercent && direction === "increase";
     const stepOptions = isPercent ? PERCENT_STEPS : CURRENCY_STEPS;
     const defaultStep = isPercent ? 1 : 10;
 
+    const percentMin = min != null ? min : 0;
+    const percentMax = max != null ? max : (isIncrease ? Infinity : PERCENT_DECREASE_MAX);
+
     const filterFn = isPercent
-        ? (isIncrease ? (v) => v >= 0 : (v) => v >= 0 && v <= PERCENT_DECREASE_MAX)
+        ? (v) => v >= percentMin && v <= percentMax
         : (v) => v > 0;
 
     const rawSeed = initialValue != null && initialValue !== "" ? Number(initialValue) : 0;
-    const seed = isPercent
-        ? Math.min(Math.max(rawSeed, 0), isIncrease ? Infinity : PERCENT_DECREASE_MAX)
-        : rawSeed;
+    const seed = isPercent ? Math.min(Math.max(rawSeed, percentMin), percentMax) : rawSeed;
 
     const wheel = useWheelColumn(seed, defaultStep, filterFn);
 
@@ -226,21 +229,23 @@ export default function PriceWheelPicker({
     };
 
     const jumpToReference = () => {
-        // For currency: jump straight to the reference amount. For percent:
-        // "the reference" means 0% (i.e. exactly the default price), valid
-        // as the floor in both decrease and increase directions.
-        wheel.jumpTo(isPercent ? 0 : referenceValue, wheel.step);
+        if (isPercent) {
+            wheel.jumpTo(referenceValue != null ? referenceValue : percentMin, wheel.step);
+        } else {
+            wheel.jumpTo(referenceValue, wheel.step);
+        }
     };
 
-    // No +/- sign shown — direction is already established by the toggle
-    // that opened this wheel, so the number on screen is just the plain
-    // magnitude that gets applied.
-    const formatValue = (v) => {
-        if (isPercent) return `${v}%`;
-        return `₹${v.toLocaleString("en-IN")}`;
-    };
+    const formatValue = (v) => (isPercent ? `${v}%` : `₹${v.toLocaleString("en-IN")}`);
 
     if (!open) return null;
+
+    // A bounded percent wheel (min/max both given) is an absolute-value
+    // picker (e.g. "pick a commission rate"), not a relative discount/markup
+    // — so it gets its own plain copy instead of the "increase/decrease
+    // relative to a reference price" language used elsewhere.
+    const isBoundedAbsolute = isPercent && min != null && max != null;
+
 
     return (
         <motion.div
@@ -256,14 +261,18 @@ export default function PriceWheelPicker({
             >
                 <div className="flex items-center justify-between">
                     <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>
-                        {isPercent ? `Set % ${isIncrease ? "increase" : "decrease"}` : `Set price per ${unitLabel}`}
+                        {isBoundedAbsolute ? `Set ${unitLabel.toLowerCase()} %` : isPercent ? `Set % ${isIncrease ? "increase" : "decrease"}` : `Set price per ${unitLabel}`}
                     </p>
                     <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-black/[0.05]">
                         <X className="h-4 w-4" style={{ color: C.muted }} />
                     </button>
                 </div>
 
-                {isPercent && (
+                {isBoundedAbsolute ? (
+                    <p className="mt-1.5 text-[11.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
+                        Scroll to choose your rate, from {percentMin}% to {percentMax}%.
+                    </p>
+                ) : isPercent && (
                     <p className="mt-1.5 text-[11.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
                         {isIncrease
                             ? <>Scroll to choose how much to <span style={{ color: C.warn }}>increase</span> this buyer's price, relative to {referenceLabel.toLowerCase()}.</>
@@ -272,31 +281,30 @@ export default function PriceWheelPicker({
                 )}
 
                 {!isPercent && referenceValue > 0 && (
-                    <button
-                        type="button"
-                        onClick={jumpToReference}
-                        className="mt-2.5 flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-150 active:scale-[0.99]"
-                        style={{ background: `${C.secondary}0a`, border: `1px dashed ${C.secondary}35` }}
-                    >
+                    <button type="button" onClick={jumpToReference} className="mt-2.5 flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-150 active:scale-[0.99]" style={{ background: `${C.secondary}0a`, border: `1px dashed ${C.secondary}35` }}>
                         <span className="text-[11.5px] font-bold tracking-wide" style={{ color: C.secondary }}>
                             {loadingReference ? "Checking…" : `${referenceLabel}: ₹${referenceValue.toLocaleString("en-IN")}`}
                         </span>
                         <span className="text-[10.5px] font-extrabold uppercase tracking-wider" style={{ color: C.secondary }}>Jump here</span>
                     </button>
                 )}
-                {isPercent && (
-                    <button
-                        type="button"
-                        onClick={jumpToReference}
-                        className="mt-2.5 flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-150 active:scale-[0.99]"
-                        style={{ background: `${C.secondary}0a`, border: `1px dashed ${C.secondary}35` }}
-                    >
+                {isBoundedAbsolute && referenceValue != null && (
+                    <button type="button" onClick={jumpToReference} className="mt-2.5 flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-150 active:scale-[0.99]" style={{ background: `${C.secondary}0a`, border: `1px dashed ${C.secondary}35` }}>
+                        <span className="text-[11.5px] font-bold tracking-wide" style={{ color: C.secondary }}>
+                            {referenceLabel}: {referenceValue}%
+                        </span>
+                        <span className="text-[10.5px] font-extrabold uppercase tracking-wider" style={{ color: C.secondary }}>Jump here</span>
+                    </button>
+                )}
+                {isPercent && !isBoundedAbsolute && (
+                    <button type="button" onClick={jumpToReference} className="mt-2.5 flex w-full items-center justify-between rounded-xl px-3 py-2 transition-colors duration-150 active:scale-[0.99]" style={{ background: `${C.secondary}0a`, border: `1px dashed ${C.secondary}35` }}>
                         <span className="text-[11.5px] font-bold tracking-wide" style={{ color: C.secondary }}>
                             {referenceLabel}: 0% change (₹{referenceValue?.toLocaleString("en-IN")})
                         </span>
                         <span className="text-[10.5px] font-extrabold uppercase tracking-wider" style={{ color: C.secondary }}>Jump here</span>
                     </button>
                 )}
+
 
                 <div className="mt-3 flex items-center justify-center gap-1.5">
                     {stepOptions.map((s) => (

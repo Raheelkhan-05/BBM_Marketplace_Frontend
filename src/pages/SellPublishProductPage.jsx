@@ -249,19 +249,13 @@ export default function SellPublishProductPage() {
     return (
         <div className="mx-auto max-w-4xl min-h-screen px-4 pt-6 sm:px-6 bg-[#FCFBF9]">
             <h1 className="text-[clamp(1.7rem,3.5vw,1.9rem)] font-bold text-slate-900">{isEdit ? "Edit listing" : "List a product"}</h1>
-            <p className="mt-1.5 text-[13.5px] tracking-wide font-medium text-slate-500">
-                {isEdit
-                    ? "Update your commercial terms — buyers see this immediately if it's already approved."
-                    : "Everything on one page. Save your Delivery, Tax & Legal, and Commercial Terms as groups once, and every future listing prefills from them."}
-            </p>
-
             {pendingDraft && (
                 <div className="mt-4 rounded-xl border border-[#7fb3bd]/40 bg-[#047084]/[0.05] px-4 py-3 text-[12.5px] font-semibold text-slate-600">
                     We found a listing you started earlier that couldn't be submitted yet — your details below have been restored from that draft.
                 </div>
             )}
 
-            <div className="mt-6">
+            <div className="mt-4">
                 <SellerListingForm
                     mode={isEdit ? "edit" : "create"}
                     identityReadOnly={isEdit}

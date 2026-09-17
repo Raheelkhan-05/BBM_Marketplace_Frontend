@@ -300,6 +300,7 @@ function submissionToInitialValues(s) {
         // of whatever the row previously had stored.
         gstInclusive: false,
         freightIncluded: Boolean(s.freight_included),
+        marketingCommissionPercent: s.marketing_commission_percent != null ? String(s.marketing_commission_percent) : "",
 
         sampleAvailable: Boolean(s.sample_available),
         // sample_quantity is stored in BASE UNITS, not in sampleBasis —
@@ -749,6 +750,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                 gstPercent: s.gst_percent ?? 18,
                 moq: s.moq != null ? String(s.moq) : "",
                 stockType: s.stock_type || "ready_stock",
+                marketingCommissionPercent: s.marketing_commission_percent != null ? String(s.marketing_commission_percent) : "",
                 stockQuantity: s.stock_quantity != null ? String(s.stock_quantity) : "",
                 leadTime: String(
                     s.stock_type === "made_to_order"
@@ -820,6 +822,10 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
         if (form.stockType === "ready_stock" && form.stockQuantity !== "" && Number(form.stockQuantity) < 0) {
             return setError("Stock can't be negative.");
         }
+        if (!(Number(form.marketingCommissionPercent) >= 0.25 && Number(form.marketingCommissionPercent) <= 100)) {
+            return setError("Marketing commission must be between 0.25% and 100%.");
+        }
+
 
         setSaving(true);
 
@@ -829,6 +835,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             // GST is always added on top now — never stored as inclusive.
             gstInclusive: false,
             moq: Number(form.moq),
+            marketingCommissionPercent: Number(form.marketingCommissionPercent),
             ...(form.stockType === "ready_stock"
                 ? {
                     stockQuantity: form.stockQuantity === "" ? null : Number(form.stockQuantity),
@@ -844,6 +851,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             moq: Number(form.moq),
             lead_time: form.leadTime === "" ? null : Number(form.leadTime),
             units_per_master_pack: form.unitsPerMasterPack,
+            marketing_commission_percent: Number(form.marketingCommissionPercent),
             ...(form.stockType === "ready_stock"
                 ? { stock_quantity: form.stockQuantity === "" ? null : Number(form.stockQuantity) }
                 : {}),
@@ -901,6 +909,12 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                                 <span>+ GST ({form.gstPercent}%)</span>
                                 <span className="tabular-nums font-bold" style={{ color: C.ink }}>₹{formatMoney(gstAmount)}</span>
                             </div>
+                            <QuickField
+                                label="Marketing commission %"
+                                type="number" min="0.25" max="100" step="0.25"
+                                value={form.marketingCommissionPercent}
+                                onChange={(e) => setField("marketingCommissionPercent", e.target.value)}
+                            />
 
                             <QuickField
                                 label={`Final Price (₹/${saleUnit})`}
