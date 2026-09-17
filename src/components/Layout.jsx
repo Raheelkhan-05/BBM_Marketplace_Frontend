@@ -42,7 +42,7 @@ export default function Layout() {
   // const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step !== "done";
   const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step != null && profile.onboarding_step !== "done";
 
-  const showBottomNav = !isLandingPage && !isAdminPage && !isWalletPage && !isChatDetailPage && !lightboxOpen && !onboardingIncomplete;
+  const showBottomNav = !isAdminPage && !isWalletPage && !isChatDetailPage && !lightboxOpen && !onboardingIncomplete;
 
   return (
     <NotificationsProvider>
