@@ -524,14 +524,7 @@ export default function SellerListingForm({
         fetchCommissionInfo().then((res) => {
             if (!res?.success) return;
             setPlatformDefaultCommissionPercent(res.commissionPercent);
-            // Pre-fill new listings with the platform default so the field
-            // isn't blank — seller can still change it. Edit mode already has
-            // its own value from initialValues, so never overwrite that.
-            if (mode !== "edit") {
-                setForm((f) => (f.marketingCommissionPercent === ""
-                    ? { ...f, marketingCommissionPercent: String(res.commissionPercent) }
-                    : f));
-            }
+
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -1497,7 +1490,7 @@ export default function SellerListingForm({
                                 <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
                                     Marketing commission <span style={{ color: C.primary }}>*</span>
                                 </span>
-                                <span className="text-[10px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                                <span className="text-[10px] font-medium leading-snug tracking-wider" style={{ color: C.muted }}>
                                     Platform fee deducted from your payout on every order
                                 </span>
                             </div>
