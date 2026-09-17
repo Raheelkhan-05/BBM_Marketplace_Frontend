@@ -78,6 +78,8 @@ import {
     Label,
     CertificateUploadField,
 } from "./FormPrimitives.jsx";
+import PriceWheelPicker from "./PriceWheelPicker.jsx";
+import { fetchLowestPriceForBrandItem } from "../../../utils/api.js";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
 import PolicySelect from "./PolicySelect.jsx";
@@ -199,6 +201,19 @@ function unitBasisLabel(basis, unit) {
     if (basis === "per_pack") return "Pack";
     if (basis === "per_master_pack") return "Master Pack";
     return unit || "Unit";
+}
+
+// Converts the (always Per-Pack) lowestPrice into whichever basis is
+// currently being edited, so ANY of the three fields — even on first
+// open with nothing typed yet — seeds from a real back-calculated
+// number instead of a hardcoded fallback.
+function lowestPriceForBasis(basis, lowestPricePerPack, packSize, masterPackSize) {
+    if (!(lowestPricePerPack > 0)) return null;
+    const pack = Number(packSize) > 0 ? Number(packSize) : 1;
+    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+    if (basis === "per_unit") return Math.round((lowestPricePerPack / pack) * 100) / 100;
+    if (basis === "per_master_pack") return Math.round((lowestPricePerPack * master) * 100) / 100;
+    return lowestPricePerPack; // per_pack
 }
 
 // Inverse of the flatten step in handleSubmit — converts the persisted flat
@@ -493,6 +508,20 @@ export default function SellerListingForm({
     const [error, setError] = useState(null);
     const [touched, setTouched] = useState({});
     const [checkingBrandMatch, setCheckingBrandMatch] = useState(false);
+
+    const [priceWheel, setPriceWheel] = useState(null); // { basis: "per_unit" | "per_pack" | "per_master_pack" } | null
+    const [lowestPrice, setLowestPrice] = useState(null);
+    const [loadingLowest, setLoadingLowest] = useState(false);
+
+    useEffect(() => {
+        const brandItemId = form.brandItemMatch?.id;
+        if (!brandItemId) { setLowestPrice(null); return; }
+        setLoadingLowest(true);
+        fetchLowestPriceForBrandItem(brandItemId, token).then((res) => {
+            setLowestPrice(res?.success ? res.lowestPricePerPack : null);
+            setLoadingLowest(false);
+        });
+    }, [form.brandItemMatch?.id, token]);
 
     // Drag state for the product-images dropzone. dragCounter tracks
     // nested dragenter/dragleave pairs (a drag over child elements fires
@@ -1265,19 +1294,29 @@ export default function SellerListingForm({
                         ? computeThreeTierPrices(form.priceBasis, form.basePrice, form.packSize, form.masterPackSize)
                         : { perUnit: "", perPack: "", perMaster: "" };
 
-                    // Show the raw typed value in whichever field is the active basis,
-                    // and the derived value in the other two — but ONLY when a price has
-                    // actually been entered. Empty basePrice means all three stay empty,
-                    // never falling back to a computed "0".
                     const unitValue = !hasPrice ? "" : (form.priceBasis === "per_unit" ? form.basePrice : String(perUnit));
                     const packValue = !hasPrice ? "" : (form.priceBasis === "per_pack" ? form.basePrice : String(perPack));
                     const masterValue = !hasPrice ? "" : (form.priceBasis === "per_master_pack" ? form.basePrice : String(perMaster));
 
-                    const sanitize = (v) => v.replace(/[^\d.]/g, "");
+                    // Whatever basis is currently focused, seed the wheel from THAT
+                    // field's own current value — not always basePrice — so re-opening
+                    // it always starts where the seller's eyes already are.
+                    const valueForBasis = { per_unit: unitValue, per_pack: packValue, per_master_pack: masterValue };
+                    const labelForBasis = { per_unit: form.unit || "Unit", per_pack: "Pack", per_master_pack: "Master Pack" };
+                    const dialEnabled = !!form.brandItemMatch;
+
+                    const openWheel = (basis) => (e) => {
+                        if (!dialEnabled) return;
+                        e.target.blur();
+                        setPriceWheel({ basis });
+                    };
 
                     return (
                         <FieldAnchor fieldKey="basePrice">
-                            <p className="text-[11.5px] font-semibold leading-snug tracking-wide pb-1" style={{ color: C.ink }}>The standard price before applying quantity-based discounts</p>
+                            <p className="text-[11.5px] font-semibold leading-snug tracking-wide pb-1" style={{ color: C.ink }}>
+                                The standard price before applying quantity-based discounts
+                                {dialEnabled && <span className="ml-1 font-medium" style={{ color: C.muted }}>· tap a field to dial in the price</span>}
+                            </p>
                             <div className={`grid gap-2.5 ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
                                 <TextField2
                                     required dense
@@ -1285,7 +1324,9 @@ export default function SellerListingForm({
                                     prefix="₹"
                                     hint={`Price for 1 ${form.unit || "Unit"} — the other fields recalculate automatically`}
                                     value={unitValue}
-                                    onChange={(v) => setForm((f) => ({ ...f, basePrice: sanitize(v), priceBasis: "per_unit" }))}
+                                    onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_unit" }))}
+                                    onFocus={openWheel("per_unit")}
+                                    readOnly={dialEnabled}
                                     onBlur={() => touch("basePrice")}
                                     error={isErr("basePrice")}
                                     inputMode="decimal"
@@ -1297,7 +1338,9 @@ export default function SellerListingForm({
                                     prefix="₹"
                                     hint={`Price for 1 Pack (${form.packSize || "?"} ${form.unit || "Unit"}) — the other fields recalculate automatically`}
                                     value={packValue}
-                                    onChange={(v) => setForm((f) => ({ ...f, basePrice: sanitize(v), priceBasis: "per_pack" }))}
+                                    onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_pack" }))}
+                                    onFocus={openWheel("per_pack")}
+                                    readOnly={dialEnabled}
                                     onBlur={() => touch("basePrice")}
                                     error={isErr("basePrice")}
                                     inputMode="decimal"
@@ -1310,7 +1353,9 @@ export default function SellerListingForm({
                                         prefix="₹"
                                         hint={`Price for 1 Master Pack (${form.masterPackSize || "?"} Packs) — the other fields recalculate automatically`}
                                         value={masterValue}
-                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: sanitize(v), priceBasis: "per_master_pack" }))}
+                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_master_pack" }))}
+                                        onFocus={openWheel("per_master_pack")}
+                                        readOnly={dialEnabled}
                                         onBlur={() => touch("basePrice")}
                                         error={isErr("basePrice")}
                                         inputMode="decimal"
@@ -1319,20 +1364,67 @@ export default function SellerListingForm({
                                 )}
                             </div>
                             <div className={`mt-1 grid gap-2.5 items-start ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
-                                <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>
-                                    Price per 1 {form.unit || "Unit"}
-                                </p>
-                                <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>
-                                    Price per {form.packSize || "?"} {form.unit || "Unit"}
-                                </p>
-                                {showMaster && (
-                                    <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>
-                                        Price per {form.masterPackSize} packs
-                                    </p>
-                                )}
+                                <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per 1 {form.unit || "Unit"}</p>
+                                <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per {form.packSize || "?"} {form.unit || "Unit"}</p>
+                                {showMaster && <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per {form.masterPackSize} packs</p>}
                             </div>
+
+                            {priceWheel && (() => {
+                                const basis = priceWheel.basis;
+                                const currentVal = Number(valueForBasis[basis]) || 0;
+                                const lowestForThisBasis = lowestPriceForBasis(basis, lowestPrice, form.packSize, form.masterPackSize);
+                                // If the field already has a real value, seed from that (editing an
+                                // existing price). Otherwise fall back to the back-calculated lowest
+                                // price for THIS SPECIFIC basis — never a generic ₹100 default, and
+                                // never always-Per-Pack regardless of which field was actually opened.
+                                const seedValue = currentVal > 0 ? currentVal : (lowestForThisBasis || 0);
+
+                                return (
+                                    <PriceWheelPicker
+                                        open
+                                        unitLabel={labelForBasis[basis]}
+                                        initialValue={seedValue}
+                                        lowestPrice={lowestForThisBasis}
+                                        loadingLowest={loadingLowest}
+                                        onClose={() => setPriceWheel(null)}
+                                        onConfirm={(price) => {
+                                            setForm((f) => ({ ...f, basePrice: String(price), priceBasis: basis }));
+                                            touch("basePrice");
+                                            setPriceWheel(null);
+                                        }}
+                                    />
+                                );
+                            })()}
                         </FieldAnchor>
                     );
+                    {
+                        priceWheel && (() => {
+                            const basis = priceWheel.basis;
+                            const currentVal = Number(valueForBasis[basis]) || 0;
+                            const lowestForThisBasis = lowestPriceForBasis(basis, lowestPrice, form.packSize, form.masterPackSize);
+                            // If the field already has a real value, seed from that (editing an
+                            // existing price). Otherwise fall back to the back-calculated lowest
+                            // price for THIS SPECIFIC basis — never a generic ₹100 default, and
+                            // never always-Per-Pack regardless of which field was actually opened.
+                            const seedValue = currentVal > 0 ? currentVal : (lowestForThisBasis || 0);
+
+                            return (
+                                <PriceWheelPicker
+                                    open
+                                    unitLabel={labelForBasis[basis]}
+                                    initialValue={seedValue}
+                                    lowestPrice={lowestForThisBasis}
+                                    loadingLowest={loadingLowest}
+                                    onClose={() => setPriceWheel(null)}
+                                    onConfirm={(price) => {
+                                        setForm((f) => ({ ...f, basePrice: String(price), priceBasis: basis }));
+                                        touch("basePrice");
+                                        setPriceWheel(null);
+                                    }}
+                                />
+                            );
+                        })()
+                    }
                 })()}
                 <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
                     <FieldAnchor fieldKey="gstInclusive">
@@ -1563,6 +1655,7 @@ export default function SellerListingForm({
                     </button>
                 </div>
             )}
+
         </div>
     );
 }

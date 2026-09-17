@@ -453,17 +453,14 @@ export function TextFieldWithUnitSelect({
     );
 }
 
-export function TextField2({ label, value, onChange, onBlur, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile, prefix, onEnterKey }) {
+export function TextField2({ label, value, onChange, onBlur, onFocus, placeholder, inputMode, type = "text", hint, required, disabled, error, dense, halfOnMobile, tinyOnMobile, prefix, onEnterKey, readOnly }) {
     const widthClass = tinyOnMobile ? "w-[4.5rem] sm:w-full" : halfOnMobile ? "w-1/2 sm:w-full" : "w-full";
     return (
         <div className="flex min-w-0 flex-col items-stretch justify-end gap-1 h-full">
             {label && <Label2>{label}</Label2>}
             <div className={`relative flex items-center ${widthClass}`}>
                 {prefix && (
-                    <span
-                        className="pointer-events-none absolute left-2.5 text-[14.5px] font-bold"
-                        style={{ color: C.muted }}
-                    >
+                    <span className="pointer-events-none absolute left-2.5 text-[14.5px] font-bold" style={{ color: C.muted }}>
                         {prefix}
                     </span>
                 )}
@@ -473,10 +470,12 @@ export function TextField2({ label, value, onChange, onBlur, placeholder, inputM
                     inputMode={inputMode}
                     placeholder={placeholder}
                     disabled={disabled}
+                    readOnly={readOnly}
                     onChange={(e) => onChange(e.target.value)}
+                    onFocus={onFocus}
                     onBlur={onBlur}
                     onKeyDown={makeFieldKeyHandler(onEnterKey)}
-                    className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "py-1.5 text-[14.5px]" : "py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60`}
+                    className={`w-full rounded-lg border tracking-wide bg-white ${dense ? "py-1.5 text-[14.5px]" : "py-2 text-[14.5px]"} font-bold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 disabled:bg-slate-50 disabled:opacity-60 ${readOnly ? "cursor-pointer" : ""}`}
                     style={{
                         color: C.ink,
                         paddingLeft: prefix ? "20px" : (dense ? "10px" : "12px"),
@@ -488,6 +487,7 @@ export function TextField2({ label, value, onChange, onBlur, placeholder, inputM
         </div>
     );
 }
+
 export function TextAreaField({ label, value, onChange, onBlur, placeholder, hint, required, rows = 2, error, onEnterKey }) {
     return (
         <div className="flex flex-col gap-1">

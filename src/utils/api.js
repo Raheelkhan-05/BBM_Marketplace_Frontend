@@ -820,6 +820,30 @@ export async function fetchOrderQuote(submissionId, quantity, opts = {}) {
   return res.json();
 }
 
+export async function adminListBrands(token, q = "") {
+  const params = new URLSearchParams(q ? { q } : {});
+  const res = await fetch(`${API_BASE}/admin/brands?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+
+export async function adminUpdateBrand(token, brandName, { newName, brandImage, confirmMerge } = {}) {
+  const res = await fetch(`${API_BASE}/admin/brands/${encodeURIComponent(brandName)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ newName, brandImage, confirmMerge }),
+  });
+  return res.json();
+}
+
+export async function fetchLowestPriceForBrandItem(genericProductBrandId, token) {
+  const res = await fetch(`${API_BASE}/catalog/seller-listing/lowest-price/${genericProductBrandId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  return res.json();
+}
+
 export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, signal, token } = {}) {
   const params = new URLSearchParams({ q, sort, limit, offset });
   if (categoryId) params.set("categoryId", categoryId);

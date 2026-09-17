@@ -1,17 +1,18 @@
 // components/chat/CustomPricingModal.jsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Search, Percent, AlertTriangle, IndianRupee, Trash2, Check, Loader2, Tag, ChevronLeft, ArrowRight, Info } from "lucide-react";
+import { X, Search, Percent, AlertTriangle, IndianRupee, Trash2, Check, Loader2, Tag, ChevronLeft, ArrowRight, Info, TrendingDown, TrendingUp } from "lucide-react";
 import {
     fetchCustomPricing, saveCustomPricing, deleteCustomPricing as deleteCustomPricingApi, bulkClearCustomPricing,
 } from "../../utils/api.js";
 import { priceFromLevel, derivePriceBreakdown, percentFromCustomPrice, violatesMinUnitPrice, MIN_UNIT_PRICE } from "../../../shared/customPricing.js";
-
+import ImageLightbox from "../ImageLightbox.jsx";
+import PriceWheelPicker from "../seller/listingForm/PriceWheelPicker.jsx";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)", ok: "#059669", okBg: "#EAF7F2",
-    canvas: "#FCFBF9", warnBg: "#FDF3D8", warn: "#a16207",
+    canvas: "#FCFBF9", warnBg: "#FDF3D8", warn: "#a16207", danger: "#D2462B", dangerBg: "#FDECEA",
 };
 const EASE = [0.16, 1, 0.3, 1];
 
@@ -21,27 +22,65 @@ const LEVEL_LABEL = { unit: (u) => u || "unit", pack: () => "pack", master_pack:
 const LEVEL_FIELD = { unit: "perBaseUnit", pack: "perPack", master_pack: "perMasterPack" };
 function levelsFor(row) { return row.hasMasterPack ? ["unit", "pack", "master_pack"] : ["unit", "pack"]; }
 
-function ModeToggle({ mode, onChange, size = "sm" }) {
-    const dim = size === "sm" ? "h-8" : "h-9";
+// Shared label/color for a resulting percent change, everywhere it's shown.
+// Positive percentValue (backend convention) = price decrease = discount.
+// Negative percentValue = price increase.
+function percentChangeLabel(pct) {
+    return pct >= 0 ? `${pct}% decrease` : `${Math.abs(pct)}% increase`;
+}
+
+function ModeToggle({ mode, onChange }) {
     return (
-        <div className={`flex ${dim} shrink-0 overflow-hidden rounded-lg border`} style={{ borderColor: C.hair }}>
-            <button type="button" onClick={() => onChange("amount")}
-                className="flex items-center gap-1.5 px-2.5 text-[11px] font-bold tracking-wide transition-colors"
-                style={mode === "amount" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>
-                <IndianRupee className="h-3 w-3" /> Amount
+        <div className="flex w-full overflow-hidden rounded-lg border" style={{ borderColor: C.hair }}>
+            <button
+                type="button"
+                onClick={() => onChange("amount")}
+                className="flex flex-1 items-center justify-center gap-1.5 px-2 py-2 text-[11.5px] font-bold tracking-wide transition-colors"
+                style={mode === "amount" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
+            >
+                <IndianRupee className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Amount</span>
             </button>
             <button
                 type="button"
                 onClick={() => onChange("percent")}
-                className="flex items-center gap-1.5 border-l px-2.5 text-[11px] font-bold tracking-wide transition-colors"
+                className="flex flex-1 items-center justify-center gap-1.5 border-l px-2 py-2 text-[11.5px] font-bold tracking-wide transition-colors"
                 style={{
                     borderColor: C.hair,
                     background: mode === "percent" ? C.secondary : "transparent",
                     color: mode === "percent" ? "#fff" : C.muted,
                 }}
             >
-                <Percent className="h-3 w-3" />
-                Percent
+                <Percent className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Percent</span>
+            </button>
+        </div>
+    );
+}
+
+// Explicit Decrease / Increase toggle for percent mode — replaces the old
+// signed (+/-) input so the seller never has to interpret a sign; they pick
+// a direction in words, and type a plain positive number.
+function DirectionToggle({ direction, onChange }) {
+    return (
+        <div className="flex w-full overflow-hidden rounded-lg border" style={{ borderColor: C.hair }}>
+            <button
+                type="button"
+                onClick={() => onChange("decrease")}
+                className="flex flex-1 items-center justify-center gap-1.5 px-2 py-2 text-[11.5px] font-bold tracking-wide transition-colors"
+                style={direction === "decrease" ? { background: C.ok, color: "#fff" } : { color: C.muted }}
+            >
+                <TrendingDown className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Decrease</span>
+            </button>
+            <button
+                type="button"
+                onClick={() => onChange("increase")}
+                className="flex flex-1 items-center justify-center gap-1.5 border-l px-2 py-2 text-[11.5px] font-bold tracking-wide transition-colors"
+                style={{
+                    borderColor: C.hair,
+                    background: direction === "increase" ? C.warn : "transparent",
+                    color: direction === "increase" ? "#fff" : C.muted,
+                }}
+            >
+                <TrendingUp className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Increase</span>
             </button>
         </div>
     );
@@ -51,6 +90,7 @@ function ModeToggle({ mode, onChange, size = "sm" }) {
 // Screen 1 — List
 // ---------------------------------------------------------------------
 function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, toggleSelect, onToggleSelectAll, onEditSingle, onEditSelected, onClearSelected, onClearAll, customCount, saveWarning, onDismissWarning }) {
+    const [lightboxSrc, setLightboxSrc] = useState(null);
     const q = query.trim().toLowerCase();
     const filtered = rows.filter((r) => {
         if (tab === "custom" && !r.override) return false;
@@ -59,6 +99,7 @@ function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, tog
     });
     const filteredIds = filtered.map((r) => r.submissionId);
     const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selected.has(id));
+
 
     return (
         <>
@@ -112,31 +153,45 @@ function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, tog
                     <p className="py-16 text-center text-[12.5px] font-medium tracking-wide" style={{ color: C.muted }}>No products match.</p>
                 ) : (
                     <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
-                        {filtered.map((row) => (
-                            <div key={row.submissionId} className="flex items-center gap-3 py-2.5">
-                                <input type="checkbox" checked={selected.has(row.submissionId)} onChange={() => toggleSelect(row.submissionId)}
-                                    className="h-4 w-4 shrink-0 accent-[#006F83]" />
-                                <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border" style={{ borderColor: C.hair, background: "#F4F5F6" }}>
-                                    {row.image ? <img src={row.image} alt="" className="h-full w-full object-cover" /> : null}
-                                </span>
-                                <button onClick={() => onEditSingle(row.submissionId)} className="min-w-0 flex-1 text-left">
-                                    <p className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{row.name}</p>
-                                    <p className="truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                        ₹{inr(row.defaultBreakdown.perPack)}/pack
-                                        {row.hasMasterPack ? ` · ₹${inr(row.defaultBreakdown.perMasterPack)}/master pack` : ""}
-                                        {row.override && (
-                                            <span className="ml-1.5 inline-flex items-center rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wider" style={{ background: C.okBg, color: C.ok }}>
-                                                Custom
-                                            </span>
+                        {filtered.map((row) => {
+                            const pct = row.override ? percentFromCustomPrice(row.defaultPrice, row.effectivePrice) : null;
+                            return (
+                                <div key={row.submissionId} className="flex items-center gap-3 py-2.5">
+                                    <input type="checkbox" checked={selected.has(row.submissionId)} onChange={() => toggleSelect(row.submissionId)}
+                                        className="h-4 w-4 shrink-0 accent-[#006F83]" />
+                                    <button
+                                        type="button"
+                                        onClick={() => row.image && setLightboxSrc(row.image)}
+                                        className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border"
+                                        style={{ borderColor: C.hair, background: "#F4F5F6" }}
+                                    >
+                                        {row.image ? <img src={row.image} alt="" className="h-full w-full object-cover" /> : null}
+                                    </button>
+                                    <button onClick={() => onEditSingle(row.submissionId)} className="min-w-0 flex-1 text-left">
+                                        <p className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{row.name}</p>
+                                        {row.override ? (
+                                            <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10.5px] font-semibold tracking-wide">
+                                                <span style={{ color: C.muted, textDecoration: "line-through" }}>₹{inr(row.defaultBreakdown.perPack)}/pack</span>
+                                                <ArrowRight className="h-3 w-3 shrink-0" style={{ color: C.muted }} />
+                                                <span className="text-[11px]" style={{ color: C.secondary }}>₹{inr(row.effectiveBreakdown.perPack)}/pack</span>
+                                                {/* <span className="rounded-full px-1.5 py-[1px] text-[10px] font-bold uppercase tracking-wider" style={{ background: pct >= 0 ? C.okBg : C.warnBg, color: pct >= 0 ? C.ok : C.warn }}>
+                                                    {percentChangeLabel(pct)}
+                                                </span> */}
+                                            </p>
+                                        ) : (
+                                            <p className="truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                                ₹{inr(row.defaultBreakdown.perPack)}/pack
+                                                {row.hasMasterPack ? ` · ₹${inr(row.defaultBreakdown.perMasterPack)}/master pack` : ""}
+                                            </p>
                                         )}
-                                    </p>
-                                </button>
-                                <button onClick={() => onEditSingle(row.submissionId)}
-                                    className="shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.secondary }}>
-                                    Edit
-                                </button>
-                            </div>
-                        ))}
+                                    </button>
+                                    <button onClick={() => onEditSingle(row.submissionId)}
+                                        className="shrink-0 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.secondary }}>
+                                        Edit
+                                    </button>
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>
@@ -162,6 +217,8 @@ function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, tog
                     </motion.div>
                 )}
             </AnimatePresence>
+            {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />}
+
         </>
     );
 }
@@ -171,15 +228,23 @@ function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, tog
 // preview strip showing the resulting unit/pack/master-pack breakdown
 // regardless of which mode was used to get there — so the seller always
 // sees the full picture, never has to guess what a % translates to.
-// ---------------------------------------------------------------------
-// ProductEditCard — now surfaces the floor violation inline, and never
-// lets an invalid canonicalPrice sit silently in the draft.
+//
+// Percent mode now uses an explicit Decrease/Increase toggle plus a
+// plain, always-positive number — no +/- sign for the seller to parse.
 // ---------------------------------------------------------------------
 function ProductEditCard({ row, draft, onDraftChange }) {
     const levels = levelsFor(row);
     const invalid = draft.canonicalPrice != null && violatesMinUnitPrice(draft.canonicalPrice, row.packSize, row.masterPackSize);
     const preview = draft.canonicalPrice != null ? derivePriceBreakdown(draft.canonicalPrice, row.packSize, row.masterPackSize) : null;
     const appliedPercent = draft.canonicalPrice != null ? percentFromCustomPrice(row.defaultPrice, draft.canonicalPrice) : null;
+
+    // Direction is derived from the stored (signed) percentValue: backend
+    // convention is positive = decrease/discount, negative = increase.
+    // Defaults to "decrease" when nothing has been entered yet.
+    const direction = draft.percentValue !== "" && draft.percentValue != null && Number(draft.percentValue) < 0 ? "increase" : "decrease";
+    const percentAbs = draft.percentValue !== "" && draft.percentValue != null ? Math.abs(Number(draft.percentValue)) : "";
+
+    const [wheelFor, setWheelFor] = useState(null); // { kind: "amount", level } | { kind: "percent" } | null
 
     const setFromAmount = (level, raw) => {
         onDraftChange(row.submissionId, (prev) => {
@@ -200,14 +265,18 @@ function ProductEditCard({ row, draft, onDraftChange }) {
         });
     };
 
-    const setFromPercent = (raw) => {
+    // Takes a direction ("decrease" | "increase") and an always-positive
+    // magnitude, and converts to the signed value the backend/preview math
+    // expects (positive = decrease).
+    const setFromDirectionAndAbs = (nextDirection, absRaw) => {
         onDraftChange(row.submissionId, (prev) => {
-            if (raw === "" || raw == null) return { ...prev, percentValue: raw, canonicalPrice: null };
-            const canonical = Math.round(row.defaultPrice * (1 - Number(raw) / 100) * 100) / 100;
+            if (absRaw === "" || absRaw == null) return { ...prev, percentValue: absRaw, canonicalPrice: null };
+            const signed = nextDirection === "increase" ? -Math.abs(Number(absRaw)) : Math.abs(Number(absRaw));
+            const canonical = Math.round(row.defaultPrice * (1 - signed / 100) * 100) / 100;
             const bd = derivePriceBreakdown(canonical, row.packSize, row.masterPackSize);
             return {
                 ...prev,
-                percentValue: raw,
+                percentValue: String(signed),
                 canonicalPrice: canonical,
                 amounts: {
                     unit: String(bd.perBaseUnit ?? ""),
@@ -221,6 +290,20 @@ function ProductEditCard({ row, draft, onDraftChange }) {
     const clear = () => onDraftChange(row.submissionId, () => ({
         mode: "amount", amounts: { unit: "", pack: "", master_pack: "" }, percentValue: "", canonicalPrice: null,
     }));
+
+    // Back-calculate the default price into whatever level/basis is being
+    // dialed, so the "Jump here" reference is always correct per-field —
+    // same pattern as the seller-listing price wheel.
+    const referenceForLevel = (level) => row.defaultBreakdown[LEVEL_FIELD[level]];
+
+    const openAmountWheel = (level) => (e) => {
+        e.target.blur();
+        setWheelFor({ kind: "amount", level });
+    };
+    const openPercentWheel = (e) => {
+        e.target.blur();
+        setWheelFor({ kind: "percent" });
+    };
 
     return (
         <div className="flex flex-col gap-3 rounded-2xl border p-3.5 sm:p-4" style={{ borderColor: invalid ? C.danger : C.hair }}>
@@ -251,14 +334,19 @@ function ProductEditCard({ row, draft, onDraftChange }) {
                             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
                                 Price / {LEVEL_LABEL[level](row.unit)}
                             </span>
-                            <div className="flex items-center gap-1.5 rounded-lg border px-2.5 py-2" style={{ borderColor: invalid ? C.danger : C.hair }}>
+                            <div
+                                onClick={openAmountWheel(level)}
+                                className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-2 transition-colors duration-150 hover:bg-black/[0.02]"
+                                style={{ borderColor: invalid ? C.danger : C.hair }}
+                            >
                                 <span className="text-[12px] font-bold tracking-wide" style={{ color: C.muted }}>₹</span>
                                 <input
-                                    type="number" inputMode="decimal"
+                                    readOnly
+                                    tabIndex={-1}
+                                    type="text" inputMode="decimal"
                                     value={draft.amounts[level] ?? ""}
-                                    onChange={(e) => setFromAmount(level, e.target.value)}
                                     placeholder={inr(row.defaultBreakdown[LEVEL_FIELD[level]])}
-                                    className="w-full min-w-0 bg-transparent text-[13px] font-bold tabular-nums tracking-wide outline-none"
+                                    className="w-full min-w-0 cursor-pointer bg-transparent text-[13px] font-bold tabular-nums tracking-wide outline-none"
                                     style={{ color: C.ink }}
                                 />
                             </div>
@@ -267,45 +355,92 @@ function ProductEditCard({ row, draft, onDraftChange }) {
                 </div>
             ) : (
                 <div className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-1.5 rounded-lg border px-2.5 py-2" style={{ borderColor: invalid ? C.danger : C.hair }}>
+                    <DirectionToggle
+                        direction={direction}
+                        onChange={(nextDirection) => setFromDirectionAndAbs(nextDirection, percentAbs === "" ? "" : percentAbs)}
+                    />
+                    <div
+                        onClick={openPercentWheel}
+                        className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-2 transition-colors duration-150 hover:bg-black/[0.02]"
+                        style={{ borderColor: invalid ? C.danger : C.hair }}
+                    >
                         <input
-                            type="number" inputMode="decimal"
-                            value={draft.percentValue ?? ""}
-                            onChange={(e) => setFromPercent(e.target.value)}
+                            readOnly
+                            tabIndex={-1}
+                            type="text" inputMode="decimal"
+                            value={percentAbs !== "" ? String(percentAbs) : ""}
                             placeholder="e.g. 10"
-                            className="w-full min-w-0 bg-transparent text-[13px] font-bold tabular-nums tracking-wide outline-none"
+                            className="w-full min-w-0 cursor-pointer bg-transparent text-[13px] font-bold tabular-nums tracking-wide outline-none"
                             style={{ color: C.ink }}
                         />
-                        <span className="shrink-0 text-[12px] font-bold tracking-wide" style={{ color: C.muted }}>% off default</span>
+                        <span className="shrink-0 text-[13px] font-bold tracking-wide" style={{ color: C.muted }}>% vs default</span>
                     </div>
-                    <p className="flex items-start gap-1 text-[10.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                    <p className="flex items-start gap-1 text-[11px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
                         <Info className="mt-[1px] h-3 w-3 shrink-0" />
-                        Positive discounts this buyer. Negative (e.g. -10) charges them 10% more than your default price.
+                        <span>
+                            Pick <span className="font-bold" style={{ color: C.ok }}>Decrease</span> for a discount, or <span className="font-bold" style={{ color: C.warn }}>Increase</span> to charge this buyer more, then enter the percent.
+                        </span>
                     </p>
                 </div>
             )}
 
-            {/* NEW — floor violation, blocks nothing else on the card but
-                makes it impossible to miss and impossible to proceed with. */}
             {invalid && (
                 <p className="flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-[11px] font-bold leading-snug tracking-wide" style={{ background: C.dangerBg, color: C.danger }}>
                     <AlertTriangle className="mt-[1px] h-3.5 w-3.5 shrink-0" />
-                    That works out to below ₹{MIN_UNIT_PRICE} per {row.unit || "unit"} — raise the price to continue.
+                    <span>That works out to below ₹{MIN_UNIT_PRICE} per {row.unit || "unit"} — raise the price to continue.</span>
                 </p>
             )}
 
             {preview && !invalid && (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg px-2.5 py-2" style={{ background: C.okBg }}>
+                <div className="flex flex-col gap-1.5 rounded-lg px-2.5 py-2" style={{ background: C.okBg }}>
                     <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: C.ok }}>
-                        {appliedPercent >= 0 ? `${appliedPercent}% off` : `${Math.abs(appliedPercent)}% markup`}
+                        {percentChangeLabel(appliedPercent)} vs default
                     </span>
-                    {levels.map((level) => (
-                        <span key={level} className="text-[11.5px] font-bold tabular-nums tracking-wide" style={{ color: C.ok }}>
-                            ₹{inr(preview[LEVEL_FIELD[level]])}<span className="font-medium">/{LEVEL_LABEL[level](row.unit)}</span>
-                        </span>
-                    ))}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        {levels.map((level) => (
+                            <span key={level} className="text-[11.5px] font-bold tabular-nums tracking-wide" style={{ color: C.ok }}>
+                                ₹{inr(preview[LEVEL_FIELD[level]])}<span className="font-medium tracking-wide"> /{LEVEL_LABEL[level](row.unit)}</span>
+                            </span>
+                        ))}
+                    </div>
                 </div>
             )}
+
+            {wheelFor?.kind === "amount" && (() => {
+                const level = wheelFor.level;
+                const current = draft.amounts[level];
+                const currentVal = current !== "" && current != null ? Number(current) : null;
+                const reference = referenceForLevel(level);
+                const seedValue = currentVal != null ? currentVal : reference;
+                return (
+                    <PriceWheelPicker
+                        open
+                        unit="currency"
+                        unitLabel={LEVEL_LABEL[level](row.unit)}
+                        initialValue={seedValue}
+                        referenceValue={reference}
+                        referenceLabel="Default price"
+                        onClose={() => setWheelFor(null)}
+                        onConfirm={(price) => { setFromAmount(level, String(price)); setWheelFor(null); }}
+                    />
+                );
+            })()}
+
+            {wheelFor?.kind === "percent" && (() => {
+                const currentAbs = percentAbs !== "" ? Number(percentAbs) : 0;
+                return (
+                    <PriceWheelPicker
+                        open
+                        unit="percent"
+                        direction={direction}
+                        referenceValue={row.defaultPrice}
+                        referenceLabel="Default price"
+                        initialValue={currentAbs}
+                        onClose={() => setWheelFor(null)}
+                        onConfirm={(pct) => { setFromDirectionAndAbs(direction, String(pct)); setWheelFor(null); }}
+                    />
+                );
+            })()}
         </div>
     );
 }
@@ -313,7 +448,7 @@ function ProductEditCard({ row, draft, onDraftChange }) {
 // EditScreen — the "Review changes" button is now blocked while ANY
 // visible card is in a violating state, and the bulk-percent apply skips
 // (rather than silently saves) any product it would push below the floor.
-function EditScreen({ selectedRows, drafts, onDraftChange, onReview, bulkPercent, setBulkPercent, onApplyBulkPercent, bulkSkippedCount }) {
+function EditScreen({ selectedRows, drafts, onDraftChange, onReview, bulkDirection, setBulkDirection, bulkPercent, setBulkPercent, onApplyBulkPercent, bulkSkippedCount }) {
     const anyInvalid = selectedRows.some((row) => {
         const d = drafts[row.submissionId];
         return d?.canonicalPrice != null && violatesMinUnitPrice(d.canonicalPrice, row.packSize, row.masterPackSize);
@@ -324,23 +459,28 @@ function EditScreen({ selectedRows, drafts, onDraftChange, onReview, bulkPercent
             <div className="flex-1 overflow-y-auto px-4 py-3 sm:px-5">
                 {selectedRows.length > 1 && (
                     <div className="mb-3 flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair, background: C.canvas }}>
-                            <Percent className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                            <span className="shrink-0 text-[11.5px] font-bold tracking-wide" style={{ color: C.ink }}>Apply % to all</span>
-                            <input type="number" value={bulkPercent} onChange={(e) => setBulkPercent(e.target.value)}
-                                placeholder="e.g. 10, or -10 for markup"
-                                className="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[12.5px] font-bold tabular-nums tracking-wide outline-none" style={{ borderColor: C.hair }} />
-                            <button onClick={onApplyBulkPercent} disabled={!bulkPercent}
-                                className="shrink-0 rounded-lg px-3 py-1.5 text-[11.5px] font-bold tracking-wide text-white disabled:opacity-50" style={{ background: C.secondary }}>
-                                Apply
-                            </button>
+                        <div className="flex flex-col gap-1.5 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair, background: C.canvas }}>
+                            <div className="flex items-center gap-2">
+                                <Percent className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                <span className="shrink-0 text-[11.5px] font-bold tracking-wide" style={{ color: C.ink }}>Apply % to all</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="shrink-0">
+                                    <DirectionToggle direction={bulkDirection} onChange={setBulkDirection} />
+                                </div>
+                                <input type="number" min="0" value={bulkPercent} onChange={(e) => setBulkPercent(e.target.value)}
+                                    placeholder="e.g. 10"
+                                    className="min-w-0 flex-1 rounded-lg border px-2 py-1.5 text-[12.5px] font-bold tabular-nums tracking-wide outline-none" style={{ borderColor: C.hair }} />
+                                <button onClick={onApplyBulkPercent} disabled={!bulkPercent}
+                                    className="shrink-0 rounded-lg px-3 py-1.5 text-[11.5px] font-bold tracking-wide text-white disabled:opacity-50" style={{ background: C.secondary }}>
+                                    Apply
+                                </button>
+                            </div>
                         </div>
-                        {/* NEW — bulk apply never silently drops a product; it
-                            tells the seller exactly how many it skipped and why. */}
                         {bulkSkippedCount > 0 && (
                             <p className="flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-[11px] font-bold leading-snug tracking-wide" style={{ background: C.warnBg, color: C.warn }}>
                                 <AlertTriangle className="mt-[1px] h-3.5 w-3.5 shrink-0" />
-                                Skipped {bulkSkippedCount} product{bulkSkippedCount === 1 ? "" : "s"} — that percentage would take it below ₹{MIN_UNIT_PRICE}/unit. Set those individually.
+                                <span>Skipped {bulkSkippedCount} product{bulkSkippedCount === 1 ? "" : "s"} — that percentage would take it below ₹{MIN_UNIT_PRICE}/unit. Set those individually.</span>
                             </p>
                         )}
                     </div>
@@ -375,7 +515,7 @@ function ReviewRow({ row, canonicalPrice }) {
             <div className="mb-2.5 flex items-center justify-between gap-2">
                 <p className="min-w-0 truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{row.name}</p>
                 <span className="shrink-0 rounded-full px-2 py-[2px] text-[10px] font-bold tracking-wider" style={{ background: pct >= 0 ? C.okBg : C.warnBg, color: pct >= 0 ? C.ok : C.warn }}>
-                    {pct >= 0 ? `${pct}% off` : `${Math.abs(pct)}% markup`}
+                    {percentChangeLabel(pct)}
                 </span>
             </div>
             <div className="flex flex-col gap-1.5">
@@ -441,6 +581,7 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
     const [editingIds, setEditingIds] = useState([]);
     const [bulkSkippedCount, setBulkSkippedCount] = useState(0);
     const [drafts, setDrafts] = useState({});
+    const [bulkDirection, setBulkDirection] = useState("decrease");
     const [bulkPercent, setBulkPercent] = useState("");
     const [saving, setSaving] = useState(false);
     const [saveWarning, setSaveWarning] = useState(null);
@@ -454,7 +595,7 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
     }, [buyerId, token]);
 
     useEffect(() => {
-        if (open) { load(); setSelected(new Set()); setQuery(""); setScreen("list"); setDrafts({}); setBulkPercent(""); setSaveWarning(null); }
+        if (open) { load(); setSelected(new Set()); setQuery(""); setScreen("list"); setDrafts({}); setBulkDirection("decrease"); setBulkPercent(""); setSaveWarning(null); }
     }, [open, load]);
 
     const rowById = useMemo(() => Object.fromEntries(rows.map((r) => [r.submissionId, r])), [rows]);
@@ -482,7 +623,9 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
         setDrafts(next);
         setEditingIds(ids);
         setBulkSkippedCount(0);
-        setSaveWarning(null); // NEW
+        setBulkDirection("decrease");
+        setBulkPercent("");
+        setSaveWarning(null);
         setScreen("edit");
     };
 
@@ -497,8 +640,9 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
     const handleDraftChange = (submissionId, updater) => setDrafts((prev) => ({ ...prev, [submissionId]: updater(prev[submissionId]) }));
 
     const applyBulkPercent = () => {
-        const pct = Number(bulkPercent);
-        if (!Number.isFinite(pct)) return;
+        const abs = Number(bulkPercent);
+        if (!Number.isFinite(abs)) return;
+        const pct = bulkDirection === "increase" ? -Math.abs(abs) : Math.abs(abs);
         let skipped = 0;
         setDrafts((prev) => {
             const next = { ...prev };
@@ -637,6 +781,7 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
                                     <EditScreen
                                         selectedRows={editingRows} drafts={drafts} onDraftChange={handleDraftChange}
                                         onReview={() => setScreen("review")}
+                                        bulkDirection={bulkDirection} setBulkDirection={setBulkDirection}
                                         bulkPercent={bulkPercent} setBulkPercent={setBulkPercent} onApplyBulkPercent={applyBulkPercent}
                                         bulkSkippedCount={bulkSkippedCount}
                                     />
