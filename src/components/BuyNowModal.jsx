@@ -215,10 +215,14 @@ function Stepper({ value, onChange, min = 1, max }) {
                 <Minus className="h-4 w-4" style={{ color: C.ink }} />
             </button>
             <div className="h-11 w-px" style={{ background: C.hair }} />
-            <input type="text" inputMode="decimal" value={value}
-                onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
+            <input
+                type="text"
+                inputMode="numeric"
+                value={value}
+                onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
                 className="h-11 w-full min-w-0 flex-1 bg-transparent text-center text-[16px] font-extrabold tabular-nums tracking-wide focus:outline-none"
-                style={{ color: C.ink }} />
+                style={{ color: C.ink }}
+            />
             <div className="h-11 w-px" style={{ background: C.hair }} />
             <button type="button" disabled={atMax} onClick={() => onChange(Number(value) + 1)}
                 className="flex h-11 w-11 shrink-0 items-center justify-center transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent">
