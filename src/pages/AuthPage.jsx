@@ -104,6 +104,30 @@ function PanelHeader({ icon, title, subtitle }) {
   );
 }
 
+// --- add near the top of the file, alongside the other pure helpers ---
+function OnboardingChecklist({ steps }) {
+  return (
+    <ul className="flex flex-col gap-1.5 rounded-2xl bg-slate-50 px-3.5 py-3">
+      {steps.map((s) => (
+        <li key={s.label} className="flex items-center gap-2 text-[12.5px] font-semibold tracking-wide">
+          <span
+            className="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full transition-colors duration-200"
+            style={{
+              background: s.done ? "#12181d" : "transparent",
+              border: s.done ? "none" : "1.5px solid #cbd5e1",
+            }}
+          >
+            {s.done && <CheckCircle2 className="h-3.5 w-3.5 text-white" strokeWidth={2.5} />}
+          </span>
+          <span style={{ color: s.done ? "#0B1116" : "#94a3b8" }} className={s.done ? "line-through decoration-slate-300" : ""}>
+            {s.label}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // Shared centered shell for the OTP / onboarding steps — normal page flow
 // with compact, responsive spacing and no fixed/sticky footer.
 function AuthShell({ children, footer, wide = false }) {
@@ -763,6 +787,14 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
 
   const [touched, setTouched] = useState(false);
 
+  // Refs so an incomplete-submit click can scroll straight to the first
+  // thing still missing, instead of leaving the person to hunt for it.
+  const nameRef = useRef(null);
+  const phoneSectionRef = useRef(null);
+  const gstinRef = useRef(null);
+  const displayNameRef = useRef(null);
+  const dispatchRef = useRef(null);
+
   // Resume any progress from a previous, abandoned onboarding attempt —
   // the user may have verified their phone or typed their name before
   // closing the tab last time.
@@ -802,17 +834,34 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
     setGstStage("found");
   };
 
-  const canSubmit =
-    name.trim().length >= 2 &&
-    phoneVerified &&
-    gstStage === "found" &&
-    displayName.trim().length >= 2 &&
-    (dispatchSame || (dispatchAddress.trim() && dispatchPincode.trim().length === 6 && dispatchState.trim()));
+  const nameOk = name.trim().length >= 2;
+  const gstinOk = gstStage === "found";
+  const displayNameOk = displayName.trim().length >= 2;
+  const dispatchOk = dispatchSame || (dispatchAddress.trim() && dispatchPincode.trim().length === 6 && dispatchState.trim());
+
+  const canSubmit = nameOk && phoneVerified && gstinOk && displayNameOk && dispatchOk;
+
+  // Drives both the checklist and the "what's left" helper text — single
+  // source of truth so they can never say different things.
+  const checklist = [
+    { label: "Your name", done: nameOk, ref: nameRef },
+    { label: "Verified mobile number", done: phoneVerified, ref: phoneSectionRef },
+    { label: "Verified GSTIN", done: gstinOk, ref: gstinRef },
+    { label: "Display name for buyers", done: displayNameOk, ref: displayNameRef },
+    ...(!dispatchSame ? [{ label: "Dispatch address", done: dispatchOk, ref: dispatchRef }] : []),
+  ];
+  const remaining = checklist.filter((s) => !s.done);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setTouched(true);
-    if (!canSubmit || loading) return;
+    if (!canSubmit || loading) {
+      // Not silently doing nothing — jump straight to the first thing
+      // that's still incomplete, so "why can't I submit" is answered
+      // instantly instead of left as a mystery.
+      remaining[0]?.ref?.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     onSubmit({
       name: name.trim(),
       gstin,
@@ -832,9 +881,37 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
       <AuthShell
         wide
         footer={
-          <PrimaryButton type="submit" disabled={!canSubmit || loading} loading={loading} loadingText="Saving…">
-            Finish setting up<ArrowRight className="h-4 w-4" />
-          </PrimaryButton>
+          <div className="flex flex-col gap-3">
+            {/* Only surface the checklist once something's actually
+                incomplete and the person has tried to move forward, or
+                once they're close to done — showing it from the very
+                first keystroke would just be noise. */}
+            {(touched || remaining.length <= 2) && remaining.length > 0 && (
+              <OnboardingChecklist steps={checklist} />
+            )}
+
+            <PrimaryButton
+              type="submit"
+              loading={loading}
+              loadingText="Saving…"
+              // Still disabled while a network call is in flight — but
+              // NOT disabled just because fields are incomplete. Clicking
+              // while incomplete now does something useful (see handleSubmit)
+              // instead of nothing.
+              disabled={loading}
+              className={!canSubmit ? "opacity-90" : ""}
+            >
+              Finish setting up<ArrowRight className="h-4 w-4" />
+            </PrimaryButton>
+
+            {!canSubmit && (
+              <p className="text-center text-[12px] font-semibold tracking-wide text-slate-400">
+                {remaining.length === 1
+                  ? `Just one more thing: ${remaining[0].label.toLowerCase()}.`
+                  : `${remaining.length} steps left — starting with ${remaining[0].label.toLowerCase()}.`}
+              </p>
+            )}
+          </div>
         }
       >
         <PanelHeader
@@ -853,7 +930,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
         )}
 
         <div className="mt-7 flex flex-col gap-4 pb-1">
-          <div className="flex flex-col">
+          <div ref={nameRef} className="flex flex-col scroll-mt-24">
             <label className="text-[12.5px] font-bold tracking-tight text-slate-700">Full name</label>
             <input
               autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName}
@@ -861,13 +938,14 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
             />
           </div>
 
-          {/* Phone is always required and verified, regardless of login channel. */}
-          <AltContactVerify
-            token={token} field="phone" label="Mobile number" placeholder="98765 43210" inputMode="numeric"
-            formatValue={(v) => `+91 ${v}`} validate={(v) => PHONE_RE.test(v)} required
-            prefillVerifiedValue={verifiedPhoneValue}
-            onVerified={(ok) => setPhoneVerified(ok)}
-          />
+          <div ref={phoneSectionRef} className="scroll-mt-24">
+            <AltContactVerify
+              token={token} field="phone" label="Mobile number" placeholder="98765 43210" inputMode="numeric"
+              formatValue={(v) => `+91 ${v}`} validate={(v) => PHONE_RE.test(v)} required
+              prefillVerifiedValue={verifiedPhoneValue}
+              onVerified={(ok) => setPhoneVerified(ok)}
+            />
+          </div>
 
           {loginType === "phone" && (
             <AltContactVerify
@@ -877,7 +955,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
           )}
 
           {/* GSTIN lookup */}
-          <div className="flex flex-col">
+          <div ref={gstinRef} className="flex flex-col scroll-mt-24">
             <label className="text-[12.5px] font-bold tracking-tight text-slate-700">GSTIN</label>
             <div className="mt-1.5 flex gap-2">
               <div className="relative flex-1">
@@ -917,7 +995,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
 
           {gstStage === "found" && (
             <>
-              <div className="flex flex-col">
+              <div ref={displayNameRef} className="flex flex-col scroll-mt-24">
                 <label className="text-[12.5px] font-bold tracking-tight text-slate-700">
                   Display name <span className="font-medium tracking-wide text-slate-400">(shown to buyers)</span>
                 </label>
@@ -927,7 +1005,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
                 />
               </div>
 
-              <div className="flex flex-col">
+              <div ref={dispatchRef} className="flex flex-col scroll-mt-24">
                 <label className="text-[12.5px] font-bold tracking-tight text-slate-700">Dispatch address</label>
                 <label className="mt-2 flex items-center gap-2 text-[13px] font-medium tracking-wide text-slate-600">
                   <input type="checkbox" checked={dispatchSame} onChange={(e) => setDispatchSame(e.target.checked)} className="h-4 w-4 rounded border-slate-300" style={{ accentColor: INK }} />
