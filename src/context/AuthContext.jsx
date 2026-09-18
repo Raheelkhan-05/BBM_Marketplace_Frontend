@@ -209,18 +209,27 @@ export function AuthProvider({ children }) {
 
   const isLoggedIn = !!session?.access_token;
 
+  // Single source of truth for "onboarding is fully complete" — every
+  // other file (Header, SmartLink, HomeProductFeed, OnboardingGate, ...)
+  // should read THESE instead of recomputing isLoggedIn/onboarding_step
+  // combos themselves. That duplication is exactly how a signed-in-but-
+  // unfinished user ended up treated as a full member on some pages
+  // (HomeProductFeed) but not others (Header).
+  const isOnboarded = !isLoggedIn || profile?.onboarding_step === "done";
+  const effectiveLoggedIn = isLoggedIn && isOnboarded;
+  const needsOnboarding = isLoggedIn && !isOnboarded;
+
   return (
     <AuthContext.Provider
       value={{
         session,
         token: session?.access_token,
         profile,
-        // Kept under the same name so nothing else calling useAuth()
-        // needs to change — but it now only reflects "is the profile
-        // for an already-known session still loading", never "do we
-        // know yet whether this person is logged in at all".
         initializing: profileLoading,
         isLoggedIn,
+        isOnboarded,
+        effectiveLoggedIn,
+        needsOnboarding,
         signOut,
         clearSession,
         setDevSession,

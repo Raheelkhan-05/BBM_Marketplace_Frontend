@@ -1125,8 +1125,7 @@ function RowSkeleton() {
 // same unfiltered behavior as before. Passing it wires up live search.
 export default function HomeProductFeed({ category, q = "" }) {
     const navigate = useNavigate();
-    const { profile, token } = useAuth();
-    // console.log("HomeProductFeed token:", token);
+    const { profile, token, effectiveLoggedIn, needsOnboarding } = useAuth();
     const currentUserId = profile?.shop_slug ?? null;
     const [items, setItems] = useState([]);
     const seenItemIdsRef = useRef(new Set());
@@ -1151,9 +1150,16 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [buyState, setBuyState] = useState(null); // { item, seller }
 
     const [loginPrompt, setLoginPrompt] = useState(null);
-    const isLoggedIn = !!token;
+    const isLoggedIn = effectiveLoggedIn;
 
-    const requireLogin = useCallback((message) => setLoginPrompt({ message }), []);
+    const requireLogin = useCallback(
+        () => setLoginPrompt({
+            message: needsOnboarding
+                ? "Finish setting up your account to view seller pricing and place orders."
+                : "You need to login to view seller pricing and place an order.",
+        }),
+        [needsOnboarding]
+    );
     const confirmLogin = useCallback(() => { setLoginPrompt(null); navigate("/login"); }, [navigate]);
     const cancelLogin = useCallback(() => setLoginPrompt(null), []);
 
@@ -1325,6 +1331,11 @@ export default function HomeProductFeed({ category, q = "" }) {
     // looked up from the DB, per buyer-seller pair — not per device.
     const handleBuySeller = async (item, seller) => {
         closeDropdown();
+
+        if (!effectiveLoggedIn) {
+            requireLogin();
+            return;
+        }
 
         if (!token) {
             requireLogin("You need to login to place an order with this seller.");

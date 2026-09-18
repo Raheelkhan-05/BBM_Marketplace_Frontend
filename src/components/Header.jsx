@@ -127,7 +127,11 @@ export default function Header({ onOpenRfq }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [headerHeight, setHeaderHeight] = useState(49);
   const [navMaxWidth, setNavMaxWidth] = useState(null);
-  const { isLoggedIn, profile, signOut } = useAuth();
+  const { isLoggedIn, profile, signOut, effectiveLoggedIn } = useAuth();
+
+  // DELETE these two lines — now sourced from context:
+  // const onboardingDone = !isLoggedIn || profile?.onboarding_step === "done";
+  // const effectiveLoggedIn = isLoggedIn && onboardingDone;
   const { orderUnreadCount } = useNotifications();
   const { cartCount } = useCart();
   const { unreadTotal: chatUnreadTotal } = useChatContext();
@@ -136,15 +140,6 @@ export default function Header({ onOpenRfq }) {
 
   const navigate = useNavigate();
   const { pathname } = useLocation();
-
-
-  // A logged-in-but-unfinished-onboarding user should look exactly like a
-  // guest in the header — Sign In button, no account menu, no nav items
-  // that assume a completed profile. Same condition as Layout.jsx's
-  // onboardingIncomplete, kept in sync so both hide/show together.
-  const onboardingDone = !isLoggedIn || profile?.onboarding_step === "done";
-  const effectiveLoggedIn = isLoggedIn && onboardingDone;
-
 
   const headerRef = useRef(null);
   const rowRef = useRef(null);

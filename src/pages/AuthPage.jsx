@@ -117,17 +117,38 @@ function AuthShell({ children, footer, wide = false }) {
 
 export default function AuthPage() {
   const [step, setStep] = useState("identifier");
-  const [identifier, setIdentifier] = useState("");
   const [token, setToken] = useState(null);
   const [loginType, setLoginType] = useState(null);
+
+  const [identifier, setIdentifier] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const { setAuthSession, refreshProfile, profile } = useAuth();
+  // const { setAuthSession, refreshProfile, profile } = useAuth();
+  const { setAuthSession, refreshProfile, profile, session, needsOnboarding, initializing } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [isNewUser, setIsNewUser] = useState(null);
 
   const redirectTo = location.state?.from || "/home";
+
+  // If someone already has a valid session but never finished onboarding
+  // (verified OTP, then backed out before submitting GSTIN/company info),
+  // jump straight to that step using the session token we already have —
+  // instead of making them re-enter their phone/email and re-verify OTP,
+  // which is what happened before (this page always started fresh at
+  // "identifier" regardless of an existing partial session).
+  useEffect(() => {
+    if (initializing) return;
+    if (needsOnboarding && session?.access_token) {
+      setToken(session.access_token);
+      setLoginType(profile?.email ? "email" : "phone");
+      setStep("onboarding");
+    }
+  }, [initializing, needsOnboarding, session, profile]);
+
+  // Avoid flashing the "enter phone/email" screen for a split second
+  // while we're still figuring out whether this session needs resuming.
+  const resolvingResume = initializing && !!session?.access_token && step === "identifier";
 
   const handleBack = () => {
     if (step === "identifier") {
@@ -240,7 +261,7 @@ export default function AuthPage() {
       </header>
 
       <AnimatePresence mode="wait">
-        {step === "identifier" && (
+        {resolvingResume ? null : step === "identifier" && (
           <IdentifierPanel key="identifier" onSubmit={handleIdentifierSubmit} loading={loading} serverError={error} />
         )}
         {step === "otp" && (
@@ -349,7 +370,7 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
             Buy better.<br />Sell further.
           </h1>
           <p className="mt-4 max-w-[410px] text-[17px] font-medium leading-[1.3] text-slate-500 sm:text-[18px] tracking-wide">
-            Join thousands of businesses on BBM. Verified. Simple. Built for business.
+            People. Product. Partnership.
           </p>
 
           {/* ---- identifier form ---- */}
