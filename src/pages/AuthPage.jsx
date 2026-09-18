@@ -396,11 +396,16 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
               {confirmingCall && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                  className="mt-2 overflow-hidden rounded-2xl bg-slate-50 px-4 py-3"
+                  className="mt-0 mb-5 flex items-start gap-3 overflow-hidden"
                 >
-                  <p className="flex items-start gap-2 text-[12.5px] font-medium leading-relaxed tracking-wide text-slate-600">
-                    <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-                    You'll receive a call from BBM's System on +91 {value} with your one-time code.
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100">
+                    <Phone className="h-4 w-4 text-slate-700" />
+                  </span>
+                  <p className="text-[13.5px] font-medium leading-relaxed tracking-wide text-slate-500">
+                    <span className="block text-[14px] font-bold tracking-wide text-slate-900">
+                      We'll call you at +91 {value}
+                    </span>
+                    and share a one-time code to verify your number. Please keep your phone nearby.
                   </p>
                 </motion.div>
               )}

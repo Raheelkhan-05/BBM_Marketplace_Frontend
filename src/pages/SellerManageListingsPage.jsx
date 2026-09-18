@@ -988,7 +988,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
     }
 
     return (
-        <div className="overflow-hidden px-3 pb-3 sm:px-4">
+        <div className="overflow-hidden px-3 pb-3 sm:px-4 mt-3">
             <AnimatePresence mode="wait" initial={false}>
                 {loading ? (
                     <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
@@ -1313,7 +1313,7 @@ function ListingRow({
                         cursor: isExpanded ? "default" : "pointer",
                     }}
                 >
-                    {!isExpanded && (
+                    {true && (
                         <>
                             {/* =====================================================
             MOBILE — 3-row grid: image spans all 3 rows in col 1,
@@ -2142,7 +2142,17 @@ export default function SellerManageListingsPage() {
                                 isConfirmingDeactivate={confirmDeactivateId === it.id}
                                 togglingId={togglingId}
                                 onOpenDetail={(item) => setViewingId(item.id)}
-                                onQuickEdit={(id) => { setConfirmDeactivateId(null); setQuickEditId(id); }}
+                                // onQuickEdit={(id) => { setConfirmDeactivateId(null); setQuickEditId(id); }}
+                                onQuickEdit={(id) => {
+                                    setConfirmDeactivateId(null);
+                                    if (quickEditId === id) {
+                                        // Pencil was already active → cancel quick edit
+                                        setQuickEditId(null);
+                                    } else {
+                                        // Open quick edit for this row
+                                        setQuickEditId(id);
+                                    }
+                                }}
                                 onCancelQuickEdit={() => setQuickEditId(null)}
                                 onQuickSave={handleQuickSave}
                                 onAskDeactivate={(id) => { setQuickEditId(null); setConfirmDeactivateId(id); }}
