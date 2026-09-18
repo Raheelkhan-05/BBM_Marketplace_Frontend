@@ -18,6 +18,8 @@ const EASE = [0.16, 1, 0.3, 1];
 
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
 
+function round2(n) { return n == null ? n : Math.round(n * 100) / 100; }
+
 const LEVEL_LABEL = { unit: (u) => u || "unit", pack: () => "pack", master_pack: () => "master pack" };
 const LEVEL_FIELD = { unit: "perBaseUnit", pack: "perPack", master_pack: "perMasterPack" };
 function levelsFor(row) { return row.hasMasterPack ? ["unit", "pack", "master_pack"] : ["unit", "pack"]; }
@@ -81,6 +83,33 @@ function DirectionToggle({ direction, onChange }) {
                 }}
             >
                 <TrendingUp className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">Increase</span>
+            </button>
+        </div>
+    );
+}
+
+function GstEntryToggle({ gstMode, onChange }) {
+    return (
+        <div className="flex w-full overflow-hidden rounded-lg border" style={{ borderColor: C.hair }}>
+            <button
+                type="button"
+                onClick={() => onChange("incl")}
+                className="flex flex-1 items-center justify-center gap-1.5 px-2 py-1.5 text-[10.5px] font-bold tracking-wide transition-colors"
+                style={gstMode === "incl" ? { background: C.secondary, color: "#fff" } : { color: C.muted }}
+            >
+                Price incl. GST
+            </button>
+            <button
+                type="button"
+                onClick={() => onChange("excl")}
+                className="flex flex-1 items-center justify-center gap-1.5 border-l px-2 py-1.5 text-[10.5px] font-bold tracking-wide transition-colors"
+                style={{
+                    borderColor: C.hair,
+                    background: gstMode === "excl" ? C.secondary : "transparent",
+                    color: gstMode === "excl" ? "#fff" : C.muted,
+                }}
+            >
+                Price excl. GST
             </button>
         </div>
     );
@@ -245,21 +274,41 @@ function ProductEditCard({ row, draft, onDraftChange }) {
     const percentAbs = draft.percentValue !== "" && draft.percentValue != null ? Math.abs(Number(draft.percentValue)) : "";
 
     const [wheelFor, setWheelFor] = useState(null); // { kind: "amount", level } | { kind: "percent" } | null
+    const gstMode = draft.gstMode || "incl"; // "incl" | "excl" — how the seller is typing amounts in
+
+    // The system stores/derives everything off the GST-inclusive price (same
+    // convention as the default price). If the seller is typing GST-exclusive
+    // amounts, gross them up by row.gstPercent before running through the
+    // normal pack/master-pack math — that math never needs to know which mode
+    // was used to type the number in.
+    const toInclusive = (raw) => {
+        const gst = Number(row.gstPercent) || 0;
+        // console.log("raw", raw);
+        // console.log("gst", gst);
+        return gstMode === "excl" ? Number(raw) * (1 + gst / 100) : Number(raw);
+    };
+    const fromInclusive = (inclusiveVal) => {
+        const gst = Number(row.gstPercent) || 0;
+        // console.log("inclusiveVal", inclusiveVal);
+        // console.log("gst", gst);
+        return gstMode === "excl" ? inclusiveVal / (1 + gst / 100) : inclusiveVal;
+    };
 
     const setFromAmount = (level, raw) => {
         onDraftChange(row.submissionId, (prev) => {
             const nextAmounts = { ...prev.amounts, [level]: raw };
             if (raw === "" || raw == null) return { ...prev, amounts: nextAmounts, canonicalPrice: null };
-            const canonical = priceFromLevel(raw, level, row.packSize, row.masterPackSize);
+            const canonical = priceFromLevel(toInclusive(raw), level, row.packSize, row.masterPackSize);
+
             const bd = derivePriceBreakdown(canonical, row.packSize, row.masterPackSize);
             return {
                 ...prev,
                 canonicalPrice: canonical,
                 percentValue: String(percentFromCustomPrice(row.defaultPrice, canonical)),
                 amounts: {
-                    unit: level === "unit" ? raw : String(bd.perBaseUnit ?? ""),
-                    pack: level === "pack" ? raw : String(bd.perPack ?? ""),
-                    master_pack: level === "master_pack" ? raw : (bd.perMasterPack != null ? String(bd.perMasterPack) : ""),
+                    unit: level === "unit" ? raw : String(round2(fromInclusive(bd.perBaseUnit)) ?? ""),
+                    pack: level === "pack" ? raw : String(round2(fromInclusive(bd.perPack)) ?? ""),
+                    master_pack: level === "master_pack" ? raw : (bd.perMasterPack != null ? String(round2(fromInclusive(bd.perMasterPack))) : ""),
                 },
             };
         });
@@ -327,12 +376,40 @@ function ProductEditCard({ row, draft, onDraftChange }) {
 
             <ModeToggle mode={draft.mode} onChange={(m) => onDraftChange(row.submissionId, (prev) => ({ ...prev, mode: m }))} />
 
+            {draft.mode === "amount" && (
+                <GstEntryToggle
+                    gstMode={gstMode}
+                    onChange={(nextMode) => onDraftChange(row.submissionId, (prev) => {
+                        if (prev.canonicalPrice == null) return { ...prev, gstMode: nextMode };
+                        // Re-express the already-entered amounts in the newly
+                        // chosen mode, without changing the underlying (canonical,
+                        // GST-inclusive) price at all.
+                        const gst = Number(row.gstPercent) || 0;
+                        const convert = (v) => {
+                            if (v === "" || v == null) return v;
+                            const inclusive = prev.gstMode === "excl" ? Number(v) * (1 + gst / 100) : Number(v);
+                            const out = nextMode === "excl" ? inclusive / (1 + gst / 100) : inclusive;
+                            return String(round2(out));
+                        };
+                        return {
+                            ...prev,
+                            gstMode: nextMode,
+                            amounts: {
+                                unit: convert(prev.amounts.unit),
+                                pack: convert(prev.amounts.pack),
+                                master_pack: convert(prev.amounts.master_pack),
+                            },
+                        };
+                    })}
+                />
+            )}
+
             {draft.mode === "amount" ? (
                 <div className={`grid gap-2 ${levels.length === 3 ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-1 sm:grid-cols-2"}`}>
                     {levels.map((level) => (
                         <div key={level} className="flex flex-col gap-1">
                             <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
-                                Price / {LEVEL_LABEL[level](row.unit)}
+                                Price / {LEVEL_LABEL[level](row.unit)} <span className="normal-case font-medium" style={{ color: C.muted }}>({gstMode === "excl" ? "excl. GST" : "incl. GST"})</span>
                             </span>
                             <div
                                 onClick={openAmountWheel(level)}
@@ -591,6 +668,7 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
         setLoading(true);
         const res = await fetchCustomPricing(token, buyerId);
         if (res?.success) setRows(res.items);
+        console.log("res", res);
         setLoading(false);
     }, [buyerId, token]);
 

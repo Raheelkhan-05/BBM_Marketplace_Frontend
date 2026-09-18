@@ -715,7 +715,7 @@ export default function SellerListingForm({
     const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
     const touch = (key) => setTouched((t) => (t[key] ? t : { ...t, [key]: true }));
 
-    useEffect(() => { fetchCommissionInfo().then((res) => { if (res?.success) setCommissionPercent(res.commissionPercent); }); }, []);
+    // useEffect(() => { fetchCommissionInfo().then((res) => { if (res?.success) setCommissionPercent(res.commissionPercent); }); }, []);
 
     // Prefill defaults from the seller's last submission — now covers delivery,
     // tax/legal, and commercial-terms groups (see GROUP_FIELD_MAP on the
