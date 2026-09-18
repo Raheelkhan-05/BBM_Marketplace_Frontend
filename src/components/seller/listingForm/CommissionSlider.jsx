@@ -1,6 +1,6 @@
-import React, { useState, useRef, useCallback } from "react";
-import { IndianRupee } from "lucide-react";
-import { C } from "./FormPrimitives";
+import React, { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { Info, X } from "lucide-react";
 
 const MIN = 0.25;
 const MAX = 100;
@@ -8,6 +8,168 @@ const MAX = 100;
 function clamp(n, min, max) {
     if (Number.isNaN(n)) return min;
     return Math.min(max, Math.max(min, n));
+}
+
+// Portaled to document.body and positioned with `fixed` coordinates
+// computed from the trigger icon's actual bounding rect. This is
+// required, not optional: CommissionSlider is nested inside SectionCard
+// and QuickUpdatePanel, both of which use overflow-hidden to drive their
+// collapse/expand height animations. A plain `position: absolute`
+// popover would be clipped at whichever of those ancestors' boundaries
+// it hits first — portaling escapes the whole ancestor chain, since a
+// child of document.body has no overflow-hidden parent to be clipped by.
+function InfoTooltip({ C }) {
+    const [open, setOpen] = useState(false);
+    const [coords, setCoords] = useState(null);
+    const triggerRef = useRef(null);
+    const popoverRef = useRef(null);
+
+    const POPOVER_WIDTH = 300; // matches the w-[280px] sm:w-[320px] below, used only for edge-clamping math
+    const GAP = 8;
+
+    const computePosition = useCallback(() => {
+        const trigger = triggerRef.current;
+        if (!trigger) return;
+        const rect = trigger.getBoundingClientRect();
+
+        // Default: open below-left aligned to the icon. Clamp horizontally
+        // so it never runs off the right edge of the viewport, and flip
+        // above the icon if there isn't enough room below.
+        let left = rect.left;
+        const maxLeft = window.innerWidth - POPOVER_WIDTH - 12;
+        if (left > maxLeft) left = Math.max(12, maxLeft);
+
+        const estimatedHeight = 300; // rough — good enough for a flip decision
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const openAbove = spaceBelow < estimatedHeight && rect.top > estimatedHeight;
+
+        const top = openAbove ? rect.top - GAP : rect.bottom + GAP;
+
+        setCoords({ top, left, openAbove, anchorLeft: rect.left + rect.width / 2 });
+    }, []);
+
+    const toggleOpen = (e) => {
+        e.stopPropagation();
+        if (!open) computePosition();
+        setOpen((v) => !v);
+    };
+
+    useEffect(() => {
+        if (!open) return;
+
+        const onClick = (e) => {
+            if (
+                triggerRef.current && !triggerRef.current.contains(e.target) &&
+                popoverRef.current && !popoverRef.current.contains(e.target)
+            ) {
+                setOpen(false);
+            }
+        };
+        const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+        // Keep the popover glued to the icon if the page scrolls or
+        // resizes while it's open (e.g. the parent section's own expand
+        // animation is still settling).
+        const onReposition = () => computePosition();
+
+        document.addEventListener("mousedown", onClick);
+        document.addEventListener("keydown", onKey);
+        window.addEventListener("scroll", onReposition, true);
+        window.addEventListener("resize", onReposition);
+        return () => {
+            document.removeEventListener("mousedown", onClick);
+            document.removeEventListener("keydown", onKey);
+            window.removeEventListener("scroll", onReposition, true);
+            window.removeEventListener("resize", onReposition);
+        };
+    }, [open, computePosition]);
+
+    const bullets = [
+        "Category visibility",
+        "Buyer discovery",
+        "Targeted promotions",
+        "Distribution network promotion",
+        "Featured product placements",
+        "Promotional campaigns",
+    ];
+
+    return (
+        <>
+            <button
+                ref={triggerRef}
+                type="button"
+                onClick={toggleOpen}
+                aria-label="Why increase your promotion budget?"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full transition-colors duration-150"
+                style={{ color: open ? C.secondary : C.muted }}
+            >
+                <Info className="h-3.5 w-3.5" />
+            </button>
+
+            {open && coords && createPortal(
+                <div
+                    ref={popoverRef}
+                    onClick={(e) => e.stopPropagation()}
+                    className="fixed z-[5] w-[280px] rounded-2xl border bg-white p-3.5 shadow-xl sm:w-[320px]"
+                    style={{
+                        borderColor: C.hair,
+                        top: coords.openAbove ? undefined : coords.top,
+                        bottom: coords.openAbove ? window.innerHeight - coords.top : undefined,
+                        left: coords.left,
+                    }}
+                >
+                    <div className="flex items-start justify-between gap-2">
+                        <p className="text-[12.5px] font-extrabold leading-snug tracking-wide" style={{ color: C.ink }}>
+                            Why increase your promotion budget?
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => setOpen(false)}
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]"
+                            style={{ color: C.muted }}
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+
+                    <p className="mt-2 text-[11.5px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>
+                        Your promotional budget determines how aggressively BBM can promote your products.
+                    </p>
+                    <p className="mt-2 text-[11.5px] font-semibold leading-relaxed tracking-wide" style={{ color: C.ink }}>
+                        A higher budget can help us allocate more resources toward:
+                    </p>
+
+                    <ul className="mt-1.5 flex flex-col gap-1">
+                        {bullets.map((b) => (
+                            <li key={b} className="flex items-center gap-1.5 text-[11.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                <span className="h-1 w-1 shrink-0 rounded-full" style={{ background: C.secondary }} />
+                                {b}
+                            </li>
+                        ))}
+                    </ul>
+
+                    <div className="mt-2.5 rounded-lg px-2.5 py-2" style={{ background: `${C.secondary}0a` }}>
+                        <p className="text-[11px] font-bold leading-snug tracking-wide" style={{ color: C.secondary }}>
+                            You only pay this budget when an order is generated.
+                        </p>
+                    </div>
+
+                    {/* Pointer nub — flips to point up/down depending on which
+                        side the popover opened on, and stays roughly aligned
+                        under/above the trigger icon regardless of the
+                        left-edge clamping above. */}
+                    <div
+                        className="absolute h-3 w-3 rotate-45 border bg-white"
+                        style={
+                            coords.openAbove
+                                ? { bottom: -6, left: Math.min(Math.max(coords.anchorLeft - coords.left - 6, 12), 280), borderColor: C.hair, borderTop: "none", borderLeft: "none" }
+                                : { top: -6, left: Math.min(Math.max(coords.anchorLeft - coords.left - 6, 12), 280), borderColor: C.hair, borderBottom: "none", borderRight: "none" }
+                        }
+                    />
+                </div>,
+                document.body
+            )}
+        </>
+    );
 }
 
 function CommissionSlider({ value, onChange, C, isErr }) {
@@ -80,8 +242,9 @@ function CommissionSlider({ value, onChange, C, isErr }) {
         >
             <div className="flex items-center justify-between gap-3">
                 <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
+                    <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
                         Promotion & Visibility Budget <span style={{ color: C.primary }}>*</span>
+                        <InfoTooltip C={C} />
                     </span>
                     <span className="text-[10px] font-medium leading-snug tracking-wider" style={{ color: C.muted }}>
                         Higher promotional budgets may receive higher placement and greater visibility, subject to relevance and platform performance
@@ -108,16 +271,12 @@ function CommissionSlider({ value, onChange, C, isErr }) {
                 </div>
             </div>
 
-            {/* Slider row: left = slider, right = live value already shown above,
-                 this row is purely the drag control */}
             <div className="flex items-center gap-3 px-0.5">
                 <span className="w-8 shrink-0 text-[10px] font-bold tabular-nums" style={{ color: C.muted }}>
                     {MIN}%
                 </span>
                 <div className="relative flex h-6 flex-1 items-center">
-                    {/* track */}
                     <div className="absolute inset-x-0 h-1.5 rounded-full" style={{ background: `${C.secondary}18` }} />
-                    {/* filled portion */}
                     <div
                         className="absolute h-1.5 rounded-full"
                         style={{ width: `${pct}%`, background: C.secondary }}
@@ -135,7 +294,6 @@ function CommissionSlider({ value, onChange, C, isErr }) {
                         onTouchEnd={() => setDragging(false)}
                         className="relative z-10 h-6 w-full cursor-pointer appearance-none bg-transparent"
                         style={{
-                            // WebKit thumb
                             WebkitAppearance: "none",
                         }}
                     />
