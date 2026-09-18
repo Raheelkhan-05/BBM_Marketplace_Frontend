@@ -54,6 +54,27 @@
 // otherwise don't scroll the background". Both ListingDetailModal's and
 // EditListingModal's own scrollable content areas are marked with
 // data-scroll-lock-allow so scrolling inside them still works normally.
+//
+// QUICK UPDATE PANEL REDESIGN (this pass):
+// - Base Price, Marketing Budget %, and Final Price are no longer plain
+//   number inputs. Each is now a tap target that opens the same
+//   PriceWheelPicker already used in the full listing form, for three
+//   reasons: (1) scrolling to a value is a more deliberate, felt action
+//   than typing, which cuts down on accidental fat-finger price edits;
+//   (2) every wheel opens with a "Current: ₹X" / "Current: X%" jump-to
+//   chip, anchoring the seller to their existing value before they
+//   change it — the same anchoring pattern the listing form's price
+//   wheel already uses via referenceValue/referenceLabel; (3) it keeps
+//   the seller-facing pricing interaction consistent across the whole
+//   app instead of having one raw-input flow here and a wheel flow
+//   there.
+// - The four pricing rows (Base → GST → Marketing Budget → Final) are
+//   now visually chunked as one connected block with a light rail on
+//   the left, so the seller reads it as "cause → effect" instead of
+//   four independent fields.
+// - Save now briefly shows a checkmark pulse on the button before the
+//   panel closes, so the tap has a visible, immediate acknowledgement
+//   instead of the panel just vanishing.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -92,6 +113,8 @@ import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import SellerListingForm, { unflattenDispatchingLocations } from "../components/seller/listingForm/SellerListingForm.jsx";
+import PriceWheelPicker from "../components/seller/listingForm/PriceWheelPicker.jsx";
+import { fetchCommissionInfo } from "../utils/sellerListingApi.js";
 // Same shared convention BuyNowModal.jsx / HomeProductFeed.jsx already use
 // for "what unit is this listing actually sold and priced in" — imported
 // rather than reimplemented here, so this page can't drift out of sync
@@ -618,6 +641,78 @@ function QuickField({ label, ...props }) {
     );
 }
 
+function ActiveToggle({ isActive, busy, onChange }) {
+    return (
+        <button
+            type="button"
+            role="switch"
+            aria-checked={isActive}
+            aria-label={`Listing ${isActive ? "active" : "paused"}`}
+            onClick={() => !busy && onChange(!isActive)}
+            disabled={busy}
+            className="group inline-flex items-center gap-2 rounded-full transition-all duration-200 focus:outline-none disabled:opacity-60"
+        >
+            {/* Label */}
+            <span className="flex min-w-[44px] flex-col items-end leading-none">
+                <span
+                    className="text-[10px] font-bold tracking-[0.02em]"
+                    style={{ color: isActive ? C.secondary : "#7B858C" }}
+                >
+                    {isActive ? "Live" : "Paused"}
+                </span>
+            </span>
+
+            {/* Switch */}
+            <span
+                className="relative flex h-5 w-10 shrink-0 items-center rounded-full p-0.5 transition-all duration-200"
+                style={{
+                    backgroundColor: isActive ? C.secondary : "#D9DEE2",
+                }}
+            >
+                {busy ? (
+                    <Loader2 className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 animate-spin text-white" />
+                ) : (
+                    <span
+                        className="h-4 w-4 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-transform duration-200"
+                        style={{
+                            transform: isActive ? "translateX(20px)" : "translateX(0px)",
+                        }}
+                    />
+                )}
+            </span>
+        </button>
+    );
+}
+
+// Tap-to-open field styled like QuickField but non-editable directly —
+// tapping it opens a PriceWheelPicker instead of a keyboard. Used for
+// Base Price / Marketing Budget % / Final Price in QuickUpdatePanel below,
+// so pricing edits always go through the deliberate wheel-scroll gesture
+// instead of raw typing.
+function QuickWheelField({ label, displayValue, placeholder, onOpen, accent = C.secondary }) {
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            className="flex w-full items-center justify-between gap-2 rounded-lg border bg-white px-2.5 py-2 text-left transition-colors duration-150 active:scale-[0.99]"
+            style={{ borderColor: C.hair }}
+        >
+            <span className="min-w-0 flex-1">
+                <span className="block font-mono text-[9.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: C.muted }}>{label}</span>
+                <span className="mt-0.5 block text-[13.5px] font-bold tabular-nums" style={{ color: displayValue ? C.ink : C.muted }}>
+                    {displayValue || placeholder}
+                </span>
+            </span>
+            <span
+                className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider"
+                style={{ background: `${accent}14`, color: accent }}
+            >
+                <Pencil className="h-3 w-3" /> Change
+            </span>
+        </button>
+    );
+}
+
 /* ---------------- inline "quick update" panel (price / stock / MOQ / lead time) ---------------- */
 
 // Restock control, split into two clear modes instead of one ambiguous
@@ -719,22 +814,43 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
     const [loadError, setLoadError] = useState("");
     const [form, setForm] = useState(null);
     const [saving, setSaving] = useState(false);
+    const [justSaved, setJustSaved] = useState(false);
     const [error, setError] = useState("");
+
+    // The values this listing had when the panel opened — used ONLY as
+    // "Current: …" anchor chips inside each price wheel, so the seller
+    // always has their pre-edit number to jump back to or compare
+    // against (anchoring: judging a change against a visible reference
+    // point, rather than blind).
+    const [original, setOriginal] = useState(null);
+
+    // Platform's own minimum commission — shown as the second reference
+    // point inside the Marketing Budget wheel, same as the full listing
+    // form does.
+    const [platformDefaultCommissionPercent, setPlatformDefaultCommissionPercent] = useState(0.25);
+
+    // Which wheel is currently open: null | "base" | "commission" | "final"
+    const [priceWheel, setPriceWheel] = useState(null);
 
     // Tracks which of the two price fields the seller is actively typing
     // in, so the OTHER one always shows the live-derived value instead of
     // both fields fighting to "own" form.basePrice.
     const [priceEditSource, setPriceEditSource] = useState("base"); // "base" | "final"
 
-    // Holds EXACTLY what the seller typed into Final Price, verbatim —
-    // never re-derived from basePrice. Re-deriving it (finalPrice =
-    // basePrice * (1 + gst/100)) after basePrice was itself derived FROM
-    // a rounded final price loses precision on every round-trip (typing
-    // 6 → basePrice rounds to 5.08 → re-deriving final from 5.08 gives
-    // 5.99, not 6). Displaying this raw string instead avoids that
+    // Holds EXACTLY what the seller last set via the Final Price wheel,
+    // verbatim — never re-derived from basePrice. Re-deriving it
+    // (finalPrice = basePrice * (1 + gst/100)) after basePrice was itself
+    // derived FROM a rounded final price loses precision on every
+    // round-trip. Displaying this raw string instead avoids that
     // entirely — the derived basePrice is still what actually gets sent
     // to the backend on save, this is purely a display fix.
     const [finalPriceInput, setFinalPriceInput] = useState("");
+
+    useEffect(() => {
+        fetchCommissionInfo().then((res) => {
+            if (res?.success) setPlatformDefaultCommissionPercent(res.commissionPercent);
+        });
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -759,6 +875,11 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                 ),
             };
             setForm(nextForm);
+            setOriginal({
+                basePrice: nextForm.basePrice,
+                marketingCommissionPercent: nextForm.marketingCommissionPercent,
+                finalPrice: nextForm.basePrice ? computeFinalPrice(nextForm.basePrice, nextForm.gstPercent) : null,
+            });
             // Seed the Final Price display from whatever's actually
             // stored, computed once on load — after this, it only ever
             // changes from direct typing or from Base Price edits below.
@@ -779,28 +900,29 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
 
     const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
-    // Typing in Base Price: store it directly, and re-derive what Final
-    // Price should show from it. This direction has no precision loss
-    // (base → final is a single multiply, not a round-trip).
-    const handleBasePriceChange = (value) => {
+    // Setting Base Price (now via wheel, not typing): store it directly,
+    // and re-derive what Final Price should show from it. This direction
+    // has no precision loss (base → final is a single multiply, not a
+    // round-trip).
+    const applyBasePrice = (value) => {
         setPriceEditSource("base");
-        setField("basePrice", value);
-        setFinalPriceInput(value === "" ? "" : String(computeFinalPrice(value, form.gstPercent)));
+        setField("basePrice", String(value));
+        setFinalPriceInput(String(computeFinalPrice(value, form.gstPercent)));
     };
 
-    // Typing in Final Price: show EXACTLY what was typed (no re-deriving,
-    // no rounding it through basePrice and back) — and separately compute
-    // basePrice in the background so there's a correct number to save.
-    const handleFinalPriceChange = (value) => {
+    // Setting Final Price (via wheel): show EXACTLY what was picked (no
+    // re-deriving, no rounding it through basePrice and back) — and
+    // separately compute basePrice in the background so there's a
+    // correct number to save.
+    const applyFinalPrice = (value) => {
         setPriceEditSource("final");
-        setFinalPriceInput(value);
-        const derivedBase = value === "" ? "" : String(computeBasePriceFromFinal(value, form.gstPercent));
-        setField("basePrice", derivedBase);
+        setFinalPriceInput(String(value));
+        setField("basePrice", String(computeBasePriceFromFinal(value, form.gstPercent)));
     };
 
-    // If GST% changes while the seller was last typing into Final Price,
-    // keep the Final Price text exactly as typed and only re-derive
-    // basePrice behind it — never touch finalPriceInput here.
+    // If GST% changes while the seller was last editing Final Price, keep
+    // the Final Price text exactly as it was and only re-derive basePrice
+    // behind it — never touch finalPriceInput here.
     const handleGstPercentChange = (value) => {
         setForm((f) => {
             if (priceEditSource === "final" && finalPriceInput !== "") {
@@ -825,7 +947,6 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
         if (!(Number(form.marketingCommissionPercent) >= 0.25 && Number(form.marketingCommissionPercent) <= 100)) {
             return setError("Marketing Budget must be between 0.25% and 100%.");
         }
-
 
         setSaving(true);
 
@@ -856,6 +977,11 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                 ? { stock_quantity: form.stockQuantity === "" ? null : Number(form.stockQuantity) }
                 : {}),
         };
+
+        // Brief, visible confirmation before the panel closes — closes the
+        // loop so a tap on Save is never left ambiguous.
+        setJustSaved(true);
+        await new Promise((r) => setTimeout(r, 420));
 
         await onSave(payload, optimisticPatch);
         setSaving(false);
@@ -888,41 +1014,57 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                         className="flex flex-col gap-3.5 rounded-xl border p-3"
                         style={{ borderColor: C.hair, background: C.hairSoft }}
                     >
-                        {/* ---- Pricing ---- */}
+                        {/* ---- Pricing — chunked as one connected flow (Base → GST →
+                            Marketing Budget → Final), with a light left rail tying
+                            the four rows together so it reads as cause → effect
+                            instead of four separate fields. ---- */}
                         <div className="flex flex-col gap-2">
                             <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>
                                 <IndianRupee className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Pricing · per {saleUnit}
                             </span>
 
-                            <QuickField
-                                label={`Base Price (₹/${saleUnit})`}
-                                type="number" min="0" step="0.01"
-                                value={form.basePrice}
-                                onChange={(e) => handleBasePriceChange(e.target.value)}
-                            />
+                            <div className="relative flex flex-col gap-2 pl-3" style={{ borderLeft: `2px solid ${C.hair}` }}>
+                                <QuickWheelField
+                                    label={`Base Price (₹/${saleUnit})`}
+                                    displayValue={form.basePrice ? `₹${formatMoney(form.basePrice)}` : ""}
+                                    placeholder="Tap to set"
+                                    onOpen={() => setPriceWheel("base")}
+                                />
 
-                            {/* Read-only — deliberately no border/input chrome (unlike
-                                QuickField above/below) so it can never be mistaken for an
-                                editable field. Sits between the two prices since it's the
-                                thing that connects them: Base Price + this = Final Price. */}
-                            <div className="flex items-center justify-between px-0.5 text-[11.5px] font-semibold" style={{ color: C.muted }}>
-                                <span>+ GST ({form.gstPercent}%)</span>
-                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>₹{formatMoney(gstAmount)}</span>
+                                {/* Read-only — deliberately no border/input chrome (unlike
+                                    the wheel fields above/below) so it can never be mistaken
+                                    for an editable field. Sits between the two prices since
+                                    it's the thing that connects them: Base Price + this =
+                                    Final Price. */}
+                                <div className="flex items-center justify-between px-0.5 text-[11.5px] font-semibold" style={{ color: C.muted }}>
+                                    <span>+ GST ({form.gstPercent}%)</span>
+                                    <span className="tabular-nums font-bold" style={{ color: C.ink }}>₹{formatMoney(gstAmount)}</span>
+                                </div>
+
+                                <QuickWheelField
+                                    label={`Final Price (₹/${saleUnit})`}
+                                    displayValue={finalPriceInput ? `₹${formatMoney(finalPriceInput)}` : ""}
+                                    placeholder="Tap to set"
+                                    onOpen={() => setPriceWheel("final")}
+                                />
+                                <p className="px-0.5 text-[10.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                                    Final Price is exactly what the buyer pays. Change either Base or Final — the other updates to match.
+                                </p>
                             </div>
-                            <QuickField
-                                label="Marketing Budget %"
-                                type="number" min="0.25" max="100" step="0.25"
-                                value={form.marketingCommissionPercent}
-                                onChange={(e) => setField("marketingCommissionPercent", e.target.value)}
-                            />
-
-                            <QuickField
-                                label={`Final Price (₹/${saleUnit})`}
-                                type="number" min="0" step="0.01"
-                                value={finalPriceInput}
-                                onChange={(e) => handleFinalPriceChange(e.target.value)}
-                            />
                         </div>
+
+                        {/* Marketing Budget — deliberately standalone, not part of the
+                            Base→GST→Final rail. It's the seller's own spend decision,
+                            not a step in "what does the buyer pay", so grouping it with
+                            price math implied it changes the buyer's price the same way
+                            Base/Final do. Sits at the same visual level as MOQ below. */}
+                        <QuickWheelField
+                            label="Marketing Budget %"
+                            displayValue={form.marketingCommissionPercent ? `${form.marketingCommissionPercent}%` : ""}
+                            placeholder="Tap to set"
+                            onOpen={() => setPriceWheel("commission")}
+                            accent={C.primary}
+                        />
 
                         {/* ---- Quantity & lead time ---- */}
                         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
@@ -958,16 +1100,58 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                         <div className="flex gap-2 pt-0.5">
                             <button onClick={save} disabled={saving}
                                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-50 sm:flex-none sm:px-6"
-                                style={{ background: C.secondary }}>
-                                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                                {item.review_status === "rejected" ? "Resubmit" : "Save"}
+                                style={{ background: justSaved ? "#15803d" : C.secondary }}>
+                                {saving ? (justSaved ? <Check className="h-3.5 w-3.5" /> : <Loader2 className="h-3.5 w-3.5 animate-spin" />) : <Check className="h-3.5 w-3.5" />}
+                                {saving && justSaved ? "Saved" : item.review_status === "rejected" ? "Resubmit" : "Save"}
                             </button>
-                            <button onClick={onCancel}
-                                className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03]"
+                            <button onClick={onCancel} disabled={saving}
+                                className="flex items-center justify-center rounded-lg border bg-white px-3 transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-50"
                                 style={{ borderColor: C.hair }}>
                                 <X className="h-3.5 w-3.5" style={{ color: C.muted }} />
                             </button>
                         </div>
+
+                        {priceWheel === "base" && (
+                            <PriceWheelPicker
+                                open
+                                unit="currency"
+                                unitLabel={saleUnit}
+                                initialValue={form.basePrice ? Number(form.basePrice) : (original?.basePrice ? Number(original.basePrice) : 0)}
+                                referenceValue={original?.basePrice ? Number(original.basePrice) : null}
+                                referenceLabel="Current price"
+                                onClose={() => setPriceWheel(null)}
+                                onConfirm={(price) => { applyBasePrice(price); setPriceWheel(null); }}
+                            />
+                        )}
+
+                        {priceWheel === "commission" && (
+                            <PriceWheelPicker
+                                open
+                                unit="percent"
+                                direction="increase"
+                                min={0.25}
+                                max={100}
+                                unitLabel="Marketing Budget"
+                                referenceLabel="Platform minimum"
+                                referenceValue={platformDefaultCommissionPercent}
+                                initialValue={form.marketingCommissionPercent ? Number(form.marketingCommissionPercent) : platformDefaultCommissionPercent}
+                                onClose={() => setPriceWheel(null)}
+                                onConfirm={(v) => { setField("marketingCommissionPercent", String(v)); setPriceWheel(null); }}
+                            />
+                        )}
+
+                        {priceWheel === "final" && (
+                            <PriceWheelPicker
+                                open
+                                unit="currency"
+                                unitLabel={saleUnit}
+                                initialValue={finalPriceInput ? Number(finalPriceInput) : (original?.finalPrice || 0)}
+                                referenceValue={original?.finalPrice || null}
+                                referenceLabel="Current final price"
+                                onClose={() => setPriceWheel(null)}
+                                onConfirm={(price) => { applyFinalPrice(price); setPriceWheel(null); }}
+                            />
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -1005,161 +1189,390 @@ function DeactivateConfirm({ busy, onConfirm, onCancel }) {
 
 /* ============================== list row ============================== */
 
+/* ============================== list row ============================== */
+
+// Single source of truth for what "status" this listing is in, used to
+// pick one badge (never more than one) — the seller should never have to
+// reconcile two separate signals (an accent bar + a text pill) that might
+// seem to disagree.
+function getListingStatus(it, isActive, sState) {
+    if (!isActive) return { label: "Paused", bg: C.hairSoft, fg: C.muted };
+    if (it.review_status === "pending_review") return { label: "Pending review", bg: "#fef3c7", fg: "#b45309" };
+    if (it.review_status === "rejected") return { label: "Rejected", bg: "#fee2e2", fg: "#c71f11" };
+    if (sState === "out") return { label: "Out of stock", bg: "#fee2e2", fg: "#c71f11" };
+    if (sState === "low") return { label: "Low stock", bg: "#fef3c7", fg: "#b45309" };
+    return null; // live + healthy — no badge needed, a clean row IS the good-state signal
+}
+
+function RowIconButton({ icon: Icon, label, onClick, tone = C.ink, hoverBg = "rgba(11,17,22,0.05)" }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-label={label}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg transition-colors duration-150"
+            style={{ color: tone }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = hoverBg)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+        >
+            <Icon className="h-4 w-4" />
+        </button>
+    );
+}
+
+
 function ListingRow({
     it, idx, isHighlighted, isQuickEditing, isConfirmingDeactivate, togglingId,
     onOpenDetail, onEdit, onQuickEdit, onCancelQuickEdit, onQuickSave,
     onAskDeactivate, onCancelDeactivate, onConfirmDeactivate, onActivate,
-    onOpenImage,
+    onOpenImage, onShare,
 }) {
     const name = it.brand?.name || it.product_name || "Product";
     const brandName = it.brand?.brand_name || it.brand_name;
     const image = it.image || it.brand?.image;
-    const gallery = it.images?.length ? it.images : (it.brand?.images?.length ? it.brand.images : (image ? [image] : []));
+
+    const gallery = it.images?.length
+        ? it.images
+        : it.brand?.images?.length
+            ? it.brand.images
+            : image
+                ? [image]
+                : [];
+
     const isActive = it.is_active !== false;
     const stock = it.stock_quantity;
     const sState = stockState(stock);
     const isExpanded = isQuickEditing || isConfirmingDeactivate;
+    const isPending = it.review_status === "pending_review";
 
-    // units_per_master_pack now arrives directly on every row from the
-    // list endpoint (see backend PERFORMANCE FIX note) — no more waiting
-    // on a background enrichment pass to learn it.
     const saleUnit = saleUnitLabel(it.units_per_master_pack);
+    const status = getListingStatus(it, isActive, sState);
 
-    const statusColor = !isActive ? C.muted : sState === "out" ? "#c71f11" : sState === "low" ? "#b45309" : C.secondary;
-    const stockLabel = sState === "out"
-        ? "Out of stock"
-        : stock != null
-            ? `${stock} ${pluralizeUnit(stock, saleUnit)} left`
-            : "Stock not set";
+    const stockLabel =
+        sState === "out"
+            ? "Out of stock"
+            : stock != null
+                ? `${stock} ${pluralizeUnit(stock, saleUnit)} left`
+                : "Stock not set";
+
+    const stockTone =
+        sState === "out"
+            ? "#c71f11"
+            : sState === "low"
+                ? "#b45309"
+                : C.muted;
+
+    // const handleToggle = (nextActive) => {
+    //     if (nextActive) {
+    //         onActivate(it.id);
+    //     } else {
+    //         onAskDeactivate(it.id);
+    //     }
+    // };
+
+    const handleToggle = (nextActive) => {
+        if (nextActive) {
+            onActivate(it.id);
+        } else {
+            onConfirmDeactivate(it.id);
+        }
+    };
 
     return (
-        // Mount-only entrance fade — animates opacity/y exactly once when
-        // this row first appears, then never changes again. Kept
-        // completely separate from the highlight pulse below so the two
-        // never share a transition (that's what was making the whole row
-        // look like it was fading in/out along with the highlight).
         <motion.div
-            initial={{ opacity: 0, y: 6 }}
+            initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28, delay: Math.min(idx * 0.02, 0.2), ease: EASE }}
+            transition={{
+                duration: 0.18,
+                delay: Math.min(idx * 0.012, 0.12),
+                ease: EASE,
+            }}
         >
-            {/* Highlight pulse — animates ONLY backgroundColor, retriggered
-                independently whenever isHighlighted flips. Snaps on fast
-                (0.2s) and fades out slowly (1.8s) for a proper "flash then
-                fade" instead of one flat blend. Uses the same hue at
-                alpha 0 rather than a hardcoded white, so it fades to
-                transparent instead of stomping the row's real background. */}
             <motion.div
-                animate={{ backgroundColor: isHighlighted ? "rgba(253,243,216,1)" : "rgba(253,243,216,0)" }}
-                transition={{ duration: isHighlighted ? 0.2 : 1.8, ease: "easeOut" }}
+                animate={{
+                    backgroundColor: isHighlighted
+                        ? "rgba(253,243,216,1)"
+                        : "rgba(253,243,216,0)",
+                }}
+                transition={{
+                    duration: isHighlighted ? 0.18 : 1.2,
+                    ease: "easeOut",
+                }}
             >
                 <div
-                    onClick={() => { if (!isExpanded) onOpenDetail(it); }}
-                    className="group relative flex items-center gap-3 px-3 py-3.5 sm:px-4 transition-opacity duration-200"
-                    style={{ opacity: isActive ? 1 : 0.55, cursor: isExpanded ? "default" : "pointer" }}
+                    onClick={() => {
+                        if (!isExpanded) onOpenDetail(it);
+                    }}
+                    className="
+                        group
+                        px-3 py-2.5
+                        sm:px-3.5 sm:py-2.5
+                    "
+                    style={{
+                        opacity: isActive ? 1 : 0.58,
+                        cursor: isExpanded ? "default" : "pointer",
+                    }}
                 >
-                    <span
-                        aria-hidden
-                        className="absolute inset-y-2.5 left-0 w-[3px] rounded-full"
-                        style={{ background: statusColor, opacity: !isActive || sState === "low" || sState === "out" ? 1 : 0 }}
-                    />
-
-                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border" style={{ borderColor: C.hair, background: C.hairSoft }}
-                        onClick={(e) => { e.stopPropagation(); if (gallery.length) onOpenImage({ images: gallery, index: 0, alt: name }); }}
-                    >
-                        {image
-                            ? <img src={resizedImageUrl(image, { width: 75 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                            : <ImageIcon className="m-auto h-5 w-5" style={{ color: C.hair }} />}
-                        {gallery.length > 1 && (
-                            <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 px-1 text-[8.5px] font-bold text-white">+{gallery.length - 1}</span>
-                        )}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                            <p className="truncate text-[14px] font-bold leading-tight" style={{ color: C.ink }}>{name}</p>
-                            {!isActive && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wide" style={{ background: C.hairSoft, color: C.muted }}>Deactivated</span>}
-                            {isActive && it.review_status === "pending_review" && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold" style={{ background: "#fef3c7", color: "#b45309" }}>Pending</span>}
-                            {isActive && it.review_status === "rejected" && <span className="shrink-0 rounded-full px-1.5 py-[1px] text-[9px] font-bold" style={{ background: "#fee2e2", color: "#c71f11" }}>Rejected</span>}
-                        </div>
-                        <p className="mt-0.5 truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
-                            {brandName ? `${brandName} · ` : ""}
-                            MOQ {it.moq} {pluralizeUnit(it.moq, saleUnit)}
-                            {it.lead_time != null && ` · Lead ${it.lead_time}d`}
-                        </p>
-                        {it.rejection_reason && it.review_status === "rejected" && (
-                            <p className="mt-1 truncate text-[11px] font-semibold" style={{ color: "#c71f11" }}>Rejected: {it.rejection_reason}</p>
-                        )}
-                    </div>
-
                     {!isExpanded && (
-                        <div className="hidden shrink-0 flex-col items-end pl-2 text-right sm:flex">
-                            <p className="leading-none">
-                                <span className="text-[15.5px] font-bold tracking-[-0.01em] tabular-nums" style={{ color: C.ink }}>₹{formatMoney(it.price)}</span>
-                                <span className="ml-0.5 text-[10.5px] font-semibold" style={{ color: C.muted }}>/{saleUnit}</span>
-                            </p>
-                            <p className="mt-1 whitespace-nowrap text-[10.5px] font-bold tabular-nums" style={{ color: statusColor }}>
-                                {isActive ? stockLabel : "Hidden from buyers"}
-                            </p>
-                        </div>
+                        <>
+                            {/* =====================================================
+            MOBILE — 3-row grid: image spans all 3 rows in col 1,
+            text stack in col 2, icon stack (toggle/share/edit) in
+            col 3. Grid auto-placement fills col 2 then col 3 for
+            each row since col 1 is already occupied by the
+            row-span-3 image.
+            ===================================================== */}
+                            {/* =====================================================
+    MOBILE — flex row: image stretches to match the height
+    of the text stack, text stack in the middle, icon stack
+    on the right. No fixed row heights — everything sizes
+    to its own content.
+    ===================================================== */}
+                            <div className="flex items-stretch gap-2.5 sm:hidden">
+                                {/* Image — stretches to match the middle column's height */}
+                                <div
+                                    className="relative w-12 shrink-0 self-stretch overflow-hidden rounded-lg border"
+                                    style={{ borderColor: C.hair, background: C.hairSoft }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (gallery.length) onOpenImage({ images: gallery, index: 0, alt: name });
+                                    }}
+                                >
+                                    {image ? (
+                                        <img
+                                            src={resizedImageUrl(image, { width: 70 })}
+                                            alt=""
+                                            loading="lazy"
+                                            decoding="async"
+                                            className="h-full w-full object-cover"
+                                        />
+                                    ) : (
+                                        <ImageIcon className="absolute inset-0 m-auto h-4 w-4" style={{ color: C.hair }} />
+                                    )}
+                                    {gallery.length > 1 && (
+                                        <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 px-1 py-0.5 text-[8px] font-bold tracking-wide text-white">
+                                            +{gallery.length - 1}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Text stack */}
+                                <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+                                    <div className="flex min-w-0 items-center gap-1.5">
+                                        <p className="min-w-0 truncate text-[13.5px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>
+                                            {name}
+                                        </p>
+                                        {status && (
+                                            <span
+                                                className="shrink-0 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider"
+                                                style={{ background: status.bg, color: status.fg }}
+                                            >
+                                                {status.label}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <p className="min-w-0 truncate text-[10.5px] font-medium leading-tight tracking-wide" style={{ color: C.muted }}>
+                                        {brandName ? `${brandName} · ` : ""}
+                                        MOQ {it.moq} {pluralizeUnit(it.moq, saleUnit)}
+                                        {it.lead_time != null && ` · ${it.lead_time}d`}
+                                    </p>
+
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <span className="shrink-0 text-[13px] font-bold tracking-wide tabular-nums" style={{ color: C.ink }}>
+                                            ₹{formatMoney(it.price)}
+                                            <span className="ml-0.5 text-[9px] font-semibold tracking-wider" style={{ color: C.muted }}>/{saleUnit}</span>
+                                        </span>
+                                        <span className="h-3 w-px shrink-0" style={{ background: C.hair }} />
+                                        <p className="min-w-0 truncate text-[10.5px] font-bold tracking-wide tabular-nums" style={{ color: isActive ? stockTone : C.muted }}>
+                                            {isActive ? stockLabel : "Hidden from buyers"}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Icon stack — toggle on top, share + edit together in one row below */}
+                                <div className="flex shrink-0 flex-col items-end justify-between gap-1">
+                                    {!isPending ? (
+                                        <div onClick={(e) => e.stopPropagation()}>
+                                            <ActiveToggle isActive={isActive} busy={togglingId === it.id} onChange={handleToggle} />
+                                        </div>
+                                    ) : <span />}
+
+                                    <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                                        <RowIconButton icon={Share2} label="Share listing" tone={C.muted} onClick={() => onShare?.(it)} />
+                                        {!isPending && (
+                                            <RowIconButton icon={Pencil} label="Quick update" tone={C.secondary} onClick={() => onQuickEdit(it.id)} />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Rejection message — mobile only, full width below the grid */}
+                            {it.rejection_reason && it.review_status === "rejected" && (
+                                <p className="mt-2 ml-[3.05rem] text-[10.5px] font-semibold leading-snug tracking-wide sm:hidden" style={{ color: "#c71f11" }}>
+                                    {it.rejection_reason}
+                                </p>
+                            )}
+
+                            {/* =====================================================
+            DESKTOP — unchanged layout, with a Share icon added
+            before the live toggle / edit group.
+            ===================================================== */}
+                            <div className="hidden min-w-0 items-center gap-2.5 sm:flex">
+                                {/* Image */}
+                                <div
+                                    className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border"
+                                    style={{ borderColor: C.hair, background: C.hairSoft }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (gallery.length) onOpenImage({ images: gallery, index: 0, alt: name });
+                                    }}
+                                >
+                                    {image ? (
+                                        <img src={resizedImageUrl(image, { width: 70 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                                    ) : (
+                                        <ImageIcon className="m-auto h-4 w-4" style={{ color: C.hair }} />
+                                    )}
+                                    {gallery.length > 1 && (
+                                        <span className="absolute bottom-0.5 right-0.5 rounded-full bg-black/60 px-1 py-0.5 text-[8px] font-bold tracking-wide text-white">
+                                            +{gallery.length - 1}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Identity */}
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex min-w-0 items-center gap-1.5">
+                                        <p className="min-w-0 truncate text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>{name}</p>
+                                        {status && (
+                                            <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider" style={{ background: status.bg, color: status.fg }}>
+                                                {status.label}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                        {brandName ? `${brandName} · ` : ""}
+                                        MOQ {it.moq} {pluralizeUnit(it.moq, saleUnit)}
+                                        {it.lead_time != null && ` · ${it.lead_time}d`}
+                                    </p>
+                                </div>
+
+                                {/* Price + stock */}
+                                <div className="flex shrink-0 items-center gap-3">
+                                    <div className="text-right">
+                                        <p className="leading-none">
+                                            <span className="text-[14px] font-bold tracking-wide tabular-nums" style={{ color: C.ink }}>₹{formatMoney(it.price)}</span>
+                                            <span className="ml-0.5 text-[9.5px] font-semibold tracking-wider" style={{ color: C.muted }}>/{saleUnit}</span>
+                                        </p>
+                                        <p className="mt-1 whitespace-nowrap text-[10px] font-bold tracking-wide tabular-nums" style={{ color: isActive ? stockTone : C.muted }}>
+                                            {isActive ? stockLabel : "Hidden from buyers"}
+                                        </p>
+                                    </div>
+
+                                    <div className="h-7 w-px" style={{ background: C.hair }} />
+
+                                    <div onClick={(e) => e.stopPropagation()}>
+                                        <RowIconButton icon={Share2} label="Share listing" tone={C.muted} onClick={() => onShare?.(it)} />
+                                    </div>
+
+                                    {!isPending && (
+                                        <>
+                                            <div onClick={(e) => e.stopPropagation()}>
+                                                <ActiveToggle isActive={isActive} busy={togglingId === it.id} onChange={handleToggle} />
+                                            </div>
+                                            <RowIconButton icon={Pencil} label="Quick update" tone={C.secondary} onClick={() => onQuickEdit(it.id)} />
+                                            <ChevronRight className="h-4 w-4 shrink-0 opacity-40 transition-opacity group-hover:opacity-80" style={{ color: C.ink }} />
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </>
                     )}
 
-                    {!isExpanded && it.review_status !== "pending_review" && (
-                        <div onClick={(e) => e.stopPropagation()} className="flex shrink-0 items-center gap-1 pl-1">
-                            <button
-                                onClick={async (e) => {
-                                    e.stopPropagation();
-                                    const result = await shareProductLink({
-                                        submissionId: it.id,
-                                        productName: name,
-                                        sellerName: "you", // seller is sharing their own listing
-                                    });
-                                    // surface via your existing toast state, e.g. setToastMsg
+                    {/* =============================================================
+                        EXPANDED PANELS
+                        ============================================================= */}
+                    <AnimatePresence mode="wait">
+                        {isQuickEditing && (
+                            <motion.div
+                                key="quick"
+                                initial={{
+                                    opacity: 0,
+                                    height: 0,
                                 }}
-                                aria-label="Share listing link"
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]"
-                                style={{ color: C.secondary }}
+                                animate={{
+                                    opacity: 1,
+                                    height: "auto",
+                                }}
+                                exit={{
+                                    opacity: 0,
+                                    height: 0,
+                                }}
+                                transition={{
+                                    duration: 0.18,
+                                }}
                             >
-                                <Share2 className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => onQuickEdit(it.id)} aria-label="Quick update"
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05]" style={{ color: C.ink }}>
-                                <Pencil className="h-4 w-4" />
-                            </button>
-                            {isActive ? (
-                                <button onClick={() => onAskDeactivate(it.id)} aria-label="Deactivate listing"
-                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-red-50" style={{ color: "#c71f11" }}>
-                                    <PowerOff className="h-4 w-4" />
-                                </button>
-                            ) : (
-                                <button onClick={() => onActivate(it.id)} disabled={togglingId === it.id} aria-label="Activate listing"
-                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-150 hover:bg-black/[0.05] disabled:opacity-50" style={{ color: C.secondary }}>
-                                    {togglingId === it.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
-                                </button>
-                            )}
-                            <ChevronRight className="ml-0.5 h-4 w-4 shrink-0" style={{ color: C.hair }} />
-                        </div>
-                    )}
+                                <QuickUpdatePanel
+                                    item={it}
+                                    onCancel={onCancelQuickEdit}
+                                    onSave={(
+                                        payload,
+                                        optimisticPatch
+                                    ) =>
+                                        onQuickSave(
+                                            it.id,
+                                            payload,
+                                            optimisticPatch
+                                        )
+                                    }
+                                />
+                            </motion.div>
+                        )}
+
+                        {isConfirmingDeactivate && (
+                            <motion.div
+                                key="confirm"
+                                initial={{
+                                    opacity: 0,
+                                    height: 0,
+                                }}
+                                animate={{
+                                    opacity: 1,
+                                    height: "auto",
+                                }}
+                                exit={{
+                                    opacity: 0,
+                                    height: 0,
+                                }}
+                                transition={{
+                                    duration: 0.18,
+                                }}
+                            >
+                                <DeactivateConfirm
+                                    busy={
+                                        togglingId === it.id
+                                    }
+                                    onConfirm={() =>
+                                        onConfirmDeactivate(
+                                            it.id
+                                        )
+                                    }
+                                    onCancel={
+                                        onCancelDeactivate
+                                    }
+                                />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
 
-                <AnimatePresence mode="wait">
-                    {isQuickEditing && (
-                        <motion.div key="quick" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
-                            <QuickUpdatePanel
-                                item={it}
-                                onCancel={onCancelQuickEdit}
-                                onSave={(payload, optimisticPatch) => onQuickSave(it.id, payload, optimisticPatch)}
-                            />
-                        </motion.div>
-                    )}
-                    {isConfirmingDeactivate && (
-                        <motion.div key="confirm" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}>
-                            <DeactivateConfirm busy={togglingId === it.id} onConfirm={() => onConfirmDeactivate(it.id)} onCancel={onCancelDeactivate} />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                <div className="h-px w-full" style={{ background: C.hairSoft }} />
+                {/* Row separator */}
+                <div
+                    className="h-px w-full"
+                    style={{
+                        background: C.hairSoft,
+                    }}
+                />
             </motion.div>
         </motion.div>
     );
@@ -1532,6 +1945,17 @@ export default function SellerManageListingsPage() {
         setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
     }
 
+    async function handleShare(it) {
+        const name = it.brand?.name || it.product_name || "Product";
+        const sellerName = profile?.shop_name || profile?.name || "this seller";
+        const result = await shareProductLink({
+            submissionId: it.id,
+            productName: name,
+            sellerName,
+        });
+        if (result === "copied") setToastMsg("Link copied to clipboard.");
+    }
+
     async function activateListing(id) {
         setTogglingId(id);
         const res = await setSellerSubmissionActive(token, id, true);
@@ -1726,6 +2150,7 @@ export default function SellerManageListingsPage() {
                                 onConfirmDeactivate={confirmDeactivate}
                                 onActivate={activateListing}
                                 onOpenImage={setLightboxImage}
+                                onShare={handleShare}
                             />
                         ))}
                     </AnimatePresence>
