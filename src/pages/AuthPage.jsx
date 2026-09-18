@@ -840,7 +840,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
         <PanelHeader
           icon={<Building2 className="h-6 w-6" />}
           title="Set up your account"
-          subtitle="A few details, then you're in — buying and selling both use this account."
+          subtitle=""
         />
 
         {resumed && (
