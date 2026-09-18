@@ -28,11 +28,13 @@ import { saveBuyerTransportPreference } from "../../utils/api.transport.js";
 import {
     ROUTE_TRANSPORT_GROUPS, getRouteTransportFields, routeTransportModeLabel, routeOptionSummary,
 } from "../../../shared/routeTransportFields.js";
+import { fetchBuyerFallbackLocation } from "../../utils/api.transport.js";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#006F83",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)",
 };
+const SELF_PICKUP_STORAGE_KEY = "buyer_self_pickup_details_v1";
 const EASE = [0.16, 1, 0.3, 1];
 const MAX_SUGGESTIONS_SHOWN = 30;
 // Keeps every stage's body roughly the same height so switching between
@@ -43,6 +45,23 @@ const BODY_MIN_HEIGHT = "min-h-[360px]";
 function parseDispatchOrigin(seller) {
     const parts = (seller?.dispatchOrigin || "").split(",").map((s) => s.trim());
     return { city: parts[0] || "", state: seller?.dispatchState || parts[1] || "" };
+}
+
+function loadSavedSelfPickup() {
+    try {
+        const raw = localStorage.getItem(SELF_PICKUP_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+function saveSelfPickupDetails(fields) {
+    try {
+        localStorage.setItem(SELF_PICKUP_STORAGE_KEY, JSON.stringify(fields || {}));
+    } catch {
+        // best-effort only
+    }
 }
 
 function filterGroupsBySellerOptions(groups, allowedModes) {
@@ -302,6 +321,7 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
     const [destCity, setDestCity] = useState(destCityProp || "");
     const [expandedTransportGroup, setExpandedTransportGroup] = useState(null);
     const [destState, setDestState] = useState(destStateProp || "");
+    const [autoSubmitting, setAutoSubmitting] = useState(false);
     const [needsManualDest, setNeedsManualDest] = useState(false);
     const [resolvingAddress, setResolvingAddress] = useState(!(destCityProp && destStateProp));
 
@@ -327,6 +347,7 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
     const [confirmTarget, setConfirmTarget] = useState(null); // { kind: "approved" | "suggestion", option }
     const [confirming, setConfirming] = useState(false);
 
+    // TransportPreferenceModal.jsx — replace the existing address-resolution effect
     useEffect(() => {
         if (!open) return;
         if (destCityProp && destStateProp) {
@@ -336,11 +357,21 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
             return;
         }
         setResolvingAddress(true);
-        fetchBuyerAddresses(token).then((res) => {
+        fetchBuyerAddresses(token).then(async (res) => {
             const def = res?.addresses?.find((a) => a.is_default) || res?.addresses?.[0];
             if (def?.city && def?.state) {
                 setDestCity(def.city);
                 setDestState(def.state);
+                setResolvingAddress(false);
+                return;
+            }
+
+            // No saved address at all — try the buyer's GST business profile
+            // pincode before falling back to asking them to type it manually.
+            const fallback = await fetchBuyerFallbackLocation(token);
+            if (fallback?.success && fallback.district && fallback.state) {
+                setDestCity(fallback.district);
+                setDestState(fallback.state);
             } else {
                 setNeedsManualDest(true);
             }
@@ -359,6 +390,7 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
         setPendingResult(null);
         setError(null);
         setConfirmTarget(null);
+        setAutoSubmitting(false);
     }, [open, destCity, destState, seller?.sellerId]);
 
     const canQueryRoute = !resolvingAddress && destCity && destState && origin.city && origin.state;
@@ -413,10 +445,35 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
     // the old group/pill grid into one control).
     const handleModeSelect = (mode) => {
         if (!mode) return;
-        setSelectedMode(mode);
-        setPickerSearch("");
-        setFieldValues({});
         setError(null);
+        setPickerSearch("");
+
+        if (mode === "rapido") {
+            const existingApproved = approvedOptions.find((o) => o.mode === "rapido");
+            if (existingApproved) {
+                requestConfirmApproved(existingApproved);
+                return;
+            }
+            setSelectedMode(mode);
+            setFieldValues({});
+            setAutoSubmitting(true);
+            submitProposal({}, mode);
+            return;
+        }
+
+        if (mode === "self_pickup") {
+            // This is the buyer's own pickup info, not a seller/company
+            // lookup — skip the cross-seller suggestions step and go
+            // straight to the form, prefilled from whatever they used last
+            // time so re-requesting it from another seller is instant.
+            setSelectedMode(mode);
+            setFieldValues(loadSavedSelfPickup() || {});
+            setProposeStage("form");
+            return;
+        }
+
+        setSelectedMode(mode);
+        setFieldValues({});
         setProposeStage("suggestions");
     };
     const backToModes = () => { setProposeStage("modes"); setSelectedMode(null); setPickerSearch(""); };
@@ -426,32 +483,59 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
         setError(null);
         setProposeStage("form");
     };
-    const backToSuggestions = () => setProposeStage(suggestions.length || loadingSuggestions ? "suggestions" : "modes");
-
-    const submitProposal = async (fieldsOverride) => {
-        const fieldsToSubmit = fieldsOverride ?? fieldValues;
-        setSubmitting(true);
-        setError(null);
-        const res = await proposeRouteOption({
-            sellerId: seller.sellerId,
-            originState: origin.state, originCity: origin.city,
-            destState, destCity,
-            mode: selectedMode, fields: fieldsToSubmit,
-        }, token);
-        setSubmitting(false);
-        if (!res?.success) { setError(res?.message || "Couldn't submit that. Please try again."); return; }
-
-        if (res.option.status === "approved") {
-            const resolved = {
-                routeOptionId: res.option.id, mode: res.option.mode, fields: res.option.fields,
-                summary: routeOptionSummary(res.option.mode, res.option.fields),
-                destState, destCity,
-            };
-            await saveBuyerTransportPreference({ sellerId: seller.sellerId, destState, destCity, preference: resolved }, token);
-            onResolved(resolved);
+    const backToSuggestions = () => {
+        if (selectedMode === "self_pickup" || selectedMode === "rapido") {
+            backToModes();
             return;
         }
-        setPendingResult(res);
+        setProposeStage(suggestions.length || loadingSuggestions ? "suggestions" : "modes");
+    };
+
+    useEffect(() => {
+        if (proposeStage !== "suggestions" || loadingSuggestions) return;
+        if (suggestions.length === 0 && !pickerSearch) {
+            enterManually();
+        }
+    }, [proposeStage, loadingSuggestions, suggestions, pickerSearch]);
+
+    const submitProposal = async (fieldsOverride, modeOverride) => {
+        const fieldsToSubmit = fieldsOverride ?? fieldValues;
+        const modeToSubmit = modeOverride ?? selectedMode;
+        setSubmitting(true);
+        setError(null);
+        try {
+            const res = await proposeRouteOption({
+                sellerId: seller.sellerId,
+                originState: origin.state, originCity: origin.city,
+                destState, destCity,
+                mode: modeToSubmit, fields: fieldsToSubmit,
+            }, token);
+
+            if (!res?.success) {
+                setError(res?.message || "Couldn't submit that. Please try again.");
+                // Bail back to the mode picker on failure instead of leaving
+                // the buyer stuck with no visible next step.
+                if (modeToSubmit === "rapido") setProposeStage("modes");
+                return;
+            }
+
+            if (modeToSubmit === "self_pickup") saveSelfPickupDetails(fieldsToSubmit);
+
+            if (res.option.status === "approved") {
+                const resolved = {
+                    routeOptionId: res.option.id, mode: res.option.mode, fields: res.option.fields,
+                    summary: routeOptionSummary(res.option.mode, res.option.fields),
+                    destState, destCity,
+                };
+                await saveBuyerTransportPreference({ sellerId: seller.sellerId, destState, destCity, preference: resolved }, token);
+                onResolved(resolved);
+                return;
+            }
+            setPendingResult(res);
+        } finally {
+            setSubmitting(false);
+            setAutoSubmitting(false); // always clears, whatever branch above ran
+        }
     };
 
     // NEW — tapping a cross-seller suggestion now opens a confirmation
@@ -554,6 +638,12 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
                                     style={{ background: C.secondary }}>
                                     Continue
                                 </button>
+                            </motion.div>
+
+                        ) : autoSubmitting ? (
+                            <motion.div key="auto-submitting" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                className="flex items-center justify-center py-10">
+                                <Loader2 className="h-5 w-5 animate-spin" style={{ color: C.muted }} />
                             </motion.div>
 
                         ) : confirmTarget ? (
