@@ -266,8 +266,8 @@ export default function AuthPage() {
 // Value-prop content shown under the identifier form — plain data, kept
 // separate from markup so the two columns render identically.
 // ---------------------------------------------------------------------------
-const BUY_POINTS = ["Verified suppliers", "Competitive pricing", "Wide range of products", "GST compliant invoices", "Save time and grow faster"];
-const SELL_POINTS = ["Reach genuine buyers", "List products in minutes", "Get quality inquiries", "Build long-term partnerships", "Grow across India and beyond"];
+const BUY_POINTS = ["Competitive B2B prices", "More suppliers to choose from", "More brands & alternatives", "Faster product discovery", "Better sourcing options", "Access to new suppliers", "Simplified procurement", "Multiple requirements, one platform"];
+const SELL_POINTS = ["Get new customers", "Increase sales", "Expand into new markets", "Reduce customer acquisition effort", "Showcase your complete product range", "Build long-term B2B relationships", "Grow without opening new branches"];
 
 function ValueColumn({ eyebrow, heading, points }) {
   return (
@@ -429,7 +429,7 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
             <div className="pr-4 sm:pr-6 lg:pr-8">
               <ValueColumn
                 eyebrow="Why buy from BBM"
-                heading={<>More choice.<br />Less effort.</>}
+                heading={<>Save Money.<br />Save Time.</>}
                 points={BUY_POINTS}
               />
             </div>
