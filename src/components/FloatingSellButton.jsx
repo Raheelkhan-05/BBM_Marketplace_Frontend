@@ -89,7 +89,7 @@ export default function FloatingSellButton({ to = "/seller/sell", label = "Sell"
                         onClick={() => navigate(to)}
                         aria-label={`${label} — start listing an item`}
                         className="fsb-group fsb-btn relative flex h-14 w-14 items-center justify-center rounded-full text-white sm:h-16 sm:w-16 sm:w-auto sm:px-5"
-                        style={{ background: RUST }}
+                        style={{ background: '#000000' }}
                     >
                         <span className="relative flex items-center">
                             <Plus size={24} strokeWidth={2.5} className="fsb-icon shrink-0" />

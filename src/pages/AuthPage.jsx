@@ -997,53 +997,6 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
             )}
           </AnimatePresence>
 
-          {gstStage === "found" && (
-            <>
-              <div ref={displayNameRef} className="flex flex-col scroll-mt-24">
-                <label className="text-[12.5px] font-bold tracking-tight text-slate-700">
-                  Display name <span className="font-medium tracking-wide text-slate-400">(shown to buyers)</span>
-                </label>
-                <input
-                  value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Mehta Steel"
-                  className={`mt-1.5 ${inputClass(touched && !displayNameOk)}`}
-                />
-                {touched && !displayNameOk && (
-                  <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">Enter a display name for your storefront.</p>
-                )}
-              </div>
-
-              <div ref={dispatchRef} className="flex flex-col scroll-mt-24">
-                <label className="text-[12.5px] font-bold tracking-tight text-slate-700">Dispatch address</label>
-                <label className="mt-2 flex items-center gap-2 text-[13px] font-medium tracking-wide text-slate-600">
-                  <input type="checkbox" checked={dispatchSame} onChange={(e) => setDispatchSame(e.target.checked)} className="h-4 w-4 rounded border-slate-300" style={{ accentColor: INK }} />
-                  Same as GST registered address
-                </label>
-
-                {!dispatchSame && (
-                  <>
-                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <input
-                        value={dispatchAddress} onChange={(e) => setDispatchAddress(e.target.value)} placeholder="Dispatch address"
-                        className={`${inputClass(touched && !dispatchAddress.trim())} sm:col-span-2`}
-                      />
-                      <input
-                        value={dispatchPincode} onChange={(e) => setDispatchPincode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Pincode"
-                        className={inputClass(touched && dispatchPincode.trim().length !== 6)}
-                      />
-                      <input
-                        value={dispatchState} onChange={(e) => setDispatchState(e.target.value)} placeholder="State"
-                        className={inputClass(touched && !dispatchState.trim())}
-                      />
-                    </div>
-                    {touched && !dispatchOk && (
-                      <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">Fill in the complete dispatch address.</p>
-                    )}
-                  </>
-                )}
-              </div>
-            </>
-          )}
-
           {serverError && <p className="text-[12px] font-medium tracking-wide text-[#c71f11]">{serverError}</p>}
         </div>
       </AuthShell>
