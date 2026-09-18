@@ -223,9 +223,7 @@ export default function AuthPage() {
             >
               <ArrowLeft className="h-[18px] w-[18px]" />
             </motion.button>
-          ) : (
-            <div className="h-9 w-9 shrink-0" />
-          )}
+          ) : null}
 
           <div className="flex shrink-0 items-center">
             <SmartLink to="/" className="flex shrink-0 items-center gap-2">

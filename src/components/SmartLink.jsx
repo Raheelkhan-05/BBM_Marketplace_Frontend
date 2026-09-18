@@ -2,7 +2,7 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 
-const GUEST_ONLY = ["/", "/login"];
+const GUEST_ONLY = ["/", "/login", "/terms"];
 
 export default function SmartLink({ to, onClick, children, ...rest }) {
   const { isLoggedIn, profile } = useAuth();
