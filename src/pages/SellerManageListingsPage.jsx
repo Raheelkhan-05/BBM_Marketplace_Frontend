@@ -1331,7 +1331,7 @@ function ListingRow({
                             <div className="flex items-stretch gap-2.5 sm:hidden">
                                 {/* Image — stretches to match the middle column's height */}
                                 <div
-                                    className="relative w-12 shrink-0 self-stretch overflow-hidden rounded-lg border"
+                                    className="relative w-16 shrink-0 self-stretch overflow-hidden rounded-lg border"
                                     style={{ borderColor: C.hair, background: C.hairSoft }}
                                     onClick={(e) => {
                                         e.stopPropagation();
