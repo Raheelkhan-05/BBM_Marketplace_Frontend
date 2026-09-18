@@ -367,7 +367,7 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
             Trusted B2B Marketplace
           </p>
           <h1 className="mt-3 text-[40px] font-black leading-[1.03] tracking-[-0.030em] text-slate-900 sm:text-[54px] lg:text-[60px]">
-            Buy better.<br />Sell further.
+            Find Supply<br />Build Demand.
           </h1>
           <p className="mt-4 max-w-[410px] text-[17px] font-medium leading-[1.3] text-slate-500 sm:text-[18px] tracking-wide">
             People. Product. Partnership.
