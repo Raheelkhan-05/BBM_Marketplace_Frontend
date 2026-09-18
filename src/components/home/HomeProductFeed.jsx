@@ -372,9 +372,9 @@ function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
                     group-hover:-translate-y-[1px]
                 "
                 style={{
-                    color: C.primary,
-                    background: `${C.primary}0D`,
-                    border: `1px solid ${C.primary}28`,
+                    color: "#000000",
+                    background: `#0000000D`,
+                    border: `1px solid #00000028`,
                 }}
             >
                 <span
@@ -386,9 +386,6 @@ function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
                         justify-center
                         rounded-full
                     "
-                    style={{
-                        background: `${C.primary}16`,
-                    }}
                 >
                     <Lock
                         className="h-2.5 w-2.5"

@@ -31,7 +31,7 @@ export default function Footer() {
       <div
         className="h-[2px] w-full"
         style={{
-          background: "linear-gradient(90deg, #c71f11 0%, #e08775 25%, #f1d1c8 50%, #7fb3bd 75%, #047084 100%)",
+          background: "linear-gradient(90deg, #000000 0%, #2c2c2cff 25%, #000000ff 50%, #3a3a3aff 75%, #000000 100%)",
         }}
       />
       <div

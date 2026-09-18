@@ -318,7 +318,7 @@ export default function Header({ onOpenRfq }) {
               <SmartLink
                 to="/login"
                 className="hidden items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-bold text-white shadow-[0_6px_16px_-4px_rgba(194,65,12,0.4)] transition-transform duration-200 hover:-translate-y-0.5 md:inline-flex"
-                style={{ background: "linear-gradient(135deg, #C2410C 0%, #9A2E0A 100%)" }}
+                style={{ background: "linear-gradient(135deg, #2a2a2aff 0%, #000000 100%)" }}
               >
                 Sign In
                 <ArrowUpRight className="h-3.5 w-3.5" />

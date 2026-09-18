@@ -83,6 +83,7 @@ import { fetchLowestPriceForBrandItem } from "../../../utils/api.js";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
 import PolicySelect from "./PolicySelect.jsx";
+import CommissionSlider from "./CommissionSlider.jsx";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -417,7 +418,7 @@ function computeMissing(form) {
     add(
         !(Number(form.marketingCommissionPercent) >= 0.25 && Number(form.marketingCommissionPercent) <= 100),
         "marketingCommissionPercent",
-        "Marketing Budget %"
+        "Promotion & Visibility Budget %"
     );
     add(form.sampleAvailable && !(Number(form.sampleQuantity) > 0), "sampleQuantity", "Sample quantity");
     add(!form.stockType, "stockType", "Fulfilment type");
@@ -1478,59 +1479,15 @@ export default function SellerListingForm({
                     </FieldAnchor>
                 </div>
                 <FieldAnchor fieldKey="marketingCommissionPercent">
-                    <div
-                        className="flex flex-col gap-2.5 rounded-2xl border p-3"
-                        style={{
-                            borderColor: isErr("marketingCommissionPercent") ? "rgba(199,31,17,0.35)" : C.hairSoft,
-                            background: `${C.secondary}06`,
+                    <CommissionSlider
+                        value={form.marketingCommissionPercent === "" ? "" : Number(form.marketingCommissionPercent)}
+                        onChange={(v) => {
+                            setField("marketingCommissionPercent", String(v));
+                            touch("marketingCommissionPercent");
                         }}
-                    >
-                        <div className="flex items-center justify-between gap-3">
-                            <div className="flex flex-col gap-0.5">
-                                <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
-                                    Marketing Budget <span style={{ color: C.primary }}>*</span>
-                                </span>
-                                <span className="text-[10px] font-medium leading-snug tracking-wider" style={{ color: C.muted }}>
-                                    Platform fee deducted from your payout on every order
-                                </span>
-                            </div>
-
-                            <div
-                                className="flex shrink-0 flex-col items-end justify-center rounded-xl px-3 py-1.5"
-                                style={{ background: form.marketingCommissionPercent !== "" ? `${C.muted}14` : "transparent" }}
-                            >
-                                <span
-                                    className="text-[18px] font-extrabold leading-none tabular-nums"
-                                    style={{ color: form.marketingCommissionPercent !== "" ? C.muted : C.muted }}
-                                >
-                                    {form.marketingCommissionPercent !== "" ? `${form.marketingCommissionPercent}%` : "—"}
-                                </span>
-                            </div>
-                        </div>
-
-                        <ChipToggleGroup
-                            dense
-                            value={form.marketingCommissionPercent === "" ? "" : Number(form.marketingCommissionPercent)}
-                            onChange={(v) => { setField("marketingCommissionPercent", String(v)); touch("marketingCommissionPercent"); }}
-                            options={[0.25, 5, 10, 20, 35, 50].map((p) => ({ value: p, label: `${p}%` }))}
-                            onEnterKey={(dir) => handleFieldAdvance("marketingCommissionPercent", dir)}
-                        />
-
-                        <button
-                            type="button"
-                            onClick={() => setCommissionWheelOpen(true)}
-                            className="flex items-center justify-center gap-1.5 rounded-xl border py-2 text-[12px] font-bold tracking-wide transition-colors duration-150 active:scale-[0.99]"
-                            style={{ borderColor: `${C.secondary}35`, color: C.secondary, background: "white" }}
-                        >
-                            <IndianRupee className="h-3.5 w-3.5" /> Dial in a custom rate
-                        </button>
-
-                        {isErr("marketingCommissionPercent") && (
-                            <p className="text-[11px] font-bold" style={{ color: C.danger }}>
-                                Choose a commission % between 0.25 and 100.
-                            </p>
-                        )}
-                    </div>
+                        C={C}
+                        isErr={isErr("marketingCommissionPercent")}
+                    />
                 </FieldAnchor>
                 <RepeatableRows2
                     label="Discount slabs"
@@ -1646,7 +1603,7 @@ export default function SellerListingForm({
                             </div> */}
                             {moqPreview.commissionPercent > 0 && (
                                 <div className="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                    <span>Marketing Budget ({moqPreview.commissionPercent}% + {form.gstPercent}% GST on fee)</span>
+                                    <span>Promotion & Visibility Budget ({moqPreview.commissionPercent}% + {form.gstPercent}% GST on fee)</span>
                                     <span className="tabular-nums font-bold" style={{ color: "#c71f11" }}>
                                         − ₹{moqPreview.totalCommissionDeducted.toLocaleString("en-IN")}
                                     </span>
@@ -1780,7 +1737,7 @@ export default function SellerListingForm({
                     <Progress percent={percentComplete} />
                     <button type="button" onClick={handleSubmit} disabled={submitting}
                         className="mt-2.5 flex w-full items-center tracking-wider justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
-                        style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                        style={{ background: "linear-gradient(135deg, #2e2e2eff 0%, #000000 100%)" }}>
                         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} </>}
                     </button>
                 </div>

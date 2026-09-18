@@ -1,6 +1,7 @@
 // components/seller/listingForm/PriceWheelPicker.jsx
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion } from "framer-motion";
+import { useLenis } from "../../../providers/SmoothScrollProvider.jsx";
 import { X, Minus, Plus, Check } from "lucide-react";
 import { C, EASE } from "./FormPrimitives.jsx";
 
@@ -154,6 +155,7 @@ function WheelColumn({ wheel, formatValue }) {
             <div
                 ref={containerRef}
                 onScroll={onScroll}
+                data-lenis-prevent=""
                 className="hide-scrollbar h-full overflow-y-auto"
                 style={{ scrollSnapType: "y mandatory", WebkitOverflowScrolling: "touch", scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
@@ -203,8 +205,8 @@ export default function PriceWheelPicker({
     unitLabel = "Pack",
     referenceLabel = "Default price",
     direction = "decrease",
-    min,   // NEW — percent mode only, overrides the built-in 0 floor
-    max,   // NEW — percent mode only, overrides the built-in 99/∞ ceiling
+    min,
+    max,
 }) {
     const isPercent = unit === "percent";
     const isIncrease = isPercent && direction === "increase";
@@ -222,6 +224,62 @@ export default function PriceWheelPicker({
     const seed = isPercent ? Math.min(Math.max(rawSeed, percentMin), percentMax) : rawSeed;
 
     const wheel = useWheelColumn(seed, defaultStep, filterFn);
+
+    // Locks page/background scroll while this sheet is open. WheelColumn's
+    // own container keeps scrolling normally because the check below only
+    // blocks events whose target is OUTSIDE this modal's DOM subtree —
+    // everything inside modalRef (the wheel columns, step chips, buttons)
+    // is left completely alone.
+    const modalRef = useRef(null);
+    const lenis = useLenis();
+
+    useEffect(() => {
+        if (!open) return;
+
+        const isInsideModal = (e) => !!modalRef.current && modalRef.current.contains(e.target);
+
+        const blockScroll = (e) => {
+            if (!isInsideModal(e)) e.preventDefault();
+        };
+
+        const SCROLL_KEYS = ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "];
+        const blockKeyScroll = (e) => {
+            if (!SCROLL_KEYS.includes(e.key)) return;
+            if (isInsideModal(e)) return;
+            const tag = e.target?.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return;
+            e.preventDefault();
+        };
+
+        // Stop Lenis directly — this is the piece that was missing. The
+        // window-level preventDefault listeners below only fight the
+        // browser's native scroll; Lenis runs its own independent wheel/touch
+        // handling that doesn't defer to preventDefault, so without this it
+        // just keeps smooth-scrolling the page underneath regardless of what
+        // the listeners below do. If some OUTER modal (EditListingModal /
+        // ListingDetailModal) already called lenis.stop() before this opened,
+        // calling it again is a harmless no-op — but we only call lenis.start()
+        // on cleanup if WE were the one that stopped it, so we never
+        // accidentally re-enable scroll while that outer modal is still open.
+        const weStoppedLenis = !!lenis && typeof lenis.stop === "function";
+        if (weStoppedLenis) lenis.stop();
+
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        window.addEventListener("wheel", blockScroll, { passive: false, capture: true });
+        window.addEventListener("touchmove", blockScroll, { passive: false, capture: true });
+        window.addEventListener("keydown", blockKeyScroll, { passive: false, capture: true });
+
+        return () => {
+            document.body.style.overflow = prevOverflow;
+            if (weStoppedLenis && typeof lenis.start === "function") lenis.start();
+
+            window.removeEventListener("wheel", blockScroll, { capture: true });
+            window.removeEventListener("touchmove", blockScroll, { capture: true });
+            window.removeEventListener("keydown", blockKeyScroll, { capture: true });
+        };
+    }, [open, lenis]);
 
     const nudge = (dir) => {
         const el = wheel.containerRef.current;
@@ -255,6 +313,7 @@ export default function PriceWheelPicker({
             onClick={onClose}
         >
             <motion.div
+                ref={modalRef}
                 initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
                 transition={{ duration: 0.22, ease: EASE }}
                 onClick={(e) => e.stopPropagation()}

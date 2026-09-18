@@ -56,7 +56,7 @@
 // data-scroll-lock-allow so scrolling inside them still works normally.
 //
 // QUICK UPDATE PANEL REDESIGN (this pass):
-// - Base Price, Marketing Budget %, and Final Price are no longer plain
+// - Base Price, Promotion & Visibility Budget %, and Final Price are no longer plain
 //   number inputs. Each is now a tap target that opens the same
 //   PriceWheelPicker already used in the full listing form, for three
 //   reasons: (1) scrolling to a value is a more deliberate, felt action
@@ -68,7 +68,7 @@
 //   the seller-facing pricing interaction consistent across the whole
 //   app instead of having one raw-input flow here and a wheel flow
 //   there.
-// - The four pricing rows (Base → GST → Marketing Budget → Final) are
+// - The four pricing rows (Base → GST → Promotion & Visibility Budget → Final) are
 //   now visually chunked as one connected block with a light rail on
 //   the left, so the seller reads it as "cause → effect" instead of
 //   four independent fields.
@@ -114,6 +114,7 @@ import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import SellerListingForm, { unflattenDispatchingLocations } from "../components/seller/listingForm/SellerListingForm.jsx";
 import PriceWheelPicker from "../components/seller/listingForm/PriceWheelPicker.jsx";
+import CommissionSlider from "../components/seller/listingForm/CommissionSlider.jsx";
 import { fetchCommissionInfo } from "../utils/sellerListingApi.js";
 // Same shared convention BuyNowModal.jsx / HomeProductFeed.jsx already use
 // for "what unit is this listing actually sold and priced in" — imported
@@ -128,8 +129,8 @@ import { useListings } from "../context/ListingsContext.jsx";
 const C = {
     ink: "#0B1116",
     muted: "#667077",
-    primary: "#D2462B",
-    secondary: "#006F83",
+    primary: "#000000",
+    secondary: "#000000",
     hair: "rgba(11,17,22,0.09)",
     hairSoft: "rgba(11,17,22,0.05)",
 };
@@ -553,21 +554,6 @@ function WalletSummaryCard({ wallet, onClick }) {
     );
 }
 
-function StatTile({ icon: Icon, label, value, tone = "ink" }) {
-    const toneColor = { ink: C.ink, primary: C.primary, secondary: C.secondary, muted: C.muted }[tone];
-    return (
-        <div className="flex items-center gap-2.5 rounded-2xl border bg-white px-3.5 py-3" style={{ borderColor: C.hair }}>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl" style={{ background: `${toneColor}14`, color: toneColor }}>
-                <Icon className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-                <p className="text-[16px] font-extrabold leading-none tabular-nums" style={{ color: C.ink }}>{value}</p>
-                <p className="mt-1 truncate text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{label}</p>
-            </div>
-        </div>
-    );
-}
-
 function FilterChip({ label, active, onClick, count }) {
     return (
         <motion.button
@@ -686,7 +672,7 @@ function ActiveToggle({ isActive, busy, onChange }) {
 
 // Tap-to-open field styled like QuickField but non-editable directly —
 // tapping it opens a PriceWheelPicker instead of a keyboard. Used for
-// Base Price / Marketing Budget % / Final Price in QuickUpdatePanel below,
+// Base Price / Promotion & Visibility Budget % / Final Price in QuickUpdatePanel below,
 // so pricing edits always go through the deliberate wheel-scroll gesture
 // instead of raw typing.
 function QuickWheelField({ label, displayValue, placeholder, onOpen, accent = C.secondary }) {
@@ -825,7 +811,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
     const [original, setOriginal] = useState(null);
 
     // Platform's own minimum commission — shown as the second reference
-    // point inside the Marketing Budget wheel, same as the full listing
+    // point inside the Promotion & Visibility Budget wheel, same as the full listing
     // form does.
     const [platformDefaultCommissionPercent, setPlatformDefaultCommissionPercent] = useState(0.25);
 
@@ -945,7 +931,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             return setError("Stock can't be negative.");
         }
         if (!(Number(form.marketingCommissionPercent) >= 0.25 && Number(form.marketingCommissionPercent) <= 100)) {
-            return setError("Marketing Budget must be between 0.25% and 100%.");
+            return setError("Promotion & Visibility Budget must be between 0.25% and 100%.");
         }
 
         setSaving(true);
@@ -1015,7 +1001,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                         style={{ borderColor: C.hair, background: C.hairSoft }}
                     >
                         {/* ---- Pricing — chunked as one connected flow (Base → GST →
-                            Marketing Budget → Final), with a light left rail tying
+                            Promotion & Visibility Budget → Final), with a light left rail tying
                             the four rows together so it reads as cause → effect
                             instead of four separate fields. ---- */}
                         <div className="flex flex-col gap-2">
@@ -1053,17 +1039,16 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                             </div>
                         </div>
 
-                        {/* Marketing Budget — deliberately standalone, not part of the
+                        {/* Promotion & Visibility Budget — deliberately standalone, not part of the
                             Base→GST→Final rail. It's the seller's own spend decision,
                             not a step in "what does the buyer pay", so grouping it with
                             price math implied it changes the buyer's price the same way
                             Base/Final do. Sits at the same visual level as MOQ below. */}
-                        <QuickWheelField
-                            label="Marketing Budget %"
-                            displayValue={form.marketingCommissionPercent ? `${form.marketingCommissionPercent}%` : ""}
-                            placeholder="Tap to set"
-                            onOpen={() => setPriceWheel("commission")}
-                            accent={C.primary}
+                        <CommissionSlider
+                            value={form.marketingCommissionPercent === "" ? "" : Number(form.marketingCommissionPercent)}
+                            onChange={(v) => setField("marketingCommissionPercent", String(v))}
+                            C={C}
+                            isErr={!!error && error.toLowerCase().includes("marketing")}
                         />
 
                         {/* ---- Quantity & lead time ---- */}
@@ -1123,23 +1108,6 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                                 onConfirm={(price) => { applyBasePrice(price); setPriceWheel(null); }}
                             />
                         )}
-
-                        {priceWheel === "commission" && (
-                            <PriceWheelPicker
-                                open
-                                unit="percent"
-                                direction="increase"
-                                min={0.25}
-                                max={100}
-                                unitLabel="Marketing Budget"
-                                referenceLabel="Platform minimum"
-                                referenceValue={platformDefaultCommissionPercent}
-                                initialValue={form.marketingCommissionPercent ? Number(form.marketingCommissionPercent) : platformDefaultCommissionPercent}
-                                onClose={() => setPriceWheel(null)}
-                                onConfirm={(v) => { setField("marketingCommissionPercent", String(v)); setPriceWheel(null); }}
-                            />
-                        )}
-
                         {priceWheel === "final" && (
                             <PriceWheelPicker
                                 open
@@ -1480,7 +1448,9 @@ function ListingRow({
                                             <div onClick={(e) => e.stopPropagation()}>
                                                 <ActiveToggle isActive={isActive} busy={togglingId === it.id} onChange={handleToggle} />
                                             </div>
-                                            <RowIconButton icon={Pencil} label="Quick update" tone={C.secondary} onClick={() => onQuickEdit(it.id)} />
+                                            <div onClick={(e) => e.stopPropagation()}>
+                                                <RowIconButton icon={Pencil} label="Quick update" tone={C.secondary} onClick={() => onQuickEdit(it.id)} />
+                                            </div>
                                             <ChevronRight className="h-4 w-4 shrink-0 opacity-40 transition-opacity group-hover:opacity-80" style={{ color: C.ink }} />
                                         </>
                                     )}
