@@ -54,7 +54,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             className="relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-[13.5px] font-bold transition-colors duration-150 tracking-wide"
                             style={{
                                 color: active ? "#fff" : C.ink,
-                                background: active ? C.secondary : "rgba(20,27,34,0.045)",
+                                background: active ? "#000000" : "rgba(20,27,34,0.045)",
                             }}
                         >
                             <Icon className="h-3.5 w-3.5" style={{ color: active ? "#fff" : C.muted }} />

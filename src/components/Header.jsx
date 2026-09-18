@@ -102,7 +102,7 @@ function ScrollableNav({ navItems, pathname, navMaxWidth }) {
                 className="relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors duration-150 lg:px-4 lg:text-[13px]"
                 style={{
                   color: active ? "#fff" : C.ink,
-                  background: active ? C.secondary : "transparent",
+                  background: active ? "#000000" : "transparent",
                 }}
                 onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
               >
@@ -273,7 +273,7 @@ export default function Header({ onOpenRfq }) {
                   >
                     <span
                       className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white"
-                      style={{ background: "linear-gradient(135deg, #0B7285 0%, #4FA3B0 100%)" }}
+                      style={{ background: "linear-gradient(135deg, #000000 0%, #000000 100%)" }}
                     >
                       <User className="h-3.5 w-3.5" />
                     </span>
