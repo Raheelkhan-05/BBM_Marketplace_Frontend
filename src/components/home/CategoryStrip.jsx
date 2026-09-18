@@ -9,7 +9,7 @@ const C = {
     ink: "#141B22",
     muted: "#5B6672",
     accent: "#ffffff",
-    accentTint: "#D2462B",
+    accentTint: "#000000",
     accentTintIcon: "#ffffff",
     hair: "rgba(20,27,34,0.10)",
     hairSoft: "rgba(20,27,34,0.07)",

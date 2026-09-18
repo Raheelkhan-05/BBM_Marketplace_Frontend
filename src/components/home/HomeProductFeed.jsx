@@ -65,7 +65,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { fetchBuyerTransportPreference } from "../../utils/api.transport.js";
 
 const C = {
-    ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
+    ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#000000",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)", imgBg: "#F4F5F6",
 };
 const EASE = [0.16, 1, 0.3, 1];
