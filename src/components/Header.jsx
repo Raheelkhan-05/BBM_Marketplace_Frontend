@@ -243,7 +243,6 @@ export default function Header({ onOpenRfq }) {
   });
 
 
-
   return (
     <>
       <header

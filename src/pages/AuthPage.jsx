@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight, Loader2, Mail, Phone, CheckCircle2, Pencil,
-  Building2, Handshake, ArrowLeft,
+  Building2, Handshake, ArrowLeft, User,
 } from "lucide-react";
 
 import SmartLink from "../components/SmartLink.jsx";
@@ -42,29 +42,28 @@ function isValidGstinShape(v) {
 }
 
 // ---------------------------------------------------------------------------
-// Shared design tokens
+// Shared design tokens — restyled to match the marketing-page look: ink
+// black headings/buttons, muted slate copy, a single teal accent (from the
+// logo) reserved for focus states / links, generous letter-spacing on all
+// caps labels.
 // ---------------------------------------------------------------------------
 const FONT = "'Amazon Ember', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+const INK = "#0B1116";
 const BRAND = "#047084";
-const BRAND_DARK = "#03545f";
 const BRAND_SOFT = "rgba(4,112,132,0.07)";
-const ACCENT_FROM = "#d2462b";
-const ACCENT_TO = "#c71f11";
-const INK = "#0f1e21";
 
 function inputClass(error) {
-  return `w-full min-w-0 rounded-xl border bg-white px-4 py-3.5 text-[15px] font-medium text-slate-800 placeholder:font-normal placeholder:text-slate-300 transition-colors focus:outline-none focus:ring-[3px] ${error
+  return `w-full min-w-0 rounded-2xl border bg-white px-4 py-3 text-[15px] font-medium text-slate-800 placeholder:font-normal placeholder:text-slate-300 transition-[border-color,box-shadow] focus:outline-none focus:ring-[3px] ${error
     ? "border-[#c71f11] focus:ring-[#c71f11]/10"
-    : "border-slate-200 focus:border-[#047084] focus:ring-[#047084]/10"
+    : "border-slate-200 focus:border-slate-400 focus:ring-slate-400/10"
     }`;
 }
 
 function PrimaryButton({ children, loading, loadingText, className = "", ...rest }) {
   return (
     <motion.button
-      whileTap={{ scale: 0.98 }}
-      className={`flex w-full items-center justify-center gap-2 rounded-xl py-4 text-[15px] font-bold text-white transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
-      style={{ background: `linear-gradient(135deg, ${ACCENT_FROM} 0%, ${ACCENT_TO} 100%)` }}
+      whileTap={{ scale: 0.985 }}
+      className={`flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-[#12181d] px-5 text-[15px] font-bold tracking-wide text-white transition-[background-color,opacity,transform] duration-150 hover:bg-[#0B1116] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[15.5px] ${className}`}
       {...rest}
     >
       {loading ? (<><Loader2 className="h-4 w-4 animate-spin" />{loadingText || "Please wait…"}</>) : children}
@@ -75,7 +74,7 @@ function PrimaryButton({ children, loading, loadingText, className = "", ...rest
 function SecondaryButton({ children, loading, className = "", ...rest }) {
   return (
     <button
-      className={`inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg px-4 py-3 text-[13.5px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+      className={`inline-flex min-h-[48px] shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-[13.5px] font-bold tracking-wide transition-[background-color,opacity] disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
       style={{ color: BRAND, background: BRAND_SOFT }}
       {...rest}
     >
@@ -88,16 +87,16 @@ function PanelHeader({ icon, title, subtitle }) {
   return (
     <div className="flex flex-col items-center text-center">
       <span
-        className="flex h-13 w-13 items-center justify-center rounded-2xl text-white"
-        style={{ width: 52, height: 52, background: `linear-gradient(135deg, ${BRAND} 0%, ${BRAND_DARK} 100%)` }}
+        className="flex h-12 w-12 items-center justify-center rounded-2xl text-white sm:h-[50px] sm:w-[50px]"
+        style={{ background: INK }}
       >
         {icon}
       </span>
-      <h1 className="mt-5 text-[24px] font-bold leading-tight tracking-[-0.01em] sm:text-[26px]" style={{ color: INK }}>
+      <h1 className="mt-4 text-[24px] font-black leading-[1.08] tracking-tight sm:text-[26px]" style={{ color: INK }}>
         {title}
       </h1>
       {subtitle && (
-        <p className="mt-2 max-w-[300px] text-[14px] font-medium leading-relaxed text-slate-500">
+        <p className="mt-2 max-w-[330px] text-[13.5px] font-medium leading-relaxed text-slate-500 sm:text-[14px]">
           {subtitle}
         </p>
       )}
@@ -105,25 +104,14 @@ function PanelHeader({ icon, title, subtitle }) {
   );
 }
 
-// A shell every step shares: a scrollable content area (vertically centered
-// when the step is short, e.g. identifier/OTP) plus a footer that sticks to
-// the bottom of the viewport so the primary action always sits where a
-// thumb can reach it, however far the person has scrolled.
-function AuthShell({ children, footer, centered = true }) {
+// Shared centered shell for the OTP / onboarding steps — normal page flow
+// with compact, responsive spacing and no fixed/sticky footer.
+function AuthShell({ children, footer, wide = false }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div
-        className={`mx-auto flex w-full max-w-[440px] flex-1 flex-col px-5 ${centered ? "justify-center py-6" : "pt-2"
-          }`}
-      >
-        {children}
-      </div>
-      {footer && (
-        <div className="sticky bottom-0 mx-auto w-full max-w-[440px] shrink-0 bg-white px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-4">
-          {footer}
-        </div>
-      )}
-    </div>
+    <main className={`mx-auto w-full ${wide ? "max-w-[560px]" : "max-w-[430px]"} px-4 pb-12 pt-7 sm:px-6 sm:pb-16 sm:pt-10`}>
+      {children}
+      {footer && <div className="mt-7 sm:mt-8">{footer}</div>}
+    </main>
   );
 }
 
@@ -222,24 +210,34 @@ export default function AuthPage() {
     });
 
   return (
-    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white" style={{ fontFamily: FONT }}>
-      <header className="mx-auto flex w-full max-w-[440px] shrink-0 items-center gap-3 px-5 pt-5 sm:pt-8">
-        {step !== "onboarding" ? (
-          <motion.button
-            type="button"
-            onClick={handleBack}
-            whileTap={{ scale: 0.9 }}
-            aria-label="Go back"
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
-          >
-            <ArrowLeft className="h-4.5 w-4.5" />
-          </motion.button>
-        ) : (
-          <div className="h-9 w-9 shrink-0" />
-        )}
-        <div className="flex items-center gap-2">
-          <img src="./Logo.png" alt="BBM" className="h-6 w-auto object-contain" />
-          <span className="text-[16px] font-bold tracking-tight text-slate-900">BBM</span>
+    <div className="min-h-screen w-full bg-white" style={{ fontFamily: FONT }}>
+      <header className="mx-auto flex w-full max-w-6xl items-center px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
+        <div className="flex items-center gap-2.5">
+          {step !== "onboarding" ? (
+            <motion.button
+              type="button"
+              onClick={handleBack}
+              whileTap={{ scale: 0.9 }}
+              aria-label="Go back"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
+            >
+              <ArrowLeft className="h-[18px] w-[18px]" />
+            </motion.button>
+          ) : (
+            <div className="h-9 w-9 shrink-0" />
+          )}
+
+          <div className="flex shrink-0 items-center">
+            <SmartLink to="/" className="flex shrink-0 items-center gap-2">
+              <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
+              <h1
+                className="text-[18px] font-extrabold tracking-wide"
+                style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: INK }}
+              >
+                BBM
+              </h1>
+            </SmartLink>
+          </div>
         </div>
       </header>
 
@@ -265,7 +263,34 @@ export default function AuthPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Step 1: identifier
+// Value-prop content shown under the identifier form — plain data, kept
+// separate from markup so the two columns render identically.
+// ---------------------------------------------------------------------------
+const BUY_POINTS = ["Verified suppliers", "Competitive pricing", "Wide range of products", "GST compliant invoices", "Save time and grow faster"];
+const SELL_POINTS = ["Reach genuine buyers", "List products in minutes", "Get quality inquiries", "Build long-term partnerships", "Grow across India and beyond"];
+
+function ValueColumn({ eyebrow, heading, points }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-slate-400 sm:text-[11px]">{eyebrow}</p>
+      <h2 className="mt-2 text-[20px] font-black leading-[1.15] tracking-tight text-slate-900 sm:text-[24px]">
+        {heading}
+      </h2>
+      <ul className="mt-4 flex flex-col gap-2.5 sm:mt-5 sm:gap-3">
+        {points.map((p) => (
+          <li key={p} className="flex items-start gap-2 text-[13px] font-medium leading-snug tracking-wide text-slate-500 sm:text-[13.5px]">
+            <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-300" />
+            <span>{p}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Step 1: identifier — this is the landing page from the reference screen.
+// Same logic/handlers as before; only the markup is new.
 // ---------------------------------------------------------------------------
 function IdentifierPanel({ onSubmit, loading, serverError }) {
   const [value, setValue] = useState("");
@@ -312,80 +337,111 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
   };
 
   return (
-    <motion.form
+    <motion.div
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.22, ease: "easeOut" }}
-      onSubmit={handleSubmit} noValidate
-      className="flex min-h-0 flex-1 flex-col"
     >
-      <AuthShell
-        centered
-        footer={
-          <>
-            <PrimaryButton type="submit" disabled={!valid || loading} loading={loading} loadingText="Sending OTP…">
+      <main className="mx-auto w-full max-w-5xl px-4 pb-12 pt-7 sm:px-6 sm:pb-16 sm:pt-10 lg:px-8">
+        <div className="max-w-[720px]">
+          {/* ---- hero ---- */}
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-slate-400 sm:text-[11.5px]">
+            Trusted B2B Marketplace
+          </p>
+          <h1 className="mt-3 text-[40px] font-black leading-[1.03] tracking-[-0.030em] text-slate-900 sm:text-[54px] lg:text-[60px]">
+            Buy better.<br />Sell further.
+          </h1>
+          <p className="mt-4 max-w-[410px] text-[17px] font-medium leading-[1.3] text-slate-500 sm:text-[18px] tracking-wide">
+            Join thousands of businesses on BBM. Verified. Simple. Built for business.
+          </p>
+
+          {/* ---- identifier form ---- */}
+          <form onSubmit={handleSubmit} noValidate className="mt-8 max-w-[440px] sm:mt-9">
+            <label htmlFor="identifier" className="text-[14px] font-bold tracking-normal text-slate-700">
+              Mobile number or email
+            </label>
+
+            <div
+              className="mt-1 flex min-h-[52px] w-full items-center overflow-hidden rounded-md border bg-white transition-[border-color,box-shadow] duration-150"
+              style={{
+                borderColor: showError || serverError ? "#c71f11" : focused ? "#94a3b8" : "#e5e9ea",
+                boxShadow: focused ? "0 0 0 3px rgba(148,163,184,0.15)" : "none",
+              }}
+            >
+              <span className="flex shrink-0 items-center gap-1.5 pl-4 pr-2.5 text-slate-400">
+                {mode === null && <User className="h-4 w-4" />}
+                {mode === "phone" && (
+                  <>
+                    <Phone className="h-3.5 w-3.5" />
+                    <span className="text-[14px] font-bold tracking-wide text-slate-500">+91</span>
+                  </>
+                )}
+                {mode === "email" && <Mail className="h-4 w-4" />}
+              </span>
+              <input
+                id="identifier" type="text" autoComplete="username" autoFocus disabled={loading}
+                value={value} onChange={handleChange} onPaste={handlePaste}
+                onFocus={() => setFocused(true)}
+                onBlur={() => { setFocused(false); setTouched(true); }}
+                placeholder="98765 43210 or you@company.com"
+                className="w-full min-w-0 bg-transparent py-3.5 pr-4 text-[15px] font-medium tracking-wide text-slate-800 placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-300 focus:outline-none disabled:opacity-60"
+              />
+            </div>
+
+            <div className="mt-1.5 min-h-[18px]">
+              {showError && <p className="text-[12px] font-medium tracking-wide text-[#c71f11]">Enter a valid 10-digit mobile number or email address.</p>}
+              {!showError && serverError && <p className="text-[12px] font-medium tracking-wide text-[#c71f11]">{serverError}</p>}
+            </div>
+
+            <AnimatePresence mode="wait">
+              {confirmingCall && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
+                  className="mt-2 overflow-hidden rounded-2xl bg-slate-50 px-4 py-3"
+                >
+                  <p className="flex items-start gap-2 text-[12.5px] font-medium leading-relaxed tracking-wide text-slate-600">
+                    <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                    You'll receive a call from BBM's System on +91 {value} with your one-time code.
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <PrimaryButton type="submit" disabled={!valid || loading} loading={loading} loadingText="Sending OTP…" className="mt-0">
               {confirmingCall ? (<>Yes, call me<ArrowRight className="h-4 w-4" /></>) : (<>Send OTP<ArrowRight className="h-4 w-4" /></>)}
             </PrimaryButton>
-            <p className="mt-4 text-center text-[11.5px] font-medium leading-relaxed text-slate-400">
+
+            <p className="mt-3.5 max-w-[390px] text-[11.5px] text-center font-medium leading-relaxed tracking-wide text-slate-400">
               By continuing, you agree to our{" "}
-              <a href="/terms" className="font-bold text-slate-500 hover:text-[#047084]">Terms</a>{" "}
+              <a href="/terms" className="font-bold tracking-wide text-slate-500 underline hover:text-slate-800">Terms</a>{" "}
               and{" "}
-              <a href="/privacy" className="font-bold text-slate-500 hover:text-[#047084]">Privacy Policy</a>.
+              <a href="/privacy" className="font-bold tracking-wide text-slate-500 underline hover:text-slate-800">Privacy Policy</a>.
             </p>
-          </>
-        }
-      >
-        <PanelHeader
-          icon={<Handshake className="h-6 w-6" />}
-          title="Welcome to BBM"
-          subtitle="Your verified account for buying and selling on the marketplace. We'll send a one-time code — no password to remember."
-        />
+          </form>
 
-        <label htmlFor="identifier" className="mt-8 text-[12.5px] font-bold text-slate-500">
-          Mobile number or email
-        </label>
-        <div
-          className="mt-2 flex w-full items-center overflow-hidden rounded-xl border bg-white transition-colors duration-150"
-          style={{
-            borderColor: showError || serverError ? "#c71f11" : focused ? BRAND : "#e5e9ea",
-            boxShadow: focused ? `0 0 0 3px ${BRAND}1a` : "none",
-          }}
-        >
-          <span className="flex shrink-0 items-center gap-1.5 border-r border-slate-100 px-3.5 py-3.5 text-[14px] font-bold text-slate-500">
-            {mode === null && (<><Phone className="h-3.5 w-3.5 text-slate-400" /><Mail className="h-3.5 w-3.5 text-slate-400" /></>)}
-            {mode === "phone" && (<><Phone className="h-3.5 w-3.5 text-slate-400" />+91</>)}
-            {mode === "email" && <Mail className="h-3.5 w-3.5 text-slate-400" />}
-          </span>
-          <input
-            id="identifier" type="text" autoComplete="username" autoFocus disabled={loading}
-            value={value} onChange={handleChange} onPaste={handlePaste}
-            onFocus={() => setFocused(true)}
-            onBlur={() => { setFocused(false); setTouched(true); }}
-            placeholder="98765 43210 or you@company.com"
-            className="w-full min-w-0 bg-transparent px-3.5 py-3.5 text-[15px] font-medium text-slate-800 placeholder:font-normal placeholder:text-slate-300 focus:outline-none disabled:opacity-60"
-          />
+          {/* ---- value props ---- */}
+
+          <div className="relative mt-11 grid grid-cols-2 gap-1 sm:mt-11 sm:gap-10 lg:gap-16">
+            <div className="pr-4 sm:pr-6 lg:pr-8">
+              <ValueColumn
+                eyebrow="Why buy from BBM"
+                heading={<>More choice.<br />Less effort.</>}
+                points={BUY_POINTS}
+              />
+            </div>
+
+            <div className="pl-4 sm:pl-6 lg:pl-8">
+              <ValueColumn
+                eyebrow="Why sell on BBM"
+                heading={<>More buyers.<br />More business.</>}
+                points={SELL_POINTS}
+              />
+            </div>
+
+            <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gray-200" />
+          </div>
         </div>
-
-        <div className="mt-1.5 min-h-[16px]">
-          {showError && <p className="text-[12px] font-medium text-[#c71f11]">Enter a valid 10-digit mobile number or email address.</p>}
-          {!showError && serverError && <p className="text-[12px] font-medium text-[#c71f11]">{serverError}</p>}
-        </div>
-
-        <AnimatePresence mode="wait">
-          {confirmingCall && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-              className="mt-2 overflow-hidden rounded-xl px-3.5 py-3"
-              style={{ background: BRAND_SOFT }}
-            >
-              <p className="flex items-start gap-2 text-[12.5px] font-medium leading-relaxed text-slate-600">
-                <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: BRAND }} />
-                You'll receive a call from BBM's System on +91 {value} with your one-time code.
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </AuthShell>
-    </motion.form>
+      </main>
+    </motion.div>
   );
 }
 
@@ -432,7 +488,7 @@ function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled }) {
 
   return (
     <div>
-      <div className="relative">
+      <div className="relative mx-auto w-full max-w-[410px]">
         <div className="grid gap-2 sm:gap-2.5" style={{ gridTemplateColumns: `repeat(${length}, minmax(0, 1fr))` }}>
           {digits.map((d, i) => (
             <input
@@ -441,10 +497,10 @@ function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled }) {
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
               onPaste={handlePaste}
-              className="aspect-square w-full min-w-0 rounded-xl border text-center text-[19px] font-bold text-slate-800 transition-colors focus:outline-none disabled:opacity-60"
+              className="aspect-square w-full min-w-0 rounded-2xl border text-center text-[19px] font-bold text-slate-800 transition-[border-color,background-color,box-shadow] focus:outline-none focus:ring-[3px] focus:ring-slate-400/10 disabled:opacity-60"
               style={{
-                borderColor: error ? "#c71f11" : d ? BRAND : "#e5e9ea",
-                background: d ? BRAND_SOFT : "white",
+                borderColor: error ? "#c71f11" : d ? "#94a3b8" : "#e5e9ea",
+                background: d ? "#f8fafc" : "white",
               }}
             />
           ))}
@@ -452,16 +508,16 @@ function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled }) {
         {disabled && !error && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl bg-white/60"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-white/60"
           >
-            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11.5px] font-bold shadow-sm" style={{ color: BRAND }}>
+            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11.5px] font-bold tracking-wide shadow-sm text-slate-700">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Verifying…
             </span>
           </motion.div>
         )}
       </div>
-      {error && <p className="mt-2.5 text-[12px] font-medium text-[#c71f11]">{error}</p>}
+      {error && <p className="mt-2.5 text-[12px] font-medium tracking-wide text-[#c71f11]">{error}</p>}
     </div>
   );
 }
@@ -502,34 +558,34 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.22, ease: "easeOut" }} className="flex min-h-0 flex-1 flex-col"
+      transition={{ duration: 0.22, ease: "easeOut" }}
     >
-      <AuthShell centered footer={null}>
+      <AuthShell>
         <PanelHeader
           icon={channel === "email" ? <Mail className="h-6 w-6" /> : <Phone className="h-6 w-6" />}
           title="Enter the code"
           subtitle={
             <>
               <span className="break-all">Sent to {channel === "email" ? identifier : `+91 ${identifier}`}.</span>{" "}
-              <button type="button" onClick={onEditNumber} className="inline-flex items-center gap-1 font-bold" style={{ color: BRAND }}>
+              <button type="button" onClick={onEditNumber} className="inline-flex items-center gap-1 font-bold tracking-wide" style={{ color: BRAND }}>
                 <Pencil className="h-3 w-3" />Edit
               </button>
             </>
           }
         />
 
-        <div className="mt-8">
+        <div className="mt-7 sm:mt-8">
           <OtpBoxes onComplete={(code) => !loading && onVerify(code)} error={serverError} disabled={loading} />
         </div>
 
-        <div className="mt-5 flex flex-col items-center gap-1.5 text-center">
-          <p className="text-[12.5px] font-medium text-slate-400">
+        <div className="mt-4 flex flex-col items-center gap-1.5 text-center sm:mt-5">
+          <p className="text-[12.5px] font-medium tracking-wide text-slate-400">
             {secondsLeft > 0 ? (
               <>Resend code in {secondsLeft}s</>
             ) : (
               <button
                 type="button" onClick={handleResend} disabled={resending}
-                className="inline-flex items-center gap-1.5 font-bold disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 font-bold tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ color: BRAND }}
               >
                 {resending ? (<><Loader2 className="h-3 w-3 animate-spin" />Resending…</>) : "Resend code"}
@@ -539,7 +595,7 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
           {channel === "phone" && justResent && secondsLeft === RESEND_SECONDS && (
             <motion.p
               initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: BRAND }}
+              className="flex items-center gap-1.5 text-[11.5px] font-bold tracking-wide" style={{ color: BRAND }}
             >
               <Phone className="h-3 w-3" />
               We're calling +91 {identifier} again now.
@@ -609,11 +665,11 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
   if (stage === "verified") {
     return (
       <div className="flex flex-col">
-        <label className="text-[12.5px] font-bold text-slate-500">{label}</label>
-        <div className="mt-1.5 flex items-center gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: "#7fb3bd80", background: BRAND_SOFT }}>
-          <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: BRAND }} />
-          <span className="truncate text-[14px] font-medium text-slate-800">{formatValue(value)}</span>
-          <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold text-white" style={{ background: BRAND }}>
+        <label className="text-[12.5px] font-bold tracking-tight text-slate-700">{label}</label>
+        <div className="mt-1.5 flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-3.5 py-3">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-slate-700" />
+          <span className="truncate text-[14px] font-medium tracking-wide text-slate-800">{formatValue(value)}</span>
+          <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-[#12181d] px-2 py-0.5 text-[10.5px] font-bold tracking-wide text-white">
             Verified
           </span>
         </div>
@@ -623,7 +679,7 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
 
   return (
     <div className="flex flex-col">
-      <label className="text-[12.5px] font-bold text-slate-500">{label}</label>
+      <label className="text-[12.5px] font-bold tracking-tight text-slate-700">{label}</label>
 
       {stage !== "otp" ? (
         <>
@@ -643,10 +699,9 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
             {stage === "confirm" && (
               <motion.p
                 initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                className="mt-2 flex items-start gap-2 overflow-hidden rounded-xl px-3 py-2.5 text-[12px] font-medium leading-relaxed text-slate-600"
-                style={{ background: BRAND_SOFT }}
+                className="mt-2 flex items-start gap-2 overflow-hidden rounded-2xl bg-slate-50 px-3 py-2.5 text-[12px] font-medium leading-relaxed tracking-wide text-slate-600"
               >
-                <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: BRAND }} />
+                <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
                 You'll receive a call on +91 {value} with your code. Tap "Yes, call me" when ready.
               </motion.p>
             )}
@@ -657,7 +712,7 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
           <OtpBoxes length={6} onComplete={confirmCode} error={error} />
         </div>
       )}
-      {error && stage !== "otp" && <p className="mt-1.5 text-[12px] font-medium text-[#c71f11]">{error}</p>}
+      {error && stage !== "otp" && <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">{error}</p>}
     </div>
   );
 }
@@ -749,10 +804,9 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
     <motion.form
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.22 }} onSubmit={handleSubmit}
-      className="flex min-h-0 flex-1 flex-col"
     >
       <AuthShell
-        centered={false}
+        wide
         footer={
           <PrimaryButton type="submit" disabled={!canSubmit || loading} loading={loading} loadingText="Saving…">
             Finish setting up<ArrowRight className="h-4 w-4" />
@@ -768,15 +822,15 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
         {resumed && (
           <motion.p
             initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="mt-5 rounded-xl px-3.5 py-2.5 text-center text-[12.5px] font-bold" style={{ color: BRAND, background: BRAND_SOFT }}
+            className="mt-5 rounded-2xl bg-slate-50 px-3.5 py-2.5 text-center text-[12.5px] font-bold tracking-wide text-slate-700"
           >
             Welcome back — we picked up where you left off.
           </motion.p>
         )}
 
-        <div className="mt-7 flex flex-col gap-4 pb-2">
+        <div className="mt-7 flex flex-col gap-4 pb-1">
           <div className="flex flex-col">
-            <label className="text-[12.5px] font-bold text-slate-500">Full name</label>
+            <label className="text-[12.5px] font-bold tracking-tight text-slate-700">Full name</label>
             <input
               autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName}
               placeholder="e.g. Rohan Mehta" className={`mt-1.5 ${inputClass(touched && name.trim().length < 2)}`}
@@ -800,7 +854,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
 
           {/* GSTIN lookup */}
           <div className="flex flex-col">
-            <label className="text-[12.5px] font-bold text-slate-500">GSTIN</label>
+            <label className="text-[12.5px] font-bold tracking-tight text-slate-700">GSTIN</label>
             <div className="mt-1.5 flex gap-2">
               <div className="relative flex-1">
                 <input
@@ -809,22 +863,21 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
                   placeholder="22AAAAA0000A1Z5"
                   className={`${inputClass(touched && gstin.length === 15 && !isValidGstinShape(gstin))} pr-10 font-mono uppercase tracking-wide`}
                 />
-                {gstStage === "found" && <CheckCircle2 className="absolute right-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2" style={{ color: BRAND }} />}
+                {gstStage === "found" && <CheckCircle2 className="absolute right-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-700" />}
               </div>
               <SecondaryButton type="button" onClick={runLookup} disabled={!isValidGstinShape(gstin) || gstStage === "looking_up"} loading={gstStage === "looking_up"}>
                 Verify
               </SecondaryButton>
             </div>
-            {gstin.length === 15 && !isValidGstinShape(gstin) && <p className="mt-1.5 text-[12px] font-medium text-[#c71f11]">That doesn't match a GSTIN's format.</p>}
-            {gstStage === "error" && <p className="mt-1.5 text-[12px] font-medium text-[#c71f11]">{gstError}</p>}
+            {gstin.length === 15 && !isValidGstinShape(gstin) && <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">That doesn't match a GSTIN's format.</p>}
+            {gstStage === "error" && <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">{gstError}</p>}
           </div>
 
           <AnimatePresence>
             {gstStage === "found" && gstData && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                className="grid grid-cols-1 gap-x-5 gap-y-3.5 overflow-hidden rounded-xl border border-slate-100 px-4 py-4 sm:grid-cols-2"
-                style={{ background: "#fafafa" }}
+                className="grid grid-cols-1 gap-x-5 gap-y-3.5 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 sm:grid-cols-2"
               >
                 <ReadOnlyField label="Legal name" value={gstData.legal_name} />
                 <ReadOnlyField label="Trade name" value={gstData.trade_name} />
@@ -841,8 +894,8 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
           {gstStage === "found" && (
             <>
               <div className="flex flex-col">
-                <label className="text-[12.5px] font-bold text-slate-500">
-                  Display name <span className="font-medium text-slate-400">(shown to buyers)</span>
+                <label className="text-[12.5px] font-bold tracking-tight text-slate-700">
+                  Display name <span className="font-medium tracking-wide text-slate-400">(shown to buyers)</span>
                 </label>
                 <input
                   value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Mehta Steel"
@@ -851,9 +904,9 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
               </div>
 
               <div className="flex flex-col">
-                <label className="text-[12.5px] font-bold text-slate-500">Dispatch address</label>
-                <label className="mt-2 flex items-center gap-2 text-[13.5px] font-medium text-slate-600">
-                  <input type="checkbox" checked={dispatchSame} onChange={(e) => setDispatchSame(e.target.checked)} className="h-4 w-4 rounded border-slate-300" style={{ accentColor: BRAND }} />
+                <label className="text-[12.5px] font-bold tracking-tight text-slate-700">Dispatch address</label>
+                <label className="mt-2 flex items-center gap-2 text-[13px] font-medium tracking-wide text-slate-600">
+                  <input type="checkbox" checked={dispatchSame} onChange={(e) => setDispatchSame(e.target.checked)} className="h-4 w-4 rounded border-slate-300" style={{ accentColor: INK }} />
                   Same as GST registered address
                 </label>
 
@@ -877,7 +930,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
             </>
           )}
 
-          {serverError && <p className="text-[12px] font-medium text-[#c71f11]">{serverError}</p>}
+          {serverError && <p className="text-[12px] font-medium tracking-wide text-[#c71f11]">{serverError}</p>}
         </div>
       </AuthShell>
     </motion.form>
@@ -887,8 +940,8 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
 function ReadOnlyField({ label, value, className = "" }) {
   return (
     <div className={className}>
-      <p className="text-[10.5px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-0.5 truncate text-[13px] font-medium text-slate-700">{value || "—"}</p>
+      <p className="text-[10.5px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="mt-0.5 truncate text-[13px] font-medium tracking-wide text-slate-700">{value || "—"}</p>
     </div>
   );
 }
