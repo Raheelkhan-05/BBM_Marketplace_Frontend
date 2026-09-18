@@ -96,11 +96,21 @@ export default function TermsPage() {
     }, [toc.length]);
 
     const scrollToSection = (id) => {
-        setMobileNavOpen(false);
-        const el = sectionRefs.current[id] || document.getElementById(id);
-        if (el) {
-            const y = el.getBoundingClientRect().top + window.scrollY - 88;
-            window.scrollTo({ top: y, behavior: "smooth" });
+        const doScroll = () => {
+            const el = sectionRefs.current[id] || document.getElementById(id);
+            if (el) {
+                const y = el.getBoundingClientRect().top + window.scrollY - 88;
+                window.scrollTo({ top: y, behavior: "smooth" });
+            }
+        };
+
+        if (mobileNavOpen) {
+            // Sheet is still expanded / animating closed — measuring now gives
+            // a wrong offset. Close it, then scroll once the collapse finishes.
+            setMobileNavOpen(false);
+            window.setTimeout(doScroll, 320);
+        } else {
+            doScroll();
         }
     };
 

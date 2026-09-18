@@ -745,7 +745,7 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
 
           {showRequiredError && (
             <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">
-              Verify your mobile number to continue.
+              Verify your {label.toLowerCase()} to continue.
             </p>
           )}
 
@@ -801,6 +801,10 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
   const displayNameRef = useRef(null);
   const dispatchRef = useRef(null);
 
+  const [emailVerified, setEmailVerified] = useState(loginType === "email" || !!profile?.email_verified);
+  const [verifiedEmailValue, setVerifiedEmailValue] = useState(profile?.email_verified ? profile.email : null);
+  const emailSectionRef = useRef(null);
+
   // Resume any progress from a previous, abandoned onboarding attempt —
   // the user may have verified their phone or typed their name before
   // closing the tab last time.
@@ -815,6 +819,10 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
       if (p.phone_verified && p.phone) {
         setVerifiedPhoneValue(p.phone);
         setPhoneVerified(true);
+      }
+      if (p.email_verified && p.email) {
+        setVerifiedEmailValue(p.email);
+        setEmailVerified(true);
       }
       if (p.name || (p.phone_verified && loginType !== "phone")) setResumed(true);
     })();
@@ -845,13 +853,14 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
   const displayNameOk = displayName.trim().length >= 2;
   const dispatchOk = dispatchSame || (dispatchAddress.trim() && dispatchPincode.trim().length === 6 && dispatchState.trim());
 
-  const canSubmit = nameOk && phoneVerified && gstinOk && displayNameOk && dispatchOk;
+  const canSubmit = nameOk && phoneVerified && (loginType !== "phone" || emailVerified) && gstinOk && displayNameOk && dispatchOk;
 
   // Drives both the checklist and the "what's left" helper text — single
   // source of truth so they can never say different things.
   const checklist = [
     { label: "Your name", done: nameOk, ref: nameRef },
     { label: "Verified mobile number", done: phoneVerified, ref: phoneSectionRef },
+    ...(loginType === "phone" ? [{ label: "Verified email", done: emailVerified, ref: emailSectionRef }] : []),
     { label: "Verified GSTIN", done: gstinOk, ref: gstinRef },
     { label: "Display name for buyers", done: displayNameOk, ref: displayNameRef },
     ...(!dispatchSame ? [{ label: "Dispatch address", done: dispatchOk, ref: dispatchRef }] : []),
@@ -865,6 +874,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
       const firstBad = [
         { ok: nameOk, ref: nameRef },
         { ok: phoneVerified, ref: phoneSectionRef },
+        { ok: loginType !== "phone" || emailVerified, ref: emailSectionRef },
         { ok: gstinOk, ref: gstinRef },
         { ok: displayNameOk, ref: displayNameRef },
         { ok: dispatchOk, ref: dispatchRef },
@@ -933,10 +943,15 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
           </div>
 
           {loginType === "phone" && (
-            <AltContactVerify
-              token={token} field="email" label="Email" placeholder="you@company.com" inputMode="email"
-              formatValue={(v) => v} validate={(v) => EMAIL_RE.test(v)}
-            />
+            <div ref={emailSectionRef} className="flex flex-col scroll-mt-24">
+              <AltContactVerify
+                token={token} field="email" label="Email" placeholder="you@company.com" inputMode="email"
+                formatValue={(v) => v} validate={(v) => EMAIL_RE.test(v)} required
+                prefillVerifiedValue={verifiedEmailValue}
+                onVerified={(ok) => setEmailVerified(ok)}
+                showRequiredError={touched && !emailVerified}
+              />
+            </div>
           )}
 
           <div ref={gstinRef} className="flex flex-col scroll-mt-24">
