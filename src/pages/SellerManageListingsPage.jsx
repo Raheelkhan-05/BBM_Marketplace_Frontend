@@ -1340,7 +1340,7 @@ function ListingRow({
                                 >
                                     {image ? (
                                         <img
-                                            src={resizedImageUrl(image, { width: 70 })}
+                                            src={resizedImageUrl(image, { width: 256 })}
                                             alt=""
                                             loading="lazy"
                                             decoding="async"
