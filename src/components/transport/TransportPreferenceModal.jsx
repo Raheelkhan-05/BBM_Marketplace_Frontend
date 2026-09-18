@@ -30,7 +30,7 @@ import {
 } from "../../../shared/routeTransportFields.js";
 
 const C = {
-    ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
+    ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#006F83",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)",
 };
 const EASE = [0.16, 1, 0.3, 1];
@@ -912,7 +912,7 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
 
                                             <button disabled={!canSubmitProposal || submitting} onClick={() => submitProposal()}
                                                 className="mt-1 rounded-xl px-4 py-3 text-[13px] font-bold tracking-wide text-white disabled:opacity-50"
-                                                style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                                                style={{ background: "linear-gradient(135deg, #000000 0%, #000000 100%)" }}>
                                                 {submitting ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : "Submit to seller"}
                                             </button>
                                         </motion.div>

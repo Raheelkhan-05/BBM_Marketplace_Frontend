@@ -65,7 +65,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { fetchBuyerTransportPreference } from "../../utils/api.transport.js";
 
 const C = {
-    ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#000000",
+    ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)", imgBg: "#F4F5F6",
 };
 const EASE = [0.16, 1, 0.3, 1];
@@ -708,7 +708,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                 </p>
                 <p
                     className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[11.5px] font-bold tracking-wider"
-                    style={{ color: C.primary }}
+                    style={{ color: "#006F83" }}
                 >
                     <BrandBadge name={item.brand_name} image={item.brand_image} />
                     <span className="truncate">{subLabel}</span>
@@ -966,7 +966,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                         {!loading && sortedItems.length > 0 && (
                             <>
                                 <span className="flex items-center" style={{ marginRight: 12 }}>
-                                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full" style={{ background: `${C.secondary}16`, color: C.secondary, marginRight: 5 }}>
+                                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full" style={{ background: `${C.secondary}16`, color: "#006F83", marginRight: 5 }}>
                                         <Truck className="h-3 w-3" strokeWidth={2.5} />
                                     </span>
                                     Freight included
@@ -1094,8 +1094,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                 {!loading && !alreadySelling && (
                     <button
                         onClick={onSell}
-                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-2 text-[12.5px] font-bold tracking-wide transition-colors duration-150 hover:bg-black/[0.03]"
-                        style={{ borderColor: `${C.primary} 40`, color: C.primary }}
+                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-black bg-black px-3 py-2 text-[12.5px] font-bold tracking-wide text-white transition-colors duration-150 hover:bg-black/90"
                     >
                         <Store className="h-3.5 w-3.5" /> Sell this product
                     </button>
