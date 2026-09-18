@@ -658,7 +658,7 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
 // ---------------------------------------------------------------------------
 // Step 3: onboarding
 // ---------------------------------------------------------------------------
-function AltContactVerify({ token, field, label, placeholder, inputMode, formatValue, validate, required, prefillVerifiedValue, onVerified }) {
+function AltContactVerify({ token, field, label, placeholder, inputMode, formatValue, validate, required, prefillVerifiedValue, onVerified, showRequiredError }) {
   const [value, setValue] = useState(prefillVerifiedValue || "");
   const [stage, setStage] = useState(prefillVerifiedValue ? "verified" : "idle");
   const [error, setError] = useState(null);
@@ -736,12 +736,18 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
               inputMode={inputMode} value={value}
               onChange={(e) => { setValue(e.target.value); setStage("idle"); onVerified?.(false, ""); }}
               placeholder={placeholder} disabled={stage === "sending"}
-              className={inputClass(false)}
+              className={inputClass(showRequiredError)}
             />
             <SecondaryButton type="button" onClick={sendCode} disabled={!valid || stage === "sending"} loading={stage === "sending"}>
               {stage === "confirm" ? "Yes, call me" : "Verify"}
             </SecondaryButton>
           </div>
+
+          {showRequiredError && (
+            <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">
+              Verify your mobile number to continue.
+            </p>
+          )}
 
           <AnimatePresence>
             {stage === "confirm" && (
@@ -856,10 +862,14 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
     e.preventDefault();
     setTouched(true);
     if (!canSubmit || loading) {
-      // Not silently doing nothing — jump straight to the first thing
-      // that's still incomplete, so "why can't I submit" is answered
-      // instantly instead of left as a mystery.
-      remaining[0]?.ref?.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const firstBad = [
+        { ok: nameOk, ref: nameRef },
+        { ok: phoneVerified, ref: phoneSectionRef },
+        { ok: gstinOk, ref: gstinRef },
+        { ok: displayNameOk, ref: displayNameRef },
+        { ok: dispatchOk, ref: dispatchRef },
+      ].find((f) => !f.ok);
+      firstBad?.ref?.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     onSubmit({
@@ -881,39 +891,10 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
       <AuthShell
         wide
         footer={
-          <div className="flex flex-col gap-3">
-            {/* Only surface the checklist once something's actually
-                incomplete and the person has tried to move forward, or
-                once they're close to done — showing it from the very
-                first keystroke would just be noise. */}
-            {(touched || remaining.length <= 2) && remaining.length > 0 && (
-              <OnboardingChecklist steps={checklist} />
-            )}
-
-            <PrimaryButton
-              type="submit"
-              loading={loading}
-              loadingText="Saving…"
-              // Still disabled while a network call is in flight — but
-              // NOT disabled just because fields are incomplete. Clicking
-              // while incomplete now does something useful (see handleSubmit)
-              // instead of nothing.
-              disabled={loading}
-              className={!canSubmit ? "opacity-90" : ""}
-            >
-              Finish setting up<ArrowRight className="h-4 w-4" />
-            </PrimaryButton>
-
-            {!canSubmit && (
-              <p className="text-center text-[12px] font-semibold tracking-wide text-slate-400">
-                {remaining.length === 1
-                  ? `Just one more thing: ${remaining[0].label.toLowerCase()}.`
-                  : `${remaining.length} steps left — starting with ${remaining[0].label.toLowerCase()}.`}
-              </p>
-            )}
-          </div>
-        }
-      >
+          <PrimaryButton type="submit" loading={loading} loadingText="Saving…" disabled={loading}>
+            Finish setting up<ArrowRight className="h-4 w-4" />
+          </PrimaryButton>
+        }>
         <PanelHeader
           icon={<Building2 className="h-6 w-6" />}
           title="Set up your account"
@@ -934,16 +915,20 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
             <label className="text-[12.5px] font-bold tracking-tight text-slate-700">Full name</label>
             <input
               autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName}
-              placeholder="e.g. Rohan Mehta" className={`mt-1.5 ${inputClass(touched && name.trim().length < 2)}`}
+              placeholder="e.g. Rohan Mehta" className={`mt-1.5 ${inputClass(touched && !nameOk)}`}
             />
+            {touched && !nameOk && (
+              <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">Enter your full name.</p>
+            )}
           </div>
 
-          <div ref={phoneSectionRef} className="scroll-mt-24">
+          <div ref={phoneSectionRef} className="flex flex-col scroll-mt-24">
             <AltContactVerify
               token={token} field="phone" label="Mobile number" placeholder="98765 43210" inputMode="numeric"
               formatValue={(v) => `+91 ${v}`} validate={(v) => PHONE_RE.test(v)} required
               prefillVerifiedValue={verifiedPhoneValue}
               onVerified={(ok) => setPhoneVerified(ok)}
+              showRequiredError={touched && !phoneVerified}
             />
           </div>
 
@@ -954,7 +939,6 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
             />
           )}
 
-          {/* GSTIN lookup */}
           <div ref={gstinRef} className="flex flex-col scroll-mt-24">
             <label className="text-[12.5px] font-bold tracking-tight text-slate-700">GSTIN</label>
             <div className="mt-1.5 flex gap-2">
@@ -963,7 +947,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
                   maxLength={15} value={gstin}
                   onChange={(e) => { setGstin(e.target.value.toUpperCase().replace(/\s/g, "")); setGstStage("idle"); setGstData(null); }}
                   placeholder="22AAAAA0000A1Z5"
-                  className={`${inputClass(touched && gstin.length === 15 && !isValidGstinShape(gstin))} pr-10 font-mono uppercase tracking-wide`}
+                  className={`${inputClass((touched && !gstinOk) || (gstin.length === 15 && !isValidGstinShape(gstin)))} pr-10 font-mono uppercase tracking-wide`}
                 />
                 {gstStage === "found" && <CheckCircle2 className="absolute right-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-700" />}
               </div>
@@ -971,8 +955,13 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
                 Verify
               </SecondaryButton>
             </div>
-            {gstin.length === 15 && !isValidGstinShape(gstin) && <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">That doesn't match a GSTIN's format.</p>}
+            {gstin.length === 15 && !isValidGstinShape(gstin) && (
+              <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">That doesn't match a GSTIN's format.</p>
+            )}
             {gstStage === "error" && <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">{gstError}</p>}
+            {touched && !gstinOk && gstStage !== "error" && gstin.length !== 15 && (
+              <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">Enter and verify your GSTIN to continue.</p>
+            )}
           </div>
 
           <AnimatePresence>
@@ -1001,8 +990,11 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
                 </label>
                 <input
                   value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Mehta Steel"
-                  className={`mt-1.5 ${inputClass(touched && displayName.trim().length < 2)}`}
+                  className={`mt-1.5 ${inputClass(touched && !displayNameOk)}`}
                 />
+                {touched && !displayNameOk && (
+                  <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">Enter a display name for your storefront.</p>
+                )}
               </div>
 
               <div ref={dispatchRef} className="flex flex-col scroll-mt-24">
@@ -1013,20 +1005,25 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
                 </label>
 
                 {!dispatchSame && (
-                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <input
-                      value={dispatchAddress} onChange={(e) => setDispatchAddress(e.target.value)} placeholder="Dispatch address"
-                      className={`${inputClass(touched && !dispatchAddress.trim())} sm:col-span-2`}
-                    />
-                    <input
-                      value={dispatchPincode} onChange={(e) => setDispatchPincode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Pincode"
-                      className={inputClass(touched && dispatchPincode.trim().length !== 6)}
-                    />
-                    <input
-                      value={dispatchState} onChange={(e) => setDispatchState(e.target.value)} placeholder="State"
-                      className={inputClass(touched && !dispatchState.trim())}
-                    />
-                  </div>
+                  <>
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <input
+                        value={dispatchAddress} onChange={(e) => setDispatchAddress(e.target.value)} placeholder="Dispatch address"
+                        className={`${inputClass(touched && !dispatchAddress.trim())} sm:col-span-2`}
+                      />
+                      <input
+                        value={dispatchPincode} onChange={(e) => setDispatchPincode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Pincode"
+                        className={inputClass(touched && dispatchPincode.trim().length !== 6)}
+                      />
+                      <input
+                        value={dispatchState} onChange={(e) => setDispatchState(e.target.value)} placeholder="State"
+                        className={inputClass(touched && !dispatchState.trim())}
+                      />
+                    </div>
+                    {touched && !dispatchOk && (
+                      <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">Fill in the complete dispatch address.</p>
+                    )}
+                  </>
                 )}
               </div>
             </>
