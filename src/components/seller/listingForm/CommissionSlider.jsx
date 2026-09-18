@@ -84,7 +84,7 @@ function CommissionSlider({ value, onChange, C, isErr }) {
                         Promotion & Visibility Budget <span style={{ color: C.primary }}>*</span>
                     </span>
                     <span className="text-[10px] font-medium leading-snug tracking-wider" style={{ color: C.muted }}>
-                        Platform fee deducted from your payout on every order
+                        Higher promotional budgets may receive higher placement and greater visibility, subject to relevance and platform performance
                     </span>
                 </div>
 

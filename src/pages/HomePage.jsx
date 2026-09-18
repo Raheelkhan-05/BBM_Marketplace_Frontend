@@ -33,7 +33,7 @@ export default function HomePage() {
     return (
         <div className="min-h-screen bg-[#FCFBF9] text-slate-900 antialiased overflow-x-hidden" style={{ fontFamily: FONT_BODY }}>
             <SmoothScrollProvider>
-                <main className="mx-auto max-w-7xl px-2.5 mt-2 sm:px-4 lg:px-6 pb-5 sm:pb-20 pt-3 space-y-4">
+                <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-5 sm:pb-20 pt-3 space-y-4">
 
                     <MarketplaceSearchBar
                         value={query}

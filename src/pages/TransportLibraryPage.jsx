@@ -32,7 +32,7 @@ import {
     routeOptionSummary, routeOptionIdentity,
 } from "../../shared/routeTransportFields.js";
 
-const C = { ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83", hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)" };
+const C = { ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#006F83", hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)" };
 const EASE = [0.16, 1, 0.3, 1];
 
 // Applied wherever free-form labels/values get rendered, so casing stays
@@ -217,7 +217,7 @@ function BrowseTab({ canAdd, token }) {
                     <button
                         onClick={search}
                         className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-white"
-                        style={{ background: C.secondary }}
+                        style={{ background: C.primary }}
                         aria-label="Search"
                     >
                         <Search className="h-4 w-4" />
@@ -499,7 +499,7 @@ export default function TransportLibraryPage() {
     return (
         <div className="mx-auto min-h-screen max-w-3xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
             <div className="mt-3 flex items-center gap-2">
-                <Truck className="h-5 w-5" style={{ color: C.secondary }} />
+                <Truck className="h-5 w-5" style={{ color: C.primary }} />
                 <h1 className="font-extrabold tracking-wide" style={{ color: C.ink, fontSize: "clamp(21px,1.9vw,27px)" }}>Transport Library</h1>
             </div>
             <p className="mt-1 text-[13px] font-medium tracking-wide" style={{ color: C.muted }}>

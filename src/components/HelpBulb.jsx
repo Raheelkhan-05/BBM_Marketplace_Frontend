@@ -79,7 +79,7 @@ import { useHelpRequest } from "../context/HelpRequestContext.jsx";
 const C = {
     ink: "#141B22",
     muted: "#5B6672",
-    primary: "#C2410C",
+    primary: "#000000",
     secondary: "#0B7285",
     hair: "rgba(20,27,34,0.09)",
 };

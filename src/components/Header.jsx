@@ -242,8 +242,7 @@ export default function Header({ onOpenRfq }) {
     <>
       <header
         ref={headerRef}
-        className="relative sm:sticky top-0 z-50 border-b bg-white/95 backdrop-blur-md shadow-[0_1px_0_rgba(20,27,34,0.04)] transition-all duration-300"
-        style={{ borderColor: C.hair }}
+        className="relative sm:sticky top-0 z-50 bg-[#FCFBF9]/95 backdrop-blur-md transition-all duration-300"
       >
         <div ref={rowRef} className="relative mx-auto flex h-14 max-w-7xl items-center justify-between px-4 lg:px-8">
           <div ref={logoRef} className="flex shrink-0 items-center">
@@ -360,7 +359,7 @@ export default function Header({ onOpenRfq }) {
                   <div className="mb-3 flex items-center gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5">
                     <span
                       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
-                      style={{ background: "linear-gradient(135deg, #0B7285 0%, #4FA3B0 100%)" }}
+                      style={{ background: "linear-gradient(135deg, #000000 0%, #000000 100%)" }}
                     >
                       <User className="h-4 w-4" />
                     </span>
@@ -375,8 +374,8 @@ export default function Header({ onOpenRfq }) {
                   {effectiveLoggedIn && (
                     <>
                       {isApprovedSeller && (
-                        <SmartLink to={`/shop/${profile.shop_slug}`} onClick={() => setOpen(false)} className={`${MOBILE_ROW} text-[#0B7285]`}>
-                          <Store className="h-4 w-4 text-[#0B7285]" />
+                        <SmartLink to={`/shop/${profile.shop_slug}`} onClick={() => setOpen(false)} className={`${MOBILE_ROW} text-[#000000]`}>
+                          <Store className="h-4 w-4 text-[#000000]" />
                           My Shop
                         </SmartLink>
                       )}
