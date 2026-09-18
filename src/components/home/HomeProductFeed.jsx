@@ -52,7 +52,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2, Lock } from "lucide-react";
+import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2, Truck, Lock } from "lucide-react";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -960,10 +960,30 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
             >
                 {/* Pricing moved up to the row itself — this header now
                     only carries the seller-count context. */}
-                <div className="flex items-center justify-between gap-2 pb-2.5">
-                    <p className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>
-                        {loading ? "Loading sellers…" : total > 0 ? `${total} seller${total === 1 ? "" : "s"} listing this` : "No sellers yet"}
-                    </p>
+                <div className="flex flex-nowrap items-center justify-between gap-2 pb-2 overflow-x-auto">
+                    <div className="flex flex-nowrap items-center whitespace-nowrap text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>
+                        <span className="font-bold tracking-wide" style={{ marginRight: 12 }}>
+                            {loading ? "Loading sellers…" : total > 0 ? `${total} seller${total === 1 ? "" : "s"} listing this` : "No sellers yet"}
+                        </span>
+
+                        {!loading && sortedItems.length > 0 && (
+                            <>
+                                <span className="flex items-center" style={{ marginRight: 12 }}>
+                                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full" style={{ background: `${C.secondary}16`, color: C.secondary, marginRight: 5 }}>
+                                        <Truck className="h-3 w-3" strokeWidth={2.5} />
+                                    </span>
+                                    Freight included
+                                </span>
+                                <span className="flex items-center">
+                                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full" style={{ background: C.hairSoft, color: C.muted, marginRight: 5 }}>
+                                        <Truck className="h-3 w-3" strokeWidth={2.5} />
+                                    </span>
+                                    Freight extra
+                                </span>
+                            </>
+                        )}
+                    </div>
+
                     {!loading && items.length > 1 && (
                         <SellerSortToggle value={sortMode} onChange={onSortModeChange} />
                     )}
@@ -1039,8 +1059,18 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                 ) : !isLoggedIn ? (
                                                     <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
                                                 ) : (
-                                                    <div className="flex flex-col items-end gap-1">
-
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span
+                                                            title={s.freight_included ? "Freight included in price" : "Freight not included"}
+                                                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+                                                            style={
+                                                                s.freight_included
+                                                                    ? { background: `${C.secondary}16`, color: C.secondary }
+                                                                    : { background: C.hairSoft, color: C.muted }
+                                                            }
+                                                        >
+                                                            <Truck className="h-3 w-3" strokeWidth={2.5} />
+                                                        </span>
                                                         <SellerPriceBlock pricing={pricing} unit={s.unit} />
                                                     </div>
                                                 )}

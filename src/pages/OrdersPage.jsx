@@ -352,7 +352,7 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions, reload }
                             </p>
                         </div>
                         <p className="text-[13px] italic font-medium tracking-wide" style={{ color: C.muted }}>
-                            Wallet deduction: ₹{inr(round2(order.subtotal_amount * order.platform_fee_percent / 100 * 1.18))} ({order.platform_fee_percent}% Marketing Commission + 18%GST)
+                            Wallet deduction: ₹{inr(round2(order.subtotal_amount * order.platform_fee_percent / 100 * 1.18))} ({order.platform_fee_percent}% Marketing Budget + 18%GST)
                         </p>
                     </>
                 )}

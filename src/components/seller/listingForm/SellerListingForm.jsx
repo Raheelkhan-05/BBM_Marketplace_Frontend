@@ -417,7 +417,7 @@ function computeMissing(form) {
     add(
         !(Number(form.marketingCommissionPercent) >= 0.25 && Number(form.marketingCommissionPercent) <= 100),
         "marketingCommissionPercent",
-        "Marketing commission %"
+        "Marketing Budget %"
     );
     add(form.sampleAvailable && !(Number(form.sampleQuantity) > 0), "sampleQuantity", "Sample quantity");
     add(!form.stockType, "stockType", "Fulfilment type");
@@ -1488,7 +1488,7 @@ export default function SellerListingForm({
                         <div className="flex items-center justify-between gap-3">
                             <div className="flex flex-col gap-0.5">
                                 <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
-                                    Marketing commission <span style={{ color: C.primary }}>*</span>
+                                    Marketing Budget <span style={{ color: C.primary }}>*</span>
                                 </span>
                                 <span className="text-[10px] font-medium leading-snug tracking-wider" style={{ color: C.muted }}>
                                     Platform fee deducted from your payout on every order
@@ -1646,7 +1646,7 @@ export default function SellerListingForm({
                             </div> */}
                             {moqPreview.commissionPercent > 0 && (
                                 <div className="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                    <span>Marketing commission ({moqPreview.commissionPercent}% + {form.gstPercent}% GST on fee)</span>
+                                    <span>Marketing Budget ({moqPreview.commissionPercent}% + {form.gstPercent}% GST on fee)</span>
                                     <span className="tabular-nums font-bold" style={{ color: "#c71f11" }}>
                                         − ₹{moqPreview.totalCommissionDeducted.toLocaleString("en-IN")}
                                     </span>

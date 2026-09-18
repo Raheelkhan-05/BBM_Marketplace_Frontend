@@ -823,7 +823,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             return setError("Stock can't be negative.");
         }
         if (!(Number(form.marketingCommissionPercent) >= 0.25 && Number(form.marketingCommissionPercent) <= 100)) {
-            return setError("Marketing commission must be between 0.25% and 100%.");
+            return setError("Marketing Budget must be between 0.25% and 100%.");
         }
 
 
@@ -910,7 +910,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                                 <span className="tabular-nums font-bold" style={{ color: C.ink }}>₹{formatMoney(gstAmount)}</span>
                             </div>
                             <QuickField
-                                label="Marketing commission %"
+                                label="Marketing Budget %"
                                 type="number" min="0.25" max="100" step="0.25"
                                 value={form.marketingCommissionPercent}
                                 onChange={(e) => setField("marketingCommissionPercent", e.target.value)}
