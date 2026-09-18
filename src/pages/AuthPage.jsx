@@ -240,7 +240,7 @@ export default function AuthPage() {
               onClick={handleBack}
               whileTap={{ scale: 0.9 }}
               aria-label="Go back"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
+              className="flex h-9 w-9 hidden md:block  shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
             >
               <ArrowLeft className="h-[18px] w-[18px]" />
             </motion.button>
@@ -360,7 +360,7 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.22, ease: "easeOut" }}
     >
-      <main className="mx-auto w-full max-w-5xl px-4 pb-12 pt-7 sm:px-6 sm:pb-16 sm:pt-10 lg:px-8">
+      <main className="mx-auto w-full max-w-5xl px-4 pb-12 pt-7 sm:px-6 sm:ps-3 sm:pb-16 sm:pt-10 lg:px-8 lg:ps-3">
         <div className="max-w-[720px]">
           {/* ---- hero ---- */}
           <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-slate-400 sm:text-[11.5px]">

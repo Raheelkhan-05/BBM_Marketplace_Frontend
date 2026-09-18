@@ -115,7 +115,7 @@ export default function TermsPage() {
                         <SmartLink
                             to="/login"
                             aria-label="Back to home"
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
+                            className="flex h-9 w-9 hidden md:block shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
                         >
                             <ArrowLeft className="h-[18px] w-[18px]" />
                         </SmartLink>
