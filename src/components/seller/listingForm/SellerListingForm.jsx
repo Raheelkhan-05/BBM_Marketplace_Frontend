@@ -512,6 +512,16 @@ export default function SellerListingForm({
         return base;
     });
 
+    // handleFieldAdvance runs inside a setTimeout, and its onEnterKey callback
+    // is created during a render that's about to be stale the moment a toggle
+    // (e.g. "Sample available?") calls setField() right before it. Reading
+    // `form` directly there closes over that stale render's value, so a field
+    // that just became visible (e.g. sampleQuantity right after choosing
+    // "Yes") gets treated as still-hidden and skipped. formRef always points
+    // at the latest state regardless of which render's closure is running.
+    const formRef = useRef(form);
+    useEffect(() => { formRef.current = form; }, [form]);
+
     const [uploadingImage, setUploadingImage] = useState(false);
     // const [commissionPercent, setCommissionPercent] = useState(2.5);
     const [platformDefaultCommissionPercent, setPlatformDefaultCommissionPercent] = useState(0.25);
@@ -1015,9 +1025,11 @@ export default function SellerListingForm({
         setTouched((t) => (t[fieldKey] ? t : { ...t, [fieldKey]: true }));
 
         setTimeout(() => {
+            const currentForm = formRef.current;
+
             // Enter (not Tab) only submits once the whole form is complete.
             if (isSubmitAttempt) {
-                const stillMissing = computeMissing(form);
+                const stillMissing = computeMissing(currentForm);
                 if (stillMissing.length === 0) {
                     handleSubmit();
                     return;
@@ -1025,7 +1037,7 @@ export default function SellerListingForm({
             }
 
             // Purely positional: next/prev visible field in FIELD_ORDER, looping.
-            const visibleOrder = FIELD_ORDER.filter((key) => isFieldVisible(key, form));
+            const visibleOrder = FIELD_ORDER.filter((key) => isFieldVisible(key, currentForm));
             const idx = visibleOrder.indexOf(orderKeyFor(fieldKey));
             if (idx === -1 || visibleOrder.length === 0) return;
 
