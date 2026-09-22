@@ -456,7 +456,7 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                             >
                                 <div className="flex items-center gap-1.5">
                                     <Info className="h-4 w-4" style={{ color: C.secondary }} />
-                                    <h3 id="brand-item-modal-title" className="text-[14.5px] font-extrabold" style={{ color: C.ink }}>Product details</h3>
+                                    <h3 id="brand-item-modal-title" className="text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>Product details</h3>
                                 </div>
                                 <button onClick={requestClose} aria-label="Close" className="rounded-full p-1.5 transition-colors hover:bg-black/[0.05]">
                                     <X className="h-4 w-4" style={{ color: C.muted }} />
@@ -544,7 +544,7 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                         )}
 
                                         <div className="mt-4 rounded-xl border p-3.5" style={{ borderColor: C.hair }}>
-                                            <div className="flex items-center justify-between">
+                                            <div className="flex items-center justify-between tracking-wide">
                                                 <div>
                                                     <p className="text-[11px] font-semibold" style={{ color: C.muted }}>Price range</p>
                                                     <p className="text-[16px] font-extrabold" style={{ color: C.ink }}>
@@ -570,7 +570,7 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                                 </div>
                                             </div>
                                             {packaging && (
-                                                <p className="mt-2.5 border-t pt-2.5 text-[11.5px] font-semibold" style={{ borderColor: C.hairSoft, color: C.secondary }}>
+                                                <p className="mt-2.5 border-t pt-2.5 text-[11.5px] font-semibold tracking-wide" style={{ borderColor: C.hairSoft, color: C.secondary }}>
                                                     {packaging}
                                                 </p>
                                             )}
@@ -607,8 +607,8 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                     <button
                                         onClick={() => onViewSellers(item)}
                                         disabled={!sellerCount}
-                                        className="flex w-full items-center justify-center gap-1.5 rounded-xl py-3 text-[13.5px] font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-40"
-                                        style={{ background: C.secondary }}
+                                        className="flex w-full items-center tracking-wide justify-center gap-1.5 rounded-xl py-3 text-[13.5px] font-bold text-white transition-transform active:scale-[0.98] disabled:opacity-40"
+                                        style={{ background: "#000" }}
                                     >
                                         {sellerCount ? `View ${sellerCount} sellers` : "No sellers yet"}
                                         {!!sellerCount && <ArrowRight className="h-3.5 w-3.5" />}

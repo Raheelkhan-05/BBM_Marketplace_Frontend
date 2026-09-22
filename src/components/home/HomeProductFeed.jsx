@@ -68,7 +68,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2, Truck, Lock, Zap } from "lucide-react";
+import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2, Truck, Lock, Zap, MapPin } from "lucide-react";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -952,7 +952,7 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
 // loadSellersFor in the parent). `buyerAddress` drives whether the
 // "Fastest delivery" tab is even shown, and is what total_delivery_days
 // on each seller row was computed against.
-function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId, onRequireLogin, isLoggedIn, buyerAddress }) {
+function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId, onRequireLogin, isLoggedIn, buyerAddress, navigate }) {
     const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
 
     // Only the very first fetch (nothing on screen yet) shows the skeleton.
@@ -1033,6 +1033,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                 const totalDeliveryDays = s.total_delivery_days;
                                 const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
 
+
                                 return (
                                     <motion.div
                                         key={s.submission_id}
@@ -1045,13 +1046,19 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                             if ((e.key === "Enter" || e.key === " ") && !outOfStock && !isOwn) { e.preventDefault(); onBuySeller(s); }
                                         }}
                                         aria-disabled={outOfStock || isOwn}
-                                        className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9]"
+                                        className="flex items-start gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9]"
                                         style={outOfStock || isOwn ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
                                     >
+
                                         <div className="min-w-0 flex-1">
                                             <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
                                                 {s.display_name}{isOwn ? " (You)" : ""}
                                             </p>
+                                            {(s.city || s.state) && (
+                                                <p className="mt-0.5 flex items-center gap-1 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                                    <MapPin className="h-3 w-3 shrink-0" /> {[s.city, s.state].filter(Boolean).join(", ")}
+                                                </p>
+                                            )}
                                             <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                 {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
                                                 {totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
@@ -1065,15 +1072,22 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                             </div>
                                         </div>
 
-                                        {outOfStock ? (
-                                            <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
-                                                OUT OF STOCK
-                                            </span>
-                                        ) : !isLoggedIn ? (
-                                            <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
-                                        ) : (
-                                            <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                        )}
+                                        <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5 text-right">
+                                            {outOfStock ? (
+                                                <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
+                                                    OUT OF STOCK
+                                                </span>
+                                            ) : !isLoggedIn ? (
+                                                <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
+                                            ) : (
+                                                <>
+                                                    <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                                    <span className="rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white" style={{ background: C.primary }}>
+                                                        {isOwn ? "Your listing" : "Buy now"}
+                                                    </span>
+                                                </>
+                                            )}
+                                        </div>
                                     </motion.div>
                                 );
                             })}
@@ -1372,7 +1386,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         { lookahead: 800, disabled: loading || loadingMore || !hasMore }
     );
 
-    const goToSellers = (item) => navigate(`/ brand - item / ${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
+    const goToSellers = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
 
     // Only shows TransportPreferenceModal the first time this buyer deals
     // with this seller. The decision (or explicit "no preference") is
@@ -1537,6 +1551,7 @@ export default function HomeProductFeed({ category, q = "" }) {
 
                                                 <AnimatePresence initial={false}>
                                                     {isOpen && (
+
                                                         <SellerDropdown
                                                             item={item}
                                                             state={sellerState[item.id]}
@@ -1549,6 +1564,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                             onSortModeChange={setSellerSortMode}
                                                             currentUserId={currentUserId}
                                                             buyerAddress={buyerAddress}
+                                                            navigate={navigate}
                                                         />
                                                     )}
                                                 </AnimatePresence>
@@ -1581,7 +1597,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                 <BrandItemDetailModal
                     brandItemId={infoItemId}
                     onClose={() => setInfoItemId(null)}
-                    onViewSellers={(item) => { setInfoItemId(null); openSellersInline(item); }}
+                    onViewSellers={(item) => { setInfoItemId(null); goToSellers(item); }}
                 />
             )}
 
