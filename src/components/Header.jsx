@@ -155,11 +155,20 @@ export default function Header({ onOpenRfq }) {
 
   useEffect(() => {
     if (!headerRef.current) return;
-    const update = () => setHeaderHeight(headerRef.current.offsetHeight);
+    const update = () => {
+      const rect = headerRef.current.getBoundingClientRect();
+      setHeaderHeight(rect.bottom); // actual bottom edge, includes margins
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(headerRef.current);
-    return () => ro.disconnect();
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, { passive: true }); // header position can shift with scroll if not fixed
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update);
+    };
   }, []);
 
   // Nav stays perfectly centered on the whole row, but its max-width is
@@ -247,7 +256,11 @@ export default function Header({ onOpenRfq }) {
     <>
       <header
         ref={headerRef}
-        className="relative top-0 z-50 bg-[#FFFFFF]/95 backdrop-blur-md transition-all duration-300"
+        className="fixed top-0 left-0 right-0 z-50 bg-white transition-all duration-300"
+        style={{
+          paddingTop: "env(safe-area-inset-top, 0px)",
+          backdropFilter: "blur(8px)",
+        }}
       >
         <div ref={rowRef} className="relative mx-auto flex h-7 mt-3 max-w-7xl items-center justify-between px-4 lg:px-8">
           <div ref={logoRef} className="flex shrink-0 items-center">
