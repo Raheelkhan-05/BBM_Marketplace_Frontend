@@ -22,7 +22,7 @@
 // button (returns to "details" without discarding anything) and its
 // own primary CTA, which is the one that actually submits.
 
-import { useEffect, useState, useRef, useMemo } from "react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import PaymentQRModal from "./PaymentQRModal.jsx";
@@ -301,41 +301,6 @@ function Panel({ icon: Icon, title, subtitle, children }) {
     );
 }
 
-// Small step indicator so the buyer always knows where they are in the
-// two-phase flow. Purely presentational — doesn't drive any logic.
-function PhaseSteps({ phase }) {
-    const steps = [
-        { key: "details", label: "Order details" },
-        { key: "shipping", label: "Shipping & confirm" },
-    ];
-    return (
-        <div className="flex items-center gap-2">
-            {steps.map((s, i) => {
-                const active = s.key === phase;
-                const done = steps.findIndex((x) => x.key === phase) > i;
-                return (
-                    <div key={s.key} className="flex items-center gap-2">
-                        <div className="flex items-center gap-1.5">
-                            <span
-                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold"
-                                style={active || done
-                                    ? { background: C.secondary, color: "#fff" }
-                                    : { background: C.hairSoft, color: C.muted }}
-                            >
-                                {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
-                            </span>
-                            <span className="hidden text-[11.5px] font-bold tracking-wide sm:inline" style={{ color: active ? C.ink : C.muted }}>
-                                {s.label}
-                            </span>
-                        </div>
-                        {i < steps.length - 1 && <div className="h-px w-4 sm:w-6" style={{ background: C.hairSoft }} />}
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
 /* ============================================================
    Main component
    ============================================================ */
@@ -514,6 +479,12 @@ export default function BuyNowModal({ seller, product, onClose }) {
         const lenis = window.lenis;
         lenis?.stop?.();
         return () => { lenis?.start?.(); };
+    }, []);
+
+    useEffect(() => {
+        const original = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = original; };
     }, []);
 
     // Preference was resolved for a specific destination route. If the
@@ -714,6 +685,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
         const finalQuote = confirmed || quote;
         const effectiveOrderType = explicitOrderType || (isSample ? "sample" : "standard");
 
+
         if (finalQuote) {
             if (effectiveOrderType === "sample" && finalQuote.exceedsSampleQuantity) {
                 setSubmitting(false);
@@ -870,6 +842,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
             : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)";
     const finalCtaDisabled = submitting || (!isSample && (belowMoq || outOfStock || exceedsStock));
 
+    const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
+
     return (
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
@@ -957,11 +931,16 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                     </button>
                                 </div>
                             </div>
-                            {/* <PhaseSteps phase={phase} /> */}
                         </div>
 
                         {/* ---------------- Scrollable body ---------------- */}
-                        <div className="flex-1 overflow-y-auto" data-lenis-prevent>
+                        <div
+                            className="flex-1 overflow-y-auto"
+                            data-lenis-prevent
+                            onWheel={stopScrollPropagation}
+                            onTouchStart={stopScrollPropagation}
+                            onTouchMove={stopScrollPropagation}
+                        >
                             <div className="flex flex-col gap-3 px-5 py-4 sm:px-6">
 
                                 {phase === "details" && (
@@ -1084,78 +1063,90 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         </Panel>
 
                                         {/* ---------------- Price breakdown (no delivery estimate here) ---------------- */}
-                                        <Panel icon={ReceiptText} title="Price breakdown">
-                                            {quote ? (
-                                                <>
-                                                    <div className="flex items-center gap-3 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hair }}>
-                                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}12` }}>
-                                                            <Boxes className="h-4 w-4" style={{ color: C.secondary }} />
-                                                        </span>
-                                                        <div className="min-w-0 flex-1">
-                                                            {isSample ? (
-                                                                <p className="text-[14px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                                                                    {quote.baseUnitQuantity} {seller?.unit}
-                                                                </p>
-                                                            ) : (
-                                                                <p className="text-[14px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
-                                                                    {quote.saleUnitQuantity} {saleUnitLabel(seller?.masterPackSize)}{quote.saleUnitQuantity === 1 ? "" : "s"}
-                                                                    {Number(seller?.packSize) > 0 && (
-                                                                        <span className="font-semibold" style={{ color: C.muted }}>
-                                                                            {" "}· {saleUnitQtyToBaseUnits(quote.saleUnitQuantity, seller.packSize, seller.masterPackSize)} {seller?.unit}
-                                                                        </span>
-                                                                    )}
-                                                                </p>
-                                                            )}
-                                                            {!isSample && basis === "per_master_pack" && (
-                                                                <p className="text-[11px] font-medium tracking-wider" style={{ color: C.muted }}>
-                                                                    {quantity} master pack{Number(quantity) === 1 ? "" : "s"} selected
-                                                                </p>
-                                                            )}
-                                                        </div>
-                                                    </div>
+                                        <details className="group rounded-2xl border bg-white p-4 sm:p-4.5" style={{ borderColor: C.hairSoft }}>
+                                            <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                                                <span className="flex items-center gap-2">
+                                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12` }}>
+                                                        <ReceiptText className="h-3.5 w-3.5" style={{ color: C.secondary }} />
+                                                    </span>
+                                                    <span className="text-[14px] font-bold" style={{ color: C.ink }}>Price breakdown</span>
+                                                </span>
+                                                <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: C.muted }} />
+                                            </summary>
 
-                                                    <div className="flex flex-col gap-2.5 rounded-xl bg-slate-50 p-3.5">
-                                                        <span className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>Rate applied</span>
-
-                                                        <div className="flex items-baseline justify-between gap-2 tracking-wide">
-                                                            <span className="text-[14px] font-bold" style={{ color: C.ink }}>
-                                                                ₹{inr(quote.basePriceApplied ?? quote.unitPrice)}{" "}
-                                                                <span className="font-medium" style={{ color: C.muted }}>/ {isSample ? seller?.unit : saleUnitLabel(seller?.masterPackSize)}</span>
+                                            <div className="mt-3 flex flex-col gap-3 border-t pt-3" style={{ borderColor: C.hairSoft }}>
+                                                {quote ? (
+                                                    <>
+                                                        <div className="flex items-center gap-3 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hair }}>
+                                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}12` }}>
+                                                                <Boxes className="h-4 w-4" style={{ color: C.secondary }} />
                                                             </span>
-                                                            {!isSample && Number(seller?.packSize) > 0 && (
-                                                                <span className="shrink-0 text-[11px] font-medium tabular-nums" style={{ color: C.muted }}>
-                                                                    ≈ ₹{inr((quote.basePriceApplied ?? quote.unitPrice) / saleUnitQtyToBaseUnits(1, seller.packSize, seller.masterPackSize))} / {seller?.unit}
+                                                            <div className="min-w-0 flex-1">
+                                                                {isSample ? (
+                                                                    <p className="text-[14px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                                                        {quote.baseUnitQuantity} {seller?.unit}
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className="text-[14px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
+                                                                        {quote.saleUnitQuantity} {saleUnitLabel(seller?.masterPackSize)}{quote.saleUnitQuantity === 1 ? "" : "s"}
+                                                                        {Number(seller?.packSize) > 0 && (
+                                                                            <span className="font-semibold" style={{ color: C.muted }}>
+                                                                                {" "}· {saleUnitQtyToBaseUnits(quote.saleUnitQuantity, seller.packSize, seller.masterPackSize)} {seller?.unit}
+                                                                            </span>
+                                                                        )}
+                                                                    </p>
+                                                                )}
+                                                                {!isSample && basis === "per_master_pack" && (
+                                                                    <p className="text-[11px] font-medium tracking-wider" style={{ color: C.muted }}>
+                                                                        {quantity} master pack{Number(quantity) === 1 ? "" : "s"} selected
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex flex-col gap-2.5 rounded-xl bg-slate-50 p-3.5">
+                                                            <span className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>Rate applied</span>
+
+                                                            <div className="flex items-baseline justify-between gap-2 tracking-wide">
+                                                                <span className="text-[14px] font-bold" style={{ color: C.ink }}>
+                                                                    ₹{inr(quote.basePriceApplied ?? quote.unitPrice)}{" "}
+                                                                    <span className="font-medium" style={{ color: C.muted }}>/ {isSample ? seller?.unit : saleUnitLabel(seller?.masterPackSize)}</span>
                                                                 </span>
+                                                                {!isSample && Number(seller?.packSize) > 0 && (
+                                                                    <span className="shrink-0 text-[11px] font-medium tabular-nums" style={{ color: C.muted }}>
+                                                                        ≈ ₹{inr((quote.basePriceApplied ?? quote.unitPrice) / saleUnitQtyToBaseUnits(1, seller.packSize, seller.masterPackSize))} / {seller?.unit}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="h-px" style={{ background: C.hair }} />
+
+                                                            <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} small />
+                                                            {!isSample && quote.discountAmount > 0 && (
+                                                                <QuoteRow label={`Discount (${quote.discountPercent}% off)`} value={`− ₹${inr(quote.discountAmount)}`} tone={C.secondary} small />
                                                             )}
+
+                                                            <div className="h-px" style={{ background: C.hair }} />
+
+                                                            <div className="flex items-center justify-between tracking-wide">
+                                                                <span className="text-[13.5px] font-bold" style={{ color: C.ink }}>
+                                                                    {isSample ? "Total payable (sample)" : "Total payable"}
+                                                                </span>
+                                                                <span className="text-[20px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(quote.subtotal)}</span>
+                                                            </div>
                                                         </div>
 
-                                                        <div className="h-px" style={{ background: C.hair }} />
-
-                                                        <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} small />
-                                                        {!isSample && quote.discountAmount > 0 && (
-                                                            <QuoteRow label={`Discount (${quote.discountPercent}% off)`} value={`− ₹${inr(quote.discountAmount)}`} tone={C.secondary} small />
+                                                        {!isSample && quote.acceptanceDelayDays > 0 && (
+                                                            <Notice tone="warn">
+                                                                {quote.acceptanceMessage || "This seller is currently closed — your order will still be placed, but acceptance is delayed."}
+                                                            </Notice>
                                                         )}
-
-                                                        <div className="h-px" style={{ background: C.hair }} />
-
-                                                        <div className="flex items-center justify-between tracking-wide">
-                                                            <span className="text-[13.5px] font-bold" style={{ color: C.ink }}>
-                                                                {isSample ? "Total payable (sample)" : "Total payable"}
-                                                            </span>
-                                                            <span className="text-[20px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(quote.subtotal)}</span>
-                                                        </div>
-                                                    </div>
-
-                                                    {!isSample && quote.acceptanceDelayDays > 0 && (
-                                                        <Notice tone="warn">
-                                                            {quote.acceptanceMessage || "This seller is currently closed — your order will still be placed, but acceptance is delayed."}
-                                                        </Notice>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <p className="text-[12.5px] font-medium" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
-                                            )}
-                                        </Panel>
+                                                    </>
+                                                ) : (
+                                                    <p className="text-[12.5px] font-medium" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
+                                                )}
+                                            </div>
+                                        </details>
 
                                         {/* ---------------- Seller terms (collapsible, quieter) ---------------- */}
                                         {hasTerms && (
