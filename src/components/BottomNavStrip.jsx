@@ -99,12 +99,19 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     {isLoggedIn ? (
                         <button
                             onClick={() => setSheetOpen(true)}
-                            aria-label="Open menu"
+                            aria-label={badgeDisplay ? `Open menu, ${badgeTotal} unread` : "Open menu"}
                             aria-expanded={sheetOpen}
-                            className="flex items-center gap-2 py-2 text-[14px] font-bold text-white"
+                            className="relative flex items-center justify-center gap-2 py-2.5 text-[13px] font-bold"
+                            style={{ color: "#fff" }}
                         >
-                            <Menu className="h-5 w-5" />
-                            <span>Menu</span>
+                            <Menu className="h-4 w-4" />
+                            Menu
+
+                            {badgeDisplay != null && (
+                                <span className="absolute -right-5 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white">
+                                    {badgeDisplay}
+                                </span>
+                            )}
                         </button>
                     ) : (
                         <button
@@ -117,6 +124,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         </button>
                     )}
                 </div>
+
             </nav>
 
             {/* Sheet: slides up from the bottom, capped at half the viewport
