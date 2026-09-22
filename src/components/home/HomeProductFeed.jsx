@@ -939,6 +939,88 @@ function LoginPromptModal({ open, message, onConfirm, onCancel }) {
     );
 }
 
+// Replace the useEdgeAwareLenisForward hook entirely with this:
+function useLenisPreventToggle() {
+    const ref = useRef(null);
+    const touchStartYRef = useRef(0);
+
+    const isAtBlockingEdge = useCallback((deltaY) => {
+        const el = ref.current;
+        if (!el) return true;
+        const { scrollTop, scrollHeight, clientHeight } = el;
+        const atTop = scrollTop <= 0;
+        const atBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight;
+        const goingUp = deltaY < 0;
+        const goingDown = deltaY > 0;
+        return (atTop && goingUp) || (atBottom && goingDown);
+    }, []);
+
+    const handleWheel = useCallback((e) => {
+        if (!isAtBlockingEdge(e.deltaY)) e.stopPropagation();
+    }, [isAtBlockingEdge]);
+
+    // Native listeners — attached directly via addEventListener, in the
+    // CAPTURE phase, with passive:false so stopPropagation/preventDefault
+    // actually take effect before Lenis's own window/document listener
+    // (also native, also outside React) gets to run. React's synthetic
+    // onTouchStart/onTouchMove are NOT reliable here — they're dispatched
+    // through React's own system, separately from real DOM bubble order,
+    // and default to passive, so stopPropagation on the synthetic event
+    // doesn't guarantee anything about what Lenis's real listener sees.
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+
+        const onTouchStart = (e) => {
+            touchStartYRef.current = e.touches[0].clientY;
+        };
+
+        const onTouchMove = (e) => {
+            const currentY = e.touches[0].clientY;
+            const deltaY = touchStartYRef.current - currentY;
+            touchStartYRef.current = currentY;
+
+            if (!isAtBlockingEdge(deltaY)) {
+                e.stopPropagation();
+            }
+            // at an edge → don't stop it → real event keeps bubbling →
+            // Lenis's native listener sees it and scrolls the page
+        };
+
+        el.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
+        el.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+
+        return () => {
+            el.removeEventListener("touchstart", onTouchStart, { capture: true });
+            el.removeEventListener("touchmove", onTouchMove, { capture: true });
+        };
+    }, [isAtBlockingEdge]);
+
+    return { ref, handleWheel };
+}
+
+// Add near your other small hooks/helpers in HomeProductFeed.jsx
+function useEdgeAwareLenisForward(scrollRef) {
+    return useCallback((e) => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const { scrollTop, scrollHeight, clientHeight } = el;
+        const atTop = scrollTop <= 0;
+        const atBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight;
+        const goingUp = e.deltaY < 0;
+        const goingDown = e.deltaY > 0;
+
+        if ((atTop && goingUp) || (atBottom && goingDown)) {
+            // This box has nowhere left to scroll in this direction, but
+            // data-lenis-prevent means Lenis already ignored this event
+            // entirely — so without forwarding it manually, the scroll
+            // just vanishes here instead of continuing the page.
+            window.lenis?.scrollTo(window.lenis.scroll + e.deltaY, { immediate: true });
+        }
+        // Otherwise: let native scroll inside the box handle it as usual.
+    }, [scrollRef]);
+}
+
 function sellerPricingForMode(seller, sortMode, includeGst) {
     if (sortMode === "min_moq") {
         return computeEffectivePricing(seller, moqInSaleUnits(seller), includeGst);
@@ -954,6 +1036,9 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
 // on each seller row was computed against.
 function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId, onRequireLogin, isLoggedIn, buyerAddress, navigate }) {
     const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
+
+    // const { ref: listRef, handleWheel, handleTouchStart, handleTouchMove } = useLenisPreventToggle();
+    const { ref: listRef, handleWheel } = useLenisPreventToggle();
 
     // Only the very first fetch (nothing on screen yet) shows the skeleton.
     // A sort-switch refresh (isRefreshing) keeps existing rows visible.
@@ -989,7 +1074,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
             transition={{ duration: 0.24, ease: EASE }}
             className="overflow-hidden"
         >
-            <div data-lenis-prevent className="border-b px-3 py-2.5 sm:px-4" style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}>
+            <div className="border-b px-3 py-2.5 sm:px-4" style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}>
                 <div className="flex flex-nowrap items-center justify-between gap-2 pb-2 overflow-x-auto">
                     <span className="whitespace-nowrap text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
                         {showSkeleton ? "Loading sellers…" : total > 0 ? `${total} seller${total === 1 ? "" : "s"} listing this` : "No sellers yet"}
@@ -1001,7 +1086,13 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                     )}
                 </div>
 
-                <div className="max-h-64 overflow-y-auto overscroll-contain seller-scroll" style={{ scrollbarGutter: "stable" }}>
+                <div
+                    ref={listRef}
+                    onWheel={handleWheel}
+                    className="max-h-64 overflow-y-auto overscroll-contain seller-scroll"
+                    style={{ scrollbarGutter: "stable" }}
+                >
+
                     {showSkeleton ? (
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
                             <div className="flex items-center justify-between gap-3 py-3">
