@@ -74,7 +74,7 @@ export default function FloatingSellButton({ to = "/seller/sell", label = "Sell"
                 }
             `}</style>
 
-            <div className="fixed bottom-20 right-4 z-40 md:bottom-8 md:right-8 fsb-wrap">
+            <div className="fixed bottom-16 right-4 z-40 md:bottom-8 md:right-8 fsb-wrap">
                 <div className="relative">
                     {Array.from({ length: RIPPLE_COUNT }).map((_, i) => (
                         <span

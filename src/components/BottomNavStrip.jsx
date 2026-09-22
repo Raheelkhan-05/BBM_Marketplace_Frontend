@@ -93,24 +93,18 @@ export default function BottomNavStrip({ onOpenRfq }) {
         <>
             <nav
                 className="fixed inset-x-0 bottom-0 z-40 border-t bg-white md:hidden"
-                style={{ borderColor: C.hair, paddingBottom: "env(safe-area-inset-bottom)" }}
+                style={{ backgroundColor: "#000", borderColor: C.hair, paddingBottom: "env(safe-area-inset-bottom)" }}
             >
-                <div className="flex items-center justify-center px-3 py-2 pb-4 -mt-2 pt-4">
+                <div className="flex items-center justify-center px-3 py-2 pb-2.5 -mt-2 pt-4">
                     {isLoggedIn ? (
                         <button
                             onClick={() => setSheetOpen(true)}
-                            aria-label={badgeDisplay ? `Open menu, ${badgeTotal} unread` : "Open menu"}
+                            aria-label="Open menu"
                             aria-expanded={sheetOpen}
-                            className="relative flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-[13px] font-bold"
-                            style={{ background: "rgba(20,27,34,0.045)", color: C.ink }}
+                            className="flex items-center gap-2 py-2 text-[14px] font-bold text-white"
                         >
-                            <Menu className="h-4 w-4" style={{ color: C.muted }} />
-                            Menu
-                            {badgeDisplay != null && (
-                                <span className="absolute right-0 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white ring-2 ring-white">
-                                    {badgeDisplay}
-                                </span>
-                            )}
+                            <Menu className="h-5 w-5" />
+                            <span>Menu</span>
                         </button>
                     ) : (
                         <button

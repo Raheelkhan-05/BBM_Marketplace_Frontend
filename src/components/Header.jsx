@@ -327,13 +327,14 @@ export default function Header({ onOpenRfq }) {
     <>
       <header
         ref={headerRef}
-        className="relative top-0 z-50 bg-white pt-3 transition-all duration-300"
+        className="relative top-0 z-50 bg-white md:pt-3 md:mt-3 transition-all duration-300"
         style={{
-          paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)", // 0.75rem = mt-3's 12px, now folded into safe-area padding
+          paddingTop: "calc(env(safe-area-inset-top, 0px))", // 0.75rem = mt-3's 12px, now folded into safe-area padding
           backdropFilter: "blur(8px)",
         }}
       >
-        <div ref={rowRef} className="relative mx-auto flex h-7 max-w-7xl items-center justify-between px-4 lg:px-8">
+
+        <div ref={rowRef} className="relative hidden md:flex mx-auto flex h-7 max-w-7xl items-center justify-between px-4 lg:px-8">
           <div ref={logoRef} className="flex shrink-0 items-center">
             <SmartLink to="/" className="flex shrink-0 items-center gap-2">
               <MarqueeText
