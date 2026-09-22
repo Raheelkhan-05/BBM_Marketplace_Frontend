@@ -842,10 +842,10 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                     ) : (
                                         <div className="flex flex-col items-center gap-2 rounded-xl px-4 py-8 text-center" style={{ background: C.hairSoft }}>
                                             <Truck className="h-6 w-6" style={{ color: C.muted }} />
-                                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>No transport options recorded yet</p>
-                                            <p className="max-w-xs text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>Please Check Your Feasibility & Set Your Transport Preference From Below</p>
+                                            {/* <p className="max-w-xs text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
                                                 Nobody has set up a transport route between {toSentenceCase(origin.city)} and {toSentenceCase(destCity)} with this seller yet.
-                                            </p>
+                                            </p> */}
                                         </div>
                                     )
                                 )}
