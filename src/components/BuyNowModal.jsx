@@ -1414,7 +1414,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                                 onClick={() => goToShipping(null)}
                                                 disabled={submitting || (!isSample && (belowMoq || outOfStock || exceedsStock))}
                                                 className="flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl px-5 py-3.5 text-[14px] font-bold text-white shadow-sm transition-opacity duration-150 disabled:opacity-50"
-                                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #000000 0%, #000000 100%)" }}>
                                                 Continue
                                             </button>
                                         </div>

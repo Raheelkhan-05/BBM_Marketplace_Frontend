@@ -37,7 +37,7 @@ export default function ChatPage() {
     };
 
     return (
-        <div className="mx-auto flex h-[calc(100dvh-56px)] max-w-7xl overflow-hidden sm:h-[calc(100dvh-56px)]">
+        <div className="mx-auto flex h-[calc(100dvh-10px)] max-w-7xl overflow-hidden sm:h-[calc(100dvh-56px)]">
             <div className={`w-full shrink-0 border-r sm:w-[340px] sm:block ${conversationId ? "hidden" : "block"}`} style={{ borderColor: C.hair }}>
                 <ConversationList
                     conversations={conversations}
