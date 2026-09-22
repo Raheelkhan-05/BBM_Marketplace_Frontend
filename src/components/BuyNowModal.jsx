@@ -1,19 +1,26 @@
-// components/BuyNowModal.jsx — REDESIGNED (UI/UX only, logic untouched)
+// components/BuyNowModal.jsx — TWO-PHASE FLOW (UI/UX only, business logic untouched)
 //
-// ADDRESS HANDLING (this revision): the inline address list/"add new"
-// form used to live entirely in this file (with its own fetch, its own
-// business-profile seeding, its own save handler). That's all been
-// extracted into <AddressBook> (components/shipping/AddressBook.jsx) so
-// BuyNowModal and TransportPreferenceModal share one implementation, one
-// visual style, and — critically — one behavior: picking or saving an
-// address in either place marks it as the buyer's default address on the
-// server, so the other modal picks up the same address automatically.
+// ADDRESS HANDLING: the inline address list/"add new" form used to live
+// entirely in this file. That's extracted into <AddressBook>
+// (components/shipping/AddressBook.jsx) so BuyNowModal and
+// TransportPreferenceModal share one implementation, one visual style,
+// and one behavior: picking or saving an address in either place marks
+// it as the buyer's default address on the server.
 //
-// `selectedAddressId` below is now a DERIVED value (not state) — the
-// non-draft id AddressBook last reported via onChange — so every
-// existing reference to it elsewhere in this file (the quote effect,
-// handleSubmit, session save/restore, the transport modal props) keeps
-// working unchanged.
+// `selectedAddressId` below is a DERIVED value (not state) — the
+// non-draft id AddressBook last reported via onChange.
+//
+// PHASES (this revision):
+//   "details"  — order mode, quantity, price breakdown (no delivery
+//                 estimate), seller terms. Nothing here touches address.
+//   "shipping" — shipping address, transport preference, delivery
+//                 estimate. The actual placeOrder/addToCart/credit-order
+//                 call only ever fires from this phase.
+//
+// Clicking the primary CTA in "details" just advances to "shipping" —
+// it never places an order. The "shipping" phase has its own Back
+// button (returns to "details" without discarding anything) and its
+// own primary CTA, which is the one that actually submits.
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -23,7 +30,7 @@ import AddressBook from "./shipping/AddressBook.jsx";
 import {
     Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee,
     Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
-    CreditCard, Boxes, ShoppingCart, Clock, ChevronDown, PackageCheck, AlertCircle
+    CreditCard, Boxes, ShoppingCart, Clock, ChevronDown, ChevronLeft, PackageCheck, AlertCircle
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
@@ -294,6 +301,41 @@ function Panel({ icon: Icon, title, subtitle, children }) {
     );
 }
 
+// Small step indicator so the buyer always knows where they are in the
+// two-phase flow. Purely presentational — doesn't drive any logic.
+function PhaseSteps({ phase }) {
+    const steps = [
+        { key: "details", label: "Order details" },
+        { key: "shipping", label: "Shipping & confirm" },
+    ];
+    return (
+        <div className="flex items-center gap-2">
+            {steps.map((s, i) => {
+                const active = s.key === phase;
+                const done = steps.findIndex((x) => x.key === phase) > i;
+                return (
+                    <div key={s.key} className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                            <span
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold"
+                                style={active || done
+                                    ? { background: C.secondary, color: "#fff" }
+                                    : { background: C.hairSoft, color: C.muted }}
+                            >
+                                {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+                            </span>
+                            <span className="hidden text-[11.5px] font-bold tracking-wide sm:inline" style={{ color: active ? C.ink : C.muted }}>
+                                {s.label}
+                            </span>
+                        </div>
+                        {i < steps.length - 1 && <div className="h-px w-4 sm:w-6" style={{ background: C.hairSoft }} />}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 /* ============================================================
    Main component
    ============================================================ */
@@ -304,6 +346,25 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const location = useLocation();
 
     const [access, setAccess] = useState(undefined);
+
+    // ---- Two-phase flow ----
+    // "details": quantity + price, no address. "shipping": address +
+    // transport + delivery estimate, and the only phase from which an
+    // order can actually be placed / added to cart / bought on credit.
+    const [phase, setPhase] = useState("details");
+    // What the "shipping" phase's primary CTA should actually submit as
+    // when pressed — set right before we advance out of "details".
+    const [pendingOrderType, setPendingOrderType] = useState(null);
+
+    const goToShipping = (orderType = null) => {
+        setError(null);
+        setPendingOrderType(orderType);
+        setPhase("shipping");
+    };
+    const goBackToDetails = () => {
+        setError(null);
+        setPhase("details");
+    };
 
     // ---- Address (see file header note) ----
     // `desiredAddressId` is a HINT passed down to <AddressBook> (e.g. from
@@ -701,6 +762,11 @@ export default function BuyNowModal({ seller, product, onClose }) {
         setDesiredAddressId(session.selectedAddressId || null);
         setNotes(session.notes || "");
         setOrderMode(session.orderMode || "standard");
+        // A restored session implies the buyer had already worked through
+        // order details previously — land them back on the shipping step
+        // rather than making them redo phase 1.
+        setPendingOrderType(session.orderMode === "credit" ? "credit" : null);
+        setPhase("shipping");
     };
 
     useEffect(() => {
@@ -794,6 +860,16 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const moqUnitLabel = basis === "per_master_pack" ? "Master Pack" : "Pack";
     const creditCooldownActive = creditStatus?.status === "rejected" && creditStatus.cooldown_until && new Date(creditStatus.cooldown_until) > new Date();
 
+    // Primary CTA presentation for the "shipping" phase — depends on
+    // whether we arrived here intending a sample / credit / standard order.
+    const finalCtaLabel = isSample ? "Request sample" : pendingOrderType === "credit" ? "Buy on credit" : "Place order";
+    const finalCtaBackground = isSample
+        ? "linear-gradient(135deg, #006F83 0%, #047084 100%)"
+        : pendingOrderType === "credit"
+            ? "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)"
+            : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)";
+    const finalCtaDisabled = submitting || (!isSample && (belowMoq || outOfStock || exceedsStock));
+
     return (
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
@@ -853,363 +929,390 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 ) : (
                     <>
                         {/* ---------------- Header ---------------- */}
-                        <div className="flex shrink-0 items-start justify-between gap-3 border-b px-5 py-4 sm:px-6" style={{ borderColor: C.hairSoft }}>
-                            <div className="min-w-0">
-                                <p className="text-[11px] font-bold tracking-wider" style={{ color: C.secondary }}>Place order</p>
-                                <h2 className="mt-0.5 truncate text-[18px] font-bold tracking-wide" style={{ color: C.ink }}>{product?.name}</h2>
-                                <p className="truncate text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>from {seller?.display_name}</p>
+                        <div className="flex shrink-0 flex-col gap-2.5 border-b px-5 py-4 sm:px-6" style={{ borderColor: C.hairSoft }}>
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="text-[11px] font-bold tracking-wider" style={{ color: C.secondary }}>Place order</p>
+                                    <h2 className="mt-0.5 truncate text-[18px] font-bold tracking-wide" style={{ color: C.ink }}>{product?.name}</h2>
+                                    <p className="truncate text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>from {seller?.display_name}</p>
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1">
+                                    <button
+                                        onClick={async () => {
+                                            const result = await shareProductLink({
+                                                submissionId: seller.offerId,
+                                                productName: product?.name,
+                                                sellerName: seller?.display_name,
+                                            });
+                                            if (result === "copied") setToastMsg?.("Link copied!");
+                                        }}
+                                        aria-label="Share this seller's listing"
+                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]"
+                                    >
+                                        <Share2 className="h-4 w-4" style={{ color: C.muted }} />
+                                    </button>
+                                    <button onClick={onClose} aria-label="Close"
+                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]">
+                                        <X className="h-4.5 w-4.5" style={{ color: C.muted }} />
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex shrink-0 items-center gap-1">
-                                <button
-                                    onClick={async () => {
-                                        const result = await shareProductLink({
-                                            submissionId: seller.offerId,
-                                            productName: product?.name,
-                                            sellerName: seller?.display_name,
-                                        });
-                                        if (result === "copied") setToastMsg?.("Link copied!");
-                                    }}
-                                    aria-label="Share this seller's listing"
-                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]"
-                                >
-                                    <Share2 className="h-4 w-4" style={{ color: C.muted }} />
-                                </button>
-                                <button onClick={onClose} aria-label="Close"
-                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]">
-                                    <X className="h-4.5 w-4.5" style={{ color: C.muted }} />
-                                </button>
-                            </div>
+                            {/* <PhaseSteps phase={phase} /> */}
                         </div>
 
                         {/* ---------------- Scrollable body ---------------- */}
                         <div className="flex-1 overflow-y-auto" data-lenis-prevent>
                             <div className="flex flex-col gap-3 px-5 py-4 sm:px-6">
 
-                                {canSample && (
-                                    <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-                                        {[
-                                            { v: "standard", t: "Standard order" },
-                                            { v: "sample", t: "Order a sample", icon: Beaker },
-                                        ].map(({ v, t, icon: Icon }) => (
-                                            <button key={v} type="button" onClick={() => setOrderMode(v)}
-                                                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-bold transition-all tracking-wide duration-150"
-                                                style={orderMode === v
-                                                    ? { background: "#fff", color: v === "sample" ? "#D2462B" : C.secondary, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
-                                                    : { color: C.muted }}>
-                                                {Icon && <Icon className="h-3.5 w-3.5" />} {t}
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                                {isSample && (
-                                    <p className="-mt-1 px-1 text-[12px] font-medium" style={{ color: C.muted }}>
-                                        {seller.samplePrice ? `Sample price: ₹${inr(seller.samplePrice)}/${seller.unit}` : "This sample is free."}
-                                    </p>
-                                )}
-
-                                {/* ---------------- Quantity ---------------- */}
-                                <Panel icon={Package} title="Quantity" subtitle={!isSample ? `MOQ ${minQuantity} ${moqUnitLabel}${minQuantity === 1 ? "" : "s"}` : undefined}>
-                                    {!isSample && Number(seller?.packSize) > 0 && (
-                                        <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                                            <Boxes className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                                            <p className="text-[12px] font-semibold tracking-wide" style={{ color: C.ink }}>
-                                                1 pack = {seller.packSize} {seller.unit}
-                                                {Number(seller?.masterPackSize) >= 1 && ` · 1 master pack = ${seller.masterPackSize} packs`}
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {!isSample && visibleBasisOptions.length > 1 && (
-                                        <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={visibleBasisOptions} />
-                                    )}
-
-                                    {isSample ? (
-                                        <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-3">
-                                            <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                                                {quantity} {seller?.unit}
-                                                {Number(seller?.packSize) > 0 && (
-                                                    <span className="ml-1.5 text-[11.5px] font-semibold" style={{ color: C.muted }}>
-                                                        (~{round2(Number(quantity) / Number(seller.packSize))} pack{round2(Number(quantity) / Number(seller.packSize)) === 1 ? "" : "s"})
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold" style={{ color: C.muted }}>Fixed by seller</span>
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center gap-3">
-                                            <Stepper value={quantity} onChange={setQuantity} min={minQuantity} max={maxQuantity} />
-
-                                            <p className="text-[12.5px] capitalize font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
-                                                {basisLabel}
-                                                {Number(seller?.packSize) > 0 && (
-                                                    <span className="block text-[11.5px] tracking-wide" style={{ color: C.muted }}>
-                                                        = {toBaseUnits(seller, Number(quantity) || 0, basis)} {seller?.unit}
-                                                    </span>
-                                                )}
-                                            </p>
-                                        </div>
-                                    )}
-
-                                    {!isSample && quote && quote.meetsMoq === false && (
-                                        <Notice tone="danger">Below the seller's MOQ of {formatMoqForBasis(quote.moq, seller)}.</Notice>
-                                    )}
-                                    {!isSample && outOfStock && (
-                                        <Notice tone="danger">This item is currently out of stock with this seller.</Notice>
-                                    )}
-                                    {!isSample && !outOfStock && exceedsStock && (
-                                        <Notice tone="danger">
-                                            You can order at most {maxQuantity} {saleUnitLabel(seller?.masterPackSize)}{Number(maxQuantity) === 1 ? "" : "s"} from this seller. Please reduce the quantity.
-                                        </Notice>
-                                    )}
-
-                                    {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
-                                        <div className="flex flex-col gap-1.5">
-                                            <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
-                                                <Layers className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Price slabs
-                                            </span>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {seller.priceSlabs.map((slab, i) => {
-                                                    const active = quote?.appliedSlab && Number(quote.appliedSlab.minQty) === Number(slab.minQty);
-                                                    return (
-                                                        <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
-                                                            style={active ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
-                                                            {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} pack{Number(slab.maxQty || slab.minQty) === 1 ? "" : "s"}: ₹{inr(slab.price)}
-                                                        </span>
-                                                    );
-                                                })}
+                                {phase === "details" && (
+                                    <>
+                                        {canSample && (
+                                            <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+                                                {[
+                                                    { v: "standard", t: "Standard order" },
+                                                    { v: "sample", t: "Order a sample", icon: Beaker },
+                                                ].map(({ v, t, icon: Icon }) => (
+                                                    <button key={v} type="button" onClick={() => setOrderMode(v)}
+                                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-bold transition-all tracking-wide duration-150"
+                                                        style={orderMode === v
+                                                            ? { background: "#fff", color: v === "sample" ? "#D2462B" : C.secondary, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
+                                                            : { color: C.muted }}>
+                                                        {Icon && <Icon className="h-3.5 w-3.5" />} {t}
+                                                    </button>
+                                                ))}
                                             </div>
-                                        </div>
-                                    )}
-
-                                    {!isSample && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
-                                        <div className="flex flex-col gap-1.5">
-                                            <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
-                                                <Layers className="h-3.5 w-3.5" style={{ color: "#D2462B" }} /> Quantity discounts
-                                            </span>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {seller.quantityDiscounts.map((tier, i) => {
-                                                    const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
-                                                    const tierUnitLabel = Number(seller?.masterPackSize) >= 1 ? "master pack" : "pack";
-                                                    return (
-                                                        <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
-                                                            style={active ? { borderColor: "#D2462B", background: "rgba(210,70,43,0.08)", color: "#D2462B" } : { borderColor: C.hair, color: C.muted }}>
-                                                            {tier.minQty}+ {tierUnitLabel}{Number(tier.minQty) === 1 ? "" : "s"}: {tier.discountPercent}% off
-                                                        </span>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-                                </Panel>
-
-                                {/* ---------------- Shipping address ---------------- */}
-                                <Panel icon={MapPin} title="Shipping address">
-                                    <AddressBook
-                                        ref={addressBookRef}
-                                        token={token}
-                                        value={desiredAddressId}
-                                        onChange={handleAddressChange}
-                                        disabled={submitting}
-                                    />
-
-                                    <div className="flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hairSoft }}>
-                                        <div className="flex items-center justify-between gap-2">
-                                            <p className="text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>Preferred transport</p>
-                                            <button type="button" onClick={() => setShowTransportModal(true)} className="shrink-0 text-[12px] font-bold tracking-wide" style={{ color: C.secondary }}>
-                                                {transportPreference || pendingTransportProposal ? "Change" : "Set preference"}
-                                            </button>
-                                        </div>
-
-                                        {transportPreference ? (
-                                            <div className="flex flex-col gap-1.5">
-                                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                    {routeTransportModeLabel(transportPreference.mode)}
-                                                </p>
-                                                <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
-                                                    {getRouteTransportFields(transportPreference.mode).map((f) => {
-                                                        const val = transportPreference.fields?.[f.key];
-                                                        if (!val) return null;
-                                                        const displayLabel = f.label.replace(/\s*\(if any\)\s*/i, "");
-                                                        return (
-                                                            <div key={f.key} className="flex items-baseline gap-1.5">
-                                                                <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{displayLabel}:</span>
-                                                                <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        ) : pendingTransportProposal ? (
-                                            <div className="flex flex-col gap-1.5">
-                                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                    {routeTransportModeLabel(pendingTransportProposal.mode)}
-                                                </p>
-                                                <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
-                                                    {getRouteTransportFields(pendingTransportProposal.mode).map((f) => {
-                                                        const val = pendingTransportProposal.fields?.[f.key];
-                                                        if (!val) return null;
-                                                        const displayLabel = f.label.replace(/\s*\(if any\)\s*/i, "");
-                                                        return (
-                                                            <div key={f.key} className="flex items-baseline gap-1.5">
-                                                                <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{displayLabel}:</span>
-                                                                <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                                <Notice tone="warn">
-                                                    Your proposed transport option is still awaiting the seller's approval. If you place the order now, it'll go through the same as "No preference set" — the seller will choose the transport for now.
-                                                </Notice>
-                                            </div>
-                                        ) : (
-                                            <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>No preference set — the seller will choose for you.</p>
                                         )}
-                                    </div>
+                                        {isSample && (
+                                            <p className="-mt-1 px-1 text-[12px] font-medium" style={{ color: C.muted }}>
+                                                {seller.samplePrice ? `Sample price: ₹${inr(seller.samplePrice)}/${seller.unit}` : "This sample is free."}
+                                            </p>
+                                        )}
 
-                                    <div className="flex flex-col gap-1 border-t pt-3" style={{ borderColor: C.hairSoft }}>
-                                        <Label>Note to seller (optional)</Label>
-                                        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any special instructions…"
-                                            className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[13.5px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2"
-                                            style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
-                                    </div>
-                                </Panel>
+                                        {/* ---------------- Quantity ---------------- */}
+                                        <Panel icon={Package} title="Quantity" subtitle={!isSample ? `MOQ ${minQuantity} ${moqUnitLabel}${minQuantity === 1 ? "" : "s"}` : undefined}>
+                                            {!isSample && Number(seller?.packSize) > 0 && (
+                                                <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
+                                                    <Boxes className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                                    <p className="text-[12px] font-semibold tracking-wide" style={{ color: C.ink }}>
+                                                        1 pack = {seller.packSize} {seller.unit}
+                                                        {Number(seller?.masterPackSize) >= 1 && ` · 1 master pack = ${seller.masterPackSize} packs`}
+                                                    </p>
+                                                </div>
+                                            )}
 
-                                {/* ---------------- Quote breakdown ---------------- */}
-                                <Panel icon={ReceiptText} title="Price breakdown">
-                                    {quote ? (
-                                        <>
-                                            <div className="flex items-center gap-3 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hair }}>
-                                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}12` }}>
-                                                    <Boxes className="h-4 w-4" style={{ color: C.secondary }} />
-                                                </span>
-                                                <div className="min-w-0 flex-1">
-                                                    {isSample ? (
-                                                        <p className="text-[14px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                                                            {quote.baseUnitQuantity} {seller?.unit}
-                                                        </p>
-                                                    ) : (
-                                                        <p className="text-[14px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
-                                                            {quote.saleUnitQuantity} {saleUnitLabel(seller?.masterPackSize)}{quote.saleUnitQuantity === 1 ? "" : "s"}
-                                                            {Number(seller?.packSize) > 0 && (
-                                                                <span className="font-semibold" style={{ color: C.muted }}>
-                                                                    {" "}· {saleUnitQtyToBaseUnits(quote.saleUnitQuantity, seller.packSize, seller.masterPackSize)} {seller?.unit}
+                                            {!isSample && visibleBasisOptions.length > 1 && (
+                                                <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={visibleBasisOptions} />
+                                            )}
+
+                                            {isSample ? (
+                                                <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-3">
+                                                    <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                                        {quantity} {seller?.unit}
+                                                        {Number(seller?.packSize) > 0 && (
+                                                            <span className="ml-1.5 text-[11.5px] font-semibold" style={{ color: C.muted }}>
+                                                                (~{round2(Number(quantity) / Number(seller.packSize))} pack{round2(Number(quantity) / Number(seller.packSize)) === 1 ? "" : "s"})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold" style={{ color: C.muted }}>Fixed by seller</span>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-3">
+                                                    <Stepper value={quantity} onChange={setQuantity} min={minQuantity} max={maxQuantity} />
+
+                                                    <p className="text-[12.5px] capitalize font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                                                        {basisLabel}
+                                                        {Number(seller?.packSize) > 0 && (
+                                                            <span className="block text-[11.5px] tracking-wide" style={{ color: C.muted }}>
+                                                                = {toBaseUnits(seller, Number(quantity) || 0, basis)} {seller?.unit}
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            {!isSample && quote && quote.meetsMoq === false && (
+                                                <Notice tone="danger">Below the seller's MOQ of {formatMoqForBasis(quote.moq, seller)}.</Notice>
+                                            )}
+                                            {!isSample && outOfStock && (
+                                                <Notice tone="danger">This item is currently out of stock with this seller.</Notice>
+                                            )}
+                                            {!isSample && !outOfStock && exceedsStock && (
+                                                <Notice tone="danger">
+                                                    You can order at most {maxQuantity} {saleUnitLabel(seller?.masterPackSize)}{Number(maxQuantity) === 1 ? "" : "s"} from this seller. Please reduce the quantity.
+                                                </Notice>
+                                            )}
+
+                                            {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
+                                                        <Layers className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Price slabs
+                                                    </span>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {seller.priceSlabs.map((slab, i) => {
+                                                            const active = quote?.appliedSlab && Number(quote.appliedSlab.minQty) === Number(slab.minQty);
+                                                            return (
+                                                                <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
+                                                                    style={active ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
+                                                                    {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} pack{Number(slab.maxQty || slab.minQty) === 1 ? "" : "s"}: ₹{inr(slab.price)}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {!isSample && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
+                                                <div className="flex flex-col gap-1.5">
+                                                    <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
+                                                        <Layers className="h-3.5 w-3.5" style={{ color: "#D2462B" }} /> Quantity discounts
+                                                    </span>
+                                                    <div className="flex flex-wrap gap-1.5">
+                                                        {seller.quantityDiscounts.map((tier, i) => {
+                                                            const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
+                                                            const tierUnitLabel = Number(seller?.masterPackSize) >= 1 ? "master pack" : "pack";
+                                                            return (
+                                                                <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
+                                                                    style={active ? { borderColor: "#D2462B", background: "rgba(210,70,43,0.08)", color: "#D2462B" } : { borderColor: C.hair, color: C.muted }}>
+                                                                    {tier.minQty}+ {tierUnitLabel}{Number(tier.minQty) === 1 ? "" : "s"}: {tier.discountPercent}% off
+                                                                </span>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </Panel>
+
+                                        {/* ---------------- Price breakdown (no delivery estimate here) ---------------- */}
+                                        <Panel icon={ReceiptText} title="Price breakdown">
+                                            {quote ? (
+                                                <>
+                                                    <div className="flex items-center gap-3 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hair }}>
+                                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}12` }}>
+                                                            <Boxes className="h-4 w-4" style={{ color: C.secondary }} />
+                                                        </span>
+                                                        <div className="min-w-0 flex-1">
+                                                            {isSample ? (
+                                                                <p className="text-[14px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                                                    {quote.baseUnitQuantity} {seller?.unit}
+                                                                </p>
+                                                            ) : (
+                                                                <p className="text-[14px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
+                                                                    {quote.saleUnitQuantity} {saleUnitLabel(seller?.masterPackSize)}{quote.saleUnitQuantity === 1 ? "" : "s"}
+                                                                    {Number(seller?.packSize) > 0 && (
+                                                                        <span className="font-semibold" style={{ color: C.muted }}>
+                                                                            {" "}· {saleUnitQtyToBaseUnits(quote.saleUnitQuantity, seller.packSize, seller.masterPackSize)} {seller?.unit}
+                                                                        </span>
+                                                                    )}
+                                                                </p>
+                                                            )}
+                                                            {!isSample && basis === "per_master_pack" && (
+                                                                <p className="text-[11px] font-medium tracking-wider" style={{ color: C.muted }}>
+                                                                    {quantity} master pack{Number(quantity) === 1 ? "" : "s"} selected
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex flex-col gap-2.5 rounded-xl bg-slate-50 p-3.5">
+                                                        <span className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>Rate applied</span>
+
+                                                        <div className="flex items-baseline justify-between gap-2 tracking-wide">
+                                                            <span className="text-[14px] font-bold" style={{ color: C.ink }}>
+                                                                ₹{inr(quote.basePriceApplied ?? quote.unitPrice)}{" "}
+                                                                <span className="font-medium" style={{ color: C.muted }}>/ {isSample ? seller?.unit : saleUnitLabel(seller?.masterPackSize)}</span>
+                                                            </span>
+                                                            {!isSample && Number(seller?.packSize) > 0 && (
+                                                                <span className="shrink-0 text-[11px] font-medium tabular-nums" style={{ color: C.muted }}>
+                                                                    ≈ ₹{inr((quote.basePriceApplied ?? quote.unitPrice) / saleUnitQtyToBaseUnits(1, seller.packSize, seller.masterPackSize))} / {seller?.unit}
                                                                 </span>
                                                             )}
-                                                        </p>
-                                                    )}
-                                                    {!isSample && basis === "per_master_pack" && (
-                                                        <p className="text-[11px] font-medium tracking-wider" style={{ color: C.muted }}>
-                                                            {quantity} master pack{Number(quantity) === 1 ? "" : "s"} selected
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
+                                                        </div>
 
-                                            <div className="flex flex-col gap-2.5 rounded-xl bg-slate-50 p-3.5">
-                                                <span className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>Rate applied</span>
+                                                        <div className="h-px" style={{ background: C.hair }} />
 
-                                                <div className="flex items-baseline justify-between gap-2 tracking-wide">
-                                                    <span className="text-[14px] font-bold" style={{ color: C.ink }}>
-                                                        ₹{inr(quote.basePriceApplied ?? quote.unitPrice)}{" "}
-                                                        <span className="font-medium" style={{ color: C.muted }}>/ {isSample ? seller?.unit : saleUnitLabel(seller?.masterPackSize)}</span>
-                                                    </span>
-                                                    {!isSample && Number(seller?.packSize) > 0 && (
-                                                        <span className="shrink-0 text-[11px] font-medium tabular-nums" style={{ color: C.muted }}>
-                                                            ≈ ₹{inr((quote.basePriceApplied ?? quote.unitPrice) / saleUnitQtyToBaseUnits(1, seller.packSize, seller.masterPackSize))} / {seller?.unit}
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                        <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} small />
+                                                        {!isSample && quote.discountAmount > 0 && (
+                                                            <QuoteRow label={`Discount (${quote.discountPercent}% off)`} value={`− ₹${inr(quote.discountAmount)}`} tone={C.secondary} small />
+                                                        )}
 
-                                                <div className="h-px" style={{ background: C.hair }} />
+                                                        <div className="h-px" style={{ background: C.hair }} />
 
-                                                <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} small />
-                                                {!isSample && quote.discountAmount > 0 && (
-                                                    <QuoteRow label={`Discount (${quote.discountPercent}% off)`} value={`− ₹${inr(quote.discountAmount)}`} tone={C.secondary} small />
-                                                )}
+                                                        <div className="flex items-center justify-between tracking-wide">
+                                                            <span className="text-[13.5px] font-bold" style={{ color: C.ink }}>
+                                                                {isSample ? "Total payable (sample)" : "Total payable"}
+                                                            </span>
+                                                            <span className="text-[20px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(quote.subtotal)}</span>
+                                                        </div>
+                                                    </div>
 
-                                                <div className="h-px" style={{ background: C.hair }} />
-
-                                                <div className="flex items-center justify-between tracking-wide">
-                                                    <span className="text-[13.5px] font-bold" style={{ color: C.ink }}>
-                                                        {isSample ? "Total payable (sample)" : "Total payable"}
-                                                    </span>
-                                                    <span className="text-[20px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(quote.subtotal)}</span>
-                                                </div>
-                                            </div>
-
-                                            {!blockedByConstraints && (
-                                                <>
                                                     {!isSample && quote.acceptanceDelayDays > 0 && (
                                                         <Notice tone="warn">
                                                             {quote.acceptanceMessage || "This seller is currently closed — your order will still be placed, but acceptance is delayed."}
                                                         </Notice>
                                                     )}
-
-                                                    <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3.5">
-                                                        <span className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>Delivery estimate</span>
-
-                                                        {quote.acceptanceDelayDays > 0 && (
-                                                            <QuoteRow small label="Acceptance delay" value={`${quote.acceptanceDelayDays} day${quote.acceptanceDelayDays === 1 ? "" : "s"}`} />
-                                                        )}
-                                                        {quote.leadDays > 0 && (
-                                                            <QuoteRow small label={seller?.stockType === "made_to_order" ? "Production time" : "Dispatch time"} value={`${quote.leadDays} day${quote.leadDays === 1 ? "" : "s"}`} />
-                                                        )}
-                                                        <QuoteRow
-                                                            small
-                                                            label="Transit"
-                                                            value={quote.transitDaysMin === quote.transitDaysMax
-                                                                ? `${quote.transitDaysMin} day${quote.transitDaysMin === 1 ? "" : "s"}`
-                                                                : `${quote.transitDaysMin}–${quote.transitDaysMax} days`}
-                                                        />
-
-                                                        <div className="h-px" style={{ background: C.hair }} />
-
-                                                        <div className="flex items-center gap-2.5">
-                                                            <Truck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
-                                                            <div className="min-w-0 flex-1">
-                                                                <span className="text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>Estimated delivery</span>
-                                                                <p className="text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                                    {quote.isEstimate || !quote.estimatedDeliveryDate ? <SkeletonBar width="100px" /> : deliveryDateLabel(quote.estimatedDeliveryDate)}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
                                                 </>
+                                            ) : (
+                                                <p className="text-[12.5px] font-medium" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
                                             )}
-                                        </>
-                                    ) : (
-                                        <p className="text-[12.5px] font-medium" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
-                                    )}
-                                </Panel>
+                                        </Panel>
 
-                                {/* ---------------- Seller terms (collapsible, quieter) ---------------- */}
-                                {hasTerms && (
-                                    <details className="group rounded-2xl border bg-white p-4 sm:p-4.5" style={{ borderColor: C.hairSoft }}>
-                                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
-                                            <span className="flex items-center gap-2">
-                                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12` }}>
-                                                    <FileText className="h-3.5 w-3.5" style={{ color: C.secondary }} />
-                                                </span>
-                                                <span className="text-[14px] font-bold" style={{ color: C.ink }}>Seller terms</span>
-                                            </span>
-                                            <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: C.muted }} />
-                                        </summary>
-                                        <div className="mt-3 flex flex-col gap-2 border-t pt-3 text-[13px] font-medium" style={{ borderColor: C.hairSoft }}>
-                                            {seller.deliveryTimeline && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Delivery</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.deliveryTimeline}</span></div>}
-                                            {seller.paymentTerms && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Payment</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.paymentTerms}</span></div>}
-                                            {seller.returnPolicy && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Returns</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.returnPolicy}</span></div>}
-                                            {seller.warranty && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Warranty</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.warranty}</span></div>}
-                                            {seller.dispatchOrigin && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Ships from</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.dispatchOrigin}</span></div>}
-                                            {seller.freightIncluded != null && (
-                                                <div className="flex justify-between gap-3">
-                                                    <span style={{ color: C.muted }}>Freight</span>
-                                                    <span style={{ color: seller.freightIncluded ? C.secondary : C.ink, fontWeight: 700 }} className="text-right">
-                                                        {seller.freightIncluded ? "Included in price" : "Extra, paid by buyer"}
+                                        {/* ---------------- Seller terms (collapsible, quieter) ---------------- */}
+                                        {hasTerms && (
+                                            <details className="group rounded-2xl border bg-white p-4 sm:p-4.5" style={{ borderColor: C.hairSoft }}>
+                                                <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                                                    <span className="flex items-center gap-2">
+                                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12` }}>
+                                                            <FileText className="h-3.5 w-3.5" style={{ color: C.secondary }} />
+                                                        </span>
+                                                        <span className="text-[14px] font-bold" style={{ color: C.ink }}>Seller terms</span>
                                                     </span>
+                                                    <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: C.muted }} />
+                                                </summary>
+                                                <div className="mt-3 flex flex-col gap-2 border-t pt-3 text-[13px] font-medium" style={{ borderColor: C.hairSoft }}>
+                                                    {seller.deliveryTimeline && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Delivery</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.deliveryTimeline}</span></div>}
+                                                    {seller.paymentTerms && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Payment</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.paymentTerms}</span></div>}
+                                                    {seller.returnPolicy && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Returns</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.returnPolicy}</span></div>}
+                                                    {seller.warranty && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Warranty</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.warranty}</span></div>}
+                                                    {seller.dispatchOrigin && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Ships from</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.dispatchOrigin}</span></div>}
+                                                    {seller.freightIncluded != null && (
+                                                        <div className="flex justify-between gap-3">
+                                                            <span style={{ color: C.muted }}>Freight</span>
+                                                            <span style={{ color: seller.freightIncluded ? C.secondary : C.ink, fontWeight: 700 }} className="text-right">
+                                                                {seller.freightIncluded ? "Included in price" : "Extra, paid by buyer"}
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                 </div>
+                                            </details>
+                                        )}
+                                    </>
+                                )}
+
+                                {phase === "shipping" && (
+                                    <>
+                                        {/* Quick recap so the price/quantity chosen in phase 1 stays visible */}
+                                        <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3.5 py-3">
+                                            <div className="min-w-0">
+                                                <p className="truncate text-[13px] font-bold" style={{ color: C.ink }}>
+                                                    {isSample
+                                                        ? `${quantity} ${seller?.unit} (sample)`
+                                                        : `${quote?.saleUnitQuantity ?? quantity} ${saleUnitLabel(seller?.masterPackSize)}${(quote?.saleUnitQuantity ?? quantity) === 1 ? "" : "s"}`}
+                                                </p>
+                                                <button type="button" onClick={goBackToDetails} className="mt-0.5 text-[11.5px] font-bold tracking-wide underline underline-offset-2" style={{ color: C.secondary }}>
+                                                    Edit order details
+                                                </button>
+                                            </div>
+                                            {quote && (
+                                                <span className="shrink-0 text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(quote.subtotal)}</span>
                                             )}
                                         </div>
-                                    </details>
+
+                                        {/* ---------------- Shipping address ---------------- */}
+                                        <Panel icon={MapPin} title="Shipping address">
+                                            <AddressBook
+                                                ref={addressBookRef}
+                                                token={token}
+                                                value={desiredAddressId}
+                                                onChange={handleAddressChange}
+                                                disabled={submitting}
+                                            />
+
+                                            <div className="flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hairSoft }}>
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <p className="text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>Preferred transport</p>
+                                                    <button type="button" onClick={() => setShowTransportModal(true)} className="shrink-0 text-[12px] font-bold tracking-wide" style={{ color: C.secondary }}>
+                                                        {transportPreference || pendingTransportProposal ? "Change" : "Set preference"}
+                                                    </button>
+                                                </div>
+
+                                                {transportPreference ? (
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                            {routeTransportModeLabel(transportPreference.mode)}
+                                                        </p>
+                                                        <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+                                                            {getRouteTransportFields(transportPreference.mode).map((f) => {
+                                                                const val = transportPreference.fields?.[f.key];
+                                                                if (!val) return null;
+                                                                const displayLabel = f.label.replace(/\s*\(if any\)\s*/i, "");
+                                                                return (
+                                                                    <div key={f.key} className="flex items-baseline gap-1.5">
+                                                                        <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{displayLabel}:</span>
+                                                                        <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                ) : pendingTransportProposal ? (
+                                                    <div className="flex flex-col gap-1.5">
+                                                        <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                            {routeTransportModeLabel(pendingTransportProposal.mode)}
+                                                        </p>
+                                                        <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+                                                            {getRouteTransportFields(pendingTransportProposal.mode).map((f) => {
+                                                                const val = pendingTransportProposal.fields?.[f.key];
+                                                                if (!val) return null;
+                                                                const displayLabel = f.label.replace(/\s*\(if any\)\s*/i, "");
+                                                                return (
+                                                                    <div key={f.key} className="flex items-baseline gap-1.5">
+                                                                        <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{displayLabel}:</span>
+                                                                        <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                        <Notice tone="warn">
+                                                            Your proposed transport option is still awaiting the seller's approval. If you place the order now, it'll go through the same as "No preference set" — the seller will choose the transport for now.
+                                                        </Notice>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>No preference set — the seller will choose for you.</p>
+                                                )}
+                                            </div>
+
+                                            <div className="flex flex-col gap-1 border-t pt-3" style={{ borderColor: C.hairSoft }}>
+                                                <Label>Note to seller (optional)</Label>
+                                                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any special instructions…"
+                                                    className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[13.5px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2"
+                                                    style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
+                                            </div>
+                                        </Panel>
+
+                                        {/* ---------------- Delivery estimate ---------------- */}
+                                        {!blockedByConstraints && quote && (
+                                            <Panel icon={Truck} title="Delivery estimate">
+                                                <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3.5">
+                                                    {quote.acceptanceDelayDays > 0 && (
+                                                        <QuoteRow small label="Acceptance delay" value={`${quote.acceptanceDelayDays} day${quote.acceptanceDelayDays === 1 ? "" : "s"}`} />
+                                                    )}
+                                                    {quote.leadDays > 0 && (
+                                                        <QuoteRow small label={seller?.stockType === "made_to_order" ? "Production time" : "Dispatch time"} value={`${quote.leadDays} day${quote.leadDays === 1 ? "" : "s"}`} />
+                                                    )}
+                                                    <QuoteRow
+                                                        small
+                                                        label="Transit"
+                                                        value={quote.transitDaysMin === quote.transitDaysMax
+                                                            ? `${quote.transitDaysMin} day${quote.transitDaysMin === 1 ? "" : "s"}`
+                                                            : `${quote.transitDaysMin}–${quote.transitDaysMax} days`}
+                                                    />
+
+                                                    <div className="h-px" style={{ background: C.hair }} />
+
+                                                    <div className="flex items-center gap-2.5">
+                                                        <Truck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
+                                                        <div className="min-w-0 flex-1">
+                                                            <span className="text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>Estimated delivery</span>
+                                                            <p className="text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                                {quote.isEstimate || !quote.estimatedDeliveryDate ? <SkeletonBar width="100px" /> : deliveryDateLabel(quote.estimatedDeliveryDate)}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </Panel>
+                                        )}
+                                    </>
                                 )}
 
                                 {error && <Notice tone="danger">{error}</Notice>}
@@ -1218,15 +1321,15 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                         {/* ---------------- Sticky footer ---------------- */}
                         <div className="shrink-0 border-t bg-white px-5 py-4 sm:px-6" style={{ borderColor: C.hairSoft }}>
-                            {!locationStatus.serviceable ? (
+                            {phase === "shipping" && !locationStatus.serviceable ? (
                                 <ConstraintNotice reasons={[{ icon: MapPin, message: locationStatus.message }]} />
                             ) : (
                                 <>
-                                    {!windowStatus.open && (
+                                    {phase === "shipping" && !windowStatus.open && (
                                         <div className="mb-3"><Notice tone="warn">{windowStatus.message}</Notice></div>
                                     )}
 
-                                    {quote && (
+                                    {phase === "details" && quote && (
                                         <div className="mb-3 flex items-center justify-between">
                                             <span className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>Total payable</span>
                                             <span className="flex items-center text-[19px] font-extrabold tabular-nums tracking-wider" style={{ color: C.ink }}>
@@ -1235,7 +1338,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         </div>
                                     )}
 
-                                    {!isSample && (
+                                    {phase === "details" && !isSample && (
                                         canBuyOnCredit ? (
                                             crossesCreditLimit ? (
                                                 limitIncreasePending ? (
@@ -1259,10 +1362,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                                     </button>
                                                 )
                                             ) : (
-                                                <button type="button" onClick={() => handleSubmit("credit")} disabled={submitting || belowMoq || outOfStock || exceedsStock}
+                                                <button type="button" onClick={() => goToShipping("credit")} disabled={submitting || belowMoq || outOfStock || exceedsStock}
                                                     className="mb-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-3 text-[13.5px] font-bold disabled:opacity-50"
                                                     style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
-                                                    <CreditCard className="h-3.5 w-3.5" /> {submitting ? "Placing…" : "Buy on credit"}
+                                                    <CreditCard className="h-3.5 w-3.5" /> Buy on credit
                                                 </button>
                                             )
                                         ) : creditStatus?.status === "pending" ? (
@@ -1280,46 +1383,71 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         )
                                     )}
 
-                                    <div className="flex gap-2.5">
-                                        {!isSample && !isCredit && (
+                                    {phase === "details" ? (
+                                        <div className="flex gap-2.5">
+                                            {!isSample && (
+                                                <button
+                                                    type="button"
+                                                    onClick={async () => {
+                                                        if (quote && quote.meetsMoq === false) {
+                                                            setError(`Minimum order quantity is ${formatMoqForBasis(quote.moq, seller)}.`);
+                                                            return;
+                                                        }
+                                                        if (maxQuantity != null && Number(quantity) > Number(maxQuantity)) {
+                                                            setError(`You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller.`);
+                                                            return;
+                                                        }
+                                                        const confirmed = await pendingQuoteRef.current;
+                                                        const finalQuote = confirmed || quote;
+                                                        if (finalQuote && finalQuote.meetsMoq === false) {
+                                                            setError(`Minimum order quantity is ${formatMoqForBasis(finalQuote.moq, seller)}.`);
+                                                            return;
+                                                        }
+                                                        setSubmitting(true);
+                                                        const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
+                                                        setSubmitting(false);
+                                                        if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
+                                                        onClose();
+                                                        navigate("/cart");
+                                                    }}
+                                                    disabled={submitting || belowMoq || outOfStock || exceedsStock}
+                                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-4 py-3.5 text-[13.5px] font-bold disabled:opacity-50"
+                                                    style={{ borderColor: C.hair, color: C.ink }}
+                                                >
+                                                    <ShoppingCart className="h-4 w-4" /> Add to cart
+                                                </button>
+                                            )}
+
                                             <button
                                                 type="button"
-                                                onClick={async () => {
-                                                    if (quote && quote.meetsMoq === false) {
-                                                        setError(`Minimum order quantity is ${formatMoqForBasis(quote.moq, seller)}.`);
-                                                        return;
-                                                    }
-                                                    if (maxQuantity != null && Number(quantity) > Number(maxQuantity)) {
-                                                        setError(`You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller.`);
-                                                        return;
-                                                    }
-                                                    const confirmed = await pendingQuoteRef.current;
-                                                    const finalQuote = confirmed || quote;
-                                                    if (finalQuote && finalQuote.meetsMoq === false) {
-                                                        setError(`Minimum order quantity is ${formatMoqForBasis(finalQuote.moq, seller)}.`);
-                                                        return;
-                                                    }
-                                                    setSubmitting(true);
-                                                    const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
-                                                    setSubmitting(false);
-                                                    if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
-                                                    onClose();
-                                                    navigate("/cart");
-                                                }}
-                                                disabled={submitting || belowMoq || outOfStock || exceedsStock}
-                                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-4 py-3.5 text-[13.5px] font-bold disabled:opacity-50"
+                                                onClick={() => goToShipping(null)}
+                                                disabled={submitting || (!isSample && (belowMoq || outOfStock || exceedsStock))}
+                                                className="flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl px-5 py-3.5 text-[14px] font-bold text-white shadow-sm transition-opacity duration-150 disabled:opacity-50"
+                                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                                                Continue
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex gap-2.5">
+                                            <button
+                                                type="button"
+                                                onClick={goBackToDetails}
+                                                disabled={submitting}
+                                                className="flex items-center justify-center gap-1 rounded-xl border px-4 py-3.5 text-[13.5px] font-bold disabled:opacity-50"
                                                 style={{ borderColor: C.hair, color: C.ink }}
                                             >
-                                                <ShoppingCart className="h-4 w-4" /> Add to cart
+                                                <ChevronLeft className="h-4 w-4" /> Back
                                             </button>
-                                        )}
 
-                                        <button onClick={() => handleSubmit()} disabled={submitting || (!isSample && (belowMoq || outOfStock || exceedsStock))}
-                                            className="flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl px-5 py-3.5 text-[14px] font-bold text-white shadow-sm transition-opacity duration-150 disabled:opacity-50"
-                                            style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                                            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (isSample ? "Request sample" : "Place order")}
-                                        </button>
-                                    </div>
+                                            <button
+                                                onClick={() => handleSubmit(pendingOrderType || undefined)}
+                                                disabled={finalCtaDisabled}
+                                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-5 py-3.5 text-[14px] font-bold text-white shadow-sm transition-opacity duration-150 disabled:opacity-50"
+                                                style={{ background: finalCtaBackground }}>
+                                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : finalCtaLabel}
+                                            </button>
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>

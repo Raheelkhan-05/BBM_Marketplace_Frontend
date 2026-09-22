@@ -1,27 +1,25 @@
 // pages/CartPage.jsx
 //
-// UPDATED: brought in line with BuyNowModal's logic for the two things
-// that had drifted —
+// TWO-PHASE FLOW (this revision):
+//   "review"   — item list per seller, quantities, pricing, stock/MOQ
+//                 notices. No shipping address, no transport preference,
+//                 no location-serviceability notices (those depend on an
+//                 address we don't have yet).
+//   "shipping" — shipping address (shared <AddressBook>, same component
+//                 BuyNowModal uses) + one "Preferred transport" panel per
+//                 seller group + location-serviceability notices. The
+//                 actual checkoutCart() call only ever fires from here.
 //
-// 1. SHIPPING ADDRESS: this page used to carry its own copy of the
-//    address list / "add new address" form / business-profile seeding —
-//    the exact logic that was already extracted into <AddressBook> for
-//    BuyNowModal + TransportPreferenceModal. That meant picking or
-//    saving an address here didn't behave the same way (didn't set the
-//    buyer's default address server-side, didn't share the same UI).
-//    Now this page uses the same <AddressBook> component, the same way.
-//
-// 2. TRANSPORT PREFERENCE: this page had NO transport preference concept
-//    at all. Since a cart can span multiple sellers, each seller group
-//    now gets its own "Preferred transport" panel + its own instance of
-//    <TransportPreferenceModal>, fetched/resolved independently per
-//    seller — the same flow BuyNowModal runs for its single seller.
+// Clicking "Continue to shipping" in "review" just advances the phase —
+// nothing is charged or booked yet. "shipping" has its own Back button
+// (returns to "review" without losing anything) and its own primary CTA,
+// "Proceed to pay", which is what actually calls checkoutCart().
 //
 // Everything else (pricing, stock, MOQ, order-window / location
 // constraints, debounced quantity writes) is unchanged.
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Minus, Plus, Clock, Truck, AlertCircle } from "lucide-react";
+import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Minus, Plus, Clock, Truck, AlertCircle, ChevronLeft, CheckCircle2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
 import { fetchOrderConstraints } from "../utils/api.js";
@@ -159,6 +157,41 @@ function QtyStepper({ value, onChange, min, disabled }) {
     );
 }
 
+// Small step indicator, same visual language as BuyNowModal's PhaseSteps,
+// so both order flows in the app read consistently.
+function PhaseSteps({ phase }) {
+    const steps = [
+        { key: "review", label: "Review cart" },
+        { key: "shipping", label: "Shipping & confirm" },
+    ];
+    return (
+        <div className="flex items-center gap-2">
+            {steps.map((s, i) => {
+                const active = s.key === phase;
+                const done = steps.findIndex((x) => x.key === phase) > i;
+                return (
+                    <div key={s.key} className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
+                            <span
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-extrabold"
+                                style={active || done
+                                    ? { background: C.secondary, color: "#fff" }
+                                    : { background: C.hairSoft || "#eee", color: C.muted }}
+                            >
+                                {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
+                            </span>
+                            <span className="text-[11.5px] font-bold tracking-wide" style={{ color: active ? C.ink : C.muted }}>
+                                {s.label}
+                            </span>
+                        </div>
+                        {i < steps.length - 1 && <div className="h-px w-6" style={{ background: C.hairSoft || "#eee" }} />}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
 export default function CartPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
@@ -171,6 +204,14 @@ export default function CartPage() {
     const { reload: reloadCartBadge, setCountOptimistic } = useCart();
 
     const pendingWritePromises = useRef({});
+
+    // ---- Two-phase flow ----
+    // "review": items/pricing only, no address. "shipping": address +
+    // per-seller transport preference, and the only phase from which
+    // checkout can actually fire.
+    const [phase, setPhase] = useState("review");
+    const goToShipping = () => { setError(null); setPhase("shipping"); };
+    const goBackToReview = () => { setError(null); setPhase("review"); };
 
     // ---- Shipping address — same shared component & behavior as
     // BuyNowModal (see components/shipping/AddressBook.jsx). Picking or
@@ -273,7 +314,10 @@ export default function CartPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [grouped, constraintsBySubmission, effectiveAddress?.state, effectiveAddress?.city, clockTick]);
 
-    const anyGroupBlocked = Object.values(groupConstraintStatus).some((g) => g.blocked);
+    // Only meaningful once an address has actually been chosen (phase
+    // "shipping") — before that, effectiveAddress is null and this stays
+    // false so it never blocks the "review" phase.
+    const anyGroupBlocked = !!effectiveAddress && Object.values(groupConstraintStatus).some((g) => g.blocked);
 
     // ---------------------------------------------------------------
     // Per-seller transport preference — same flow as BuyNowModal, run
@@ -460,8 +504,9 @@ export default function CartPage() {
 
     return (
         <div className="mx-auto min-h-screen max-w-3xl px-2.5 pb-32 pt-3 sm:px-4">
-            <div className="mt-3 ps-2 flex items-center gap-3">
+            <div className="mt-3 ps-2 flex items-center justify-between gap-3">
                 <h1 className="font-extrabold" style={{ color: C.ink, fontSize: "clamp(20px,1.8vw,26px)" }}>Cart</h1>
+                {/* {items.length > 0 && <PhaseSteps phase={phase} />} */}
             </div>
 
             {items.length === 0 ? (
@@ -475,6 +520,12 @@ export default function CartPage() {
                 </div>
             ) : (
                 <>
+                    {phase === "shipping" && (
+                        <button type="button" onClick={goBackToReview} className="mt-3 flex items-center gap-1 text-[12.5px] font-bold tracking-wide" style={{ color: C.secondary }}>
+                            <ChevronLeft className="h-3.5 w-3.5" /> Back to cart review
+                        </button>
+                    )}
+
                     {Object.entries(grouped).map(([sellerId, g]) => {
                         const groupStatus = groupConstraintStatus[sellerId];
                         const sellerObj = sellerObjFor(g);
@@ -503,7 +554,7 @@ export default function CartPage() {
                                                             <QtyStepper
                                                                 value={it.quantity}
                                                                 min={floor}
-                                                                disabled={atCeiling && !atFloor ? false : undefined}
+                                                                disabled={phase !== "review" || (atCeiling && !atFloor ? false : undefined)}
                                                                 onChange={(v) => handleQty(it.submission_id, v, it.moq)}
                                                             />
                                                             <span className="text-[11px] font-semibold" style={{ color: C.muted }}>{saleUnitLabel(it.units_per_master_pack)}(s)</span>
@@ -523,14 +574,16 @@ export default function CartPage() {
                                                                 Only {stock.max} {saleUnitLabel(it.units_per_master_pack)}{stock.max === 1 ? "" : "s"} available from this seller — reduce quantity to continue.
                                                             </p>
                                                         )}
-                                                        {itemBlockedByLocation && (
+                                                        {phase === "shipping" && itemBlockedByLocation && (
                                                             <p className="mt-0.5 flex items-center gap-1 text-[10.5px] font-bold tracking-wide" style={{ color: "#c71f11" }}>
                                                                 <MapPin className="h-2.5 w-2.5" /> Not deliverable to your selected address.
                                                             </p>
                                                         )}
                                                     </div>
                                                     <p className="text-[13.5px] font-extrabold tabular-nums">₹{inr(p.lineTotal)}</p>
-                                                    <button onClick={() => handleRemove(it.submission_id)}><Trash2 className="h-4 w-4" style={{ color: C.muted }} /></button>
+                                                    {phase === "review" && (
+                                                        <button onClick={() => handleRemove(it.submission_id)}><Trash2 className="h-4 w-4" style={{ color: C.muted }} /></button>
+                                                    )}
                                                 </div>
                                             </div>
                                         );
@@ -545,7 +598,7 @@ export default function CartPage() {
                                         </span>
                                     </div>
                                 )}
-                                {groupStatus?.blocked && (
+                                {phase === "shipping" && groupStatus?.blocked && (
                                     <ConstraintNotice reasons={[
                                         groupStatus.blockedItems.length > 0 && {
                                             icon: MapPin,
@@ -556,75 +609,94 @@ export default function CartPage() {
                                     ]} />
                                 )}
 
-                                {/* ---------------- Per-seller transport preference (NEW) ---------------- */}
-                                <div className="mt-3 flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hair }}>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
-                                            <Truck className="h-3.5 w-3.5" /> Preferred transport
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveTransportSellerId(sellerId)}
-                                            className="shrink-0 text-[12px] font-bold tracking-wide"
-                                            style={{ color: C.secondary }}
-                                        >
-                                            {pref || pendingProposal ? "Change" : "Set preference"}
-                                        </button>
-                                    </div>
-
-                                    {pref ? (
-                                        <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                            {routeTransportModeLabel(pref.mode)}
-                                        </p>
-                                    ) : pendingProposal ? (
-                                        <div className="flex flex-col gap-1">
-                                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                {routeTransportModeLabel(pendingProposal.mode)}
+                                {/* ---------------- Per-seller transport preference (shipping phase only) ---------------- */}
+                                {phase === "shipping" && (
+                                    <div className="mt-3 flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hair }}>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
+                                                <Truck className="h-3.5 w-3.5" /> Preferred transport
                                             </p>
-                                            <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                Awaiting the seller's approval — if you check out now, they'll choose transport for this order.
-                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveTransportSellerId(sellerId)}
+                                                className="shrink-0 text-[12px] font-bold tracking-wide"
+                                                style={{ color: C.secondary }}
+                                            >
+                                                {pref || pendingProposal ? "Change" : "Set preference"}
+                                            </button>
                                         </div>
-                                    ) : (
-                                        <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                            No preference set — the seller will choose for you.
-                                        </p>
-                                    )}
 
-                                    {removedNotice && <Notice tone="warn">{removedNotice}</Notice>}
-                                </div>
+                                        {pref ? (
+                                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                {routeTransportModeLabel(pref.mode)}
+                                            </p>
+                                        ) : pendingProposal ? (
+                                            <div className="flex flex-col gap-1">
+                                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                    {routeTransportModeLabel(pendingProposal.mode)}
+                                                </p>
+                                                <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                    Awaiting the seller's approval — if you check out now, they'll choose transport for this order.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                                No preference set — the seller will choose for you.
+                                            </p>
+                                        )}
+
+                                        {removedNotice && <Notice tone="warn">{removedNotice}</Notice>}
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
 
-                    <div className="mt-4 rounded-2xl border p-3.5" style={{ borderColor: C.hair }}>
-                        <p className="flex items-center gap-1.5 text-[12px] font-extrabold uppercase" style={{ color: C.muted }}>
-                            <MapPin className="h-3.5 w-3.5" /> Shipping address
-                        </p>
-                        <div className="mt-2.5">
-                            <AddressBook
-                                ref={addressBookRef}
-                                token={token}
-                                value={desiredAddressId}
-                                onChange={handleAddressChange}
-                                disabled={checking}
-                            />
+                    {phase === "shipping" && (
+                        <div className="mt-4 rounded-2xl border p-3.5" style={{ borderColor: C.hair }}>
+                            <p className="flex items-center gap-1.5 text-[12px] font-extrabold uppercase" style={{ color: C.muted }}>
+                                <MapPin className="h-3.5 w-3.5" /> Shipping address
+                            </p>
+                            <div className="mt-2.5">
+                                <AddressBook
+                                    ref={addressBookRef}
+                                    token={token}
+                                    value={desiredAddressId}
+                                    onChange={handleAddressChange}
+                                    disabled={checking}
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{error}</p>}
 
                     <div className="fixed z-[1] bottom-16 md:bottom-0 left-0 right-0 border-t bg-white/95 px-4 py-3 backdrop-blur">
-                        <div className="mx-auto flex max-w-3xl items-center justify-between">
+                        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
                             <div>
                                 <p className="text-[11px] font-bold uppercase" style={{ color: C.muted }}>Total</p>
                                 <p className="text-[18px] font-extrabold tabular-nums">₹{inr(grandTotal)}</p>
                             </div>
-                            <button onClick={handleCheckout} disabled={checking || hasStockBlock || anyGroupBlocked}
-                                className="rounded-xl px-6 py-3 text-[13.5px] font-bold text-white disabled:opacity-50"
-                                style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                                {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Proceed to pay"}
-                            </button>
+                            {phase === "review" ? (
+                                <button onClick={goToShipping} disabled={hasStockBlock}
+                                    className="rounded-xl px-6 py-3 text-[13.5px] font-bold text-white disabled:opacity-50"
+                                    style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                                    Continue to shipping
+                                </button>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <button onClick={goBackToReview} disabled={checking}
+                                        className="flex items-center gap-1 rounded-xl border px-4 py-3 text-[13px] font-bold disabled:opacity-50"
+                                        style={{ borderColor: C.hair, color: C.ink }}>
+                                        <ChevronLeft className="h-4 w-4" /> Back
+                                    </button>
+                                    <button onClick={handleCheckout} disabled={checking || hasStockBlock || anyGroupBlocked}
+                                        className="rounded-xl px-6 py-3 text-[13.5px] font-bold text-white disabled:opacity-50"
+                                        style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                                        {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Proceed to pay"}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </>
