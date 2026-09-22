@@ -958,7 +958,14 @@ export async function createBuyerAddress(token, payload) {
   });
   return res.json();
 }
-
+export async function updateBuyerAddress(token, addressId, payload) {
+  const res = await fetch(`${API_BASE}/buyer/addresses/${addressId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
 export async function setDefaultBuyerAddress(token, addressId) {
   const res = await fetch(`${API_BASE}/buyer/addresses/${addressId}/default`, {
     method: "POST",
