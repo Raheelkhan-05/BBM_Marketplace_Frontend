@@ -23,12 +23,17 @@ import HelpBulb from "./HelpBulb.jsx";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)" };
 
-// Width reserved for the trailing "more" chevron button (only subtracted
-// from the available row width once we know overflow exists at all).
-const MORE_BUTTON_WIDTH = 52;
-// Smallest gap we're willing to let justify-between compress down to
-// between two neighboring pills before we consider that pill "not fitting".
-const MIN_GAP = 10;
+// Always show at least this many nav pills inline, even on a narrow screen
+// — beyond that, MORE items are added inline for as long as they still fit
+// the row's width; only the true overflow (past what fits) goes behind the
+// chevron. See the measurement effect below.
+const MIN_VISIBLE_COUNT = 3;
+// Width reserved for the trailing "more" chevron button, subtracted from
+// the available row width only once we know overflow exists at all.
+const MORE_BUTTON_WIDTH = 44;
+// Smallest gap we're willing to let the row compress down to between two
+// neighboring pills before we consider the next pill "not fitting".
+const MIN_GAP = 8;
 
 function NavPill({ item, active, dense }) {
     const Icon = item.icon;
@@ -37,22 +42,22 @@ function NavPill({ item, active, dense }) {
             onClick={item.onClick}
             className={
                 dense
-                    ? "relative flex w-full items-center gap-3 rounded-2xl px-4 py-2 text-[15px] font-bold transition-colors duration-150"
-                    : "relative flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-[13.5px] font-bold transition-colors duration-150 tracking-wide"
+                    ? "relative flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] font-bold transition-colors duration-150"
+                    : "relative flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-bold transition-colors duration-150 tracking-wide"
             }
             style={{
                 color: active ? "#fff" : C.ink,
                 background: active ? "#000000" : "rgba(20,27,34,0.045)",
             }}
         >
-            <Icon className={dense ? "h-4 w-4" : "h-3.5 w-3.5"} style={{ color: active ? "#fff" : C.muted }} />
-            {item.label}
+            <Icon className={dense ? "h-4 w-4 shrink-0" : "h-3.5 w-3.5 shrink-0"} style={{ color: active ? "#fff" : C.muted }} />
+            <span>{item.label}</span>
             {item.badge != null && (
                 <span
                     className={
                         dense
                             ? "ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#d2462b] px-1.5 text-[10px] font-bold text-white"
-                            : "absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white ring-2 ring-white"
+                            : "absolute -right-1 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white ring-2 ring-white"
                     }
                 >
                     {item.badge}
@@ -82,40 +87,42 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     const containerRef = useRef(null);
     const measureRefs = useRef([]);
-    const [visibleCount, setVisibleCount] = useState(items.length);
+    const [visibleCount, setVisibleCount] = useState(Math.min(MIN_VISIBLE_COUNT, items.length));
     const [sheetOpen, setSheetOpen] = useState(false);
 
-    // Measure each item's natural width against the available row width and
-    // find how many fit before the trailing chevron would be needed. Runs
-    // on mount, on resize, and whenever the item set changes (login state,
+    // Start from the guaranteed minimum, then measure how many additional
+    // pills still fit in the row's actual width and add those too. Runs on
+    // mount, on resize, and whenever the item set changes (login state,
     // badge counts appearing/disappearing, etc).
     useLayoutEffect(() => {
         function recalc() {
             const container = containerRef.current;
-            if (!container) return;
+            const floor = Math.min(MIN_VISIBLE_COUNT, items.length);
+            if (!container) {
+                setVisibleCount(floor);
+                return;
+            }
             const fullWidth = container.clientWidth;
             const widths = measureRefs.current.map((el) => (el ? el.offsetWidth : 0));
 
-            // With N pills plus the trailing button, justify-between leaves
-            // N gaps; make sure each can stay at least MIN_GAP wide.
-            const fitsAll =
-                widths.reduce((a, b) => a + b, 0) + MIN_GAP * widths.length <= fullWidth;
-
+            const fitsAll = widths.reduce((a, b) => a + b, 0) + MIN_GAP * Math.max(widths.length - 1, 0) <= fullWidth;
             if (fitsAll) {
                 setVisibleCount(items.length);
                 return;
             }
 
+            // How many pills fit before the trailing chevron would be needed.
             const budget = fullWidth - MORE_BUTTON_WIDTH;
             let used = 0;
             let count = 0;
             for (const w of widths) {
-                const next = used + w + MIN_GAP;
+                const next = used + w + (count > 0 ? MIN_GAP : 0);
                 if (next > budget) break;
                 used = next;
                 count += 1;
             }
-            setVisibleCount(Math.max(count, 1));
+
+            setVisibleCount(Math.max(count, floor));
         }
 
         recalc();
@@ -153,7 +160,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 className="fixed inset-x-0 bottom-0 z-40 border-t bg-white md:hidden"
                 style={{ borderColor: C.hair, paddingBottom: "env(safe-area-inset-bottom)" }}
             >
-                <div ref={containerRef} className="flex items-center justify-between px-4 py-2.5 pb-4 -mt-2 pt-4">
+                <div ref={containerRef} className="flex items-center justify-between px-3 py-2 pb-4 -mt-2 pt-4">
                     {visibleItems.map((it) => (
                         <NavPill key={it.id} item={it} active={it.match(pathname)} />
                     ))}
@@ -167,8 +174,8 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                     : "Show more navigation options"
                             }
                             aria-expanded={sheetOpen}
-                            className="relative flex shrink-0 items-center justify-center rounded-full p-2"
-                            style={{ background: "rgba(20,27,34,0.045)", color: C.ink }}
+                            className="relative flex shrink-0 items-center justify-center rounded-full p-2.5"
+                            style={{ background: "rgba(20,27,34,0.025)", color: C.ink }}
                         >
                             <ChevronUp className="h-4 w-4" />
                             {overflowBadgeDisplay != null && (
@@ -190,7 +197,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 visible. Keeps the visible row free of layout-shift flicker. */}
             <div
                 aria-hidden="true"
-                className="pointer-events-none fixed left-0 top-0 z-[-1] flex items-center gap-2.5 px-4 py-2.5 opacity-0"
+                className="pointer-events-none fixed left-0 top-0 z-[-1] flex items-center gap-2 px-3 py-2 opacity-0"
                 style={{ visibility: "hidden" }}
             >
                 {items.map((it, i) => (
