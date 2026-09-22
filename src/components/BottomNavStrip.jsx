@@ -93,7 +93,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
         <>
             <nav
                 className="fixed inset-x-0 bottom-0 z-40 border-t bg-white md:hidden"
-                style={{ backgroundColor: "#000", borderColor: C.hair, paddingBottom: "env(safe-area-inset-bottom)" }}
+                style={{ backgroundColor: "#fff", borderColor: C.hair, paddingBottom: "env(safe-area-inset-bottom)" }}
             >
                 <div className="flex items-center justify-center px-3 py-2 pb-2.5 -mt-2 pt-4">
                     {isLoggedIn ? (
@@ -102,7 +102,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             aria-label={badgeDisplay ? `Open menu, ${badgeTotal} unread` : "Open menu"}
                             aria-expanded={sheetOpen}
                             className="relative flex items-center justify-center gap-2 py-1 pb-2 text-[15px] font-bold"
-                            style={{ color: "#fff" }}
+                            style={{ color: "#000" }}
                         >
                             <Menu className="h-4 w-4" />
                             Menu
