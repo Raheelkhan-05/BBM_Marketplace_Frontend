@@ -167,7 +167,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                     : "Show more navigation options"
                             }
                             aria-expanded={sheetOpen}
-                            className="relative flex shrink-0 items-center justify-center rounded-full p-2.5"
+                            className="relative flex shrink-0 items-center justify-center rounded-full p-2"
                             style={{ background: "rgba(20,27,34,0.045)", color: C.ink }}
                         >
                             <ChevronUp className="h-4 w-4" />
