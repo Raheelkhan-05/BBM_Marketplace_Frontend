@@ -41,6 +41,22 @@ function NavPill({ item, active }) {
     );
 }
 
+function formatShopName(slug) {
+    if (!slug) return "";
+    // Shop slugs get a numeric suffix appended when the base name is
+    // already taken (e.g. "acme-traders-2", "acme-traders-3") to keep the
+    // slug unique — that's a backend uniqueness detail, not something a
+    // user should see as part of their shop's display name.
+    const withoutDuplicateSuffix = slug.replace(/-\d+$/, "");
+
+    return withoutDuplicateSuffix
+        .split("-")
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+}
+
+
 export default function BottomNavStrip({ onOpenRfq }) {
     const navigate = useNavigate();
     const { pathname } = useLocation();
@@ -130,7 +146,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 >
                     <div className="flex items-center justify-between px-5 pt-4 pb-3">
                         <span className="text-[13px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
-                            Menu
+                            {profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
                         </span>
                         <button
                             onClick={() => setSheetOpen(false)}
