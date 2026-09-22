@@ -6,7 +6,7 @@
 // The bottom bar now shows a single trigger button. Tapping it slides up
 // a sheet (from the bottom, capped at half the viewport height) listing
 // every nav item directly, plus HelpBulb and Sign out/Sign in.
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Menu, X, LogOut, ArrowUpRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -67,6 +67,8 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const { totalBadgeCount: productsBadgeCount } = useListings();
     const isApprovedSeller = profile?.seller_status === "approved";
 
+    const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
+
     const items = NAV_ITEMS({
         isLoggedIn, isApprovedSeller, onOpenRfq, navigate,
         ordersBadgeCount: orderUnreadCount,
@@ -82,6 +84,13 @@ export default function BottomNavStrip({ onOpenRfq }) {
     useEffect(() => {
         setSheetOpen(false);
     }, [pathname]);
+
+    useEffect(() => {
+        if (!sheetOpen) return;
+        const original = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = original; };
+    }, [sheetOpen]);
 
     // Sum of unread/pending counts across every nav item, shown as a
     // badge on the trigger button itself since nothing is visible inline
@@ -159,7 +168,12 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             <X className="h-4 w-4" />
                         </button>
                     </div>
-                    <div className="flex flex-col gap-2 overflow-y-auto px-4 pb-5">
+                    <div
+                        className="flex flex-col gap-2 overflow-y-auto px-4 pb-5"
+                        onWheel={stopScrollPropagation}
+                        onTouchStart={stopScrollPropagation}
+                        onTouchMove={stopScrollPropagation}
+                    >
                         {items.map((it) => (
                             <NavPill
                                 key={it.id}
