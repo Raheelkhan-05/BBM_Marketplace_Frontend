@@ -74,3 +74,13 @@ body {
   background-color: rgba(11, 17, 22, 0.15);
   border-radius: 999px;
 }
+
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}

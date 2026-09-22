@@ -34,9 +34,80 @@ const DROPDOWN_ITEM =
 const MOBILE_ROW =
   "flex min-h-[46px] items-center gap-3 rounded-lg px-3 text-[14.5px] font-semibold text-slate-700 transition-colors active:bg-slate-100";
 
+// Fixed-width box for the shop name/logo text. If the text fits, it just
+// renders normally. If it overflows the fixed width, it switches to a
+// smooth left-to-right (well, right-to-left scroll, left-to-right reading)
+// marquee loop instead of clipping or wrapping — measured via actual
+// pixel widths, not guessed off character count, so it's correct at any
+// font size/zoom level.
+function MarqueeText({ text, width = 96, className, style }) {
+  const containerRef = useRef(null);
+  const textRef = useRef(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const [singleWidth, setSingleWidth] = useState(0);
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const el = textRef.current;
+    if (!container || !el) return;
+
+    const measure = () => {
+      const overflow = el.scrollWidth - container.clientWidth;
+      setIsOverflowing(overflow > 1);
+      setSingleWidth(el.scrollWidth);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(container);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, isMobile]); // re-measure when switching mobile/desktop, since width mode changes
+
+  const shouldScroll = isOverflowing && !isMobile;
+  const duration = Math.max(4, singleWidth / 40);
+
+  return (
+    <div
+      ref={containerRef}
+      className="overflow-hidden whitespace-nowrap"
+      style={isMobile ? { width: "auto", maxWidth: "100%" } : { width: `${width}px` }}
+    >
+      <div
+        className="inline-flex"
+        style={shouldScroll ? { animation: `marquee-scroll ${duration}s linear infinite` } : undefined}
+      >
+        <span ref={textRef} className={`inline-block ${className || ""}`} style={style}>
+          {text}
+        </span>
+        {shouldScroll && (
+          <span aria-hidden="true" className={`inline-block pl-8 ${className || ""}`} style={style}>
+            {text}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function formatShopName(slug) {
   if (!slug) return "";
-  return slug
+  // Shop slugs get a numeric suffix appended when the base name is
+  // already taken (e.g. "acme-traders-2", "acme-traders-3") to keep the
+  // slug unique — that's a backend uniqueness detail, not something a
+  // user should see as part of their shop's display name.
+  const withoutDuplicateSuffix = slug.replace(/-\d+$/, "");
+
+  return withoutDuplicateSuffix
     .split("-")
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -265,13 +336,12 @@ export default function Header({ onOpenRfq }) {
         <div ref={rowRef} className="relative mx-auto flex h-7 max-w-7xl items-center justify-between px-4 lg:px-8">
           <div ref={logoRef} className="flex shrink-0 items-center">
             <SmartLink to="/" className="flex shrink-0 items-center gap-2">
-              {/* <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" /> */}
-              <h1
+              <MarqueeText
+                text={profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
+                width={256}
                 className="text-[16px] font-extrabold tracking-wide"
                 style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: C.ink }}
-              >
-                {profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
-              </h1>
+              />
             </SmartLink>
           </div>
 
