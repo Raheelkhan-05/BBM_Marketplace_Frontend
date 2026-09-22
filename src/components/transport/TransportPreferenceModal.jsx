@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     X,
@@ -100,6 +100,7 @@ function Field({ field, value, onChange }) {
 function CustomDropdown({ value, onChange, options, placeholder = "Select…", label }) {
     const [open, setOpen] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
+    const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
     const [highlightedIdx, setHighlightedIdx] = useState(-1);
     const wrapperRef = useRef(null);
 
@@ -124,6 +125,13 @@ function CustomDropdown({ value, onChange, options, placeholder = "Select…", l
         document.addEventListener("mousedown", handleOutside);
         return () => document.removeEventListener("mousedown", handleOutside);
     }, [open, isMobile]);
+
+    useEffect(() => {
+        if (!open) return;
+        const original = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = original; };
+    }, [open]);
 
     const selectedOption = options.find((o) => (o.value ?? o) === value);
     const selectedLabel = selectedOption ? (selectedOption.label ?? selectedOption) : null;
@@ -219,7 +227,12 @@ function CustomDropdown({ value, onChange, options, placeholder = "Select…", l
                                 </button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto px-2 py-2">
+                            <div
+                                className="flex-1 overflow-y-auto px-2 py-2"
+                                onWheel={stopScrollPropagation}
+                                onTouchStart={stopScrollPropagation}
+                                onTouchMove={stopScrollPropagation}
+                            >
                                 {options.map((o) => {
                                     const optValue = o.value ?? o;
                                     const optLabel = o.label ?? o;
@@ -302,6 +315,16 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
         [seller?.transportOptions]
     );
 
+    // NEW — lock body scroll for as long as THIS modal is open, not just
+    // while the nested transport-type dropdown happens to be open.
+    useEffect(() => {
+        if (!open) return;
+        const original = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = original; };
+    }, [open]);
+
+
     // ---- Deliver-to address — same shared component & behaviour as
     // BuyNowModal's Shipping Address panel. Selecting/saving here marks
     // the address as the buyer's default, so BuyNowModal (or this modal,
@@ -367,6 +390,7 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
     }, [open, destCity, destState, seller?.sellerId]);
 
     const canQueryRoute = !!(destCity && destState && origin.city && origin.state);
+    const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
 
     useEffect(() => {
         if (!open || !canQueryRoute) return;
@@ -574,7 +598,13 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                     </button>
                 </div>
 
-                <div className={`flex-1 overflow-y-auto px-5 py-4 ${BODY_MIN_HEIGHT}`} data-lenis-prevent>
+                <div
+                    className={`flex-1 overflow-y-auto px-5 py-4 ${BODY_MIN_HEIGHT}`}
+                    data-lenis-prevent
+                    onWheel={stopScrollPropagation}
+                    onTouchStart={stopScrollPropagation}
+                    onTouchMove={stopScrollPropagation}
+                >
                     <AnimatePresence mode="wait" initial={false}>
                         {autoSubmitting ? (
                             <motion.div key="auto-submitting" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -889,7 +919,13 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                                 </div>
                                             )}
 
-                                            <div className="mt-2.5 max-h-56 overflow-y-auto" data-lenis-prevent>
+                                            <div
+                                                className="mt-2.5 max-h-56 overflow-y-auto"
+                                                data-lenis-prevent
+                                                onWheel={stopScrollPropagation}
+                                                onTouchStart={stopScrollPropagation}
+                                                onTouchMove={stopScrollPropagation}
+                                            >
                                                 {loadingSuggestions ? (
                                                     <div className="flex items-center justify-center py-6"><Loader2 className="h-4.5 w-4.5 animate-spin" style={{ color: C.muted }} /></div>
                                                 ) : filteredSuggestions.length > 0 ? (
