@@ -948,6 +948,9 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     // `updateLimit` must be exposed by useCredit() the same way `decide` is —
     // see the NOTE at the top of this file.
     const { credit, viewerRole, buyerInfo, request, decide, toggle, updateLimit, requestIncrease, declineIncrease } = useCredit(meta?.otherUserId);
+
+    console.log("viewerRole : ", viewerRole);
+
     const [requestingCredit, setRequestingCredit] = useState(false);
     const [requestingIncrease, setRequestingIncrease] = useState(false); // NEW
 
