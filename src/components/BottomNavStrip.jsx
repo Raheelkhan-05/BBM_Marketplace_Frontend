@@ -101,7 +101,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             onClick={() => setSheetOpen(true)}
                             aria-label={badgeDisplay ? `Open menu, ${badgeTotal} unread` : "Open menu"}
                             aria-expanded={sheetOpen}
-                            className="relative flex items-center justify-center gap-2 py-0 text-[15px] font-bold"
+                            className="relative flex items-center justify-center gap-2 py-1 pb-2 text-[15px] font-bold"
                             style={{ color: "#fff" }}
                         >
                             <Menu className="h-4 w-4" />
