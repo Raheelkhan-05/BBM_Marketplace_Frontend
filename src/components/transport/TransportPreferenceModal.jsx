@@ -672,7 +672,7 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                     Same address picker/creator as BuyNowModal, so the
                                     buyer can see and change exactly which address this
                                     transport preference is being set for. */}
-                                <div className="flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hairSoft }}>
+                                <div className="flex flex-col gap-2 rounded-xl px-0 py-1" style={{ borderColor: C.hairSoft }}>
                                     <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
                                         <MapPin className="h-3.5 w-3.5" /> Deliver to
                                     </p>
