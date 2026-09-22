@@ -454,7 +454,7 @@ function OperationsStep({ form, update }) {
       <div>
         {/* Label + presets on one line — presets styled as lightweight text links, not buttons */}
         <Label>Working days</Label>
-        <div className="flex items-center justify-between">
+        {/* <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 text-[12px] mt-1 font-semibold tracking-wide">
             <button type="button" onClick={() => update("working_days", [...WEEKDAYS])}
               className={isAllWeek ? "text-[#047084]" : "text-slate-400 hover:text-slate-600"}>
@@ -471,7 +471,7 @@ function OperationsStep({ form, update }) {
               Clear
             </button>
           </div>
-        </div>
+        </div> */}
 
         {/* Day selector — circular toggles, evenly spaced, single-letter for compactness */}
         <div className="mt-2 flex justify-between gap-1.5 sm:justify-start sm:gap-2">
