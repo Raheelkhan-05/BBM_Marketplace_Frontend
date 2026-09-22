@@ -404,7 +404,7 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
             </label>
 
             <div
-              className="mt-1 flex min-h-[52px] w-full items-center overflow-hidden rounded-md border bg-white transition-[border-color,box-shadow] duration-150"
+              className="mt-1 flex min-h-[52px] w-full items-center overflow-hidden rounded-2xl border bg-white transition-[border-color,box-shadow] duration-150"
               style={{
                 borderColor: showError || serverError ? "#c71f11" : focused ? "#94a3b8" : "#e5e9ea",
                 boxShadow: focused ? "0 0 0 3px rgba(148,163,184,0.15)" : "none",

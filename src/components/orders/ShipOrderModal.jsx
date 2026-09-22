@@ -51,7 +51,7 @@ export default function ShipOrderModal({ open, order, onClose, onConfirm }) {
 
     const transportSummary = order?.transport_mode
         ? routeOptionSummary(order.transport_mode, order.transport_fields || {})
-        : "Not agreed pre-purchase";
+        : "No Preference Set";
 
     const canSubmit = lrNumber.trim() && lrFile && billFile;
 

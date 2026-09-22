@@ -129,6 +129,11 @@ export default function Header({ onOpenRfq }) {
   const [navMaxWidth, setNavMaxWidth] = useState(null);
   const { isLoggedIn, profile, signOut, effectiveLoggedIn } = useAuth();
 
+  console.log("effectiveLoggedIn", effectiveLoggedIn);
+  console.log("profile", profile);
+  console.log("signOut", signOut);
+  console.log("isLoggedIn", isLoggedIn);
+
   // DELETE these two lines — now sourced from context:
   // const onboardingDone = !isLoggedIn || profile?.onboarding_step === "done";
   // const effectiveLoggedIn = isLoggedIn && onboardingDone;
@@ -242,17 +247,17 @@ export default function Header({ onOpenRfq }) {
     <>
       <header
         ref={headerRef}
-        className="relative sm:sticky top-0 z-50 bg-[#FCFBF9]/95 backdrop-blur-md transition-all duration-300"
+        className="relative top-0 z-50 bg-[#FFFFFF]/95 backdrop-blur-md transition-all duration-300"
       >
-        <div ref={rowRef} className="relative mx-auto flex h-14 max-w-7xl items-center justify-between px-4 lg:px-8">
+        <div ref={rowRef} className="relative mx-auto flex h-7 mt-3 max-w-7xl items-center justify-between px-4 lg:px-8">
           <div ref={logoRef} className="flex shrink-0 items-center">
             <SmartLink to="/" className="flex shrink-0 items-center gap-2">
-              <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
+              {/* <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" /> */}
               <h1
-                className="text-[18px] font-extrabold tracking-wide"
+                className="text-[16px] font-extrabold tracking-wide"
                 style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: C.ink }}
               >
-                BBM
+                {profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
               </h1>
             </SmartLink>
           </div>
@@ -266,18 +271,11 @@ export default function Header({ onOpenRfq }) {
 
                 <div className="relative hidden md:block" ref={accountRef}>
                   <button
-                    onClick={() => setAccountOpen((v) => !v)}
-                    title={displayName}
-                    className="inline-flex w-[165px] items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-1.5 text-[13px] font-bold text-slate-700 transition hover:border-[#7fb3bd]"
+                    onClick={() => { setAccountOpen(false); signOut(); }}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-[13px] font-semibold text-rose-600 hover:bg-slate-50"
                   >
-                    <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white"
-                      style={{ background: "linear-gradient(135deg, #000000 0%, #000000 100%)" }}
-                    >
-                      <User className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-left">{displayName}</span>
-                    <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform ${accountOpen ? "rotate-180" : ""}`} />
+                    <LogOut className="h-3.5 w-3.5" />
+                    Sign out
                   </button>
 
                   <AnimatePresence>
@@ -289,7 +287,7 @@ export default function Header({ onOpenRfq }) {
                         transition={{ duration: 0.15 }}
                         className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-[rgba(20,27,34,0.08)] bg-white py-1.5 shadow-xl"
                       >
-                        {isApprovedSeller && (
+                        {/* {isApprovedSeller && (
                           <SmartLink
                             to={`/shop/${profile.shop_slug}`}
                             onClick={() => setAccountOpen(false)}
@@ -298,16 +296,10 @@ export default function Header({ onOpenRfq }) {
                             <Store className="h-3.5 w-3.5 text-[#0B7285]" />
                             My Shop
                           </SmartLink>
-                        )}
+                        )} */}
 
                         <div className="my-1 border-t border-[rgba(20,27,34,0.08)]" />
-                        <button
-                          onClick={() => { setAccountOpen(false); signOut(); }}
-                          className="flex w-full items-center gap-2 px-4 py-2 text-left text-[13px] font-semibold text-rose-600 hover:bg-slate-50"
-                        >
-                          <LogOut className="h-3.5 w-3.5" />
-                          Sign out
-                        </button>
+
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -352,35 +344,20 @@ export default function Header({ onOpenRfq }) {
               exit={{ opacity: 0, y: -12 }}
               transition={{ duration: 0.22, ease: "easeOut" }}
               style={{ top: headerHeight }}
-              className="fixed left-0 right-0 z-50 max-h-[calc(100dvh-var(--h))] overflow-y-auto border-b border-[rgba(20,27,34,0.08)] bg-[#FCFBF9] shadow-xl backdrop-blur-xl md:hidden"
+              className="fixed left-0 right-0 z-50 max-h-[calc(100dvh-var(--h))] overflow-y-auto border-b border-[rgba(20,27,34,0.08)] bg-[#FFFFFF] shadow-xl backdrop-blur-xl md:hidden"
             >
               <div className="mx-auto max-w-7xl px-5 py-4">
-                {effectiveLoggedIn && (
-                  <div className="mb-3 flex items-center gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5">
-                    <span
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
-                      style={{ background: "linear-gradient(135deg, #000000 0%, #000000 100%)" }}
-                    >
-                      <User className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="truncate text-[13.5px] font-bold text-slate-800">{displayName}</p>
-                      {isAdmin && <p className="text-[11px] font-semibold text-[#0B7285]">Admin</p>}
-                    </div>
-                  </div>
-                )}
+
 
                 <nav className="flex flex-col gap-0.5">
                   {effectiveLoggedIn && (
                     <>
-                      {isApprovedSeller && (
+                      {/* {isApprovedSeller && (
                         <SmartLink to={`/shop/${profile.shop_slug}`} onClick={() => setOpen(false)} className={`${MOBILE_ROW} text-[#000000]`}>
                           <Store className="h-4 w-4 text-[#000000]" />
                           My Shop
                         </SmartLink>
-                      )}
-
-                      <div className="my-2 border-t border-slate-100" />
+                      )} */}
                       <button
                         onClick={() => { setOpen(false); signOut(); }}
                         className={`${MOBILE_ROW} justify-start text-rose-600`}

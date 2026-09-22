@@ -1,9 +1,25 @@
 // components/BuyNowModal.jsx — REDESIGNED (UI/UX only, logic untouched)
+//
+// ADDRESS HANDLING (this revision): the inline address list/"add new"
+// form used to live entirely in this file (with its own fetch, its own
+// business-profile seeding, its own save handler). That's all been
+// extracted into <AddressBook> (components/shipping/AddressBook.jsx) so
+// BuyNowModal and TransportPreferenceModal share one implementation, one
+// visual style, and — critically — one behavior: picking or saving an
+// address in either place marks it as the buyer's default address on the
+// server, so the other modal picks up the same address automatically.
+//
+// `selectedAddressId` below is now a DERIVED value (not state) — the
+// non-draft id AddressBook last reported via onChange — so every
+// existing reference to it elsewhere in this file (the quote effect,
+// handleSubmit, session save/restore, the transport modal props) keeps
+// working unchanged.
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import PaymentQRModal from "./PaymentQRModal.jsx";
+import AddressBook from "./shipping/AddressBook.jsx";
 import {
     Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee,
     Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
@@ -11,9 +27,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
-    fetchCheckoutStatus, fetchOrderQuote, fetchBuyerAddresses, createBuyerAddress,
+    fetchCheckoutStatus, fetchOrderQuote,
     placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi,
-    fetchBusinessProfile, requestCreditIncrease as requestCreditIncreaseApi, // NEW
+    requestCreditIncrease as requestCreditIncreaseApi,
 } from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
 import { TRANSPORT_OPTIONS } from "../../shared/transportOptions.js";
@@ -23,35 +39,17 @@ import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./selle
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, hasOuterPack, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
 import { fetchOrderConstraints } from "../utils/api.js";
-import { usePincodeResolution } from "../hooks/usePincodeResolution.js";
 import TransportPreferenceModal from "./transport/TransportPreferenceModal.jsx";
 import { Share2 } from "lucide-react";
 import { shareProductLink } from "../utils/share.js";
 import { routeTransportModeLabel, getRouteTransportFields } from "../../shared/routeTransportFields.js";
-import { fetchBuyerTransportPreference, fetchSellerRouteOptions } from "../utils/api.transport.js";
+import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
 
 /* ============================================================
    All logic below (constants, pure functions, computeLocalQuote,
    normalizeQuote, etc.) is IDENTICAL to the original file —
    copy verbatim, no changes.
    ============================================================ */
-
-const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
-
-function seedFromBusinessProfile(bp, phone) {
-    if (!bp) return null;
-    const useDispatch = bp.dispatch_same_as_registered === false && bp.dispatch_address;
-    return {
-        label: "Deliver To: ",
-        contact_name: bp.legal_name || bp.trade_name || "",
-        contact_phone: phone || "",
-        address_line1: useDispatch ? bp.dispatch_address : (bp.registered_address || ""),
-        address_line2: "",
-        city: bp.district || "",
-        state: useDispatch ? (bp.dispatch_state || bp.state || "") : (bp.state || ""),
-        pincode: useDispatch ? (bp.dispatch_pincode || bp.pincode || "") : (bp.pincode || ""),
-    };
-}
 
 const BASIS_OPTIONS = [
     { value: "per_pack", label: "Packs" },
@@ -203,8 +201,6 @@ function normalizeQuote(raw) {
    REDESIGNED presentational primitives
    ============================================================ */
 
-// Slightly larger tap targets, clearer pressed/disabled states, no
-// harsh 90° corners on the stepper buttons so it reads as one control.
 function Stepper({ value, onChange, min = 1, max }) {
     const atMax = max != null && Number(value) >= Number(max);
     const atMin = Number(value) <= Number(min);
@@ -232,8 +228,6 @@ function Stepper({ value, onChange, min = 1, max }) {
     );
 }
 
-// Consistent icon + tone so warnings/errors/info are visually
-// distinguishable at a glance, not just by background tint.
 function Notice({ tone = "warn", children }) {
     const tones = {
         warn: { background: "#FEF6E7", color: "#92600A", icon: AlertCircle },
@@ -281,9 +275,6 @@ function QuoteRow({ label, value, tone, strong, small }) {
     );
 }
 
-// A single, reusable card shell replacing SectionCard's repeated
-// icon+eyebrow+border pattern — quieter borders, one consistent radius,
-// and a plain sentence-case title instead of a tracked-out label.
 function Panel({ icon: Icon, title, subtitle, children }) {
     return (
         <div className="rounded-2xl border bg-white p-4 sm:p-4.5" style={{ borderColor: C.hairSoft }}>
@@ -312,14 +303,31 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const navigate = useNavigate();
     const location = useLocation();
 
-    /* ---- ALL STATE, EFFECTS, AND HANDLERS BELOW ARE UNCHANGED FROM
-       THE ORIGINAL FILE — copy verbatim. Only the JSX return differs. ---- */
-
     const [access, setAccess] = useState(undefined);
-    const [addresses, setAddresses] = useState([]);
-    const [selectedAddressId, setSelectedAddressId] = useState(null);
-    const [showNewAddress, setShowNewAddress] = useState(false);
-    const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
+
+    // ---- Address (see file header note) ----
+    // `desiredAddressId` is a HINT passed down to <AddressBook> (e.g. from
+    // a restored session, or from a preference just set inside the
+    // transport modal). `effectiveAddress` is what AddressBook actually
+    // reports back — the source of truth for pincode/city/state used
+    // everywhere below.
+    const [desiredAddressId, setDesiredAddressId] = useState(null);
+    const [effectiveAddress, setEffectiveAddress] = useState(null);
+    const addressBookRef = useRef(null);
+
+    const handleAddressChange = (addr) => {
+        setEffectiveAddress(addr);
+        if (addr && !addr.isDraft) setDesiredAddressId(addr.id);
+    };
+
+    // Derived, not state — kept under this name so every existing
+    // reference below (quote effect, handleSubmit, session save) works
+    // unchanged.
+    const selectedAddressId = effectiveAddress && !effectiveAddress.isDraft ? effectiveAddress.id : null;
+    const effectivePincode = effectiveAddress?.pincode || "";
+    const effectiveState = effectiveAddress?.state || "";
+    const effectiveCity = effectiveAddress?.city || "";
+
     const [awaitingPaymentOrderId, setAwaitingPaymentOrderId] = useState(null);
     const [orderMode, setOrderMode] = useState("standard");
     const isSample = orderMode === "sample";
@@ -338,11 +346,11 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const belowMoq = !isSample && Number(quantity) < minQuantity;
 
     const [transportPreference, setTransportPreference] = useState(seller?.transportPreference ?? null);
-    const [pendingTransportProposal, setPendingTransportProposal] = useState(seller?.transportPendingProposal ?? null); // was already declared — now actually seeded
+    const [pendingTransportProposal, setPendingTransportProposal] = useState(seller?.transportPendingProposal ?? null);
 
     useEffect(() => {
         setTransportPreference(seller?.transportPreference ?? null);
-        setPendingTransportProposal(seller?.transportPendingProposal ?? null); // NEW
+        setPendingTransportProposal(seller?.transportPendingProposal ?? null);
     }, [seller?.transportPreference, seller?.transportPendingProposal]);
 
     useEffect(() => {
@@ -367,7 +375,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
     }, [minQuantity, isSample]);
 
     const [notes, setNotes] = useState("");
-    const selectedAddress = addresses.find((a) => a.id === selectedAddressId);
     const [quote, setQuote] = useState(null);
 
     const maxQuantity = !isSample && seller?.stockType === "ready_stock"
@@ -382,11 +389,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [done, setDone] = useState(null);
     const quoteTimer = useRef(null);
     const [showTransportModal, setShowTransportModal] = useState(false);
-    const [transportRemovedNotice, setTransportRemovedNotice] = useState(null); // NEW — summary of what was removed, or null
+    const [transportRemovedNotice, setTransportRemovedNotice] = useState(null);
     const isFirstQuoteRef = useRef(true);
     const requestIdRef = useRef(0);
-    const { resolved: pincodeGeo, status: pincodeStatus, message: pincodeMessage } =
-        usePincodeResolution(showNewAddress ? newAddress.pincode : null);
     const pendingQuoteRef = useRef(Promise.resolve());
     const standardBasisRef = useRef(defaultBasis);
 
@@ -408,24 +413,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const [creditStatus, setCreditStatus] = useState(null);
 
     useEffect(() => {
-        if (pincodeGeo) {
-            setNewAddress((a) => ({ ...a, city: pincodeGeo.district, state: pincodeGeo.state }));
-        }
-    }, [pincodeGeo]);
-
-    // No longer waits for access to resolve first; fires the moment
-    // seller.offerId/token are known, in parallel with fetchCheckoutStatus
-    // instead of after it. Removes one full round trip of pure waiting.
-    useEffect(() => {
         if (!seller?.offerId || !token) return;
         fetchCreditStatus(token, { submissionId: seller.offerId }).then((res) => setCreditStatus(res?.credit || null));
     }, [seller?.offerId, token]);
 
     const canBuyOnCredit = creditStatus?.status === "approved";
-    const [requestingIncrease, setRequestingIncrease] = useState(false); // NEW
+    const [requestingIncrease, setRequestingIncrease] = useState(false);
 
-    // NEW — "crosses limit" is based on THIS order's total vs what's left,
-    // not on the limit being fully drained already.
     const creditRemaining = creditStatus
         ? Math.max(Number(creditStatus.credit_limit || 0) - Number(creditStatus.credit_used || 0), 0)
         : 0;
@@ -440,23 +434,17 @@ export default function BuyNowModal({ seller, product, onClose }) {
         const res = await requestCreditIncreaseApi(token, creditStatus.id);
         setRequestingIncrease(false);
         if (!res?.success) { setError(res?.message || "Couldn't send the request for a higher limit."); return; }
-        // reflect "pending" immediately so the button swaps to the waiting state
         setCreditStatus((prev) => (prev ? { ...prev, limit_increase_request_message_id: "pending" } : prev));
     };
-
 
     useEffect(() => {
         if (isCredit && !canBuyOnCredit) setOrderMode("standard");
     }, [isCredit, canBuyOnCredit]);
 
-    const effectivePincode = showNewAddress ? newAddress.pincode : selectedAddress?.pincode;
-    const effectiveState = showNewAddress ? newAddress.state : selectedAddress?.state;
-    const effectiveCity = showNewAddress ? newAddress.city : selectedAddress?.city;
-
     useEffect(() => {
         if (!(Number(quantity) > 0)) { setQuote(null); return; }
         setQuote((prev) => {
-            const local = computeLocalQuote(seller, quantity, basis, isSample, effectivePincode, effectiveState, effectiveCity);
+            const local = computeLocalQuote(seller, quantity, basis, isSample, effectivePincode, effectiveState);
             return local ? normalizeQuote(local) : prev;
         });
     }, [seller, quantity, basis, isSample, effectivePincode, effectiveState]);
@@ -467,10 +455,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return () => { lenis?.start?.(); };
     }, []);
 
-    // Preference was resolved for a specific destination route. If the buyer
-    // changes the shipping address to a different city/state inside the
-    // modal, that preference no longer applies to the (new) route — clear it
-    // so "Set preference" reappears instead of silently keeping a stale pick.
+    // Preference was resolved for a specific destination route. If the
+    // effective address's city/state changes, that preference no longer
+    // applies to the (new) route — clear it so "Set preference" reappears
+    // instead of silently keeping a stale pick.
     useEffect(() => {
         if (!transportPreference?.destCity || !transportPreference?.destState) return;
         if (!effectiveCity || !effectiveState) return;
@@ -512,54 +500,16 @@ export default function BuyNowModal({ seller, product, onClose }) {
         [constraints, clockTick]
     );
 
-    // Only evaluate serviceability once the buyer has finished entering a
-    // pincode — checking on every city/state keystroke was noisy and could
-    // flash a false "not serviceable" notice mid-typing.
     const PINCODE_RE = /^\d{6}$/;
 
     const locationStatus = useMemo(() => {
         if (!PINCODE_RE.test(effectivePincode || "")) {
             return { serviceable: true };
         }
-        const result = checkLocationServiceable(constraints?.dispatchingLocations, { state: effectiveState, city: effectiveCity });
-        console.log("[locationStatus]", {
-            pincode: effectivePincode,
-            state: effectiveState,
-            city: effectiveCity,
-            constraintsLoaded: !!constraints,
-            dispatchingLocations: constraints?.dispatchingLocations,
-            result,
-        });
-        return result;
+        return checkLocationServiceable(constraints?.dispatchingLocations, { state: effectiveState, city: effectiveCity });
     }, [constraints, effectivePincode, effectiveState, effectiveCity]);
 
     const blockedByConstraints = !locationStatus.serviceable;
-
-    // Only needs a token to exist, not the full checkout-status
-    // round trip to resolve first. If access later comes back as not-eligible,
-    // the gate screen still shows correctly — this fetch running early just
-    // means addresses are ready the instant the form actually renders instead
-    // of after a second serial round trip.
-    useEffect(() => {
-        if (!token) return;
-        let cancelled = false;
-        (async () => {
-            const res = await fetchBuyerAddresses(token);
-            if (cancelled || !res?.success) return;
-            setAddresses(res.addresses || []);
-            const def = res.addresses?.find((a) => a.is_default) || res.addresses?.[0];
-            if (def) {
-                setSelectedAddressId(def.id);
-            } else {
-                const bpRes = await fetchBusinessProfile(token);
-                if (cancelled) return;
-                const seeded = bpRes?.success ? seedFromBusinessProfile(bpRes.profile, access?.profile?.phone) : null;
-                setNewAddress(seeded || EMPTY_ADDRESS);
-                setShowNewAddress(true);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [token]);
 
     useEffect(() => {
         if (isSample) {
@@ -570,16 +520,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
         }
     }, [isSample, seller?.sampleQuantity]);
 
-    useEffect(() => {
-        if (!(Number(quantity) > 0)) { setQuote(null); return; }
-        setQuote((prev) => {
-            const local = computeLocalQuote(seller, quantity, basis, isSample, effectivePincode, effectiveState);
-            return local ? normalizeQuote(local) : prev;
-        });
-    }, [seller, quantity, basis, isSample, effectivePincode, effectiveState]);
-
-
-    // In the quote-fetch effect — only the setTimeout delay changes:
+    // Quote fetch effect
     useEffect(() => {
         if (!seller?.offerId || !(Number(quantity) > 0)) return;
         clearTimeout(quoteTimer.current);
@@ -588,14 +529,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
         const basisAtSchedule = basis;
         const sampleAtSchedule = isSample;
         const addressAtSchedule = selectedAddressId;
-        const destPincodeAtSchedule = effectivePincode;   // NEW
-        const destStateAtSchedule = effectiveState;       // NEW
+        const destPincodeAtSchedule = effectivePincode;
+        const destStateAtSchedule = effectiveState;
 
-
-        // CHANGED: first quote fetch on modal open fires immediately instead
-        // of waiting the full 300ms debounce — that delay exists to avoid
-        // spamming the endpoint while someone's actively changing quantity,
-        // which doesn't apply to the very first render.
         const delay = isFirstQuoteRef.current ? 0 : 300;
         isFirstQuoteRef.current = false;
 
@@ -605,7 +541,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                     purchaseBasis: basisAtSchedule,
                     orderType: sampleAtSchedule ? "sample" : "standard",
                     addressId: addressAtSchedule || undefined,
-                    destPincode: addressAtSchedule ? undefined : destPincodeAtSchedule,  // NEW
+                    destPincode: addressAtSchedule ? undefined : destPincodeAtSchedule,
                     destState: addressAtSchedule ? undefined : destStateAtSchedule,
                     token,
                 });
@@ -622,21 +558,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return () => clearTimeout(quoteTimer.current);
     }, [seller?.offerId, quantity, basis, isSample, selectedAddressId, effectivePincode, effectiveState]);
 
-
-    // REPLACE the old "clear preference on address change" effect with this:
-    //
-    // Whenever the buyer's effective destination (city/state) changes — either
-    // by picking a different saved address or by a new address's pincode
-    // resolving — the transport preference is no longer guaranteed to apply,
-    // since it's keyed per (buyer, seller, destination route). Re-resolve it:
-    //   1. If the preference already in state was resolved for this exact
-    //      route (e.g. it came in pre-attached from the feed for the default
-    //      address), trust it — no need to re-fetch.
-    //   2. Otherwise, ask the backend whether a decision already exists for
-    //      this seller on this new route. If yes, adopt it immediately.
-    //   3. If no decision exists yet for this route, clear the stale
-    //      preference AND open the picker automatically so the buyer isn't
-    //      left silently defaulting to "seller decides" without being asked.
     const lastCheckedRouteRef = useRef(null);
 
     useEffect(() => {
@@ -662,9 +583,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
             setPendingTransportProposal(pendingProposal);
 
             if (res?.rejectedNotice) {
-                // NEW: an unacknowledged rejection always wins — clear whatever
-                // else was showing and force the picker open with the reason,
-                // regardless of the decided/pending state otherwise returned.
                 setTransportPreference(null);
                 setTransportRemovedNotice(`Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`);
                 setShowTransportModal(true);
@@ -684,9 +602,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return () => { cancelled = true; };
     }, [effectiveCity, effectiveState, seller?.sellerId, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // One-time validation of whatever preference the modal opened with — it
-    // may have been resolved earlier (e.g. by HomeProductFeed before the
-    // modal opened) and the seller could have removed it since then.
     const initialPreferenceCheckedRef = useRef(false);
     useEffect(() => {
         if (initialPreferenceCheckedRef.current) return;
@@ -709,20 +624,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
         })();
     }, [seller?.sellerId, effectiveCity, effectiveState, token]);
 
-    const setAddrField = (key, value) => setNewAddress((a) => ({ ...a, [key]: value }));
-
-    const handleSaveNewAddress = async () => {
-        const missing = ["contact_name", "contact_phone", "address_line1", "city", "state", "pincode"].filter((k) => !newAddress[k].trim());
-        if (missing.length) { setError("Please fill in the shipping address completely."); return null; }
-        setError(null);
-        const res = await createBuyerAddress(token, { ...newAddress, is_default: addresses.length === 0 });
-        if (!res?.success) { setError(res?.message || "Couldn't save address."); return null; }
-        setAddresses((prev) => [res.address, ...prev]);
-        setSelectedAddressId(res.address.id);
-        setShowNewAddress(false);
-        return res.address.id;
-    };
-
     const handleSubmit = async (explicitOrderType) => {
         setError(null);
         if (!windowStatus.open) return setError(windowStatus.message);
@@ -740,8 +641,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
         }
 
         let addressId = selectedAddressId;
-        if (showNewAddress || !addressId) {
-            addressId = await handleSaveNewAddress();
+        if (!addressId) {
+            addressId = await addressBookRef.current?.ensureSavedAddress();
             if (!addressId) return;
         }
         if (!(Number(quantity) > 0)) return setError("Please enter a valid quantity.");
@@ -782,11 +683,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 product,
                 quantity,
                 basis,
-                selectedAddressId,
-                showNewAddress,
-                newAddress,
+                selectedAddressId: addressId,
                 notes,
-                orderMode: effectiveOrderType
+                orderMode: effectiveOrderType,
             });
             setAwaitingPaymentOrderId(res.orderId);
         } else {
@@ -799,25 +698,14 @@ export default function BuyNowModal({ seller, product, onClose }) {
         setQuantity(session.quantity);
         userPickedBasis.current = true;
         setBasis(session.basis);
-        setSelectedAddressId(session.selectedAddressId);
-        setShowNewAddress(session.showNewAddress);
-        setNewAddress(session.newAddress || EMPTY_ADDRESS);
+        setDesiredAddressId(session.selectedAddressId || null);
         setNotes(session.notes || "");
         setOrderMode(session.orderMode || "standard");
     };
 
-    // useEffect(() => {
-    //     const session = loadOrderFormSession();
-    //     if (session && session.seller?.offerId === seller?.offerId) {
-    //         restoreFromSession(session);
-    //     }
-    //     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // }, []);
-
     useEffect(() => {
         const session = loadOrderFormSession();
         if (session && session.seller?.offerId === seller?.offerId && session.orderId) {
-            // only restore if this session corresponds to a still-pending order
             restoreFromSession(session);
         }
     }, []);
@@ -835,10 +723,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
             title: "Sign in to place an order",
             body: "You'll need to sign in to your BBM Marketplace account first.",
             cta: "Sign in",
-            // CHANGED: carry the current path (the shared product link, or
-            // wherever else BuyNowModal was opened from) so AuthPage can send
-            // the person back here once they're signed in, instead of
-            // dumping them on /home.
             action: () => navigate("/login", { state: { from: location.pathname + location.search } }),
         },
         NOT_VERIFIED: {
@@ -860,15 +744,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
         navigate(`/chat/${reqRes.conversationId}`);
     };
 
-    // If the buyer has a proposal awaiting seller approval for this route,
-    // check whether it's since been approved — the seller's approved-options
-    // list will include it once approveProposal flips its status. If so,
-    // silently adopt it as the active preference instead of leaving the
-    // buyer stuck on a stale "awaiting approval" notice.
-    // While a proposal is awaiting the seller's decision, poll its live
-    // status periodically (piggybacking on the existing 30s clockTick) so
-    // this modal picks up an approval or rejection even if it happened while
-    // the modal was already open, not just once on mount.
     useEffect(() => {
         if (!pendingTransportProposal?.routeOptionId || !seller?.sellerId || !effectiveCity || !effectiveState) return;
 
@@ -896,10 +771,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 setTransportRemovedNotice(`Your proposed transport option (${pendingTransportProposal.summary}) wasn't accepted by the seller.`);
                 setShowTransportModal(true);
             }
-            // "proposed" (still pending) or "removed"/"not_found" (edge case,
-            // e.g. seller deleted the row outright) — leave state as-is for
-            // "proposed"; "removed"/"not_found" is rare enough to just fall
-            // through and get caught by the next full route re-check instead.
         })();
 
         return () => { cancelled = true; };
@@ -923,10 +794,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
     const moqUnitLabel = basis === "per_master_pack" ? "Master Pack" : "Pack";
     const creditCooldownActive = creditStatus?.status === "rejected" && creditStatus.cooldown_until && new Date(creditStatus.cooldown_until) > new Date();
 
-    /* ============================================================
-       REDESIGNED RENDER
-       ============================================================ */
-
     return (
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
@@ -945,7 +812,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
                         onDoneViewOrders={() => navigate("/orders")}
                     />
                 ) : done ? (
-                    /* ---------------- Success state ---------------- */
                     <div className="flex flex-col items-center px-6 py-10 text-center">
                         <span className="flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg" style={{ background: "linear-gradient(135deg,#047084,#0B9FB8)" }}>
                             <CheckCircle2 className="h-8 w-8" />
@@ -976,7 +842,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 ) : access === undefined ? (
                     <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>
                 ) : !access.canCheckout ? (
-                    /* ---------------- Access-gate state ---------------- */
                     <div className="flex flex-col items-center px-6 py-10 text-center">
                         <span className="flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg" style={{ background: "linear-gradient(135deg,#047084,#0B9FB8)" }}>
                             <Lock className="h-6 w-6" />
@@ -994,32 +859,32 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 <h2 className="mt-0.5 truncate text-[18px] font-bold tracking-wide" style={{ color: C.ink }}>{product?.name}</h2>
                                 <p className="truncate text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>from {seller?.display_name}</p>
                             </div>
-                            <button
-                                onClick={async () => {
-                                    const result = await shareProductLink({
-                                        submissionId: seller.offerId,
-                                        productName: product?.name,
-                                        sellerName: seller?.display_name,
-                                    });
-                                    if (result === "copied") setToastMsg?.("Link copied!"); // or your own toast
-                                }}
-                                aria-label="Share this seller's listing"
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]"
-                            >
-                                <Share2 className="h-4 w-4" style={{ color: C.muted }} />
-                            </button>
-                            <button onClick={onClose} aria-label="Close"
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]">
-                                <X className="h-4.5 w-4.5" style={{ color: C.muted }} />
-                            </button>
+                            <div className="flex shrink-0 items-center gap-1">
+                                <button
+                                    onClick={async () => {
+                                        const result = await shareProductLink({
+                                            submissionId: seller.offerId,
+                                            productName: product?.name,
+                                            sellerName: seller?.display_name,
+                                        });
+                                        if (result === "copied") setToastMsg?.("Link copied!");
+                                    }}
+                                    aria-label="Share this seller's listing"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]"
+                                >
+                                    <Share2 className="h-4 w-4" style={{ color: C.muted }} />
+                                </button>
+                                <button onClick={onClose} aria-label="Close"
+                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]">
+                                    <X className="h-4.5 w-4.5" style={{ color: C.muted }} />
+                                </button>
+                            </div>
                         </div>
 
                         {/* ---------------- Scrollable body ---------------- */}
                         <div className="flex-1 overflow-y-auto" data-lenis-prevent>
                             <div className="flex flex-col gap-3 px-5 py-4 sm:px-6">
 
-                                {/* Order type toggle — clearer selected state, sits like a
-                                    segmented control instead of two loosely-grouped pills. */}
                                 {canSample && (
                                     <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
                                         {[
@@ -1074,11 +939,6 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                         <div className="flex items-center gap-3">
                                             <Stepper value={quantity} onChange={setQuantity} min={minQuantity} max={maxQuantity} />
 
-                                            {/* FIX: was repeating "{quantity} {basisLabel}" right next to a
-            stepper that already shows the quantity in its own input —
-            e.g. input showed "23" and this text also said "23 master
-            pack(s)". Now this only shows the unit label + the actual
-            base-unit conversion, never the quantity itself again. */}
                                             <p className="text-[12.5px] capitalize font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
                                                 {basisLabel}
                                                 {Number(seller?.packSize) > 0 && (
@@ -1144,99 +1004,14 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                                 {/* ---------------- Shipping address ---------------- */}
                                 <Panel icon={MapPin} title="Shipping address">
-                                    {!showNewAddress && addresses.length > 0 && (
-                                        <div className="flex flex-col gap-2">
-                                            {addresses.map((a) => {
-                                                const addrLocationStatus = checkLocationServiceable(constraints?.dispatchingLocations, { state: a.state, city: a.city });
-                                                const isSelected = selectedAddressId === a.id;
-                                                const isUndeliverable = !!constraints && !addrLocationStatus.serviceable;
-                                                return (
-                                                    <button key={a.id} type="button" onClick={() => setSelectedAddressId(a.id)}
-                                                        className="flex items-start gap-3 rounded-xl border p-3 text-left transition-colors duration-150"
-                                                        style={{
-                                                            borderColor: isUndeliverable ? "#B3261E" : (isSelected ? C.secondary : C.hair),
-                                                            background: isUndeliverable ? "#FDECEC" : (isSelected ? `${C.secondary}08` : "#fff"),
-                                                        }}>
-                                                        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2"
-                                                            style={{ borderColor: isUndeliverable ? "#B3261E" : (isSelected ? C.secondary : C.hair) }}>
-                                                            {isSelected && <span className="h-2 w-2 rounded-full" style={{ background: isUndeliverable ? "#B3261E" : C.secondary }} />}
-                                                        </span>
-                                                        <div className="min-w-0">
-                                                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{a.label} · {a.contact_name}</p>
-                                                            <p className="mt-0.5 text-[12px] font-medium leading-snug tracking-wide" style={{ color: isUndeliverable ? "#B3261E" : C.muted }}>
-                                                                {a.address_line1}, {a.city}, {a.state} – {a.pincode}
-                                                            </p>
-                                                        </div>
-                                                    </button>
-                                                );
-                                            })}
-                                            <button type="button" onClick={() => setShowNewAddress(true)}
-                                                className="flex w-fit items-center gap-1.5 rounded-lg px-1 py-1.5 text-[12.5px] font-bold" style={{ color: C.secondary }}>
-                                                <Plus className="h-3.5 w-3.5" /> Add a new address
-                                            </button>
-                                        </div>
-                                    )}
+                                    <AddressBook
+                                        ref={addressBookRef}
+                                        token={token}
+                                        value={desiredAddressId}
+                                        onChange={handleAddressChange}
+                                        disabled={submitting}
+                                    />
 
-                                    {showNewAddress && (
-                                        <div className="flex flex-col gap-2.5">
-                                            <div className="grid grid-cols-2 gap-2.5">
-                                                <TextField dense label="Contact name" value={newAddress.contact_name} onChange={(v) => setAddrField("contact_name", v)} />
-                                                <TextField dense label="Phone" value={newAddress.contact_phone} onChange={(v) => setAddrField("contact_phone", v)} />
-                                            </div>
-                                            <TextField dense label="Address line 1" value={newAddress.address_line1} onChange={(v) => setAddrField("address_line1", v)} />
-                                            <TextField dense label="Address line 2 (optional)" value={newAddress.address_line2} onChange={(v) => setAddrField("address_line2", v)} />
-                                            <div className="flex flex-col gap-2.5">
-                                                <TextField
-                                                    dense
-                                                    label="Pincode"
-                                                    value={newAddress.pincode}
-                                                    onChange={(v) => {
-                                                        const digits = v.replace(/\D/g, "").slice(0, 6);
-                                                        setNewAddress((a) => ({ ...a, pincode: digits, city: "", state: "" }));
-                                                    }}
-                                                    // Just a red ring on the input itself — no separate message box here.
-                                                    style={
-                                                        pincodeStatus === "ok" && constraints && !locationStatus.serviceable
-                                                            ? { borderColor: "#B3261E", boxShadow: "0 0 0 1px #B3261E33" }
-                                                            : undefined
-                                                    }
-                                                />
-
-                                                {pincodeStatus === "loading" && (
-                                                    <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>Looking up location…</p>
-                                                )}
-
-                                                {pincodeStatus === "error" && (
-                                                    <p className="text-[11.5px] font-medium" style={{ color: "#B3261E" }}>{pincodeMessage}</p>
-                                                )}
-
-                                                {pincodeStatus === "ok" && newAddress.city && (
-                                                    <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2.5">
-                                                        <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                                                        <p className="text-[13px] font-semibold tracking-wide" style={{ color: C.ink }}>
-                                                            {newAddress.city}, {newAddress.state}
-                                                        </p>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            {addresses.length > 0 && (
-                                                <button type="button" onClick={() => setShowNewAddress(false)} className="w-fit text-[12.5px] font-bold" style={{ color: C.muted }}>
-                                                    Use a saved address instead
-                                                </button>
-                                            )}
-                                            <button
-                                                type="button"
-                                                onClick={async () => {
-                                                    const id = await handleSaveNewAddress();
-                                                    if (id) setShowNewAddress(false); // handleSaveNewAddress already does this, but be explicit
-                                                }}
-                                                className="w-fit rounded-lg px-3 py-1.5 text-[12.5px] font-bold text-white"
-                                                style={{ background: C.secondary }}
-                                            >
-                                                Save address
-                                            </button>
-                                        </div>
-                                    )}
                                     <div className="flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hairSoft }}>
                                         <div className="flex items-center justify-between gap-2">
                                             <p className="text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>Preferred transport</p>
@@ -1557,8 +1332,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
                     seller={seller}
                     destCity={effectiveCity}
                     destState={effectiveState}
+                    destAddressId={selectedAddressId}
                     removedNotice={transportRemovedNotice}
                     onClose={() => { setShowTransportModal(false); setTransportRemovedNotice(null); }}
+                    onAddressChange={setDesiredAddressId}
                     onResolved={(result) => {
                         if (result?.pending) {
                             setTransportPreference(null);

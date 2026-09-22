@@ -20,7 +20,7 @@ import {
     Check,
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { fetchBuyerAddresses } from "../../utils/api.js";
+import AddressBook from "../shipping/AddressBook.jsx";
 import {
     fetchSellerRouteOptions, fetchRouteSuggestions, proposeRouteOption,
 } from "../../utils/api.transport.js";
@@ -28,40 +28,18 @@ import { saveBuyerTransportPreference } from "../../utils/api.transport.js";
 import {
     ROUTE_TRANSPORT_GROUPS, getRouteTransportFields, routeTransportModeLabel, routeOptionSummary,
 } from "../../../shared/routeTransportFields.js";
-import { fetchBuyerFallbackLocation } from "../../utils/api.transport.js";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#006F83",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)",
 };
-const SELF_PICKUP_STORAGE_KEY = "buyer_self_pickup_details_v1";
 const EASE = [0.16, 1, 0.3, 1];
 const MAX_SUGGESTIONS_SHOWN = 30;
-// Keeps every stage's body roughly the same height so switching between
-// "available options" / "propose" / "confirm" / "pending" doesn't visibly
-// jolt the modal's size on every click.
 const BODY_MIN_HEIGHT = "min-h-[360px]";
 
 function parseDispatchOrigin(seller) {
     const parts = (seller?.dispatchOrigin || "").split(",").map((s) => s.trim());
     return { city: parts[0] || "", state: seller?.dispatchState || parts[1] || "" };
-}
-
-function loadSavedSelfPickup() {
-    try {
-        const raw = localStorage.getItem(SELF_PICKUP_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : null;
-    } catch {
-        return null;
-    }
-}
-
-function saveSelfPickupDetails(fields) {
-    try {
-        localStorage.setItem(SELF_PICKUP_STORAGE_KEY, JSON.stringify(fields || {}));
-    } catch {
-        // best-effort only
-    }
 }
 
 function filterGroupsBySellerOptions(groups, allowedModes) {
@@ -310,7 +288,13 @@ function CustomDropdown({ value, onChange, options, placeholder = "Select…", l
     );
 }
 
-export default function TransportPreferenceModal({ open, seller, destCity: destCityProp, destState: destStateProp, removedNotice, onClose, onResolved }) {
+// destCity / destState props are accepted for backward compatibility with
+// existing callers but are no longer used to drive logic — the embedded
+// <AddressBook> below is now the single source of the destination
+// address, and it self-resolves (default address, or seeded from the
+// business profile) the same way BuyNowModal's does. destAddressId, if
+// given, is used as the initial hint for which saved address to select.
+export default function TransportPreferenceModal({ open, seller, destAddressId, removedNotice, onClose, onResolved, onAddressChange }) {
     const { token } = useAuth();
     const origin = useMemo(() => parseDispatchOrigin(seller), [seller]);
     const allowedGroups = useMemo(
@@ -318,12 +302,36 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
         [seller?.transportOptions]
     );
 
-    const [destCity, setDestCity] = useState(destCityProp || "");
+    // ---- Deliver-to address — same shared component & behaviour as
+    // BuyNowModal's Shipping Address panel. Selecting/saving here marks
+    // the address as the buyer's default, so BuyNowModal (or this modal,
+    // next time it opens) shows the same one automatically. ----
+    const [desiredAddressId, setDesiredAddressId] = useState(destAddressId || null);
+    const [effectiveAddress, setEffectiveAddress] = useState(null);
+    const addressBookRef = useRef(null);
+    const destCity = effectiveAddress?.city || "";
+    const destState = effectiveAddress?.state || "";
+    const selectedAddressId = effectiveAddress && !effectiveAddress.isDraft ? effectiveAddress.id : null;
+
+    const handleAddressChange = (addr) => {
+        setEffectiveAddress(addr);
+        if (addr && !addr.isDraft) {
+            setDesiredAddressId(addr.id);
+            onAddressChange?.(addr.id);
+        }
+    };
+
+    // Best-effort: if the buyer typed a brand-new address but never
+    // explicitly clicked "Save address", make sure it's actually
+    // persisted before we finalize a transport decision — otherwise it
+    // would just be discarded once this modal closes.
+    const commitAddressBestEffort = async () => {
+        if (selectedAddressId) return;
+        try { await addressBookRef.current?.ensureSavedAddress(); }
+        catch { /* best effort — the buyer will see AddressBook's own error */ }
+    };
+
     const [expandedTransportGroup, setExpandedTransportGroup] = useState(null);
-    const [destState, setDestState] = useState(destStateProp || "");
-    const [autoSubmitting, setAutoSubmitting] = useState(false);
-    const [needsManualDest, setNeedsManualDest] = useState(false);
-    const [resolvingAddress, setResolvingAddress] = useState(!(destCityProp && destStateProp));
 
     const [loadingOptions, setLoadingOptions] = useState(false);
     const [approvedOptions, setApprovedOptions] = useState([]);
@@ -340,44 +348,9 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
     const [pendingResult, setPendingResult] = useState(null);
     const [error, setError] = useState(null);
 
-    // NEW — holds whatever the buyer just tapped (an approved option or a
-    // cross-seller suggestion) until they explicitly confirm it. Prevents
-    // the "accidentally picked a transport option" issue new buyers were
-    // running into from a single misplaced tap.
     const [confirmTarget, setConfirmTarget] = useState(null); // { kind: "approved" | "suggestion", option }
     const [confirming, setConfirming] = useState(false);
-
-    // TransportPreferenceModal.jsx — replace the existing address-resolution effect
-    useEffect(() => {
-        if (!open) return;
-        if (destCityProp && destStateProp) {
-            setDestCity(destCityProp);
-            setDestState(destStateProp);
-            setResolvingAddress(false);
-            return;
-        }
-        setResolvingAddress(true);
-        fetchBuyerAddresses(token).then(async (res) => {
-            const def = res?.addresses?.find((a) => a.is_default) || res?.addresses?.[0];
-            if (def?.city && def?.state) {
-                setDestCity(def.city);
-                setDestState(def.state);
-                setResolvingAddress(false);
-                return;
-            }
-
-            // No saved address at all — try the buyer's GST business profile
-            // pincode before falling back to asking them to type it manually.
-            const fallback = await fetchBuyerFallbackLocation(token);
-            if (fallback?.success && fallback.district && fallback.state) {
-                setDestCity(fallback.district);
-                setDestState(fallback.state);
-            } else {
-                setNeedsManualDest(true);
-            }
-            setResolvingAddress(false);
-        });
-    }, [open, token, destCityProp, destStateProp]);
+    const [autoSubmitting, setAutoSubmitting] = useState(false);
 
     useEffect(() => {
         if (!open) return;
@@ -393,7 +366,7 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
         setAutoSubmitting(false);
     }, [open, destCity, destState, seller?.sellerId]);
 
-    const canQueryRoute = !resolvingAddress && destCity && destState && origin.city && origin.state;
+    const canQueryRoute = !!(destCity && destState && origin.city && origin.state);
 
     useEffect(() => {
         if (!open || !canQueryRoute) return;
@@ -436,13 +409,9 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
         return total > MAX_SUGGESTIONS_SHOWN;
     }, [suggestions, pickerSearch]);
 
-    // "Propose new" now fully replaces the approved-options list instead of
-    // stacking underneath it — one focused task on screen at a time.
     const openProposeSection = () => { setProposeStage("modes"); };
     const collapseProposeSection = () => { setProposeStage("collapsed"); setSelectedMode(null); setPickerSearch(""); };
 
-    // Dropdown-driven mode selection (flat list — the < select> collapses
-    // the old group/pill grid into one control).
     const handleModeSelect = (mode) => {
         if (!mode) return;
         setError(null);
@@ -462,12 +431,8 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
         }
 
         if (mode === "self_pickup") {
-            // This is the buyer's own pickup info, not a seller/company
-            // lookup — skip the cross-seller suggestions step and go
-            // straight to the form, prefilled from whatever they used last
-            // time so re-requesting it from another seller is instant.
             setSelectedMode(mode);
-            setFieldValues(loadSavedSelfPickup() || {});
+            setFieldValues({});
             setProposeStage("form");
             return;
         }
@@ -504,6 +469,8 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
         setSubmitting(true);
         setError(null);
         try {
+            await commitAddressBestEffort();
+
             const res = await proposeRouteOption({
                 sellerId: seller.sellerId,
                 originState: origin.state, originCity: origin.city,
@@ -513,13 +480,9 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
 
             if (!res?.success) {
                 setError(res?.message || "Couldn't submit that. Please try again.");
-                // Bail back to the mode picker on failure instead of leaving
-                // the buyer stuck with no visible next step.
                 if (modeToSubmit === "rapido") setProposeStage("modes");
                 return;
             }
-
-            if (modeToSubmit === "self_pickup") saveSelfPickupDetails(fieldsToSubmit);
 
             if (res.option.status === "approved") {
                 const resolved = {
@@ -534,12 +497,10 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
             setPendingResult(res);
         } finally {
             setSubmitting(false);
-            setAutoSubmitting(false); // always clears, whatever branch above ran
+            setAutoSubmitting(false);
         }
     };
 
-    // NEW — tapping a cross-seller suggestion now opens a confirmation
-    // step instead of submitting immediately.
     const requestConfirmSuggestion = (s) => setConfirmTarget({ kind: "suggestion", option: s });
 
     const doSubmitSuggestion = async (s) => {
@@ -551,12 +512,11 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
         setConfirmTarget(null);
     };
 
-    // NEW — tapping an already-approved option also goes through
-    // confirmation now, same as suggestions.
     const requestConfirmApproved = (opt) => setConfirmTarget({ kind: "approved", option: opt });
 
     const doSelectApproved = async (opt) => {
         setConfirming(true);
+        await commitAddressBestEffort();
         const resolved = {
             routeOptionId: opt.id, mode: opt.mode, fields: opt.fields,
             summary: routeOptionSummary(opt.mode, opt.fields),
@@ -575,6 +535,7 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
     };
 
     const continueWithoutPreference = async () => {
+        await commitAddressBestEffort();
         await saveBuyerTransportPreference({ sellerId: seller.sellerId, destState, destCity, preference: null }, token);
         if (pendingResult?.option) {
             onResolved({
@@ -615,39 +576,13 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
 
                 <div className={`flex-1 overflow-y-auto px-5 py-4 ${BODY_MIN_HEIGHT}`} data-lenis-prevent>
                     <AnimatePresence mode="wait" initial={false}>
-                        {resolvingAddress ? (
-                            <motion.div key="resolving" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                className="flex items-center justify-center py-10">
-                                <Loader2 className="h-5 w-5 animate-spin" style={{ color: C.muted }} />
-                            </motion.div>
-
-                        ) : needsManualDest ? (
-                            <motion.div key="manual-dest" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                className="flex flex-col gap-3">
-                                <p className="flex items-center gap-1.5 text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                    <MapPin className="h-3.5 w-3.5" /> We need your city to check transport options on this route.
-                                </p>
-                                <div className="grid grid-cols-2 gap-2.5">
-                                    <input placeholder="Your city" value={destCity} onChange={(e) => setDestCity(e.target.value)}
-                                        className="rounded-lg border px-3 py-2 text-[13px] tracking-wide" style={{ borderColor: C.hair }} />
-                                    <input placeholder="Your state" value={destState} onChange={(e) => setDestState(e.target.value)}
-                                        className="rounded-lg border px-3 py-2 text-[13px] tracking-wide" style={{ borderColor: C.hair }} />
-                                </div>
-                                <button disabled={!destCity || !destState} onClick={() => setNeedsManualDest(false)}
-                                    className="w-fit rounded-lg px-4 py-2 text-[12.5px] font-bold tracking-wide text-white disabled:opacity-50"
-                                    style={{ background: C.secondary }}>
-                                    Continue
-                                </button>
-                            </motion.div>
-
-                        ) : autoSubmitting ? (
+                        {autoSubmitting ? (
                             <motion.div key="auto-submitting" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                 className="flex items-center justify-center py-10">
                                 <Loader2 className="h-5 w-5 animate-spin" style={{ color: C.muted }} />
                             </motion.div>
 
                         ) : confirmTarget ? (
-                            /* ---------------- NEW — confirmation step ---------------- */
                             <motion.div key="confirm" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
                                 transition={{ duration: 0.2, ease: EASE }}
                                 className="flex flex-col items-center gap-3 py-8 text-center">
@@ -702,6 +637,23 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
                         ) : (
                             <motion.div key="main" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                 className="flex flex-col gap-4">
+
+                                {/* ---------------- Deliver to (NEW) ----------------
+                                    Same address picker/creator as BuyNowModal, so the
+                                    buyer can see and change exactly which address this
+                                    transport preference is being set for. */}
+                                <div className="flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hairSoft }}>
+                                    <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
+                                        <MapPin className="h-3.5 w-3.5" /> Deliver to
+                                    </p>
+                                    <AddressBook
+                                        ref={addressBookRef}
+                                        token={token}
+                                        value={desiredAddressId}
+                                        onChange={handleAddressChange}
+                                    />
+                                </div>
+
                                 {removedNotice && (
                                     <div className="flex items-start gap-2 rounded-xl px-3.5 py-3" style={{ background: "#FEF6E7" }}>
                                         <Truck className="mt-[1px] h-4 w-4 shrink-0" style={{ color: "#92600A" }} />
@@ -711,13 +663,19 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
                                     </div>
                                 )}
 
-                                <p className="text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>
-                                    {toSentenceCase(origin.city || "Seller")} → {toSentenceCase(destCity)}
-                                </p>
+                                {destCity && destState && (
+                                    <p className="text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>
+                                        {toSentenceCase(origin.city || "Seller")} → {toSentenceCase(destCity)}
+                                    </p>
+                                )}
 
-                                {/* ---- "Available on this route" is hidden entirely once the
-                                    propose flow is active, so only one task is on screen. ---- */}
-                                {proposeStage === "collapsed" && (
+                                {proposeStage === "collapsed" && !canQueryRoute && (
+                                    <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                        Pick or add a delivery address above to see transport options for this route.
+                                    </p>
+                                )}
+
+                                {proposeStage === "collapsed" && canQueryRoute && (
                                     loadingOptions ? (
                                         <div className="flex items-center justify-center py-10">
                                             <Loader2 className="h-5 w-5 animate-spin" style={{ color: C.muted }} />
@@ -752,7 +710,6 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
                                                                     color: C.ink,
                                                                 }}
                                                             >
-                                                                {/* Fixed icon column */}
                                                                 <span className="flex h-5 w-6 items-center justify-center">
                                                                     <TransportIcon
                                                                         mode={mode}
@@ -760,7 +717,6 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
                                                                     />
                                                                 </span>
 
-                                                                {/* Group name and count */}
                                                                 <span className="flex min-w-0 items-center gap-2">
                                                                     <span className="min-w-0 truncate text-[12.5px] font-bold tracking-wide">
                                                                         {routeTransportModeLabel(mode)}
@@ -777,7 +733,6 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
                                                                     </span>
                                                                 </span>
 
-                                                                {/* Fixed chevron column */}
                                                                 <motion.span
                                                                     animate={{ rotate: isExpanded ? 180 : 0 }}
                                                                     transition={{ duration: 0.22, ease: EASE }}
@@ -865,9 +820,8 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
                                     )
                                 )}
 
-                                {/* ---- Propose flow: collapsed -> modes -> suggestions -> form ---- */}
                                 <AnimatePresence mode="wait" initial={false}>
-                                    {proposeStage === "collapsed" && (
+                                    {proposeStage === "collapsed" && canQueryRoute && (
                                         <motion.button
                                             key="collapsed"
                                             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
@@ -889,7 +843,6 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
                                                 <button onClick={collapseProposeSection} className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>Cancel</button>
                                             </div>
 
-                                            {/* ---- Custom dropdown: one flat list, no mode grouping ---- */}
                                             <div className="mt-2.5">
                                                 <CustomDropdown
                                                     value={selectedMode || ""}
@@ -1009,9 +962,11 @@ export default function TransportPreferenceModal({ open, seller, destCity: destC
                                     )}
                                 </AnimatePresence>
 
-                                <button onClick={continueWithoutPreference} className="mt-1 w-fit text-[12px] font-bold tracking-wider" style={{ color: C.muted }}>
-                                    Skip — decide later
-                                </button>
+                                {canQueryRoute && (
+                                    <button onClick={continueWithoutPreference} className="mt-1 w-fit text-[12px] font-bold tracking-wider" style={{ color: C.muted }}>
+                                        Skip — decide later
+                                    </button>
+                                )}
                             </motion.div>
                         )}
                     </AnimatePresence>

@@ -172,7 +172,7 @@ export function SellerOnboardingForm({ onSubmitted }) {
       </p>
 
       <div className="mt-3 h-[3px] w-full overflow-hidden rounded-full bg-[#047084]/10">
-        <motion.div className="h-full rounded-full" style={{ background: "linear-gradient(90deg,#0a95ab,#047084)" }}
+        <motion.div className="h-full rounded-full" style={{ background: "linear-gradient(90deg,#000000,#000000)" }}
           animate={{ width: `${progress}%` }} transition={{ duration: 0.4, ease: "easeOut" }} />
       </div>
 
@@ -194,13 +194,13 @@ export function SellerOnboardingForm({ onSubmitted }) {
           {stepIndex < STEPS.length - 1 ? (
             <button type="button" onClick={goNext} disabled={saving}
               className="flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-[14.5px] font-bold tracking-wide text-white shadow-[0_12px_24px_-10px_rgba(199,31,17,0.55)]"
-              style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+              style={{ background: "linear-gradient(135deg, #000000 0%, #000000 100%)" }}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Continue <ArrowRight className="h-4 w-4" /></>}
             </button>
           ) : (
             <button type="button" onClick={handleSubmit} disabled={submitting}
               className="flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-[14.5px] font-bold tracking-wide text-white shadow-[0_12px_24px_-10px_rgba(199,31,17,0.55)]"
-              style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+              style={{ background: "linear-gradient(135deg, #000000 0%, #000000 100%)" }}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Submit <CheckCircle2 className="h-4 w-4" /></>}
             </button>
           )}
@@ -452,29 +452,45 @@ function OperationsStep({ form, update }) {
   return (
     <div className="flex flex-col gap-5">
       <div>
+        {/* Label + presets on one line — presets styled as lightweight text links, not buttons */}
+        <Label>Working days</Label>
         <div className="flex items-center justify-between">
-          <Label>Working days</Label>
-          <div className="flex gap-1.5">
-            <button type="button" onClick={() => update("working_days", [...WEEKDAYS])} className={presetBtnClass(isAllWeek)}>
+          <div className="flex items-center gap-2.5 text-[12px] mt-1 font-semibold tracking-wide">
+            <button type="button" onClick={() => update("working_days", [...WEEKDAYS])}
+              className={isAllWeek ? "text-[#047084]" : "text-slate-400 hover:text-slate-600"}>
               All days
             </button>
-            <button type="button" onClick={() => update("working_days", weekdaysOnly)} className={presetBtnClass(isWeekdaysOnly)}>
+            <span className="text-slate-300">·</span>
+            <button type="button" onClick={() => update("working_days", weekdaysOnly)}
+              className={isWeekdaysOnly ? "text-[#047084]" : "text-slate-400 hover:text-slate-600"}>
               Sun off
             </button>
-            <button type="button" onClick={() => update("working_days", [])} className={presetBtnClass(selected.length === 0)}>
+            <span className="text-slate-300">·</span>
+            <button type="button" onClick={() => update("working_days", [])}
+              className={selected.length === 0 ? "text-[#047084]" : "text-slate-400 hover:text-slate-600"}>
               Clear
             </button>
           </div>
         </div>
-        <div className="mt-2 flex flex-wrap gap-1.5">
+
+        {/* Day selector — circular toggles, evenly spaced, single-letter for compactness */}
+        <div className="mt-2 flex justify-between gap-1.5 sm:justify-start sm:gap-2">
           {WEEKDAYS.map((d) => {
             const active = selected.includes(d);
             return (
-              <button key={d} type="button"
+              <button
+                key={d}
+                type="button"
                 onClick={() => update("working_days", active ? selected.filter((x) => x !== d) : [...selected, d])}
-                className="rounded-lg border-2 px-3 py-1.5 text-[13.5px] font-bold tracking-wide"
-                style={{ borderColor: active ? "#047084" : "#e5e9ea", color: active ? "#047084" : "#64748b", background: active ? "#04708410" : "white" }}>
-                {d}
+                aria-pressed={active}
+                className="flex h-7 w-16 items-center justify-center rounded-xl text-[13px] font-bold tracking-wide transition-all duration-150"
+                style={{
+                  border: `2px solid ${active ? "#047084" : "#e5e9ea"}`,
+                  color: active ? "#ffffff" : "#64748b",
+                  background: active ? "#047084" : "white",
+                }}
+              >
+                {d.slice(0, 3)}
               </button>
             );
           })}

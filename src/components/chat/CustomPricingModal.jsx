@@ -12,7 +12,7 @@ import PriceWheelPicker from "../seller/listingForm/PriceWheelPicker.jsx";
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)", ok: "#059669", okBg: "#EAF7F2",
-    canvas: "#FCFBF9", warnBg: "#FDF3D8", warn: "#a16207", danger: "#D2462B", dangerBg: "#FDECEA",
+    canvas: "#FFFFFF", warnBg: "#FDF3D8", warn: "#a16207", danger: "#D2462B", dangerBg: "#FDECEA",
 };
 const EASE = [0.16, 1, 0.3, 1];
 

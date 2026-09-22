@@ -12,7 +12,7 @@
 //   subtitle: "Compare prices from verified suppliers across India.",
 // };
 
-export const TAGLINE = "Better Business Everyday";
+export const TAGLINE = "People, Product, Partnership";
 
 export const heroContent = {
   eyebrow: "B2B Marketplace",

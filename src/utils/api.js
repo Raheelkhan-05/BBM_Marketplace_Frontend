@@ -944,6 +944,14 @@ export async function createBuyerAddress(token, payload) {
   return res.json();
 }
 
+export async function setDefaultBuyerAddress(token, addressId) {
+  const res = await fetch(`${API_BASE}/buyer/addresses/${addressId}/default`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+
 export async function fetchCreditStatus(token, { sellerId, submissionId, otherUserId } = {}) {
   const params = sellerId ? `sellerId=${sellerId}` : submissionId ? `submissionId=${submissionId}` : `otherUserId=${otherUserId}`;
   const res = await fetch(`${API_BASE}/credit/status?${params}`, { headers: { Authorization: `Bearer ${token}` } });

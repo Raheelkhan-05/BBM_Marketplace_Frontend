@@ -72,24 +72,21 @@ export function NotificationsProvider({ children }) {
                 chatListenersRef.current.forEach((cb) => cb(payload));
                 return;
             }
-            // Auto-approvals never needed a human review — don't count them
-            // anywhere, don't toast them, don't store them.
             if (isAutoApprovedListingNotification(payload)) return;
 
             setNotifications((prev) => (prev.some((n) => n.id === payload.id) ? prev : [payload, ...prev]));
 
-            const isOrder = isOrderNotification(payload);
-            // Bell notifications (sound + toast/dropdown dispatch) are
-            // admin-only — normal users never hear or see these ring.
-            // Order notifications keep their existing behavior for
-            // everyone (they toast center-screen, not via the bell).
-            if (isOrder || isAdmin) playNotificationSound();
 
-            const targets = isOrder ? orderListenersRef.current : nonOrderListenersRef.current;
-            // Listings/wallet notifications still get stored (so markRead/history
-            // work) but never dispatched to the bell's own toast/dropdown listeners.
-            // Non-order dispatch is further restricted to admins only.
-            if (!isListingsSectionNotification(payload) && (isOrder || isAdmin)) targets.forEach((cb) => cb(payload));
+            const isOrder = isOrderNotification(payload);
+            const isTransportProposal = isTransportProposalNotification(payload);
+            const routeAsOrder = isOrder || isTransportProposal;
+
+            if (routeAsOrder || isAdmin) playNotificationSound();
+
+            const targets = routeAsOrder ? orderListenersRef.current : nonOrderListenersRef.current;
+            if (!isListingsSectionNotification(payload) && (routeAsOrder || isAdmin)) {
+                targets.forEach((cb) => cb(payload));
+            }
         };
         socket.on("notification:new", onNotif);
         return () => socket.off("notification:new", onNotif);

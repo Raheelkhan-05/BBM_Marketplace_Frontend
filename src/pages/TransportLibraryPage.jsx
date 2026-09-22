@@ -23,6 +23,7 @@ import { motion } from "framer-motion";
 import { Truck, Search, Loader2, Plus, Check, X as XIcon, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTransportLibrary } from "../context/TransportLibraryContext.jsx";
+import { useSocket } from "../context/SocketContext.jsx";
 import {
     browseTransportLibrary, fetchMyRouteOptions, fetchPendingProposals,
     createOwnRouteOption, deleteOwnRouteOption, approveProposal, rejectProposal,
@@ -385,27 +386,45 @@ function AddRouteModal({ open, onClose, onAdded, token }) {
 
 function ManageTab() {
     const { token } = useAuth();
+    const { socket } = useSocket();
     const { markProposalResolved, syncPendingCount } = useTransportLibrary();
     const [options, setOptions] = useState([]);
     const [proposals, setProposals] = useState([]);
     const [loading, setLoading] = useState(true);
     const [addOpen, setAddOpen] = useState(false);
 
-    const load = useCallback(() => {
-        setLoading(true);
-        Promise.all([fetchMyRouteOptions(token), fetchPendingProposals(token)]).then(([optRes, propRes]) => {
+    const load = useCallback((opts = {}) => {
+        const { silent = false } = opts;
+        if (!silent) setLoading(true);
+        return Promise.all([fetchMyRouteOptions(token), fetchPendingProposals(token)]).then(([optRes, propRes]) => {
             setOptions(optRes?.options?.filter((o) => o.status === "approved") || []);
             const pending = propRes?.proposals || [];
             setProposals(pending);
-            // Resync the nav badge to the authoritative count every time
-            // this tab loads — self-heals any drift from the optimistic
-            // socket increments/decrements in TransportLibraryContext.
             syncPendingCount(pending.length);
-            setLoading(false);
+            if (!silent) setLoading(false);
         });
     }, [token, syncPendingCount]);
 
     useEffect(() => { load(); }, [load]);
+
+    // Live refresh: as soon as a proposal-related notification arrives for
+    // this seller (new proposal, or one of theirs got resolved elsewhere),
+    // pull the latest list quietly — no spinner, no reload, just the rows
+    // updating in place.
+    useEffect(() => {
+        if (!socket) return;
+        const onNotif = (payload) => {
+            if (
+                payload?.type === "transport_proposal_received" ||
+                payload?.type === "transport_proposal_approved" ||
+                payload?.type === "transport_proposal_rejected"
+            ) {
+                load({ silent: true });
+            }
+        };
+        socket.on("notification:new", onNotif);
+        return () => socket.off("notification:new", onNotif);
+    }, [socket, load]);
 
     // Approve/reject both resolve the proposal, so both clear it from the
     // "needs action" badge immediately — the badge tracks pending action,
@@ -494,7 +513,20 @@ export default function TransportLibraryPage() {
     const { profile, token } = useAuth();
     const isApprovedSeller = profile?.seller_status === "approved";
     const [searchParams, setSearchParams] = useSearchParams();
-    const [tab, setTab] = useState(searchParams.get("tab") === "manage" && isApprovedSeller ? "manage" : "browse");
+    const [tab, setTab] = useState(searchParams.get("tab") === "manage" ? "manage" : "browse");
+
+    // Default sellers straight into Manage. Runs once profile has actually
+    // loaded (isApprovedSeller flips from false -> true async), and only
+    // when the URL didn't already explicitly ask for "browse" — so a
+    // seller who taps "Browse" and the URL updates to ?tab=browse doesn't
+    // get yanked back to Manage by this effect re-firing.
+    const explicitTab = searchParams.get("tab");
+    useEffect(() => {
+        if (isApprovedSeller && explicitTab !== "browse" && tab !== "manage") {
+            setTab("manage");
+            setSearchParams({ tab: "manage" }, { replace: true });
+        }
+    }, [isApprovedSeller, explicitTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <div className="mx-auto min-h-screen max-w-3xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">

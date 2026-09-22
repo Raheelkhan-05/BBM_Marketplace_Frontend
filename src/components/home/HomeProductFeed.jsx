@@ -168,6 +168,22 @@ function bucketItemsByColumn(items, numCols) {
     return cols;
 }
 
+function FreightPill({ included }) {
+    return (
+        <span
+            className="inline-flex w-fit items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-bold tracking-wide whitespace-nowrap"
+            style={
+                included
+                    ? { background: `#006F8314`, color: "#006F83" }
+                    : { background: C.hairSoft, color: C.muted }
+            }
+        >
+            <Truck className="h-2.5 w-2.5" strokeWidth={2.5} />
+            {included ? "Freight included" : "Freight extra"}
+        </span>
+    );
+}
+
 function SellerPriceBlock({ pricing, unit }) {
     if (!pricing) return null;
     const { discountPercent, hasMasterPack, unit: u, pack, masterPack } = pricing;
@@ -621,6 +637,11 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
         item.lowest_price_unit
     );
 
+    const toTitleCase = (str = "") =>
+        str
+            .toLowerCase()
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+
     const isOutOfStock = item.lowest_price_stock_type === "ready_stock"
         && item.lowest_price_available_stock != null
         && Number(item.lowest_price_available_stock) <= 0;
@@ -694,7 +715,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     className="min-w-0 text-[14px] font-bold leading-tight tracking-wide sm:line-clamp-3 md:line-clamp-2"
                     style={{ color: C.ink }}
                 >
-                    {item.name}
+                    {toTitleCase(item.name)}
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
@@ -707,7 +728,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     </button>
                 </p>
                 <p
-                    className="mt-0.5 flex min-w-0 items-center gap-1 truncate text-[11.5px] font-bold tracking-wider"
+                    className="mt-0.5 flex min-w-0 items-center gap-1 truncate uppercase text-[11.5px] font-bold tracking-wider"
                     style={{ color: "#006F83" }}
                 >
                     <BrandBadge name={item.brand_name} image={item.brand_image} />
@@ -958,28 +979,9 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                 {/* Pricing moved up to the row itself — this header now
                     only carries the seller-count context. */}
                 <div className="flex flex-nowrap items-center justify-between gap-2 pb-2 overflow-x-auto">
-                    <div className="flex flex-nowrap items-center whitespace-nowrap text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>
-                        <span className="font-bold tracking-wide" style={{ marginRight: 12 }}>
-                            {loading ? "Loading sellers…" : total > 0 ? `${total} seller${total === 1 ? "" : "s"} listing this` : "No sellers yet"}
-                        </span>
-
-                        {!loading && sortedItems.length > 0 && (
-                            <>
-                                <span className="flex items-center" style={{ marginRight: 12 }}>
-                                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full" style={{ background: `${C.secondary}16`, color: "#006F83", marginRight: 5 }}>
-                                        <Truck className="h-3 w-3" strokeWidth={2.5} />
-                                    </span>
-                                    Freight included
-                                </span>
-                                <span className="flex items-center">
-                                    <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full" style={{ background: C.hairSoft, color: C.muted, marginRight: 5 }}>
-                                        <Truck className="h-3 w-3" strokeWidth={2.5} />
-                                    </span>
-                                    Freight extra
-                                </span>
-                            </>
-                        )}
-                    </div>
+                    <span className="whitespace-nowrap text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
+                        {loading ? "Loading sellers…" : total > 0 ? `${total} seller${total === 1 ? "" : "s"} listing this` : "No sellers yet"}
+                    </span>
 
                     {!loading && items.length > 1 && (
                         <SellerSortToggle value={sortMode} onChange={onSortModeChange} />
@@ -1044,9 +1046,12 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                         {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
                                                         {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
                                                         {pricing?.discountPercent > 0
-                                                            ? ` · ${pricing.saleQty} + ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
+                                                            ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
                                                             : ""}
                                                     </p>
+                                                    <div className="mt-1.5">
+                                                        <FreightPill included={s.freight_included} />
+                                                    </div>
                                                 </div>
 
                                                 {outOfStock ? (
@@ -1056,20 +1061,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                 ) : !isLoggedIn ? (
                                                     <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
                                                 ) : (
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span
-                                                            title={s.freight_included ? "Freight included in price" : "Freight not included"}
-                                                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
-                                                            style={
-                                                                s.freight_included
-                                                                    ? { background: `${C.secondary}16`, color: C.secondary }
-                                                                    : { background: C.hairSoft, color: C.muted }
-                                                            }
-                                                        >
-                                                            <Truck className="h-3 w-3" strokeWidth={2.5} />
-                                                        </span>
-                                                        <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                                    </div>
+                                                    <SellerPriceBlock pricing={pricing} unit={s.unit} />
                                                 )}
                                             </div>
                                         );
@@ -1341,7 +1333,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         const defaultAddr = addrRes?.addresses?.find((a) => a.is_default) || addrRes?.addresses?.[0];
 
         if (!defaultAddr?.city || !defaultAddr?.state) {
-            setTransportFlow({ item, seller, destCity: null, destState: null, removedNotice: null });
+            setTransportFlow({ item, seller, destAddressId: defaultAddr?.id || null, destCity: null, destState: null, removedNotice: null });
             return;
         }
 
@@ -1349,7 +1341,7 @@ export default function HomeProductFeed({ category, q = "" }) {
 
         if (res?.rejectedNotice) {
             setTransportFlow({
-                item, seller,
+                item, seller, destAddressId: defaultAddr?.id || null,
                 destCity: defaultAddr.city, destState: defaultAddr.state,
                 removedNotice: `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`,
             });
@@ -1369,7 +1361,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         }
 
         setTransportFlow({
-            item, seller,
+            item, seller, destAddressId: defaultAddr?.id || null,
             destCity: defaultAddr.city, destState: defaultAddr.state,
             removedNotice: res?.invalidated ? "The seller no longer offers your previously selected transport option." : null,
         });
