@@ -149,7 +149,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     style={{ opacity: sheetOpen ? 1 : 0 }}
                 />
                 <div
-                    className="absolute inset-x-0 bottom-0 flex max-h-[65vh] flex-col rounded-t-3xl bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] transition-transform duration-250 ease-out"
+                    className="absolute inset-x-0 bottom-0 flex max-h-[65vh] flex-col rounded-t-3xl bg-white transition-transform duration-250 ease-out"
                     style={{
                         transform: sheetOpen ? "translateY(0)" : "translateY(100%)",
                         paddingBottom: "env(safe-area-inset-bottom)",
