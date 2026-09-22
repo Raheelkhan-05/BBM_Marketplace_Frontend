@@ -139,6 +139,14 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const visibleItems = items.slice(0, visibleCount);
     const overflowItems = items.slice(visibleCount);
 
+    // Sum of unread/pending counts for whatever's currently tucked behind
+    // the chevron. Derived straight from `items`, so it re-renders on the
+    // same badge updates (unread count changes, etc) that drive the pills
+    // themselves — nothing extra to keep in sync.
+    const overflowBadgeTotal = overflowItems.reduce((sum, it) => sum + (it.rawBadge || 0), 0);
+    const overflowBadgeDisplay =
+        overflowBadgeTotal > 0 ? (overflowBadgeTotal > 9 ? "9+" : overflowBadgeTotal) : null;
+
     return (
         <>
             <nav
@@ -153,12 +161,21 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     {hasOverflow ? (
                         <button
                             onClick={() => setSheetOpen(true)}
-                            aria-label="Show more navigation options"
+                            aria-label={
+                                overflowBadgeDisplay
+                                    ? `Show more navigation options, ${overflowBadgeTotal} unread`
+                                    : "Show more navigation options"
+                            }
                             aria-expanded={sheetOpen}
-                            className="flex shrink-0 items-center justify-center rounded-full p-2.5"
+                            className="relative flex shrink-0 items-center justify-center rounded-full p-2.5"
                             style={{ background: "rgba(20,27,34,0.045)", color: C.ink }}
                         >
                             <ChevronUp className="h-4 w-4" />
+                            {overflowBadgeDisplay != null && (
+                                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white ring-2 ring-white">
+                                    {overflowBadgeDisplay}
+                                </span>
+                            )}
                         </button>
                     ) : (
                         <div className="shrink-0">
