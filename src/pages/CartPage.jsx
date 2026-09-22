@@ -1,16 +1,40 @@
+// pages/CartPage.jsx
+//
+// UPDATED: brought in line with BuyNowModal's logic for the two things
+// that had drifted —
+//
+// 1. SHIPPING ADDRESS: this page used to carry its own copy of the
+//    address list / "add new address" form / business-profile seeding —
+//    the exact logic that was already extracted into <AddressBook> for
+//    BuyNowModal + TransportPreferenceModal. That meant picking or
+//    saving an address here didn't behave the same way (didn't set the
+//    buyer's default address server-side, didn't share the same UI).
+//    Now this page uses the same <AddressBook> component, the same way.
+//
+// 2. TRANSPORT PREFERENCE: this page had NO transport preference concept
+//    at all. Since a cart can span multiple sellers, each seller group
+//    now gets its own "Preferred transport" panel + its own instance of
+//    <TransportPreferenceModal>, fetched/resolved independently per
+//    seller — the same flow BuyNowModal runs for its single seller.
+//
+// Everything else (pricing, stock, MOQ, order-window / location
+// constraints, debounced quantity writes) is unchanged.
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Plus, Clock } from "lucide-react";
+import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Minus, Plus, Clock, Truck, AlertCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
-import { fetchBuyerAddresses, createBuyerAddress, fetchBusinessProfile, fetchOrderConstraints } from "../utils/api.js";
+import { fetchOrderConstraints } from "../utils/api.js";
+import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
 import { C } from "../components/catalog/tokens";
 import GroupPaymentQRModal from "../components/GroupPaymentQRModal.jsx";
-import { TextField } from "../components/seller/listingForm/FormPrimitives.jsx";
+import AddressBook from "../components/shipping/AddressBook.jsx";
+import TransportPreferenceModal from "../components/transport/TransportPreferenceModal.jsx";
 import { useCart } from "../context/CartContext.jsx";
 
-import { purchaseQtyToSaleUnitQty, saleUnitLabel, round2, hasOuterPack } from "../shared/packUnits.js";
+import { purchaseQtyToSaleUnitQty, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
+import { routeTransportModeLabel } from "../../shared/routeTransportFields.js";
 
 // Mirrors resolveSlabUnitPrice/resolveDiscountPercent used everywhere else
 // (BuyNowModal, orders.controller) — kept local since there's no shared
@@ -33,9 +57,6 @@ function resolveDiscountPercent(tiers, saleQty) {
 // item.price is ALREADY per sale unit (Pack, or Master Pack when this
 // listing hasOuterPack) — see shared/packUnits.js. Never re-multiply it
 // by pack_size again, that's the double-scaling bug this replaces.
-// purchase_basis can, in principle, differ from the seller's canonical
-// sale unit, so always convert through purchaseQtyToSaleUnitQty rather
-// than assuming they match.
 function priceFor(item) {
     const saleQty = purchaseQtyToSaleUnitQty(item.quantity, item.purchase_basis, item.pack_size, item.units_per_master_pack);
 
@@ -62,25 +83,36 @@ function stockInfoFor(item) {
 
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
 
-const EMPTY_ADDRESS = { label: "Office", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
-
-// Seeds a new-address form from the buyer's GST-derived business_profiles
-// row and their basic profiles row (name/phone). profiles data wins for
-// contact_name/contact_phone since GST data has no phone number and the
-// registered legal_name is often the company, not a person.
-function seedFromBusinessProfile(bp, contact) {
-    if (!bp && !contact) return null;
-    const useDispatch = bp?.dispatch_same_as_registered === false && bp.dispatch_address;
+// Builds the minimal "seller" shape TransportPreferenceModal expects,
+// out of whatever getCart attached to the cart items for this seller
+// (see cart.controller.js — seller_dispatch_city/state/transport_options).
+function sellerObjFor(group) {
+    const first = group.items[0];
+    const city = first.seller_dispatch_city || "";
+    const state = first.seller_dispatch_state || "";
     return {
-        label: "Registered Office",
-        contact_name: contact?.name || bp?.legal_name || bp?.trade_name || "",
-        contact_phone: contact?.phone || "",
-        address_line1: (useDispatch ? bp?.dispatch_address : bp?.registered_address) || "",
-        address_line2: "",
-        city: bp?.district || "",
-        state: (useDispatch ? (bp?.dispatch_state || bp?.state) : bp?.state) || "",
-        pincode: (useDispatch ? (bp?.dispatch_pincode || bp?.pincode) : bp?.pincode) || "",
+        sellerId: group.seller.seller_id,
+        display_name: group.seller.seller_name,
+        dispatchOrigin: city && state ? `${city}, ${state}` : city || state || "",
+        dispatchState: state,
+        transportOptions: first.seller_transport_options || [],
     };
+}
+
+// Lightweight local Notice, same tones/shape as BuyNowModal's, kept
+// local here since this page doesn't import from BuyNowModal.
+function Notice({ tone = "warn", children }) {
+    const tones = {
+        warn: { background: "#FEF6E7", color: "#92600A" },
+        danger: { background: "#FDECEC", color: "#B3261E" },
+    };
+    const t = tones[tone] || tones.warn;
+    return (
+        <div className="mt-2.5 flex items-start gap-2 rounded-lg px-3 py-2.5" style={{ background: t.background }}>
+            <AlertCircle className="mt-[1px] h-3.5 w-3.5 shrink-0" style={{ color: t.color }} />
+            <p className="text-[11.5px] font-semibold leading-snug tracking-wider" style={{ color: t.color }}>{children}</p>
+        </div>
+    );
 }
 
 // One cohesive notice block for "can't order right now" — mirrors
@@ -107,15 +139,31 @@ function ConstraintNotice({ reasons }) {
     );
 }
 
+// Same visual stepper BuyNowModal uses for quantity, instead of the
+// old plain "−"/"+" text buttons — keeps the two order flows looking
+// and feeling identical.
+function QtyStepper({ value, onChange, min, disabled }) {
+    const atMin = Number(value) <= Number(min);
+    return (
+        <div className="flex items-center overflow-hidden rounded-lg border" style={{ borderColor: C.hair }}>
+            <button type="button" disabled={disabled || atMin} onClick={() => onChange(Number(value) - 1)}
+                className="flex h-7 w-7 items-center justify-center transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30">
+                <Minus className="h-3 w-3" style={{ color: C.ink }} />
+            </button>
+            <span className="w-8 text-center text-[12.5px] font-bold tabular-nums">{value}</span>
+            <button type="button" disabled={disabled} onClick={() => onChange(Number(value) + 1)}
+                className="flex h-7 w-7 items-center justify-center transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30">
+                <Plus className="h-3 w-3" style={{ color: C.ink }} />
+            </button>
+        </div>
+    );
+}
+
 export default function CartPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [addresses, setAddresses] = useState([]);
-    const [addressId, setAddressId] = useState(null);
-    const [showNewAddress, setShowNewAddress] = useState(false);
-    const [newAddress, setNewAddress] = useState(EMPTY_ADDRESS);
     const [checking, setChecking] = useState(false);
     const [error, setError] = useState(null);
     const [payingGroupId, setPayingGroupId] = useState(null);
@@ -123,6 +171,20 @@ export default function CartPage() {
     const { reload: reloadCartBadge, setCountOptimistic } = useCart();
 
     const pendingWritePromises = useRef({});
+
+    // ---- Shipping address — same shared component & behavior as
+    // BuyNowModal (see components/shipping/AddressBook.jsx). Picking or
+    // saving an address here marks it as the buyer's default, so Buy Now
+    // elsewhere in the app picks up the same one automatically, and vice
+    // versa. ----
+    const [desiredAddressId, setDesiredAddressId] = useState(null);
+    const [effectiveAddress, setEffectiveAddress] = useState(null);
+    const addressBookRef = useRef(null);
+    const handleAddressChange = (addr) => {
+        setEffectiveAddress(addr);
+        if (addr && !addr.isDraft) setDesiredAddressId(addr.id);
+    };
+    const selectedAddressId = effectiveAddress && !effectiveAddress.isDraft ? effectiveAddress.id : null;
 
     const load = useCallback(async () => {
         const res = await fetchCart(token);
@@ -134,49 +196,22 @@ export default function CartPage() {
     }, [token, setCountOptimistic]);
 
     useEffect(() => { load(); }, [load]);
-    useEffect(() => {
-        fetchBuyerAddresses(token).then(async (res) => {
-            if (res?.success) {
-                setAddresses(res.addresses || []);
-                const def = res.addresses?.find((a) => a.is_default) || res.addresses?.[0];
-                if (def) {
-                    setAddressId(def.id);
-                } else {
-                    // No saved addresses yet — go straight to the form, same as
-                    // BuyNowModal, but prefill it from the buyer's GST profile
-                    // (if they have one on file) instead of leaving it blank.
-                    const bpRes = await fetchBusinessProfile(token);
-                    const seeded = bpRes?.success ? seedFromBusinessProfile(bpRes.profile, bpRes.contact) : null;
-                    setNewAddress(seeded || EMPTY_ADDRESS);
-                    setShowNewAddress(true);
-                }
-            }
-        });
-    }, [token]);
 
-    const grouped = items.reduce((acc, it) => {
-        (acc[it.seller_id] ||= { seller: it, items: [] }).items.push(it);
-        return acc;
-    }, {});
+    const grouped = useMemo(() => (
+        items.reduce((acc, it) => {
+            (acc[it.seller_id] ||= { seller: it, items: [] }).items.push(it);
+            return acc;
+        }, {})
+    ), [items]);
 
     const grandTotal = items.reduce((sum, it) => sum + priceFor(it).lineTotal, 0);
 
     // ---------------------------------------------------------------
     // Order-window + delivery-serviceability constraints, per seller/item.
-    //
-    // Why this exists: a buyer can add items to the cart while a seller's
-    // shop is open and deliverable to their address, then come back to
-    // check out later — outside the seller's working hours, on a holiday,
-    // or after switching to an address that seller doesn't ship to. The
-    // backend (checkoutCart) already hard-blocks all of this at the RPC
-    // boundary, so nothing incorrect can ever actually be ordered — but
-    // without this, the buyer would fill in the whole form and only find
-    // out from a generic error message after hitting "Proceed to pay".
-    // This mirrors that exact same check on the frontend, per seller
-    // (window) and per item (location, since dispatching_locations is set
-    // per listing, not per seller), so the buyer sees it before they even
-    // reach checkout — same UX contract BuyNowModal already gives for a
-    // single-seller purchase.
+    // Same rationale/behavior as before: the backend (checkoutCart) hard-
+    // blocks all of this at the RPC boundary regardless, this just gives
+    // the buyer the same "can't order right now" signal BuyNowModal gives
+    // for a single-seller purchase, before they ever reach checkout.
     // ---------------------------------------------------------------
     const submissionIds = useMemo(
         () => [...new Set(items.map((i) => i.submission_id).filter(Boolean))],
@@ -201,29 +236,15 @@ export default function CartPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [submissionIdsKey]);
 
-    // Re-evaluate the working-hours window every 30s, same as BuyNowModal,
-    // so a cart left open across a seller's cutoff time disables itself
-    // without a reload.
+    // Re-evaluate the working-hours window every 30s, same as BuyNowModal.
     const [clockTick, setClockTick] = useState(0);
     useEffect(() => {
         const id = setInterval(() => setClockTick((t) => t + 1), 30000);
         return () => clearInterval(id);
     }, []);
 
-    // Effective address used for the location check — prefers the
-    // in-progress new-address form (so it updates live as the buyer
-    // types) exactly like BuyNowModal does, falls back to the selected
-    // saved address otherwise.
-    const effectiveAddress = showNewAddress
-        ? { state: newAddress.state, city: newAddress.city }
-        : (addresses.find((a) => a.id === addressId) || null);
-
     // Per-seller-group constraint status: working-hours window (shared
-    // across all of a seller's items) + per-item location serviceability
-    // (each listing can have its own dispatching_locations).
-    // groupConstraintStatus: `blocked` now only reflects location, but we
-    // still carry windowStatus through so the UI can show the non-blocking
-    // "seller currently closed" notice per seller group.
+    // across all of a seller's items) + per-item location serviceability.
     const groupConstraintStatus = useMemo(() => {
         const result = {};
         for (const [sellerId, group] of Object.entries(grouped)) {
@@ -245,7 +266,6 @@ export default function CartPage() {
             result[sellerId] = {
                 windowStatus,
                 blockedItems,
-                // location is the only thing that actually blocks checkout now
                 blocked: blockedItems.length > 0,
             };
         }
@@ -254,6 +274,73 @@ export default function CartPage() {
     }, [grouped, constraintsBySubmission, effectiveAddress?.state, effectiveAddress?.city, clockTick]);
 
     const anyGroupBlocked = Object.values(groupConstraintStatus).some((g) => g.blocked);
+
+    // ---------------------------------------------------------------
+    // Per-seller transport preference — same flow as BuyNowModal, run
+    // independently for every seller in the cart. Keyed by sellerId.
+    // ---------------------------------------------------------------
+    const [transportPreferences, setTransportPreferences] = useState({});
+    const [pendingTransportProposals, setPendingTransportProposals] = useState({});
+    const [transportRemovedNotices, setTransportRemovedNotices] = useState({});
+    const [activeTransportSellerId, setActiveTransportSellerId] = useState(null);
+    const lastCheckedRouteBySellerRef = useRef({});
+
+    useEffect(() => {
+        const city = effectiveAddress?.city;
+        const state = effectiveAddress?.state;
+        if (!city || !state) return;
+        const sellerIds = Object.keys(grouped);
+        if (!sellerIds.length) return;
+
+        const routeKey = `${state.trim().toLowerCase()}::${city.trim().toLowerCase()}`;
+
+        sellerIds.forEach(async (sellerId) => {
+            if (lastCheckedRouteBySellerRef.current[sellerId] === routeKey) return;
+            lastCheckedRouteBySellerRef.current[sellerId] = routeKey;
+
+            const res = await fetchBuyerTransportPreference(sellerId, state, city, token);
+            const pendingProposal = res?.pendingProposal
+                ? { ...res.pendingProposal, destCity: city, destState: state }
+                : null;
+            setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: pendingProposal }));
+
+            if (res?.rejectedNotice) {
+                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
+                setTransportRemovedNotices((prev) => ({
+                    ...prev,
+                    [sellerId]: `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by this seller.`,
+                }));
+                return;
+            }
+
+            if (res?.success && res.decided) {
+                setTransportPreferences((prev) => ({
+                    ...prev,
+                    [sellerId]: res.preference ? { ...res.preference, destCity: city, destState: state } : null,
+                }));
+                setTransportRemovedNotices((prev) => ({ ...prev, [sellerId]: null }));
+            } else {
+                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
+                setTransportRemovedNotices((prev) => ({
+                    ...prev,
+                    [sellerId]: res?.invalidated ? "The seller no longer offers your previously selected transport option." : null,
+                }));
+            }
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [effectiveAddress?.city, effectiveAddress?.state, token, Object.keys(grouped).join(",")]);
+
+    const handleTransportResolved = (sellerId, result) => {
+        if (result?.pending) {
+            setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
+            setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: result }));
+        } else {
+            setTransportPreferences((prev) => ({ ...prev, [sellerId]: result }));
+            setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
+        }
+        setTransportRemovedNotices((prev) => ({ ...prev, [sellerId]: null }));
+        setActiveTransportSellerId(null);
+    };
 
     useEffect(() => {
         // Clean up any in-flight debounce timers on unmount so they don't
@@ -272,7 +359,6 @@ export default function CartPage() {
 
         clearTimeout(pendingWrites.current[submissionId]);
 
-        // Wrap the debounced write in a promise we can await elsewhere (checkout).
         pendingWritePromises.current[submissionId] = new Promise((resolve) => {
             pendingWrites.current[submissionId] = setTimeout(async () => {
                 const res = quantity <= 0
@@ -292,8 +378,6 @@ export default function CartPage() {
         const ids = Object.keys(pendingWrites.current);
         ids.forEach((id) => clearTimeout(pendingWrites.current[id]));
 
-        // Re-run each write immediately (bypassing the timer) for anything
-        // still pending, then wait for all of them.
         const flushes = ids.map(async (submissionId) => {
             const it = items.find((i) => i.submission_id === submissionId);
             if (!it) return;
@@ -319,24 +403,9 @@ export default function CartPage() {
         removeFromCart(token, submissionId).then((res) => {
             if (res && res.success === false) {
                 setError(res.message || "Couldn't remove item.");
-                load(); // reconciles both items and the badge count
+                load();
             }
         });
-    };
-
-    const setAddrField = (key, value) => setNewAddress((a) => ({ ...a, [key]: value }));
-
-    const handleSaveNewAddress = async () => {
-        const missing = ["contact_name", "contact_phone", "address_line1", "city", "state", "pincode"].filter((k) => !newAddress[k].trim());
-        if (missing.length) { setError("Please fill in the shipping address completely."); return null; }
-        setError(null);
-        const res = await createBuyerAddress(token, { ...newAddress, is_default: addresses.length === 0 });
-        if (!res?.success) { setError(res?.message || "Couldn't save address."); return null; }
-        setAddresses((prev) => [res.address, ...prev]);
-        setAddressId(res.address.id);
-        setShowNewAddress(false);
-        setNewAddress(EMPTY_ADDRESS);
-        return res.address.id;
     };
 
     const hasStockBlock = items.some((it) => {
@@ -350,41 +419,38 @@ export default function CartPage() {
             return;
         }
 
-        // Hard guard — never trust the disabled prop alone. Re-check against
-        // whatever constraint state we have right now, same pattern as
-        // BuyNowModal's handleSubmit, before doing anything else. The
-        // backend re-checks this again inside checkoutCart regardless, but
-        // catching it here avoids an unnecessary round trip and gives a
-        // clearer, per-seller message.
+        // Hard guard — never trust the disabled prop alone, same pattern
+        // as BuyNowModal's handleSubmit. The backend re-checks this again
+        // inside checkoutCart regardless.
         if (anyGroupBlocked) {
             const blockedGroup = Object.values(groupConstraintStatus).find((g) => g.blocked);
             setError(blockedGroup.blockedItems[0]?.status.message || "One or more sellers in your cart don't deliver to your selected address.");
             return;
         }
 
-        // NOTE: there used to be an `if (!addressId) return setError(...)` guard
-        // right here. That's what caused "Please select a shipping address" to
-        // fire even when the buyer HAD just filled in a new address — with no
-        // saved addresses, addressId is null by definition (there's nothing to
-        // select), so the guard tripped before we ever reached the
-        // showNewAddress branch below that actually saves the typed-in address
-        // and gets it an id. handleSaveNewAddress() already validates the
-        // fields and sets its own error, so this separate guard was redundant
-        // as well as wrong — removed.
         setChecking(true);
 
-        // Make sure every optimistic quantity change actually landed in the DB
-        // before place_cart_order reads cart_items — otherwise it can price
-        // off a stale quantity that doesn't match what's shown on screen.
+        // Make sure every optimistic quantity change actually landed in the
+        // DB before place_cart_order reads cart_items.
         await flushPendingWrites();
 
-        let effectiveAddressId = addressId;
-        if (showNewAddress || !effectiveAddressId) {
-            effectiveAddressId = await handleSaveNewAddress();
+        let effectiveAddressId = selectedAddressId;
+        if (!effectiveAddressId) {
+            effectiveAddressId = await addressBookRef.current?.ensureSavedAddress();
             if (!effectiveAddressId) { setChecking(false); return; }
         }
 
-        const res = await checkoutCart(token, { shippingAddressId: effectiveAddressId });
+        // Per-seller transport preferences the buyer locked in via each
+        // seller group's "Preferred transport" panel. Sellers with no
+        // preference set are simply left out — the seller chooses.
+        const transportPreferencesPayload = Object.entries(transportPreferences)
+            .filter(([, pref]) => pref?.routeOptionId)
+            .map(([sellerId, pref]) => ({ sellerId, routeOptionId: pref.routeOptionId }));
+
+        const res = await checkoutCart(token, {
+            shippingAddressId: effectiveAddressId,
+            transportPreferences: transportPreferencesPayload,
+        });
         setChecking(false);
         if (!res?.success) return setError(res?.message || "Couldn't place the order.");
         setPayingGroupId(res.orderGroupId);
@@ -402,11 +468,20 @@ export default function CartPage() {
                 <div className="mt-16 flex flex-col items-center text-center">
                     <ShoppingCart className="h-10 w-10" style={{ color: C.muted }} />
                     <p className="mt-3 font-bold" style={{ color: C.ink }}>Your cart is empty</p>
+                    <button onClick={() => navigate("/")} className="mt-4 rounded-xl px-5 py-2.5 text-[13px] font-bold text-white"
+                        style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                        Continue shopping
+                    </button>
                 </div>
             ) : (
                 <>
                     {Object.entries(grouped).map(([sellerId, g]) => {
                         const groupStatus = groupConstraintStatus[sellerId];
+                        const sellerObj = sellerObjFor(g);
+                        const pref = transportPreferences[sellerId];
+                        const pendingProposal = pendingTransportProposals[sellerId];
+                        const removedNotice = transportRemovedNotices[sellerId];
+
                         return (
                             <div key={g.seller.seller_id} className="mt-4 rounded-2xl border p-3.5" style={{ borderColor: C.hair }}>
                                 <p className="flex items-center gap-1.5 text-[13px] font-extrabold" style={{ color: C.ink }}><Store className="h-3.5 w-3.5" /> {g.seller.seller_name}</p>
@@ -425,11 +500,12 @@ export default function CartPage() {
                                                     <div className="min-w-0 flex-1">
                                                         <p className="truncate text-[13.5px] font-bold" style={{ color: C.ink }}>{it.product_name}</p>
                                                         <div className="mt-1 flex items-center gap-2">
-                                                            <button onClick={() => handleQty(it.submission_id, it.quantity - 1, it.moq)} disabled={atFloor}
-                                                                className="h-6 w-6 rounded border text-xs disabled:opacity-30" style={{ borderColor: C.hair }}>−</button>
-                                                            <span className="text-[12.5px] font-bold tabular-nums">{it.quantity}</span>
-                                                            <button onClick={() => handleQty(it.submission_id, it.quantity + 1, it.moq)} disabled={atCeiling}
-                                                                className="h-6 w-6 rounded border text-xs disabled:opacity-30" style={{ borderColor: C.hair }}>+</button>
+                                                            <QtyStepper
+                                                                value={it.quantity}
+                                                                min={floor}
+                                                                disabled={atCeiling && !atFloor ? false : undefined}
+                                                                onChange={(v) => handleQty(it.submission_id, v, it.moq)}
+                                                            />
                                                             <span className="text-[11px] font-semibold" style={{ color: C.muted }}>{saleUnitLabel(it.units_per_master_pack)}(s)</span>
                                                         </div>
                                                         {atFloor && floor > 1 && (
@@ -479,6 +555,44 @@ export default function CartPage() {
                                         },
                                     ]} />
                                 )}
+
+                                {/* ---------------- Per-seller transport preference (NEW) ---------------- */}
+                                <div className="mt-3 flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hair }}>
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
+                                            <Truck className="h-3.5 w-3.5" /> Preferred transport
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveTransportSellerId(sellerId)}
+                                            className="shrink-0 text-[12px] font-bold tracking-wide"
+                                            style={{ color: C.secondary }}
+                                        >
+                                            {pref || pendingProposal ? "Change" : "Set preference"}
+                                        </button>
+                                    </div>
+
+                                    {pref ? (
+                                        <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                            {routeTransportModeLabel(pref.mode)}
+                                        </p>
+                                    ) : pendingProposal ? (
+                                        <div className="flex flex-col gap-1">
+                                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                {routeTransportModeLabel(pendingProposal.mode)}
+                                            </p>
+                                            <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                Awaiting the seller's approval — if you check out now, they'll choose transport for this order.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                            No preference set — the seller will choose for you.
+                                        </p>
+                                    )}
+
+                                    {removedNotice && <Notice tone="warn">{removedNotice}</Notice>}
+                                </div>
                             </div>
                         );
                     })}
@@ -487,51 +601,20 @@ export default function CartPage() {
                         <p className="flex items-center gap-1.5 text-[12px] font-extrabold uppercase" style={{ color: C.muted }}>
                             <MapPin className="h-3.5 w-3.5" /> Shipping address
                         </p>
-
-                        {!showNewAddress && addresses.length > 0 && (
-                            <div className="mt-2 flex flex-col gap-2">
-                                {addresses.map((a) => (
-                                    <button
-                                        key={a.id}
-                                        onClick={() => setAddressId(a.id)}
-                                        className="rounded-xl border p-2.5 text-left"
-                                        style={{ borderColor: addressId === a.id ? C.secondary : C.hair, background: addressId === a.id ? `${C.secondary}08` : "#fff" }}
-                                    >
-                                        <p className="text-[12.5px] font-bold">{a.label} — {a.contact_name}</p>
-                                        <p className="text-[11.5px]" style={{ color: C.muted }}>{a.address_line1}, {a.city}, {a.state} - {a.pincode}</p>
-                                    </button>
-                                ))}
-                                <button type="button" onClick={() => setShowNewAddress(true)} className="flex w-fit items-center gap-1.5 text-[12px] font-bold tracking-wide" style={{ color: C.secondary }}>
-                                    <Plus className="h-3.5 w-3.5" /> Add a new address
-                                </button>
-                            </div>
-                        )}
-
-                        {showNewAddress && (
-                            <div className="mt-2 flex flex-col gap-2.5">
-                                <div className="grid grid-cols-2 gap-2.5">
-                                    <TextField dense label="Contact name" value={newAddress.contact_name} onChange={(v) => setAddrField("contact_name", v)} />
-                                    <TextField dense label="Phone" value={newAddress.contact_phone} onChange={(v) => setAddrField("contact_phone", v)} />
-                                </div>
-                                <TextField dense label="Address line 1" value={newAddress.address_line1} onChange={(v) => setAddrField("address_line1", v)} />
-                                <TextField dense label="Address line 2 (optional)" value={newAddress.address_line2} onChange={(v) => setAddrField("address_line2", v)} />
-                                <div className="grid grid-cols-3 gap-2.5">
-                                    <TextField dense label="City" value={newAddress.city} onChange={(v) => setAddrField("city", v)} />
-                                    <TextField dense label="State" value={newAddress.state} onChange={(v) => setAddrField("state", v)} />
-                                    <TextField dense label="Pincode" value={newAddress.pincode} onChange={(v) => setAddrField("pincode", v)} />
-                                </div>
-                                {addresses.length > 0 && (
-                                    <button type="button" onClick={() => setShowNewAddress(false)} className="w-fit text-[12px] font-bold tracking-wide" style={{ color: C.muted }}>
-                                        Use a saved address instead
-                                    </button>
-                                )}
-                            </div>
-                        )}
+                        <div className="mt-2.5">
+                            <AddressBook
+                                ref={addressBookRef}
+                                token={token}
+                                value={desiredAddressId}
+                                onChange={handleAddressChange}
+                                disabled={checking}
+                            />
+                        </div>
                     </div>
 
                     {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{error}</p>}
 
-                    <div className="fixed z-[1] bottom-0 md:bottom-0 left-0 right-0 border-t bg-white/95 px-4 py-3 backdrop-blur">
+                    <div className="fixed z-[1] bottom-16 md:bottom-0 left-0 right-0 border-t bg-white/95 px-4 py-3 backdrop-blur">
                         <div className="mx-auto flex max-w-3xl items-center justify-between">
                             <div>
                                 <p className="text-[11px] font-bold uppercase" style={{ color: C.muted }}>Total</p>
@@ -555,6 +638,17 @@ export default function CartPage() {
                 />
             )}
 
+            {activeTransportSellerId && grouped[activeTransportSellerId] && (
+                <TransportPreferenceModal
+                    open
+                    seller={sellerObjFor(grouped[activeTransportSellerId])}
+                    destAddressId={selectedAddressId}
+                    removedNotice={transportRemovedNotices[activeTransportSellerId]}
+                    onClose={() => setActiveTransportSellerId(null)}
+                    onAddressChange={setDesiredAddressId}
+                    onResolved={(result) => handleTransportResolved(activeTransportSellerId, result)}
+                />
+            )}
         </div>
     );
 }
