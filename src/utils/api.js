@@ -864,13 +864,28 @@ export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "r
   return res.json();
 }
 
-export async function fetchBrandItemSellers(brandItemId, { sort = "relevance", limit = 24, offset = 0, signal, token } = {}) {
-  const params = new URLSearchParams({ sort, limit, offset });
-  const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}/sellers?${params}`, {
+// export async function fetchBrandItemSellers(brandItemId, { sort = "relevance", limit = 24, offset = 0, signal, token } = {}) {
+//   const params = new URLSearchParams({ sort, limit, offset });
+//   const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}/sellers?${params}`, {
+//     signal,
+//     headers: token ? { Authorization: `Bearer ${token}` } : {},
+//   });
+//   if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+//   return res.json();
+// }
+
+// CHANGED: now forwards destPincode/destState (the buyer's known
+// delivery address) so the backend can sort by 'fastest_delivery' and
+// return each seller's total_delivery_days for display.
+export async function fetchBrandItemSellers(brandItemId, { sort = "relevance", limit = 24, offset = 0, destPincode, destState, signal, token } = {}) {
+  const params = new URLSearchParams({ sort, limit: String(limit), offset: String(offset) });
+  if (destPincode) params.set("destPincode", destPincode);
+  if (destState) params.set("destState", destState);
+
+  const res = await fetch(`${API_BASE}/catalog/brand-items/${brandItemId}/sellers?${params.toString()}`, {
     signal,
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
-  if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
   return res.json();
 }
 
