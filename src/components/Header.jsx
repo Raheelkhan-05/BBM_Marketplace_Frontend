@@ -256,13 +256,13 @@ export default function Header({ onOpenRfq }) {
     <>
       <header
         ref={headerRef}
-        className="fixed top-0 left-0 right-0 z-50 bg-white transition-all duration-300"
+        className="relative top-0 z-50 bg-white pt-3 transition-all duration-300"
         style={{
-          paddingTop: "env(safe-area-inset-top, 0px)",
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)", // 0.75rem = mt-3's 12px, now folded into safe-area padding
           backdropFilter: "blur(8px)",
         }}
       >
-        <div ref={rowRef} className="relative mx-auto flex h-7 mt-3 max-w-7xl items-center justify-between px-4 lg:px-8">
+        <div ref={rowRef} className="relative mx-auto flex h-7 max-w-7xl items-center justify-between px-4 lg:px-8">
           <div ref={logoRef} className="flex shrink-0 items-center">
             <SmartLink to="/" className="flex shrink-0 items-center gap-2">
               {/* <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" /> */}
@@ -359,7 +359,16 @@ export default function Header({ onOpenRfq }) {
               style={{ top: headerHeight }}
               className="fixed left-0 right-0 z-50 max-h-[calc(100dvh-var(--h))] overflow-y-auto border-b border-[rgba(20,27,34,0.08)] bg-[#FFFFFF] shadow-xl backdrop-blur-xl md:hidden"
             >
-              <div className="mx-auto max-w-7xl px-5 py-4">
+              {/* Fills the gap between the true top of the viewport (incl. notch)
+      and wherever this panel's `top` happens to land, so there's never
+      a transparent sliver above it once the header has scrolled — this
+      is fixed positioned independent of `headerHeight`. */}
+              <div
+                className="fixed left-0 right-0 top-0 bg-white"
+                style={{ height: `calc(env(safe-area-inset-top, 0px) + ${headerHeight}px)` }}
+              />
+
+              <div className="relative mx-auto max-w-7xl px-5 py-4">
 
 
                 <nav className="flex flex-col gap-0.5">
