@@ -842,10 +842,12 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                     ) : (
                                         <div className="flex flex-col items-center gap-2 rounded-xl px-4 py-8 text-center" style={{ background: C.hairSoft }}>
                                             <Truck className="h-6 w-6" style={{ color: C.muted }} />
-                                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>Please Check Your Feasibility & Set Your Transport Preference From Below</p>
-                                            {/* <p className="max-w-xs text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                                Nobody has set up a transport route between {toSentenceCase(origin.city)} and {toSentenceCase(destCity)} with this seller yet.
-                                            </p> */}
+                                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                No transport set up yet for your area
+                                            </p>
+                                            <p className="max-w-xs text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                                Tell us how you'd like your order delivered from {toSentenceCase(origin.city)} to {toSentenceCase(destCity)} — it only takes a minute.
+                                            </p>
                                         </div>
                                     )
                                 )}
@@ -860,7 +862,8 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                             className="flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-dashed px-3 py-2.5 text-[12.5px] font-bold tracking-wide transition-colors duration-150 hover:bg-black/[0.03]"
                                             style={{ borderColor: `${C.primary}40`, color: C.primary }}
                                         >
-                                            <Plus className="h-3.5 w-3.5" /> Propose new transport option
+                                            <Plus className="h-3.5 w-3.5" />
+                                            {groupedApproved.length > 0 ? "Don't see your option? Add one" : "Set up delivery for your area"}
                                         </motion.button>
                                     )}
 
@@ -999,9 +1002,29 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                 </AnimatePresence>
 
                                 {canQueryRoute && (
-                                    <button onClick={continueWithoutPreference} className="mt-1 w-fit text-[12px] font-bold tracking-wider" style={{ color: C.muted }}>
-                                        Skip — decide later
-                                    </button>
+                                    <div className="mt-0 flex flex-col items-center gap-2">
+                                        <div className="flex w-full items-center gap-2">
+                                            <span className="h-px flex-1" style={{ background: C.hairSoft }} />
+                                            <span className="text-[10.5px] font-bold tracking-wider" style={{ color: C.muted }}>OR</span>
+                                            <span className="h-px flex-1" style={{ background: C.hairSoft }} />
+                                        </div>
+
+                                        <button
+                                            onClick={continueWithoutPreference}
+                                            className="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-left transition-colors duration-150 hover:bg-black/[0.02]"
+                                            style={{ borderColor: C.hair }}
+                                        >
+                                            <Clock3 className="h-4 w-4 shrink-0" style={{ color: C.muted }} />
+                                            <span className="flex flex-col items-start">
+                                                <span className="text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                    Continue without choosing now
+                                                </span>
+                                                <span className="text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                                    You can set this later before your order ships
+                                                </span>
+                                            </span>
+                                        </button>
+                                    </div>
                                 )}
                             </motion.div>
                         )}
