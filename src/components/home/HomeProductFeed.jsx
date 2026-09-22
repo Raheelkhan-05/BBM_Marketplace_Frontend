@@ -1,6 +1,6 @@
 // components/home/HomeProductFeed.jsx
 //
-// PRICE BREAKDOWN + GST TOGGLE (this revision):
+// PRICE BREAKDOWN + GST TOGGLE:
 // - The seller's stored `price` is the source of truth, always keyed to
 //   whatever basis that seller sells in (per Pack, or per Master Pack when
 //   masterPackSize >= 1 — same convention as priceUnitLabel/packagingLabel
@@ -17,7 +17,7 @@
 //   `lowest_price_gst_percent` — see catalog_browse SQL), so toggling is
 //   instant with no refetch.
 //
-// DUPLICATE-FETCH GUARD (this revision):
+// DUPLICATE-FETCH GUARD:
 // - React 18 StrictMode (dev only) intentionally mounts every component
 //   twice — mount, cleanup, mount — to help surface effect bugs. Without a
 //   guard, that means this feed's main fetch effect fires twice back to
@@ -30,29 +30,36 @@
 //   request actually goes out. A genuine category/search change always
 //   produces a different key, so this never blocks real navigation.
 //
-// "SELL THIS PRODUCT" SELF-LISTING GUARD (this revision):
+// "SELL THIS PRODUCT" SELF-LISTING GUARD:
 // - The CTA at the bottom of the seller dropdown used to show up
 //   unconditionally once the sellers fetch settled — including for a
 //   seller who already has their own listing for that exact product,
 //   where "Sell this product" makes no sense (they're already selling
-//   it).
-// - CHANGED (this revision): that check used to be inferred client-side
-//   by scanning the loaded sellers list for a row belonging to the
-//   signed-in user. That broke the moment wallet-based hiding was added
-//   to catalog_brand_item_sellers (balance_due >= 1) — a wallet-blocked
-//   seller's own row is filtered out of that list along with everyone
-//   else's, so "already selling" silently evaluated to false and the
-//   button reappeared for exactly the sellers it should never show for.
-//   Fixed by reading `item.has_own_listing` straight off the feed row
-//   instead — catalog_browse() already computes this server-side via
-//   p_seller_id, and deliberately does NOT gate it on wallet balance, so
-//   it stays true regardless of whether the seller is currently hidden
-//   from buyers. See catalog_browse in fix_wallet_hidden_sellers.sql.
+//   it). Fixed by reading `item.has_own_listing` straight off the feed
+//   row instead of scanning the (wallet-filtered) sellers list — see
+//   catalog_browse in fix_wallet_hidden_sellers.sql.
+//
+// FASTEST DELIVERY SORT (this revision):
+// - A third seller-sort tab, "Fastest delivery", sitting alongside the
+//   existing "Min MOQ" / "Best price" tabs — but ONLY shown once we know
+//   the buyer's destination city/state (their default saved address).
+//   Deliberately does NOT call the real per-seller delivery-quote endpoint
+//   (BuyNowModal's quote flow -> estimateDeliveryDate -> getRoadDistanceKm
+//   -> OSRM), since that's a network round trip per seller and would make
+//   opening/sorting the dropdown feel slow. Instead it reuses ONLY the
+//   fast, no-network fallback heuristic half of that same estimator (see
+//   estimateFallbackKm/daysFromDistance in controllers/orders.controller.js)
+//   — same pincode-prefix / same-state / cross-state-zone tiers, same
+//   15 km/h assumed transport speed — computed entirely client-side from
+//   fields already present on each seller row (dispatch_pincode,
+//   dispatch_state, dispatch_time_days / production_lead_time_days). This
+//   keeps the ranking directionally consistent with the real quote the
+//   buyer eventually sees in Buy Now, while staying instant here.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2, Truck, Lock } from "lucide-react";
+import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2, Truck, Lock, Zap } from "lucide-react";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -110,15 +117,24 @@ function resolveDiscountPercent(quantityDiscounts, quantity) {
     return applicable.length ? Number(applicable[0].discountPercent) || 0 : 0;
 }
 
+// CHANGED (this revision): sort options are now a superset — the caller
+// (SellerDropdown) decides which subset is actually selectable, based on
+// whether we know the buyer's destination yet. Keeping the full list here
+// as the single source of labels avoids two different tabs drifting apart.
 const SELLER_SORT_OPTIONS = [
     { value: "min_moq", label: "Min MOQ" },
     { value: "best_price", label: "Best price" },
+    { value: "fastest_delivery", label: "Fastest delivery" },
 ];
 
-function SellerSortToggle({ value, onChange }) {
+// CHANGED: now takes an explicit `options` list instead of always
+// rendering all of SELLER_SORT_OPTIONS, so a caller can hide a tab (e.g.
+// "Fastest delivery" before we know the buyer's address) instead of
+// showing a toggle that does nothing useful yet.
+function SellerSortToggle({ value, onChange, options = SELLER_SORT_OPTIONS }) {
     return (
         <div className="flex gap-1 rounded-full p-0.5" style={{ background: C.hairSoft }}>
-            {SELLER_SORT_OPTIONS.map((opt) => (
+            {options.map((opt) => (
                 <button
                     key={opt.value}
                     type="button"
@@ -180,6 +196,20 @@ function FreightPill({ included }) {
         >
             <Truck className="h-2.5 w-2.5" strokeWidth={2.5} />
             {included ? "Freight included" : "Freight extra"}
+        </span>
+    );
+}
+
+// NEW: small badge marking the fastest seller when the "Fastest delivery"
+// tab is active — purely visual, no logic hangs off it.
+function FastestBadge() {
+    return (
+        <span
+            className="inline-flex w-fit items-center gap-1 rounded-full px-2 py-[3px] text-[9.5px] font-bold tracking-wide whitespace-nowrap"
+            style={{ background: "#00000010", color: C.ink }}
+        >
+            <Zap className="h-2.5 w-2.5" strokeWidth={2.5} />
+            Fastest
         </span>
     );
 }
@@ -459,6 +489,55 @@ function effectiveLeadTime(s) {
     return s.stock_type === "made_to_order" ? s.production_lead_time_days : s.dispatch_time_days;
 }
 
+// ---------------------------------------------------------------
+// FASTEST DELIVERY — fast, no-network heuristic (see file header note).
+// Mirrors ONLY the fallback tier of estimateFallbackKm/daysFromDistance
+// from controllers/orders.controller.js — same pincode-prefix / same-
+// state / cross-state-zone bands, same 15 km/h assumption. Deliberately
+// never calls getRoadDistanceKm/OSRM — this has to be instant since it
+// runs for every seller row, every time the dropdown opens or the buyer's
+// address changes.
+// ---------------------------------------------------------------
+const FAST_TRANSPORT_SPEED_KMH = 15;
+
+function fastDaysFromDistance(km) {
+    return Math.max(1, Math.ceil((km / FAST_TRANSPORT_SPEED_KMH) / 24));
+}
+
+function estimateTransitDaysFast(originPincode, originState, destPincode, destState) {
+    if (originPincode && destPincode && originPincode.slice(0, 3) === destPincode.slice(0, 3)) {
+        return 1;
+    }
+    const sameState = !!(originState && destState && originState.trim().toLowerCase() === destState.trim().toLowerCase());
+    if (originPincode && destPincode) {
+        const originZone = Number(originPincode[0]);
+        const destZone = Number(destPincode[0]);
+        if (!Number.isNaN(originZone) && !Number.isNaN(destZone)) {
+            const zoneDiff = Math.abs(originZone - destZone);
+            const km = sameState ? 250 : zoneDiff <= 1 ? 700 : zoneDiff === 2 ? 1200 : 1900;
+            return fastDaysFromDistance(km);
+        }
+    }
+    return fastDaysFromDistance(sameState ? 250 : 700);
+}
+
+// leadDays = the seller's own dispatch/production time (effectiveLeadTime).
+// totalDays is null (rather than 0) whenever we don't yet know the
+// buyer's destination, so callers can tell "unknown" apart from "same
+// day" — never silently sort/display an unknown as if it were fastest.
+function estimatedDeliveryDaysFor(seller, buyerAddress) {
+    const leadDaysRaw = effectiveLeadTime(seller);
+    const leadDays = leadDaysRaw != null ? Number(leadDaysRaw) || 0 : 0;
+    if (!buyerAddress?.city || !buyerAddress?.state) {
+        return { leadDays, transitDays: null, totalDays: null };
+    }
+    const transitDays = estimateTransitDaysFast(
+        seller.dispatch_pincode, seller.dispatch_state,
+        buyerAddress.pincode, buyerAddress.state
+    );
+    return { leadDays, transitDays, totalDays: leadDays + transitDays };
+}
+
 function BrandBadge({ name, image }) {
     if (!name) return null;
     const initials = name.trim().slice(0, 2).toUpperCase();
@@ -522,11 +601,11 @@ function toBuyerSellerPayload(s) {
 }
 
 // Whether a given seller row (from the sellers dropdown) belongs to the
-// signed-in user — used only to label a row "(You)" and disable buying
-// from yourself within an already-loaded sellers list. NOT used to decide
-// whether the "Sell this product" CTA shows — see item.has_own_listing
-// for that (SellerDropdown below), since this list is wallet-filtered and
-// can omit the signed-in seller's own row entirely.
+// signed-in user — used only to label/disable a row "(You)" and disable
+// buying from yourself within an already-loaded sellers list. NOT used to
+// decide whether the "Sell this product" CTA shows — see
+// item.has_own_listing for that (SellerDropdown below), since this list
+// is wallet-filtered and can omit the signed-in seller's own row entirely.
 function isOwnSellerRow(sellerRow, currentUserId) {
     if (!currentUserId) return false;
     const ownerId = sellerRow?.shop_slug ?? null;
@@ -804,11 +883,6 @@ function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, in
     };
 }
 
-// REMOVE these two — dead/legacy, superseded below:
-// function moqInPacks(seller) { ... }
-// function effectivePricePerPackAtMoq(seller) { ... }
-// (also remove unused `sellerSaleUnit` — getSaleUnit from packUnits.js already covers this)
-
 // Single source of truth for "what does this seller actually charge at qty X",
 // used by BOTH tabs so there's never a second, diverging implementation.
 function computeEffectivePricing(seller, saleQty, includeGst) {
@@ -925,8 +999,19 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
 // note. Whether to show "Sell this product" is decided separately, from
 // `item.has_own_listing` (server-computed, wallet-independent — see
 // file header note), NOT from scanning this (wallet-filtered) list.
-function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId, onRequireLogin, isLoggedIn }) {
+// `buyerAddress` (NEW) drives the "Fastest delivery" sort tab — see
+// FASTEST DELIVERY note at the top of this file.
+function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId, onRequireLogin, isLoggedIn, buyerAddress }) {
     const { loading, items = [], error, total = 0, hasMore } = state || {};
+
+    // "Fastest delivery" only makes sense once we know where the buyer is
+    // shipping to — hide it from the toggle entirely rather than showing
+    // a tab that can't do anything yet.
+    const hasKnownDestination = !!(buyerAddress?.city && buyerAddress?.state);
+    const availableSortOptions = useMemo(
+        () => (hasKnownDestination ? SELLER_SORT_OPTIONS : SELLER_SORT_OPTIONS.filter((o) => o.value !== "fastest_delivery")),
+        [hasKnownDestination]
+    );
 
     // Re-sort whichever page of sellers we've already fetched. Note: this
     // only sorts what's loaded so far (SELLER_PAGE_SIZE per fetch) — a
@@ -942,6 +1027,17 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
             return [...items].sort((a, b) => moqInSaleUnits(a) - moqInSaleUnits(b));
         }
 
+        if (sortMode === "fastest_delivery" && hasKnownDestination) {
+            // Lowest total estimated days first (lead time + fast transit
+            // heuristic — see estimatedDeliveryDaysFor above). Ties keep
+            // their existing relative order (stable sort).
+            return [...items].sort((a, b) => {
+                const da = estimatedDeliveryDaysFor(a, buyerAddress).totalDays;
+                const db = estimatedDeliveryDaysFor(b, buyerAddress).totalDays;
+                return (da ?? Infinity) - (db ?? Infinity);
+            });
+        }
+
         // "best_price" — order by whichever quantity gets each seller their
         // lowest achievable per-unit price, cheapest seller first.
         const withMeta = items.map((s) => ({ s, pricing: bestAchievablePricing(s, includeGst) }));
@@ -951,7 +1047,14 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
             return av - bv;
         });
         return withMeta.map((x) => x.s);
-    }, [items, sortMode, includeGst]);
+    }, [items, sortMode, includeGst, buyerAddress, hasKnownDestination]);
+
+    // Which submission_id is fastest in the current list — used to badge
+    // it, but only while the buyer is actually looking at delivery speed.
+    const fastestSubmissionId = useMemo(() => {
+        if (sortMode !== "fastest_delivery" || !hasKnownDestination || !sortedItems.length) return null;
+        return sortedItems[0]?.submission_id ?? null;
+    }, [sortMode, hasKnownDestination, sortedItems]);
 
     // CHANGED: source of truth is now item.has_own_listing (computed
     // server-side in catalog_browse via p_seller_id, deliberately NOT
@@ -984,7 +1087,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                     </span>
 
                     {!loading && items.length > 1 && (
-                        <SellerSortToggle value={sortMode} onChange={onSortModeChange} />
+                        <SellerSortToggle value={sortMode} onChange={onSortModeChange} options={availableSortOptions} />
                     )}
                 </div>
 
@@ -1025,6 +1128,8 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                         const pricing = sellerPricingForMode(s, sortMode, includeGst);
                                         const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
                                         const isOwn = isOwnSellerRow(s, currentUserId);
+                                        const delivery = estimatedDeliveryDaysFor(s, buyerAddress);
+                                        const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
                                         return (
                                             <div
                                                 key={s.submission_id}
@@ -1044,13 +1149,15 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                     </p>
                                                     <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                         {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
-                                                        {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""}
+                                                        {/* {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""} */}
+                                                        {delivery.totalDays != null ? ` · ~${delivery.totalDays}d delivery` : ""}
                                                         {pricing?.discountPercent > 0
                                                             ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
                                                             : ""}
                                                     </p>
-                                                    <div className="mt-1.5">
+                                                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                                                         <FreightPill included={s.freight_included} />
+                                                        {isFastest && <FastestBadge />}
                                                     </div>
                                                 </div>
 
@@ -1127,6 +1234,34 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [sellerSortMode, setSellerSortMode] = useState("best_price");
 
     const [includeGst, setIncludeGst] = useState(true);
+
+    // NEW: the buyer's default saved address — used ONLY to power the
+    // "Fastest delivery" sort tab in the seller dropdown (see
+    // estimatedDeliveryDaysFor above). Fetched once per session/token
+    // change, not per product row, so it costs one request for the whole
+    // feed rather than one per dropdown.
+    const [buyerAddress, setBuyerAddress] = useState(null);
+    useEffect(() => {
+        if (!token) { setBuyerAddress(null); return; }
+        let cancelled = false;
+        fetchBuyerAddresses(token)
+            .then((res) => {
+                if (cancelled) return;
+                const list = res?.addresses || [];
+                setBuyerAddress(list.find((a) => a.is_default) || list[0] || null);
+            })
+            .catch(() => { if (!cancelled) setBuyerAddress(null); });
+        return () => { cancelled = true; };
+    }, [token]);
+
+    // If the buyer's address becomes unavailable (logged out, fetch
+    // failed) while "Fastest delivery" was selected, fall back to a mode
+    // that still makes sense rather than sorting against a null address.
+    useEffect(() => {
+        if (sellerSortMode === "fastest_delivery" && !(buyerAddress?.city && buyerAddress?.state)) {
+            setSellerSortMode("best_price");
+        }
+    }, [buyerAddress, sellerSortMode]);
 
     const [openItemId, setOpenItemId] = useState(null);
     const [sellerState, setSellerState] = useState({});
@@ -1492,6 +1627,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                             onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
                                                             onSortModeChange={setSellerSortMode}
                                                             currentUserId={currentUserId}
+                                                            buyerAddress={buyerAddress}
                                                         />
                                                     )}
                                                 </AnimatePresence>
