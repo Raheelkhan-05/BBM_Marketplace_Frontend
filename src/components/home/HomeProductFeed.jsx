@@ -953,7 +953,11 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
 // "Fastest delivery" tab is even shown, and is what total_delivery_days
 // on each seller row was computed against.
 function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId, onRequireLogin, isLoggedIn, buyerAddress }) {
-    const { loading, items = [], error, total = 0, hasMore } = state || {};
+    const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
+
+    // Only the very first fetch (nothing on screen yet) shows the skeleton.
+    // A sort-switch refresh (isRefreshing) keeps existing rows visible.
+    const showSkeleton = loading && items.length === 0;
 
     const hasKnownDestination = !!(buyerAddress?.city && buyerAddress?.state);
     const availableSortOptions = useMemo(
@@ -961,39 +965,19 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
         [hasKnownDestination]
     );
 
-    // "Min MOQ" and "Fastest delivery" arrive from the backend ALREADY
-    // correctly ordered across the full seller pool (see
-    // catalog_brand_item_sellers) — re-sorting them here would only ever
-    // re-sort the current page, which is exactly the bug we're fixing.
-    // Only "Best price" still needs a client-side pass, since it depends
-    // on slab/discount math not yet moved into SQL.
     const sortedItems = useMemo(() => {
         if (!items.length) return items;
         if (sortMode !== "best_price") return items;
-
         const withMeta = items.map((s) => ({ s, pricing: bestAchievablePricing(s, includeGst) }));
-        withMeta.sort((a, b) => {
-            const av = a.pricing?.pack?.final ?? Infinity;
-            const bv = b.pricing?.pack?.final ?? Infinity;
-            return av - bv;
-        });
+        withMeta.sort((a, b) => (a.pricing?.pack?.final ?? Infinity) - (b.pricing?.pack?.final ?? Infinity));
         return withMeta.map((x) => x.s);
     }, [items, sortMode, includeGst]);
 
-    // The first row IS the fastest, since the backend already sorted by
-    // total_delivery_days across every seller before this page was cut.
     const fastestSubmissionId = useMemo(() => {
         if (sortMode !== "fastest_delivery" || !hasKnownDestination || !sortedItems.length) return null;
         return sortedItems[0]?.submission_id ?? null;
     }, [sortMode, hasKnownDestination, sortedItems]);
 
-    // CHANGED: source of truth is now item.has_own_listing (computed
-    // server-side in catalog_browse via p_seller_id, deliberately NOT
-    // gated on wallet balance) instead of scanning `items` for the
-    // signed-in seller's own row. That scan used to silently fail once a
-    // wallet-blocked seller's own row got excluded from `items` by the
-    // same wallet filter — making the CTA reappear for the one seller it
-    // must never show for.
     const alreadySelling = item?.has_own_listing === true;
 
     return (
@@ -1005,117 +989,104 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
             transition={{ duration: 0.24, ease: EASE }}
             className="overflow-hidden"
         >
-            <div
-                data-lenis-prevent
-                className="border-b px-3 py-2.5 sm:px-4"
-                style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}
-            >
+            <div data-lenis-prevent className="border-b px-3 py-2.5 sm:px-4" style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}>
                 <div className="flex flex-nowrap items-center justify-between gap-2 pb-2 overflow-x-auto">
                     <span className="whitespace-nowrap text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
-                        {loading ? "Loading sellers…" : total > 0 ? `${total} seller${total === 1 ? "" : "s"} listing this` : "No sellers yet"}
+                        {showSkeleton ? "Loading sellers…" : total > 0 ? `${total} seller${total === 1 ? "" : "s"} listing this` : "No sellers yet"}
                     </span>
 
-                    {!loading && items.length > 1 && (
+                    {/* Pills stay mounted through a sort switch — never gated on loading */}
+                    {items.length > 1 && (
                         <SellerSortToggle value={sortMode} onChange={onSortModeChange} options={availableSortOptions} />
                     )}
                 </div>
 
-                <div
-                    className="max-h-64 overflow-y-auto overscroll-contain seller-scroll"
-                    style={{ scrollbarGutter: "stable" }}
-                >
-                    <AnimatePresence mode="wait" initial={false}>
-                        {loading ? (
-                            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
-                                <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
-                                    <div className="flex items-center justify-between gap-3 py-3">
-                                        <div className="min-w-0 flex-1 space-y-1.5">
-                                            <div className="h-2.5 w-32 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                            <div className="h-2 w-24 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                        </div>
-                                        <div className="shrink-0 space-y-1.5 text-right">
-                                            <div className="ml-auto h-2.5 w-12 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                            <div className="ml-auto h-2 w-8 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                        </div>
-                                    </div>
+                <div className="max-h-64 overflow-y-auto overscroll-contain seller-scroll" style={{ scrollbarGutter: "stable" }}>
+                    {showSkeleton ? (
+                        <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
+                            <div className="flex items-center justify-between gap-3 py-3">
+                                <div className="min-w-0 flex-1 space-y-1.5">
+                                    <div className="h-2.5 w-32 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                    <div className="h-2 w-24 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
                                 </div>
-                            </motion.div>
-                        ) : error ? (
-                            <motion.p key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
-                                className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>
-                                {error}
-                            </motion.p>
-                        ) : sortedItems.length === 0 ? (
-                            <motion.p key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
-                                className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>
-                                No sellers listing this yet.
-                            </motion.p>
-                        ) : (
-                            <motion.div key="list" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
-                                <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
-                                    {sortedItems.map((s) => {
-                                        const pricing = sellerPricingForMode(s, sortMode, includeGst);
-                                        const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
-                                        const isOwn = isOwnSellerRow(s, currentUserId);
-                                        const totalDeliveryDays = s.total_delivery_days;
-                                        console.log("totalDeliveryDays", totalDeliveryDays);
+                                <div className="shrink-0 space-y-1.5 text-right">
+                                    <div className="ml-auto h-2.5 w-12 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                    <div className="ml-auto h-2 w-8 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                                </div>
+                            </div>
+                        </div>
+                    ) : error ? (
+                        <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>{error}</p>
+                    ) : sortedItems.length === 0 ? (
+                        <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>No sellers listing this yet.</p>
+                    ) : (
+                        // Plain div, no AnimatePresence mode="wait" swap — rows stay
+                        // mounted across a sort switch. Each row is a motion.div with
+                        // `layout`, so when sortedItems' order changes, Framer Motion
+                        // animates each row from its old position to its new one
+                        // (the "subtle pull" reorder) instead of a hard cut.
+                        <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft, opacity: isRefreshing ? 0.7 : 1, transition: "opacity 0.15s ease" }}>
+                            {sortedItems.map((s) => {
+                                const pricing = sellerPricingForMode(s, sortMode, includeGst);
+                                const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
+                                const isOwn = isOwnSellerRow(s, currentUserId);
+                                const totalDeliveryDays = s.total_delivery_days;
+                                const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
 
-                                        const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
-                                        return (
-                                            <div
-                                                key={s.submission_id}
-                                                role="button"
-                                                tabIndex={0}
-                                                onClick={() => !outOfStock && !isOwn && onBuySeller(s)}
-                                                onKeyDown={(e) => {
-                                                    if ((e.key === "Enter" || e.key === " ") && !outOfStock && !isOwn) { e.preventDefault(); onBuySeller(s); }
-                                                }}
-                                                aria-disabled={outOfStock || isOwn}
-                                                className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer"
-                                                style={outOfStock || isOwn ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
-                                            >
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                        {s.display_name}{isOwn ? " (You)" : ""}
-                                                    </p>
-                                                    <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                        {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
-                                                        {/* {effectiveLeadTime(s) != null ? ` · ${effectiveLeadTime(s)}d lead` : ""} */}
-                                                        {totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
-                                                        {pricing?.discountPercent > 0
-                                                            ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
-                                                            : ""}
-                                                    </p>
-                                                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                                        <FreightPill included={s.freight_included} />
-                                                        {isFastest && <FastestBadge />}
-                                                    </div>
-                                                </div>
-
-                                                {outOfStock ? (
-                                                    <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
-                                                        OUT OF STOCK
-                                                    </span>
-                                                ) : !isLoggedIn ? (
-                                                    <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
-                                                ) : (
-                                                    <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                                )}
+                                return (
+                                    <motion.div
+                                        key={s.submission_id}
+                                        layout
+                                        transition={{ layout: { duration: 0.35, ease: EASE } }}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => !outOfStock && !isOwn && onBuySeller(s)}
+                                        onKeyDown={(e) => {
+                                            if ((e.key === "Enter" || e.key === " ") && !outOfStock && !isOwn) { e.preventDefault(); onBuySeller(s); }
+                                        }}
+                                        aria-disabled={outOfStock || isOwn}
+                                        className="flex items-center justify-between gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9]"
+                                        style={outOfStock || isOwn ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
+                                    >
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                {s.display_name}{isOwn ? " (You)" : ""}
+                                            </p>
+                                            <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
+                                                {totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
+                                                {pricing?.discountPercent > 0
+                                                    ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
+                                                    : ""}
+                                            </p>
+                                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                                <FreightPill included={s.freight_included} />
+                                                {isFastest && <FastestBadge />}
                                             </div>
-                                        );
-                                    })}
-                                    {hasMore && (
-                                        <p className="pt-2 text-center text-[11px] font-semibold" style={{ color: C.muted }}>
-                                            +{Math.max(total - items.length, 0)} more sellers
-                                        </p>
-                                    )}
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                                        </div>
+
+                                        {outOfStock ? (
+                                            <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
+                                                OUT OF STOCK
+                                            </span>
+                                        ) : !isLoggedIn ? (
+                                            <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
+                                        ) : (
+                                            <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                        )}
+                                    </motion.div>
+                                );
+                            })}
+                            {hasMore && (
+                                <p className="pt-2 text-center text-[11px] font-semibold" style={{ color: C.muted }}>
+                                    +{Math.max(total - items.length, 0)} more sellers
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </div>
 
-                {!loading && !alreadySelling && (
+                {!showSkeleton && !alreadySelling && (
                     <button
                         onClick={onSell}
                         className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-black bg-black px-3 py-2 text-[12.5px] font-bold tracking-wide text-white transition-colors duration-150 hover:bg-black/90"
@@ -1225,16 +1196,20 @@ export default function HomeProductFeed({ category, q = "" }) {
     // full seller pool for that product) using whatever tab is currently
     // active — see the "FASTEST DELIVERY / MIN MOQ SORTING" note at the
     // top of this file for why this moved off the client.
-    const loadSellersFor = useCallback((itemId) => {
+    const loadSellersFor = useCallback((itemId, { silent = false } = {}) => {
         sellerAbortRef.current?.abort();
         const controller = new AbortController();
         sellerAbortRef.current = controller;
-        setSellerState((prev) => ({ ...prev, [itemId]: { loading: true, items: [], error: null } }));
+
+        setSellerState((prev) => ({
+            ...prev,
+            [itemId]: silent
+                // Keep existing items + total on screen; just flag a quiet refresh.
+                ? { ...(prev[itemId] || {}), isRefreshing: true }
+                : { loading: true, items: [], error: null },
+        }));
 
         const apiSort = sortModeToApiSort(sellerSortMode);
-
-        // in loadSellersFor, right before fetchBrandItemSellers call:
-        console.log("buyerAddress at fetch time:", buyerAddress);
 
         fetchBrandItemSellers(itemId, {
             sort: apiSort,
@@ -1247,13 +1222,17 @@ export default function HomeProductFeed({ category, q = "" }) {
         })
             .then((res) => {
                 if (!res?.success) {
-                    setSellerState((prev) => ({ ...prev, [itemId]: { loading: false, items: [], error: "Couldn't load sellers." } }));
+                    setSellerState((prev) => ({
+                        ...prev,
+                        [itemId]: { loading: false, isRefreshing: false, items: [], error: "Couldn't load sellers." },
+                    }));
                     return;
                 }
                 setSellerState((prev) => ({
                     ...prev,
                     [itemId]: {
                         loading: false,
+                        isRefreshing: false,
                         items: res.items || [],
                         error: null,
                         total: res.total ?? (res.items || []).length,
@@ -1263,7 +1242,10 @@ export default function HomeProductFeed({ category, q = "" }) {
             })
             .catch((err) => {
                 if (err?.name === "AbortError") return;
-                setSellerState((prev) => ({ ...prev, [itemId]: { loading: false, items: [], error: "Couldn't load sellers." } }));
+                setSellerState((prev) => ({
+                    ...prev,
+                    [itemId]: { loading: false, isRefreshing: false, items: [], error: "Couldn't load sellers." },
+                }));
             });
     }, [token, sellerSortMode, buyerAddress]);
 
@@ -1288,7 +1270,7 @@ export default function HomeProductFeed({ category, q = "" }) {
     // in the background.
     useEffect(() => {
         if (!openItemId) return;
-        loadSellersFor(openItemId);
+        loadSellersFor(openItemId, { silent: true });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sellerSortMode, buyerAddress]);
 
