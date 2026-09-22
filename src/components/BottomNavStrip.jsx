@@ -2,17 +2,13 @@
 //
 // Mobile-only. Same nav items as Header's desktop row.
 //
-// CHANGED: no more horizontal scroll strip. Items that fit the width of
-// the screen are shown inline as before; anything that doesn't fit is
-// tucked behind a trailing chevron button. Tapping it slides up a sheet
-// (from the bottom, capped at half the viewport height) listing every
-// remaining item vertically, Excel-frozen-columns style. HelpBulb stays
-// pinned as the last visible slot — it moves into the sheet along with
-// the rest of the nav once space runs out, rather than always floating
-// free.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+// CHANGED: no more "fit what you can inline, overflow the rest" logic.
+// The bottom bar now shows a single trigger button. Tapping it slides up
+// a sheet (from the bottom, capped at half the viewport height) listing
+// every nav item directly, plus HelpBulb and Sign out/Sign in.
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronUp, X } from "lucide-react";
+import { Menu, X, LogOut, ArrowUpRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import { NAV_ITEMS } from "./navItems.js";
@@ -23,43 +19,21 @@ import HelpBulb from "./HelpBulb.jsx";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)" };
 
-// Always show at least this many nav pills inline, even on a narrow screen
-// — beyond that, MORE items are added inline for as long as they still fit
-// the row's width; only the true overflow (past what fits) goes behind the
-// chevron. See the measurement effect below.
-const MIN_VISIBLE_COUNT = 3;
-// Width reserved for the trailing "more" chevron button, subtracted from
-// the available row width only once we know overflow exists at all.
-const MORE_BUTTON_WIDTH = 44;
-// Smallest gap we're willing to let the row compress down to between two
-// neighboring pills before we consider the next pill "not fitting".
-const MIN_GAP = 8;
-
-function NavPill({ item, active, dense }) {
+function NavPill({ item, active }) {
     const Icon = item.icon;
     return (
         <button
             onClick={item.onClick}
-            className={
-                dense
-                    ? "relative flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] font-bold transition-colors duration-150"
-                    : "relative flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-bold transition-colors duration-150 tracking-wide"
-            }
+            className="relative flex w-full items-center gap-3 rounded-2xl px-4 py-2.5 text-[14px] font-bold transition-colors duration-150"
             style={{
                 color: active ? "#fff" : C.ink,
                 background: active ? "#000000" : "rgba(20,27,34,0.045)",
             }}
         >
-            <Icon className={dense ? "h-4 w-4 shrink-0" : "h-3.5 w-3.5 shrink-0"} style={{ color: active ? "#fff" : C.muted }} />
+            <Icon className="h-4 w-4 shrink-0" style={{ color: active ? "#fff" : C.muted }} />
             <span>{item.label}</span>
             {item.badge != null && (
-                <span
-                    className={
-                        dense
-                            ? "ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#d2462b] px-1.5 text-[10px] font-bold text-white"
-                            : "absolute -right-1 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white ring-2 ring-white"
-                    }
-                >
+                <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#d2462b] px-1.5 text-[10px] font-bold text-white">
                     {item.badge}
                 </span>
             )}
@@ -70,7 +44,7 @@ function NavPill({ item, active, dense }) {
 export default function BottomNavStrip({ onOpenRfq }) {
     const navigate = useNavigate();
     const { pathname } = useLocation();
-    const { isLoggedIn, profile } = useAuth();
+    const { isLoggedIn, profile, signOut } = useAuth();
     const { orderUnreadCount } = useNotifications();
     const { cartCount } = useCart();
     const { unreadTotal: chatUnreadTotal } = useChatContext();
@@ -85,56 +59,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
         productsBadgeCount: productsBadgeCount,
     });
 
-    const containerRef = useRef(null);
-    const measureRefs = useRef([]);
-    const [visibleCount, setVisibleCount] = useState(Math.min(MIN_VISIBLE_COUNT, items.length));
     const [sheetOpen, setSheetOpen] = useState(false);
-
-    // Start from the guaranteed minimum, then measure how many additional
-    // pills still fit in the row's actual width and add those too. Runs on
-    // mount, on resize, and whenever the item set changes (login state,
-    // badge counts appearing/disappearing, etc).
-    useLayoutEffect(() => {
-        function recalc() {
-            const container = containerRef.current;
-            const floor = Math.min(MIN_VISIBLE_COUNT, items.length);
-            if (!container) {
-                setVisibleCount(floor);
-                return;
-            }
-            const fullWidth = container.clientWidth;
-            const widths = measureRefs.current.map((el) => (el ? el.offsetWidth : 0));
-
-            const fitsAll = widths.reduce((a, b) => a + b, 0) + MIN_GAP * Math.max(widths.length - 1, 0) <= fullWidth;
-            if (fitsAll) {
-                setVisibleCount(items.length);
-                return;
-            }
-
-            // How many pills fit before the trailing chevron would be needed.
-            const budget = fullWidth - MORE_BUTTON_WIDTH;
-            let used = 0;
-            let count = 0;
-            for (const w of widths) {
-                const next = used + w + (count > 0 ? MIN_GAP : 0);
-                if (next > budget) break;
-                used = next;
-                count += 1;
-            }
-
-            setVisibleCount(Math.max(count, floor));
-        }
-
-        recalc();
-        const ro = new ResizeObserver(recalc);
-        if (containerRef.current) ro.observe(containerRef.current);
-        window.addEventListener("resize", recalc);
-        return () => {
-            ro.disconnect();
-            window.removeEventListener("resize", recalc);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [items.length, items.map((it) => it.label + (it.badge ?? "")).join("|")]);
 
     // Close the sheet automatically on route change so it never lingers
     // over the next page.
@@ -142,17 +67,11 @@ export default function BottomNavStrip({ onOpenRfq }) {
         setSheetOpen(false);
     }, [pathname]);
 
-    const hasOverflow = visibleCount < items.length;
-    const visibleItems = items.slice(0, visibleCount);
-    const overflowItems = items.slice(visibleCount);
-
-    // Sum of unread/pending counts for whatever's currently tucked behind
-    // the chevron. Derived straight from `items`, so it re-renders on the
-    // same badge updates (unread count changes, etc) that drive the pills
-    // themselves — nothing extra to keep in sync.
-    const overflowBadgeTotal = overflowItems.reduce((sum, it) => sum + (it.rawBadge || 0), 0);
-    const overflowBadgeDisplay =
-        overflowBadgeTotal > 0 ? (overflowBadgeTotal > 9 ? "9+" : overflowBadgeTotal) : null;
+    // Sum of unread/pending counts across every nav item, shown as a
+    // badge on the trigger button itself since nothing is visible inline
+    // anymore to carry its own badge.
+    const badgeTotal = items.reduce((sum, it) => sum + (it.rawBadge || 0), 0);
+    const badgeDisplay = badgeTotal > 0 ? (badgeTotal > 9 ? "9+" : badgeTotal) : null;
 
     return (
         <>
@@ -160,108 +79,119 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 className="fixed inset-x-0 bottom-0 z-40 border-t bg-white md:hidden"
                 style={{ borderColor: C.hair, paddingBottom: "env(safe-area-inset-bottom)" }}
             >
-                <div ref={containerRef} className="flex items-center justify-between px-3 py-2 pb-4 -mt-2 pt-4">
-                    {visibleItems.map((it) => (
-                        <NavPill key={it.id} item={it} active={it.match(pathname)} />
-                    ))}
-
-                    {hasOverflow ? (
+                <div className="flex items-center justify-center px-3 py-2 pb-4 -mt-2 pt-4">
+                    {isLoggedIn ? (
                         <button
                             onClick={() => setSheetOpen(true)}
-                            aria-label={
-                                overflowBadgeDisplay
-                                    ? `Show more navigation options, ${overflowBadgeTotal} unread`
-                                    : "Show more navigation options"
-                            }
+                            aria-label={badgeDisplay ? `Open menu, ${badgeTotal} unread` : "Open menu"}
                             aria-expanded={sheetOpen}
-                            className="relative flex shrink-0 items-center justify-center rounded-full p-2.5"
-                            style={{ background: "rgba(20,27,34,0.025)", color: C.ink }}
+                            className="relative flex w-full items-center justify-center gap-2 rounded-full py-2.5 text-[13px] font-bold"
+                            style={{ background: "rgba(20,27,34,0.045)", color: C.ink }}
                         >
-                            <ChevronUp className="h-4 w-4" />
-                            {overflowBadgeDisplay != null && (
-                                <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white ring-2 ring-white">
-                                    {overflowBadgeDisplay}
+                            <Menu className="h-4 w-4" style={{ color: C.muted }} />
+                            Menu
+                            {badgeDisplay != null && (
+                                <span className="absolute right-0 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[9px] font-bold text-white ring-2 ring-white">
+                                    {badgeDisplay}
                                 </span>
                             )}
                         </button>
                     ) : (
-                        <div className="shrink-0">
-                            <HelpBulb inline />
-                        </div>
+                        <button
+                            onClick={() => navigate("/login")}
+                            className="flex w-full items-center justify-center gap-1.5 rounded-full py-2.5 text-[13px] font-bold text-white"
+                            style={{ background: "linear-gradient(135deg, #2a2a2aff 0%, #000000 100%)" }}
+                        >
+                            Sign In
+                            <ArrowUpRight className="h-3.5 w-3.5" />
+                        </button>
                     )}
                 </div>
             </nav>
 
-            {/* Hidden measurement row: same pills, same markup, rendered off
-                -screen so we can read natural widths before deciding what's
-                visible. Keeps the visible row free of layout-shift flicker. */}
+            {/* Sheet: slides up from the bottom, capped at half the viewport
+                height, every nav item listed vertically along with Help and
+                Sign out/Sign in. */}
             <div
-                aria-hidden="true"
-                className="pointer-events-none fixed left-0 top-0 z-[-1] flex items-center gap-2 px-3 py-2 opacity-0"
-                style={{ visibility: "hidden" }}
+                className={`fixed inset-0 z-50 md:hidden ${sheetOpen ? "" : "pointer-events-none"}`}
+                aria-hidden={!sheetOpen}
             >
-                {items.map((it, i) => (
-                    <div key={it.id} ref={(el) => (measureRefs.current[i] = el)}>
-                        <NavPill item={it} active={false} />
-                    </div>
-                ))}
-            </div>
-
-            {/* Overflow sheet: slides up from the bottom, capped at half the
-                viewport height, everything listed vertically so it's easy
-                to scan and tap without the horizontal-scroll ambiguity. */}
-            {hasOverflow && (
                 <div
-                    className={`fixed inset-0 z-50 md:hidden ${sheetOpen ? "" : "pointer-events-none"}`}
-                    aria-hidden={!sheetOpen}
+                    onClick={() => setSheetOpen(false)}
+                    className="absolute inset-0 bg-black/30 transition-opacity duration-200"
+                    style={{ opacity: sheetOpen ? 1 : 0 }}
+                />
+                <div
+                    className="absolute inset-x-0 bottom-0 flex max-h-[65vh] flex-col rounded-t-3xl bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] transition-transform duration-250 ease-out"
+                    style={{
+                        transform: sheetOpen ? "translateY(0)" : "translateY(100%)",
+                        paddingBottom: "env(safe-area-inset-bottom)",
+                    }}
                 >
-                    <div
-                        onClick={() => setSheetOpen(false)}
-                        className="absolute inset-0 bg-black/30 transition-opacity duration-200"
-                        style={{ opacity: sheetOpen ? 1 : 0 }}
-                    />
-                    <div
-                        className="absolute inset-x-0 bottom-0 flex max-h-[50vh] flex-col rounded-t-3xl bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] transition-transform duration-250 ease-out"
-                        style={{
-                            transform: sheetOpen ? "translateY(0)" : "translateY(100%)",
-                            paddingBottom: "env(safe-area-inset-bottom)",
-                        }}
-                    >
-                        <div className="flex items-center justify-between px-5 pt-4 pb-3">
-                            <span className="text-[13px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
-                                More options
-                            </span>
-                            <button
-                                onClick={() => setSheetOpen(false)}
-                                aria-label="Close"
-                                className="rounded-full p-2"
-                                style={{ background: "rgba(20,27,34,0.045)", color: C.ink }}
-                            >
-                                <X className="h-4 w-4" />
-                            </button>
-                        </div>
-                        <div className="flex flex-col gap-2 overflow-y-auto px-4 pb-5">
-                            {overflowItems.map((it) => (
-                                <NavPill
-                                    key={it.id}
-                                    item={{
-                                        ...it,
-                                        onClick: () => {
-                                            setSheetOpen(false);
-                                            it.onClick();
-                                        },
-                                    }}
-                                    active={it.match(pathname)}
-                                    dense
-                                />
-                            ))}
-                            <div className="mt-2 border-t pt-3" style={{ borderColor: C.hair }}>
-                                <HelpBulb inline onNavigate={() => setSheetOpen(false)} />
+                    <div className="flex items-center justify-between px-5 pt-4 pb-3">
+                        <span className="text-[13px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
+                            Menu
+                        </span>
+                        <button
+                            onClick={() => setSheetOpen(false)}
+                            aria-label="Close"
+                            className="rounded-full p-2"
+                            style={{ background: "rgba(20,27,34,0.045)", color: C.ink }}
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                    <div className="flex flex-col gap-2 overflow-y-auto px-4 pb-5">
+                        {items.map((it) => (
+                            <NavPill
+                                key={it.id}
+                                item={{
+                                    ...it,
+                                    onClick: () => {
+                                        setSheetOpen(false);
+                                        it.onClick();
+                                    },
+                                }}
+                                active={it.match(pathname)}
+                            />
+                        ))}
+                        <div className="mt-2 flex items-center gap-3 border-t pt-3" style={{ borderColor: C.hair }}>
+                            {isLoggedIn ? (
+                                <div className="flex shrink-0 items-center gap-2">
+                                    <HelpBulb inline />
+                                    <span className="text-[14px] font-bold" style={{ color: C.ink }}>
+                                        Help Desk
+                                    </span>
+                                </div>
+                            ) : (
+                                null
+                            )}
+
+                            <div className="flex flex-1 justify-end">
+                                {isLoggedIn ? (
+                                    <button
+                                        onClick={() => { setSheetOpen(false); signOut(); }}
+                                        className="flex items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-[14px] font-bold text-rose-600"
+
+                                    >
+                                        <LogOut className="h-4 w-4 shrink-0" />
+                                        Sign out
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => { setSheetOpen(false); navigate("/login"); }}
+                                        className="flex items-center justify-center gap-1.5 rounded-2xl px-4 py-3.5 text-[14px] font-bold text-white"
+                                        style={{ background: "linear-gradient(135deg, #2a2a2aff 0%, #000000 100%)" }}
+                                    >
+                                        Sign In
+                                        <ArrowUpRight className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
                 </div>
-            )}
+            </div>
         </>
     );
 }

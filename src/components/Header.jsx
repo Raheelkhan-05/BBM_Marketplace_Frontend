@@ -399,14 +399,14 @@ export default function Header({ onOpenRfq }) {
               </SmartLink>
             )}
 
-            <button
+            {/* <button
               onClick={() => setOpen(!open)}
               aria-label="Toggle menu"
               aria-expanded={open}
               className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 transition hover:border-[#7fb3bd] hover:text-[#0B7285] md:hidden"
             >
               {open ? <X size={18} /> : <Menu size={18} />}
-            </button>
+            </button> */}
           </div>
         </div>
       </header>
@@ -442,24 +442,6 @@ export default function Header({ onOpenRfq }) {
 
 
                 <nav className="flex flex-col gap-0.5">
-                  {effectiveLoggedIn && (
-                    <>
-                      {/* {isApprovedSeller && (
-                        <SmartLink to={`/shop/${profile.shop_slug}`} onClick={() => setOpen(false)} className={`${MOBILE_ROW} text-[#000000]`}>
-                          <Store className="h-4 w-4 text-[#000000]" />
-                          My Shop
-                        </SmartLink>
-                      )} */}
-                      <button
-                        onClick={() => { setOpen(false); signOut(); }}
-                        className={`${MOBILE_ROW} justify-start text-rose-600`}
-                      >
-                        <LogOut className="h-4 w-4" />
-                        Sign out
-                      </button>
-                    </>
-                  )}
-
                   {!effectiveLoggedIn && (
                     <SmartLink
                       to="/login"

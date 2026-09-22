@@ -309,7 +309,16 @@ export default function HelpBulb({ inline = false }) {
             >
                 <button
                     onClick={() => firePull()}
-                    onFocus={() => { if (!active) setHint(true); revealStatus(); }}
+                    onFocus={(e) => {
+                        // Only show the hint for keyboard focus (Tab), not for the
+                        // synthetic focus a tap/click also triggers on mobile — a real
+                        // tap is already handled by onClick and shouldn't also pop the
+                        // hint bubble on top of it.
+                        if (e.target.matches(":focus-visible")) {
+                            if (!active) setHint(true);
+                            revealStatus();
+                        }
+                    }}
                     onPointerDown={() => setPressed(true)}
                     onPointerUp={() => setPressed(false)}
                     onPointerCancel={() => setPressed(false)}
@@ -363,21 +372,7 @@ export default function HelpBulb({ inline = false }) {
                         fill="none"
                         strokeWidth={meta ? 2.4 : 2.1}
                     />
-                    {!meta && (
-                        <span
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => { e.stopPropagation(); showHint(); }}
-                            onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); showHint(); }
-                            }}
-                            aria-label="What does this button do?"
-                            className={`absolute -right-1 -top-1 flex h-3.5 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white ring-2 ring-white ${focusRing}`}
-                            style={{ background: C.primary, "--tw-ring-color": C.primary }}
-                        >
-                            ?
-                        </span>
-                    )}
+
                     {active && (
                         <span
                             className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white"
