@@ -20,6 +20,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Minus, Plus, Clock, Truck, AlertCircle, ChevronLeft, CheckCircle2 } from "lucide-react";
+import { ReceiptText, Package, FileText, X, ChevronDown } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
 import { fetchOrderConstraints } from "../utils/api.js";
@@ -29,8 +30,7 @@ import GroupPaymentQRModal from "../components/GroupPaymentQRModal.jsx";
 import AddressBook from "../components/shipping/AddressBook.jsx";
 import TransportPreferenceModal from "../components/transport/TransportPreferenceModal.jsx";
 import { useCart } from "../context/CartContext.jsx";
-
-import { purchaseQtyToSaleUnitQty, saleUnitLabel, round2 } from "../shared/packUnits.js";
+import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
 import { routeTransportModeLabel } from "../../shared/routeTransportFields.js";
 
@@ -65,7 +65,163 @@ function priceFor(item) {
     const moqSaleUnits = Number(item.moq) || 0;
     const meetsMoq = moqSaleUnits ? saleQty >= moqSaleUnits : true;
 
-    return { saleQty, lineTotal: round2(unitPrice * saleQty), discountPercent, meetsMoq, moqSaleUnits };
+    return {
+        saleQty, lineTotal: round2(unitPrice * saleQty), discountPercent, meetsMoq, moqSaleUnits,
+        unitPrice, basePricePerSaleUnit, // NEW — exposed for the detail modal's rate row
+    };
+}
+
+function QuoteRow({ label, value, tone, strong, small }) {
+    return (
+        <div className="flex items-center justify-between gap-3">
+            <span className={`font-medium tracking-wide ${small ? "text-[12.5px]" : "text-[13.5px]"}`} style={{ color: tone || C.muted }}>{label}</span>
+            <span className={`shrink-0 tabular-nums font-bold tracking-wide ${strong ? "text-[17px]" : "text-[13.5px]"}`} style={{ color: tone || C.ink }}>{value}</span>
+        </div>
+    );
+}
+
+function saleUnitLabelFor(item) {
+    return saleUnitLabel(item.units_per_master_pack);
+}
+
+// Same shape as BuyNowModal's price-breakdown + seller-terms sections,
+// reading off whatever the cart item row already carries (getCart already
+// selects price_slabs/quantity_discounts/delivery_timeline/etc alongside
+// the other seller fields — see cart.controller.js).
+function CartItemDetailModal({ item, onClose }) {
+    const p = priceFor(item);
+    const saleUnit = saleUnitLabelFor(item);
+    const hasTerms = item.delivery_timeline || item.payment_terms || item.return_policy || item.warranty || item.freight_included != null || item.dispatch_origin;
+
+    return (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={onClose}>
+            <div
+                className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-t-[24px] bg-white shadow-2xl sm:rounded-[20px]"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b px-5 py-4" style={{ borderColor: C.hairSoft }}>
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-bold tracking-wider" style={{ color: C.secondary }}>Item details</p>
+                        <h2 className="mt-0.5 truncate text-[16px] font-bold tracking-wide" style={{ color: C.ink }}>{item.product_name}</h2>
+                    </div>
+                    <button onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]">
+                        <X className="h-4.5 w-4.5" style={{ color: C.muted }} />
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-5 py-4">
+                    <div className="flex flex-col gap-3">
+                        {/* ---------------- Price breakdown ---------------- */}
+                        <details open className="group rounded-2xl border bg-white p-4" style={{ borderColor: C.hairSoft }}>
+                            <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12` }}>
+                                        <ReceiptText className="h-3.5 w-3.5" style={{ color: C.secondary }} />
+                                    </span>
+                                    <span className="text-[14px] font-bold" style={{ color: C.ink }}>Price breakdown</span>
+                                </span>
+                                <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: C.muted }} />
+                            </summary>
+
+                            <div className="mt-3 flex flex-col gap-3 border-t pt-3" style={{ borderColor: C.hairSoft }}>
+                                <div className="flex items-center gap-3 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hair }}>
+                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}12` }}>
+                                        <Package className="h-4 w-4" style={{ color: C.secondary }} />
+                                    </span>
+                                    <p className="text-[14px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
+                                        {p.saleQty} {saleUnit}{p.saleQty === 1 ? "" : "s"}
+                                        {Number(item.pack_size) > 0 && (
+                                            <span className="font-semibold" style={{ color: C.muted }}>
+                                                {" "}· {saleUnitQtyToBaseUnits(p.saleQty, item.pack_size, item.units_per_master_pack)} {item.unit}
+                                            </span>
+                                        )}
+                                    </p>
+                                </div>
+
+                                <div className="flex flex-col gap-2.5 rounded-xl bg-slate-50 p-3.5">
+                                    <span className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>Rate applied</span>
+                                    <div className="flex items-baseline justify-between gap-2 tracking-wide">
+                                        <span className="text-[14px] font-bold" style={{ color: C.ink }}>
+                                            ₹{inr(p.basePricePerSaleUnit)}{" "}
+                                            <span className="font-medium" style={{ color: C.muted }}>/ {saleUnit}</span>
+                                        </span>
+                                        {Number(item.pack_size) > 0 && (
+                                            <span className="shrink-0 text-[11px] font-medium tabular-nums" style={{ color: C.muted }}>
+                                                ≈ ₹{inr(p.basePricePerSaleUnit / saleUnitQtyToBaseUnits(1, item.pack_size, item.units_per_master_pack))} / {item.unit}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="h-px" style={{ background: C.hair }} />
+
+                                    <QuoteRow label="Subtotal" value={`₹${inr(p.basePricePerSaleUnit * p.saleQty)}`} tone={C.ink} small />
+                                    {p.discountPercent > 0 && (
+                                        <QuoteRow label={`Discount (${p.discountPercent}% off)`} value={`− ₹${inr(p.basePricePerSaleUnit * p.saleQty - p.lineTotal)}`} tone={C.secondary} small />
+                                    )}
+
+                                    <div className="h-px" style={{ background: C.hair }} />
+
+                                    <div className="flex items-center justify-between tracking-wide">
+                                        <span className="text-[13.5px] font-bold" style={{ color: C.ink }}>Total payable</span>
+                                        <span className="text-[20px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(p.lineTotal)}</span>
+                                    </div>
+                                </div>
+
+                                {Array.isArray(item.price_slabs) && item.price_slabs.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {item.price_slabs.map((slab, i) => (
+                                            <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold" style={{ borderColor: C.hair, color: C.muted }}>
+                                                {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} {saleUnit}{Number(slab.maxQty || slab.minQty) === 1 ? "" : "s"}: ₹{inr(slab.price)}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                {Array.isArray(item.quantity_discounts) && item.quantity_discounts.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {item.quantity_discounts.map((tier, i) => (
+                                            <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold" style={{ borderColor: C.hair, color: C.muted }}>
+                                                {tier.minQty}+ {saleUnit}{Number(tier.minQty) === 1 ? "" : "s"}: {tier.discountPercent}% off
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </details>
+
+                        {/* ---------------- Seller terms ---------------- */}
+                        {hasTerms && (
+                            <details className="group rounded-2xl border bg-white p-4" style={{ borderColor: C.hairSoft }}>
+                                <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                                    <span className="flex items-center gap-2">
+                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12` }}>
+                                            <FileText className="h-3.5 w-3.5" style={{ color: C.secondary }} />
+                                        </span>
+                                        <span className="text-[14px] font-bold" style={{ color: C.ink }}>Seller terms</span>
+                                    </span>
+                                    <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: C.muted }} />
+                                </summary>
+                                <div className="mt-3 flex flex-col gap-2 border-t pt-3 text-[13px] font-medium" style={{ borderColor: C.hairSoft }}>
+                                    {item.delivery_timeline && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Delivery</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{item.delivery_timeline}</span></div>}
+                                    {item.payment_terms && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Payment</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{item.payment_terms}</span></div>}
+                                    {item.return_policy && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Returns</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{item.return_policy}</span></div>}
+                                    {item.warranty && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Warranty</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{item.warranty}</span></div>}
+                                    {item.dispatch_origin && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Ships from</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{item.dispatch_origin}</span></div>}
+                                    {item.freight_included != null && (
+                                        <div className="flex justify-between gap-3">
+                                            <span style={{ color: C.muted }}>Freight</span>
+                                            <span style={{ color: item.freight_included ? C.secondary : C.ink, fontWeight: 700 }} className="text-right">
+                                                {item.freight_included ? "Included in price" : "Extra, paid by buyer"}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </details>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 }
 
 function stockInfoFor(item) {
@@ -145,13 +301,21 @@ function QtyStepper({ value, onChange, min, disabled }) {
     const atMin = Number(value) <= Number(min);
     return (
         <div className="flex items-center overflow-hidden rounded-lg border" style={{ borderColor: C.hair }}>
-            <button type="button" disabled={disabled || atMin} onClick={() => onChange(Number(value) - 1)}
-                className="flex h-7 w-7 items-center justify-center transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30">
+            <button
+                type="button"
+                disabled={disabled || atMin}
+                onClick={(e) => { e.stopPropagation(); onChange(Number(value) - 1); }}
+                className="flex h-7 w-7 items-center justify-center transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30"
+            >
                 <Minus className="h-3 w-3" style={{ color: C.ink }} />
             </button>
             <span className="w-8 text-center text-[12.5px] font-bold tabular-nums">{value}</span>
-            <button type="button" disabled={disabled} onClick={() => onChange(Number(value) + 1)}
-                className="flex h-7 w-7 items-center justify-center transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30">
+            <button
+                type="button"
+                disabled={disabled}
+                onClick={(e) => { e.stopPropagation(); onChange(Number(value) + 1); }}
+                className="flex h-7 w-7 items-center justify-center transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30"
+            >
                 <Plus className="h-3 w-3" style={{ color: C.ink }} />
             </button>
         </div>
@@ -198,6 +362,7 @@ export default function CartPage() {
     const { token } = useAuth();
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [viewingItem, setViewingItem] = useState(null);
     const [checking, setChecking] = useState(false);
     const [error, setError] = useState(null);
     const [payingGroupId, setPayingGroupId] = useState(null);
@@ -559,7 +724,13 @@ export default function CartPage() {
                                         const itemBlockedByLocation = groupStatus?.blockedItems?.some((b) => b.item.cart_item_id === it.cart_item_id);
                                         return (
                                             <div key={it.cart_item_id} className="flex flex-col gap-1">
-                                                <div className="flex items-center gap-3">
+                                                <div
+                                                    className="flex items-center gap-3 cursor-pointer"
+                                                    onClick={() => setViewingItem(it)}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setViewingItem(it); } }}
+                                                >
                                                     <img src={it.product_image} className="h-12 w-12 rounded-lg border object-cover" style={{ borderColor: C.hair }} />
                                                     <div className="min-w-0 flex-1">
                                                         <p className="truncate text-[13.5px] font-bold" style={{ color: C.ink }}>{it.product_name}</p>
@@ -595,7 +766,9 @@ export default function CartPage() {
                                                     </div>
                                                     <p className="text-[13.5px] font-extrabold tabular-nums">₹{inr(p.lineTotal)}</p>
                                                     {phase === "review" && (
-                                                        <button onClick={() => handleRemove(it.submission_id)}><Trash2 className="h-4 w-4" style={{ color: C.muted }} /></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleRemove(it.submission_id); }}>
+                                                            <Trash2 className="h-4 w-4" style={{ color: C.muted }} />
+                                                        </button>
                                                     )}
                                                 </div>
                                             </div>
@@ -733,6 +906,10 @@ export default function CartPage() {
                     onAddressChange={setDesiredAddressId}
                     onResolved={(result) => handleTransportResolved(activeTransportSellerId, result)}
                 />
+            )}
+
+            {viewingItem && (
+                <CartItemDetailModal item={viewingItem} onClose={() => setViewingItem(null)} />
             )}
         </div>
     );
