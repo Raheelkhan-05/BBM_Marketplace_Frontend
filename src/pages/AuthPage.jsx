@@ -462,7 +462,7 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
               By continuing, you agree to our{" "}
               <a href="/terms" className="font-bold tracking-wide text-slate-500 underline hover:text-slate-800">Terms</a>{" "}
               and{" "}
-              <a href="/privacy" className="font-bold tracking-wide text-slate-500 underline hover:text-slate-800">Privacy Policy</a>.
+              <a href="/privacy-policy" className="font-bold tracking-wide text-slate-500 underline hover:text-slate-800">Privacy Policy</a>.
             </p>
           </form>
 

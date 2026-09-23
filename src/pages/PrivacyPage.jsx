@@ -1,23 +1,23 @@
-// pages/TermsPage.jsx
+// pages/PrivacyPage.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ChevronDown, FileText, Menu, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ShieldCheck, Menu, X } from "lucide-react";
 
 import SmartLink from "../components/SmartLink.jsx";
-import TERMS_CONTENT from "../data/termsData.js";
+import PRIVACY_CONTENT from "../data/privacyPolicyData.js";
 
 // ---------------------------------------------------------------------------
-// Same design tokens as AuthPage.jsx, so this page feels like part of the
-// same product rather than a bolted-on legal document.
+// Same design tokens as AuthPage.jsx / TermsPage.jsx, so this page feels like
+// part of the same product rather than a bolted-on legal document.
 // ---------------------------------------------------------------------------
 const FONT = "'Amazon Ember', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
 const INK = "#0B1116";
 const BRAND = "#047084";
 const BRAND_SOFT = "rgba(4,112,132,0.07)";
 
-// Bump this only when the terms content itself changes — this is a
+// Bump this only when the privacy policy content itself changes — this is a
 // "last updated" marker, not today's date. Format: "MMMM D, YYYY".
-const TERMS_LAST_UPDATED = "September 18, 2026";
+const PRIVACY_LAST_UPDATED = "September 18, 2026";
 
 // slugify a heading into a stable, unique anchor id
 function slugify(text, index) {
@@ -29,13 +29,12 @@ function slugify(text, index) {
     return `${base || "section"}-${index}`;
 }
 
-// Build a table of contents from the top-level ("h1") headings only —
-// there are ~2,000 paragraphs in this agreement, so the nav stays readable
-// by only surfacing the major sections; h2 sub-clauses are still rendered
-// in the body with their own anchors for deep-linking.
-function useTermsStructure() {
+// Build a table of contents from the top-level ("h1") headings only — the
+// nav stays readable by only surfacing the major sections; h2 sub-clauses
+// are still rendered in the body with their own anchors for deep-linking.
+function usePrivacyStructure() {
     return useMemo(() => {
-        const withIds = TERMS_CONTENT.map((item, i) => ({
+        const withIds = PRIVACY_CONTENT.map((item, i) => ({
             ...item,
             id: item.k !== "body" ? slugify(item.t, i) : undefined,
         }));
@@ -69,8 +68,8 @@ function TocList({ items, activeId, onNavigate, className = "" }) {
     );
 }
 
-export default function TermsPage() {
-    const { items, toc } = useTermsStructure();
+export default function PrivacyPage() {
+    const { items, toc } = usePrivacyStructure();
     const [activeId, setActiveId] = useState(toc[0]?.id);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const sectionRefs = useRef({});
@@ -118,7 +117,7 @@ export default function TermsPage() {
 
     return (
         <div className="min-h-screen w-full bg-white" style={{ fontFamily: FONT }}>
-            {/* ---- header, same shell as AuthPage ---- */}
+            {/* ---- header, same shell as AuthPage / TermsPage ---- */}
             <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/90 backdrop-blur">
                 <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
                     <div className="flex items-center gap-3">
@@ -203,22 +202,22 @@ export default function TermsPage() {
                         className="flex h-11 w-11 items-center justify-center rounded-2xl text-white sm:h-12 sm:w-12"
                         style={{ background: INK }}
                     >
-                        <FileText className="h-5 w-5" />
+                        <ShieldCheck className="h-5 w-5" />
                     </span>
                     <h1
                         className="text-[26px] font-black leading-[1.08] tracking-wide sm:text-[34px]"
                         style={{ color: INK }}
                     >
-                        B2B Marketplace Participant Agreement
+                        Privacy Policy
                     </h1>
                     <p className="max-w-[640px] text-justify text-[13.5px] font-medium leading-relaxed tracking-wider text-slate-500 sm:text-[14.5px]">
-                        These Terms govern registration and use of the BBM Platform, and the purchase and sale of
-                        Products through it. By creating an account or using the Platform, you agree to be bound by
-                        this Agreement.
+                        This Policy explains how BBM collects, uses, discloses and protects your Personal Data in
+                        connection with the Platform. By registering for or continuing to use the Platform, you
+                        agree to the practices described here.
                     </p>
 
                     <p className="text-[11.5px] font-bold uppercase tracking-widest text-slate-400">
-                        Last updated: {TERMS_LAST_UPDATED}
+                        Last updated: {PRIVACY_LAST_UPDATED}
                     </p>
 
                 </div>
@@ -234,7 +233,7 @@ export default function TermsPage() {
                         </div>
                     </aside>
 
-                    {/* ---- terms content ---- */}
+                    {/* ---- privacy policy content ---- */}
                     <article className="min-w-0 max-w-[720px]">
                         {items.map((item, i) => {
                             if (item.k === "h1") {
@@ -264,7 +263,7 @@ export default function TermsPage() {
                             return (
                                 <p
                                     key={i}
-                                    className="mt-2.5 text-justify text-[13.5px] font-medium leading-relaxed tracking-wider text-slate-500 sm:text-[14px]"
+                                    className="mt-2.5 whitespace-pre-line text-justify text-[13.5px] font-medium leading-relaxed tracking-wider text-slate-500 sm:text-[14px]"
                                 >
                                     {item.t}
                                 </p>
@@ -272,8 +271,9 @@ export default function TermsPage() {
                         })}
 
                         <div className="mt-12 rounded-2xl bg-slate-50 px-5 py-5 text-justify text-[12.5px] font-medium leading-relaxed tracking-wider text-slate-500">
-                            This page is a plain rendering of the executed Agreement for reference. In case of any
-                            discrepancy between this page and the signed Agreement, the signed Agreement shall prevail.
+                            This page is a plain rendering of our Privacy Policy for reference. In case of any
+                            discrepancy between this page and the version filed or executed for regulatory purposes,
+                            the latter shall prevail.
                         </div>
                     </article>
                 </div>

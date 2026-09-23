@@ -67,6 +67,7 @@ const TransportLibraryPage = lazy(() => import("./pages/TransportLibraryPage.jsx
 const AdminHelpRequestsPage = lazy(() => import("./pages/admin/AdminHelpRequestsPage.jsx"));
 const SharedProductPage = lazy(() => import("./pages/SharedProductPage.jsx"));
 const TermsPage = lazy(() => import("./pages/TermsPage.jsx"));
+const PrivacyPage = lazy(() => import("./pages/PrivacyPage.jsx"));
 
 function CatalogLevelPageWithKey({ configKey }) {
   const { idOrSlug } = useParams();
@@ -125,6 +126,7 @@ function App() {
                 <Route path="/login" element={<AuthPage />} />
               </Route>
               <Route path="/terms" element={<TermsPage />} />
+              <Route path="/privacy-policy" element={<PrivacyPage />} />
               <Route element={<Layout />}>
                 <Route path="/" element={<Navigate to="/home" replace />} />
 
