@@ -31,6 +31,8 @@ export default function Layout() {
   const isAdminPage = pathname.startsWith("/admin");
   const isWalletPage = pathname.startsWith("/seller/wallet");
   const isChatDetailPage = /^\/chat\/[^/]+/.test(pathname);
+  const isOrdersPage = pathname.startsWith("/orders/");
+  const isSalesOrdersPage = pathname.startsWith("/seller/orders/");
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [rfqOpen, setRfqOpen] = useState(false);
 
@@ -42,7 +44,7 @@ export default function Layout() {
   // const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step !== "done";
   const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step != null && profile.onboarding_step !== "done";
 
-  const showBottomNav = !isAdminPage && !isWalletPage && !isChatDetailPage && !lightboxOpen && !onboardingIncomplete;
+  const showBottomNav = !isAdminPage && !isWalletPage && !isChatDetailPage && !isSalesOrdersPage && !isOrdersPage && !lightboxOpen && !onboardingIncomplete;
 
   return (
     <NotificationsProvider>
