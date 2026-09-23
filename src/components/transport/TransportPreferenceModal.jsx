@@ -872,7 +872,7 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                                             transition={{ duration: 0.2, ease: EASE }}>
                                             <div className="flex items-center justify-between">
-                                                <p className="text-[11.5px] font-bold tracking-wide" style={{ color: C.ink }}>How should this order be delivered?</p>
+                                                <p className="text-[14.5px] font-bold tracking-wide" style={{ color: C.ink }}>How should this order be delivered?</p>
                                                 <button onClick={collapseProposeSection} className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>Cancel</button>
                                             </div>
 
