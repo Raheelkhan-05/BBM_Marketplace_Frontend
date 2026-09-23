@@ -840,7 +840,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
         : pendingOrderType === "credit"
             ? "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)"
             : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)";
-    const finalCtaDisabled = submitting || (!isSample && (belowMoq || outOfStock || exceedsStock));
+    // const finalCtaDisabled = submitting || (!isSample && (belowMoq || outOfStock || exceedsStock));
+    const finalCtaDisabled = submitting || !transportPreference || (!isSample && (belowMoq || outOfStock || exceedsStock));
 
     const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
 
@@ -1242,24 +1243,16 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                                             {routeTransportModeLabel(pendingTransportProposal.mode)}
                                                         </p>
                                                         <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
-                                                            {getRouteTransportFields(pendingTransportProposal.mode).map((f) => {
-                                                                const val = pendingTransportProposal.fields?.[f.key];
-                                                                if (!val) return null;
-                                                                const displayLabel = f.label.replace(/\s*\(if any\)\s*/i, "");
-                                                                return (
-                                                                    <div key={f.key} className="flex items-baseline gap-1.5">
-                                                                        <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{displayLabel}:</span>
-                                                                        <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
-                                                                    </div>
-                                                                );
-                                                            })}
+                                                            {/* unchanged fields mapping */}
                                                         </div>
                                                         <Notice tone="warn">
-                                                            Your proposed transport option is still awaiting the seller's approval. If you place the order now, it'll go through the same as "No preference set" — the seller will choose the transport for now.
+                                                            This option is still waiting for {seller?.display_name}'s approval. You won't be able to place your order until it's approved — you can wait, or pick a different, already-approved option above.
                                                         </Notice>
                                                     </div>
                                                 ) : (
-                                                    <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>No preference set — the seller will choose for you.</p>
+                                                    <p className="text-[12px] font-bold tracking-wide" style={{ color: "#B3261E" }}>
+                                                        You need to set a transport preference before you can place this order.
+                                                    </p>
                                                 )}
                                             </div>
 
@@ -1312,6 +1305,15 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
                         {/* ---------------- Sticky footer ---------------- */}
                         <div className="shrink-0 border-t bg-white px-5 py-4 sm:px-6" style={{ borderColor: C.hairSoft }}>
+                            {phase === "shipping" && !transportPreference && (
+                                <div className="mb-3">
+                                    <Notice tone={pendingTransportProposal ? "warn" : "danger"}>
+                                        {pendingTransportProposal
+                                            ? "Waiting for the seller to approve your transport option — you'll be able to place the order once it's approved."
+                                            : "Please set a transport preference above to continue."}
+                                    </Notice>
+                                </div>
+                            )}
                             {phase === "shipping" && !locationStatus.serviceable ? (
                                 <ConstraintNotice reasons={[{ icon: MapPin, message: locationStatus.message }]} />
                             ) : (

@@ -49,7 +49,7 @@ function filterGroupsBySellerOptions(groups, allowedModes) {
         .filter((g) => g.modes.length > 0);
 }
 
-function TransportIcon({ mode, className = "h-4 w-4" }) {
+function TransportIcon({ mode, className = "h-4 w-4", style }) {
     const Icon = {
         roadway_transport: Truck,
         train_service: TrainFront,
@@ -60,7 +60,7 @@ function TransportIcon({ mode, className = "h-4 w-4" }) {
         self_pickup: UserRound,
     }[mode] || Truck;
 
-    return <Icon className={className} strokeWidth={2} />;
+    return <Icon className={className} style={style} strokeWidth={2} />;
 }
 
 function groupOptionsByMode(options) {
@@ -653,14 +653,14 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                 <span className="flex h-12 w-12 items-center justify-center rounded-full" style={{ background: `${C.secondary}12` }}>
                                     <Clock3 className="h-5 w-5" style={{ color: C.secondary }} />
                                 </span>
-                                <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>Sent to the seller for approval</p>
+                                <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>Sent to the seller — waiting for approval</p>
                                 <p className="max-w-xs text-[12.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                    We'll let you know once {seller?.display_name} approves this transport option for {toSentenceCase(origin.city)} → {toSentenceCase(destCity)}. You can continue placing your order in the meantime.
+                                    {seller?.display_name} needs to approve this transport option for {toSentenceCase(origin.city)} → {toSentenceCase(destCity)} before you can place your order. We'll notify you once it's approved.
                                 </p>
                                 <button onClick={continueWithoutPreference}
-                                    className="mt-2 rounded-xl px-5 py-2.5 text-[13px] font-bold tracking-wide text-white"
-                                    style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                                    Continue to order
+                                    className="mt-2 rounded-xl border px-5 py-2.5 text-[13px] font-bold tracking-wide"
+                                    style={{ borderColor: C.hair, color: C.ink }}>
+                                    Got it, I'll wait
                                 </button>
                             </motion.div>
 
@@ -872,23 +872,31 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
                                             transition={{ duration: 0.2, ease: EASE }}>
                                             <div className="flex items-center justify-between">
-                                                <p className="text-[11.5px] font-bold tracking-wide" style={{ color: C.ink }}>Propose a transport option</p>
+                                                <p className="text-[11.5px] font-bold tracking-wide" style={{ color: C.ink }}>How should this order be delivered?</p>
                                                 <button onClick={collapseProposeSection} className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>Cancel</button>
                                             </div>
 
-                                            <div className="mt-2.5">
-                                                <CustomDropdown
-                                                    value={selectedMode || ""}
-                                                    onChange={handleModeSelect}
-                                                    label="Select a transport type"
-                                                    placeholder="Select a transport type…"
-                                                    options={allowedGroups.flatMap((g) =>
-                                                        g.modes.map((mode) => ({
-                                                            value: mode,
-                                                            label: routeTransportModeLabel(mode),
-                                                        }))
-                                                    )}
-                                                />
+                                            <p className="mt-1 text-[11.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                                Tap an option below to continue
+                                            </p>
+
+                                            <div className="mt-2.5 grid grid-cols-2 gap-2">
+                                                {allowedGroups.flatMap((g) => g.modes).map((mode) => (
+                                                    <button
+                                                        key={mode}
+                                                        type="button"
+                                                        onClick={() => handleModeSelect(mode)}
+                                                        className="flex flex-col items-start gap-2 rounded-xl border px-3.5 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] active:scale-[0.98]"
+                                                        style={{ borderColor: C.hair }}
+                                                    >
+                                                        <span className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: `${C.secondary}12` }}>
+                                                            <TransportIcon mode={mode} className="h-4 w-4" style={{ color: C.secondary }} />
+                                                        </span>
+                                                        <span className="text-[12.5px] font-bold leading-snug tracking-wide" style={{ color: C.ink }}>
+                                                            {routeTransportModeLabel(mode)}
+                                                        </span>
+                                                    </button>
+                                                ))}
                                             </div>
 
                                             {allowedGroups.length === 0 && (
@@ -1001,31 +1009,7 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                     )}
                                 </AnimatePresence>
 
-                                {canQueryRoute && (
-                                    <div className="mt-0 flex flex-col items-center gap-2">
-                                        <div className="flex w-full items-center gap-2">
-                                            <span className="h-px flex-1" style={{ background: C.hairSoft }} />
-                                            <span className="text-[10.5px] font-bold tracking-wider" style={{ color: C.muted }}>OR</span>
-                                            <span className="h-px flex-1" style={{ background: C.hairSoft }} />
-                                        </div>
 
-                                        <button
-                                            onClick={continueWithoutPreference}
-                                            className="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-left transition-colors duration-150 hover:bg-black/[0.02]"
-                                            style={{ borderColor: C.hair }}
-                                        >
-                                            <Clock3 className="h-4 w-4 shrink-0" style={{ color: C.muted }} />
-                                            <span className="flex flex-col items-start">
-                                                <span className="text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                    Continue without choosing now
-                                                </span>
-                                                <span className="text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                                    You can set this later before your order ships
-                                                </span>
-                                            </span>
-                                        </button>
-                                    </div>
-                                )}
                             </motion.div>
                         )}
                     </AnimatePresence>

@@ -418,6 +418,8 @@ export default function CartPage() {
         });
     };
 
+    const anyTransportMissing = Object.keys(grouped).some((sellerId) => !transportPreferences[sellerId]);
+
     const flushPendingWrites = async () => {
         const ids = Object.keys(pendingWrites.current);
         ids.forEach((id) => clearTimeout(pendingWrites.current[id]));
@@ -472,7 +474,17 @@ export default function CartPage() {
             return;
         }
 
-        setChecking(true);
+        const missingTransportSellerId = Object.keys(grouped).find((sellerId) => !transportPreferences[sellerId]);
+        if (missingTransportSellerId) {
+            const sellerName = grouped[missingTransportSellerId]?.seller?.seller_name || "one of your sellers";
+            setError(
+                pendingTransportProposals[missingTransportSellerId]
+                    ? `Waiting for ${sellerName} to approve your transport option before you can check out.`
+                    : `Please set a transport preference for ${sellerName} before checking out.`
+            );
+            return;
+        }
+
 
         // Make sure every optimistic quantity change actually landed in the
         // DB before place_cart_order reads cart_items.
@@ -635,13 +647,13 @@ export default function CartPage() {
                                                 <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
                                                     {routeTransportModeLabel(pendingProposal.mode)}
                                                 </p>
-                                                <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                    Awaiting the seller's approval — if you check out now, they'll choose transport for this order.
+                                                <p className="text-[11px] font-semibold tracking-wide" style={{ color: "#92600A" }}>
+                                                    Awaiting the seller's approval. You can check out with this seller once it's approved.
                                                 </p>
                                             </div>
                                         ) : (
-                                            <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                                No preference set — the seller will choose for you.
+                                            <p className="text-[12px] font-bold tracking-wide" style={{ color: "#B3261E" }}>
+                                                Required — set a transport preference to check out with this seller.
                                             </p>
                                         )}
 
@@ -690,7 +702,7 @@ export default function CartPage() {
                                         style={{ borderColor: C.hair, color: C.ink }}>
                                         <ChevronLeft className="h-4 w-4" /> Back
                                     </button>
-                                    <button onClick={handleCheckout} disabled={checking || hasStockBlock || anyGroupBlocked}
+                                    <button onClick={handleCheckout} disabled={checking || hasStockBlock || anyGroupBlocked || anyTransportMissing}
                                         className="rounded-xl px-6 py-3 text-[13.5px] font-bold text-white disabled:opacity-50"
                                         style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                                         {checking ? <Loader2 className="h-4 w-4 animate-spin" /> : "Proceed to pay"}
