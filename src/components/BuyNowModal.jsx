@@ -21,6 +21,13 @@
 // it never places an order. The "shipping" phase has its own Back
 // button (returns to "details" without discarding anything) and its
 // own primary CTA, which is the one that actually submits.
+//
+// SELLER CLOSED (this revision): a closed seller window (outside hours,
+// non-working day, holiday) NEVER blocks placing an order. handleSubmit
+// no longer checks windowStatus. The informational "seller is closed /
+// accepted later" message is shown ONLY in the sticky footer (both
+// phases) — it is no longer rendered anywhere inside the scrollable body.
+// Location serviceability is still a hard block.
 
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -563,6 +570,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
         return () => clearInterval(id);
     }, []);
 
+    // Informational ONLY — never used to block placement. Drives the
+    // "seller is closed / accepted later" notice in the sticky footer.
     const windowStatus = useMemo(
         () => checkOrderWindow(constraints ? {
             workingDays: constraints.workingDays,
@@ -700,7 +709,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
     const handleSubmit = async (explicitOrderType) => {
         setError(null);
-        if (!windowStatus.open) return setError(windowStatus.message);
+        // NOTE: the seller's order window (windowStatus) is intentionally NOT
+        // checked here anymore. A closed seller only delays acceptance — it
+        // must never block placing the order. Location serviceability below
+        // is still a hard block.
         if (!locationStatus.serviceable) return setError(locationStatus.message);
 
         if (!isSample && Number(quantity) < minQuantity) {
@@ -1179,11 +1191,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                                             </div>
                                                         </div>
 
-                                                        {!isSample && quote.acceptanceDelayDays > 0 && (
-                                                            <Notice tone="warn">
-                                                                {quote.acceptanceMessage || "This seller is currently closed — your order will still be placed, but acceptance is delayed."}
-                                                            </Notice>
-                                                        )}
+                                                        {/* Seller-closed / delayed-acceptance notice removed from here —
+                                                            it now lives ONLY in the sticky footer. */}
                                                     </>
                                                 ) : (
                                                     <p className="text-[12.5px] font-medium" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
@@ -1374,7 +1383,9 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                 <ConstraintNotice reasons={[{ icon: MapPin, message: locationStatus.message }]} />
                             ) : (
                                 <>
-                                    {phase === "shipping" && !windowStatus.open && (
+                                    {/* Seller closed / acceptance delayed — informational ONLY, never blocks
+                                        ordering. Shown in the sticky footer in BOTH phases and nowhere else. */}
+                                    {!windowStatus.open && windowStatus.message && (
                                         <div className="mb-3"><Notice tone="warn">{windowStatus.message}</Notice></div>
                                     )}
 
