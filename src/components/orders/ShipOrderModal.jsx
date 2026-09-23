@@ -22,7 +22,26 @@ const C = {
 };
 const EASE = [0.16, 1, 0.3, 1];
 
-function FileDrop({ label, hint, file, onChange, accept = "image/*,application/pdf" }) {
+// Explicit MIME types AND file extensions together — some mobile browsers
+// match against MIME type, others against the extension in the filename,
+// and a few (notably some Android WebViews) narrow the native picker down
+// to Photos/Camera only when they see a lone "image/*" without enough
+// other accepted types alongside it to justify showing a general file
+// browser. Listing every format's real MIME type plus its extension is
+// what keeps "Files"/"Drive"/"Browse" as an option on those devices, not
+// just "image/*, application/pdf" which was the actual bug here.
+const DEFAULT_ACCEPT = [
+    "image/*",
+    "application/pdf",
+    "text/plain",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pdf", ".txt", ".doc", ".docx", ".xls", ".xlsx",
+].join(",");
+
+function FileDrop({ label, hint, file, onChange, accept = DEFAULT_ACCEPT }) {
     return (
         <label className="flex cursor-pointer flex-col gap-1.5 rounded-xl border border-dashed p-3.5" style={{ borderColor: file ? C.secondary : C.hair, background: file ? `${C.secondary}08` : "#fff" }}>
             <span className="flex items-center gap-2">
@@ -117,8 +136,8 @@ export default function ShipOrderModal({ open, order, onClose, onConfirm }) {
                                 style={{ borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` }} placeholder="e.g. LR-48213" />
                         </div>
 
-                        <FileDrop label="LR document (buyer reference)" hint="Photo or PDF of the LR/consignment note" file={lrFile} onChange={setLrFile} />
-                        <FileDrop label="Bill for this order" hint="Photo or PDF of the invoice/bill" file={billFile} onChange={setBillFile} />
+                        <FileDrop label="LR document (buyer reference)" hint="Photo, PDF, Word, Excel or text file of the LR/consignment note" file={lrFile} onChange={setLrFile} />
+                        <FileDrop label="Bill for this order" hint="Photo, PDF, Word, Excel or text file of the invoice/bill" file={billFile} onChange={setBillFile} />
 
                         <div className="flex flex-col gap-1">
                             <label className="text-[12px] font-bold tracking-wide" style={{ color: C.ink }}>Notes for the buyer (optional)</label>
