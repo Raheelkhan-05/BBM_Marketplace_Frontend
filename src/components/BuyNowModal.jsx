@@ -33,6 +33,7 @@ import {
     CreditCard, Boxes, ShoppingCart, Clock, ChevronDown, ChevronLeft, PackageCheck, AlertCircle
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
+
 import {
     fetchCheckoutStatus, fetchOrderQuote,
     placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi,
@@ -307,11 +308,22 @@ function Panel({ icon: Icon, title, subtitle, children }) {
    ============================================================ */
 
 export default function BuyNowModal({ seller, product, onClose }) {
-    const { token } = useAuth();
+
+    const { token, profile } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
 
-    const [access, setAccess] = useState(undefined);
+    // Optimistic: the parent (HomeProductFeed) already confirmed the buyer
+    // is logged in before this modal was ever opened, so in the overwhelming
+    // common case we already know they can check out. Seed from context so
+    // the modal's content renders on the very first frame instead of behind
+    // a spinner; fetchCheckoutStatus below still runs and will correct this
+    // (e.g. flip to the "verify your details" screen) if it's ever wrong.
+    const [access, setAccess] = useState(() =>
+        profile && (profile.email_verified || profile.phone_verified)
+            ? { canCheckout: true, profile }
+            : undefined
+    );
 
     // ---- Two-phase flow ----
     // "details": quantity + price, no address. "shipping": address +
@@ -331,6 +343,32 @@ export default function BuyNowModal({ seller, product, onClose }) {
         setError(null);
         setPhase("details");
     };
+
+    // A couple of background checks below (stale/rejected transport
+    // preference) can now resolve WHILE the buyer is still on "details",
+    // since we prefetch address/city/state early (see below). They
+    // still shouldn't pop the transport modal over the buyer mid-review
+    // — only once they've actually reached "shipping". phaseRef gives
+    // those effects a way to read the current phase without becoming a
+    // dependency (which would re-run the fetches themselves).
+    const phaseRef = useRef(phase);
+    useEffect(() => { phaseRef.current = phase; }, [phase]);
+    const deferredShowTransportModalRef = useRef(false);
+
+    const requestShowTransportModal = useCallback(() => {
+        if (phaseRef.current === "shipping") {
+            setShowTransportModal(true);
+        } else {
+            deferredShowTransportModalRef.current = true;
+        }
+    }, []);
+
+    useEffect(() => {
+        if (phase === "shipping" && deferredShowTransportModalRef.current) {
+            deferredShowTransportModalRef.current = false;
+            setShowTransportModal(true);
+        }
+    }, [phase]);
 
     // ---- Address (see file header note) ----
     // `desiredAddressId` is a HINT passed down to <AddressBook> (e.g. from
@@ -621,7 +659,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
             if (res?.rejectedNotice) {
                 setTransportPreference(null);
                 setTransportRemovedNotice(`Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`);
-                setShowTransportModal(true);
+                requestShowTransportModal();
                 return;
             }
 
@@ -631,7 +669,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
             } else {
                 setTransportPreference(null);
                 setTransportRemovedNotice(res?.invalidated ? "The seller no longer offers your previously selected transport option." : null);
-                if (!pendingProposal) setShowTransportModal(true);
+                if (!pendingProposal) requestShowTransportModal();
             }
         })();
 
@@ -649,13 +687,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
             if (res?.rejectedNotice) {
                 setTransportPreference(null);
                 setTransportRemovedNotice(`Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`);
-                setShowTransportModal(true);
+                requestShowTransportModal();
                 return;
             }
             if (res?.invalidated) {
                 setTransportPreference(null);
                 setTransportRemovedNotice("The seller no longer offers your previously selected transport option.");
-                setShowTransportModal(true);
+                requestShowTransportModal();
             }
         })();
     }, [seller?.sellerId, effectiveCity, effectiveState, token]);
@@ -811,7 +849,7 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 setPendingTransportProposal(null);
                 setTransportPreference(null);
                 setTransportRemovedNotice(`Your proposed transport option (${pendingTransportProposal.summary}) wasn't accepted by the seller.`);
-                setShowTransportModal(true);
+                requestShowTransportModal();
             }
         })();
 
@@ -1185,7 +1223,20 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                     </>
                                 )}
 
-                                {phase === "shipping" && (
+                                {/* Mounted for the WHOLE LIFETIME of the modal, not just while
+                                    phase === "shipping" — this is the actual fix. AddressBook
+                                    (and the transport-preference check that follows once an
+                                    address resolves) now fetches exactly ONCE, as soon as the
+                                    modal opens, in parallel with the buyer reviewing phase 1.
+                                    Flipping phase back and forth afterwards is a pure CSS
+                                    visibility toggle — it never remounts AddressBook, so it
+                                    never re-enters a "loading" state again.
+                                    display:"contents" when visible means this wrapper doesn't
+                                    add an extra box — its children lay out exactly as if the
+                                    div weren't there, preserving the parent's `gap-3` flex
+                                    spacing. display:"none" when hidden removes it from layout
+                                    and paint entirely, while keeping it mounted in React. */}
+                                <div style={{ display: phase === "shipping" ? "contents" : "none" }}>
                                     <>
                                         {/* Quick recap so the price/quantity chosen in phase 1 stays visible */}
                                         <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3.5 py-3">
@@ -1301,7 +1352,8 @@ export default function BuyNowModal({ seller, product, onClose }) {
                                             </Panel>
                                         )}
                                     </>
-                                )}
+
+                                </div>
 
                                 {error && <Notice tone="danger">{error}</Notice>}
                             </div>

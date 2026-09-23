@@ -76,9 +76,7 @@ import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
 import SellThisItemModal from "../catalog/SellThisItemModal";
 import BuyNowModal from "../BuyNowModal";
 import { resizedImageUrl } from "../../utils/imageUrl";
-import TransportPreferenceModal from "../transport/TransportPreferenceModal.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { fetchBuyerTransportPreference } from "../../utils/api.transport.js";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
@@ -1273,8 +1271,6 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [sellerState, setSellerState] = useState({});
     const sellerAbortRef = useRef(null);
 
-    const [transportFlow, setTransportFlow] = useState(null); // { item, seller }
-
     const [sellItem, setSellItem] = useState(null);
     const [buyState, setBuyState] = useState(null); // { item, seller }
 
@@ -1488,64 +1484,26 @@ export default function HomeProductFeed({ category, q = "" }) {
     // Only shows TransportPreferenceModal the first time this buyer deals
     // with this seller. The decision (or explicit "no preference") is
     // looked up from the DB, per buyer-seller pair — not per device.
-    const handleBuySeller = async (item, seller) => {
+    const handleBuySeller = (item, seller) => {
         closeDropdown();
 
         if (!effectiveLoggedIn) {
             requireLogin();
             return;
         }
-
         if (!token) {
             requireLogin("You need to login to place an order with this seller.");
             return;
         }
-        const addrRes = await fetchBuyerAddresses(token);
-        const defaultAddr = addrRes?.addresses?.find((a) => a.is_default) || addrRes?.addresses?.[0];
 
-        if (!defaultAddr?.city || !defaultAddr?.state) {
-            setTransportFlow({ item, seller, destAddressId: defaultAddr?.id || null, destCity: null, destState: null, removedNotice: null });
-            return;
-        }
-
-        const res = await fetchBuyerTransportPreference(seller.seller_id, defaultAddr.state, defaultAddr.city, token);
-
-        if (res?.rejectedNotice) {
-            setTransportFlow({
-                item, seller, destAddressId: defaultAddr?.id || null,
-                destCity: defaultAddr.city, destState: defaultAddr.state,
-                removedNotice: `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`,
-            });
-            return;
-        }
-
-        if (res?.success && !res.invalidated && (res.decided || res.pendingProposal)) {
-            setBuyState({
-                item,
-                seller: {
-                    ...seller,
-                    transportPreference: res.preference ? { ...res.preference, destCity: defaultAddr.city, destState: defaultAddr.state } : null,
-                    transportPendingProposal: res.pendingProposal ? { ...res.pendingProposal, destCity: defaultAddr.city, destState: defaultAddr.state } : null,
-                },
-            });
-            return;
-        }
-
-        setTransportFlow({
-            item, seller, destAddressId: defaultAddr?.id || null,
-            destCity: defaultAddr.city, destState: defaultAddr.state,
-            removedNotice: res?.invalidated ? "The seller no longer offers your previously selected transport option." : null,
-        });
-    };
-
-    const handleTransportResolved = (result) => {
-        const { item, seller } = transportFlow;
-        setTransportFlow(null);
-        if (result?.pending) {
-            setBuyState({ item, seller: { ...seller, transportPreference: null, transportPendingProposal: result } });
-        } else {
-            setBuyState({ item, seller: { ...seller, transportPreference: result, transportPendingProposal: null } });
-        }
+        // Open the modal in the same tick as the click — no network round
+        // trips gating it. BuyNowModal resolves the shipping address and
+        // transport preference itself once its own "shipping" phase mounts
+        // <AddressBook> (see its lastCheckedRouteRef effect) — that's the
+        // exact same fetchBuyerTransportPreference logic that used to run
+        // here, just deferred to when it's actually needed instead of
+        // blocking the click.
+        setBuyState({ item, seller });
     };
 
     const handleSell = (item) => {
@@ -1717,17 +1675,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                         onClose={() => setBuyState(null)}
                     />
                 )}
-                {transportFlow && (
-                    <TransportPreferenceModal
-                        open
-                        seller={toBuyerSellerPayload(transportFlow.seller)}
-                        destCity={transportFlow.destCity}
-                        destState={transportFlow.destState}
-                        removedNotice={transportFlow.removedNotice}
-                        onClose={() => setTransportFlow(null)}
-                        onResolved={handleTransportResolved}
-                    />
-                )}
+
             </AnimatePresence>
 
             {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />}
