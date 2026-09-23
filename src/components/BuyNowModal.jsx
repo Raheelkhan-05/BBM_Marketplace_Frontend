@@ -150,7 +150,8 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
     const moq = Number(seller.moq) || 0;
     const availableStock = seller.availableStock != null ? Number(seller.availableStock) : null;
     const stockShortfall = seller.stockType !== "made_to_order" && availableStock != null && saleQty > availableStock;
-    const outOfStock = seller.stockType !== "made_to_order" && availableStock != null && availableStock <= 0;
+    const outOfStock = seller.stockType !== "made_to_order" && availableStock != null
+        && (moq > 0 ? availableStock < moq : availableStock <= 0);
 
     const grossSubtotal = round2(slabPrice * saleQty);
     const subtotal = round2(unitPrice * saleQty);
@@ -408,7 +409,10 @@ export default function BuyNowModal({ seller, product, onClose }) {
         : null;
 
     const exceedsStock = !isSample && maxQuantity != null && Number(quantity) > Number(maxQuantity);
-    const outOfStock = !isSample && (quote?.outOfStock || (maxQuantity != null && Number(maxQuantity) <= 0));
+    const outOfStock = !isSample && (
+        quote?.outOfStock
+        || (maxQuantity != null && maxQuantity < minQuantity) // can't even meet MOQ from what's left
+    );
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);

@@ -468,9 +468,10 @@ function EditListingModal({ token, submissionId, onClose, onSaved }) {
     );
 }
 
-function stockState(stock) {
+function stockState(stock, moq) {
     if (stock == null) return "unknown";
-    if (Number(stock) <= 0) return "out";
+    const moqNum = Number(moq) || 0;
+    if (moqNum > 0 ? Number(stock) < moqNum : Number(stock) <= 0) return "out";
     if (Number(stock) <= LOW_STOCK_THRESHOLD) return "low";
     return "ok";
 }
@@ -1209,7 +1210,7 @@ function ListingRow({
 
     const isActive = it.is_active !== false;
     const stock = it.stock_quantity;
-    const sState = stockState(stock);
+    const sState = stockState(stock, it.moq);
     const isExpanded = isQuickEditing || isConfirmingDeactivate;
     const isPending = it.review_status === "pending_review";
 
@@ -1866,8 +1867,8 @@ export default function SellerManageListingsPage() {
     const stats = useMemo(() => {
         const total = items.length;
         const live = items.filter((it) => it.is_active !== false && it.review_status === "approved").length;
-        const low = items.filter((it) => stockState(it.stock_quantity) === "low").length;
-        const out = items.filter((it) => stockState(it.stock_quantity) === "out").length;
+        const low = items.filter((it) => stockState(it.stock_quantity, it.moq) === "low").length;
+        const out = items.filter((it) => stockState(it.stock_quantity, it.moq) === "out").length;
         const pending = items.filter((it) => it.review_status === "pending_review").length;
         const rejected = items.filter((it) => it.review_status === "rejected").length;
         const paused = items.filter((it) => it.is_active === false).length;
@@ -1881,7 +1882,7 @@ export default function SellerManageListingsPage() {
         else if (statusFilter === "pending_review") list = list.filter((it) => it.review_status === "pending_review");
         else if (statusFilter === "rejected") list = list.filter((it) => it.review_status === "rejected");
 
-        if (needsRestockOnly) list = list.filter((it) => stockState(it.stock_quantity) !== "ok");
+        if (needsRestockOnly) list = list.filter((it) => stockState(it.stock_quantity, it.moq) !== "ok");
 
         const term = query.trim().toLowerCase();
         if (term) {

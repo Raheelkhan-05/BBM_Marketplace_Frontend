@@ -71,10 +71,11 @@ function priceFor(item) {
 function stockInfoFor(item) {
     const capped = item.stock_type === "ready_stock" && item.available_stock != null;
     const max = capped ? Number(item.available_stock) : null;
+    const moq = Number(item.moq) || 0;
     return {
         capped,
         max,
-        outOfStock: capped && max <= 0,
+        outOfStock: capped && (moq > 0 ? max < moq : max <= 0),
         exceeds: capped && Number(item.quantity) > max,
     };
 }

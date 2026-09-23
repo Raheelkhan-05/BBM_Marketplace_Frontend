@@ -686,9 +686,14 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             .toLowerCase()
             .replace(/\b\w/g, (c) => c.toUpperCase());
 
+    // const isOutOfStock = item.lowest_price_stock_type === "ready_stock"
+    //     && item.lowest_price_available_stock != null
+    //     && Number(item.lowest_price_available_stock) <= 0;
+
     const isOutOfStock = item.lowest_price_stock_type === "ready_stock"
         && item.lowest_price_available_stock != null
-        && Number(item.lowest_price_available_stock) <= 0;
+        && item.lowest_price_moq != null
+        && Number(item.lowest_price_available_stock) < Number(item.lowest_price_moq);
 
     // Recomputed only when the underlying price fields or the GST toggle
     // change — cheap pure arithmetic, so this stays effectively instant.
@@ -1119,7 +1124,8 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft, opacity: isRefreshing ? 0.7 : 1, transition: "opacity 0.15s ease" }}>
                             {sortedItems.map((s) => {
                                 const pricing = sellerPricingForMode(s, sortMode, includeGst);
-                                const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
+                                // const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
+                                const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) < moqInSaleUnits(s);
                                 const isOwn = isOwnSellerRow(s, currentUserId);
                                 const totalDeliveryDays = s.total_delivery_days;
                                 const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
