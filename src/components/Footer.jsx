@@ -34,7 +34,7 @@ export default function Footer() {
               <div className="flex h-11 w-11 items-center justify-center rounded-xl p-0.5 shadow-lg shadow-black/10 transition-all duration-300 group-hover:border-[#7fb3bd]/30 group-hover:bg-white/[0.09]"
               >
                 <img
-                  src="./Logo.png"
+                  src="/Logo.png"
                   alt="BBM"
                   className="h-full w-full object-contain"
                 />
@@ -70,7 +70,7 @@ export default function Footer() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:min-w-[520px]">
             <a
               href="mailto:communication@bbmpvtltd.com"
-              className="group rounded-2xl border border-white/[0.07] bg-white/[0.035] p-4 transition-all duration-300 hover:border-[#7fb3bd]/20 hover:bg-white/[0.06]"
+              className="group rounded-2xl border border-white/[0.07] bg-white/[0.035] p-4 px-3.5 transition-all duration-300 hover:border-[#7fb3bd]/20 hover:bg-white/[0.06]"
             >
               <Mail className="h-4 w-4 text-[#7fb3bd] transition-transform duration-300 group-hover:-translate-y-0.5" />
 
