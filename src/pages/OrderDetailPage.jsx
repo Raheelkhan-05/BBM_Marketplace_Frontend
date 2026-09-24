@@ -22,7 +22,7 @@ import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
-import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall, basisLabel } from "../components/orders/OrderDisplayHelpers.jsx";
+import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall, basisLabel, PaymentTermsBanner, FreightNotice } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const TIMELINE_STEPS = ["pending_confirmation", "confirmed", "shipped", "delivered"];
 
@@ -165,6 +165,11 @@ export default function OrderDetailPage() {
                 </div>
                 <StatusChip status={order.status} size="lg" />
             </div>
+
+            {/* Credit orders only — advance payment is a seller-only concern */}
+            <PaymentTermsBanner order={order} viewer="buyer" standalone />
+
+            <FreightNotice order={order} viewer="buyer" className="mt-3" />
 
             {order.seller && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, ease: EASE }}

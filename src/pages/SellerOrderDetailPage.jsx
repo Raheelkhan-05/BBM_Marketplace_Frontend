@@ -2,32 +2,28 @@
 // type scale and card language. Also adds what was missing versus the
 // sales-orders list: pack-quantity display (was raw unit qty only),
 // delivery estimate, stock-shortfall note, and sample badge/free-sample
-// handling. Keeps this page seller-relevant only — buyer contact +
+// handling. Keeps this page seller-relevant only — buyer identity +
 // address + GST verification (their concern), payout breakdown (their
 // concern) — no buyer-side navigation chrome.
 //
-// NEW (this pass): shows the transport preference (mode/company/details)
-// agreed with the buyer, if one was snapshotted onto this order at
-// placement time (orders.transport_mode) — mirrors the same card added
-// to OrderDetailPage.jsx (the buyer's view of the same order).
+// NEW (this pass):
+//  - Payment terms banner (credit / advance) right under the header —
+//    sellers see both kinds.
+//  - The Buyer card no longer shows the buyer's phone number or email;
+//    it offers a "Chat with buyer" button (/chat/:id) instead.
 //
-// NEW (notifications pass): marks every unread "sales" notification for
-// this order (link === /seller/orders/:id) as read on open, via
-// NotificationsContext — this is what steps down the My Orders badge and
-// the Sales Orders tab count.
-//
-// NEW (PO document pass): the seller's own order fetch has no reason to
-// join seller_profiles (they already know their own shop), so
-// PurchaseOrderDocument's "Vendor" block has nothing to read there. We
-// fill that gap with vendorOverride, sourced from the already-loaded
-// auth `profile` — same place OrdersPage.jsx already reads
-// `profile?.seller_status` from.
+// EARLIER: shows the transport preference (mode/company/details) agreed
+// with the buyer (orders.transport_mode); marks every unread "sales"
+// notification for this order (link === /seller/orders/:id) as read on
+// open via NotificationsContext; fills the PO document's Vendor block from
+// the auth `profile` via vendorOverride, because the seller's own order
+// fetch doesn't join seller_profiles.
 // TODO: confirm these are the actual field names on your AuthContext's
 // profile object (display_name/city/state) — adjust if your seller shop
 // info lives under different keys or needs a separate fetch.
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Package, User, Phone, Mail, ShieldCheck, Loader2, MapPin, IndianRupee, Radio, CheckCircle2, Circle, XCircle, Truck } from "lucide-react";
+import { ArrowLeft, Package, User, ShieldCheck, Loader2, MapPin, IndianRupee, Radio, CheckCircle2, Circle, XCircle, Truck } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
@@ -39,7 +35,7 @@ import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
 import ShipOrderModal from "../components/orders/ShipOrderModal.jsx";
-import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall } from "../components/orders/OrderDisplayHelpers.jsx";
+import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall, PaymentTermsBanner, FreightNotice, ChatWithBuyerButton } from "../components/orders/OrderDisplayHelpers.jsx";
 
 const NEXT_ACTION = {
     pending_confirmation: [
@@ -148,7 +144,7 @@ export default function SellerOrderDetailPage() {
 
     const actions = NEXT_ACTION[order?.status] || [];
     const runAction = async (action) => {
-        if (action.needsShipModal) { setShipModalOpen(true); return; } // add this
+        if (action.needsShipModal) { setShipModalOpen(true); return; }
         let reason;
         if (action.needsReason) {
             reason = window.prompt("Reason for rejecting this order (shown to the buyer):");
@@ -196,6 +192,11 @@ export default function SellerOrderDetailPage() {
                 <StatusChip status={order.status} size="lg" />
             </div>
 
+            {/* Credit AND advance payment are both shown to sellers */}
+            <PaymentTermsBanner order={order} viewer="seller" standalone />
+
+            <FreightNotice order={order} viewer="seller" className="mt-3" />
+
             <Card title="Order status">
                 <Timeline status={order.status} events={events} />
             </Card>
@@ -240,12 +241,11 @@ export default function SellerOrderDetailPage() {
                     <User className="h-3.5 w-3.5" /> {order.buyer_contact_name}
                 </p>
                 {order.buyer_business_name && <p className="mt-1 text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}>{order.buyer_business_name}{order.buyer_gstin ? ` · ${order.buyer_gstin}` : ""}</p>}
-                <p className="mt-1 flex flex-wrap items-center gap-x-3 text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>
-                    <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{order.buyer_contact_phone}</span>
-                    {order.buyer_contact_email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{order.buyer_contact_email}</span>}
-                </p>
 
-                {order.buyer_notes && <p className="mt-2 text-[12.5px] font-medium italic tracking-wide" style={{ color: C.muted }}>"{order.buyer_notes}"</p>}
+                {/* Contact happens in chat — phone / email are intentionally not shown. */}
+                <ChatWithBuyerButton order={order} className="mt-3" />
+
+                {order.buyer_notes && <p className="mt-3 text-[12.5px] font-medium italic tracking-wide" style={{ color: C.muted }}>"{order.buyer_notes}"</p>}
             </Card>
 
             {actions.length > 0 && (

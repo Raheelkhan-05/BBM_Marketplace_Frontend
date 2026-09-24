@@ -1,9 +1,24 @@
 // pages/OrdersPage.jsx — merges PurchaseOrdersPage + SalesOrdersPage into one
 // route with a top-level tab switcher. "Sales" tab is only shown/rendered
 // when the current user is an approved seller.
+//
+// NEW (this pass):
+//  - Sales order card now uses the same document-style blocks as
+//    PurchaseOrderDocument: a "Buyer" block and a "Deliver To" block
+//    (caption / bold name / muted address) instead of one grey box with a
+//    "Ship to:" sentence, and a totals section where the wallet deduction
+//    is the same right-aligned italic note used in the PO document.
+//  - Payment terms: a solid banner at the very TOP of each card. Credit
+//    orders show on BOTH Purchase and Sales cards; advance-payment orders
+//    show on Sales cards only.
+//  - Freight: a clear "Freight included / extra in the final price" line
+//    on both cards.
+//  - Buyer phone / email are no longer shown on the Sales card — replaced
+//    by a "Chat with buyer" button (/chat/:id).
+//  - Removed a leftover console.log(profile) from PurchaseOrdersView.
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Package, Loader2, ShoppingBag, User, Phone, Mail, Store, IndianRupee } from "lucide-react";
+import { ArrowLeft, Package, Loader2, ShoppingBag, Store } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
@@ -16,16 +31,54 @@ import { C, EASE } from "../components/catalog/tokens.js";
 import { transportLabel } from "../../shared/transportOptions.js";
 import {
     StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount,
-    StockShortfallNote, shouldShowDelivery, shouldShowShortfall,
+    StockShortfallNote, shouldShowDelivery, shouldShowShortfall, formatDeliveryAddress, OrderTagsRow,
+    PaymentTermsBanner, FreightNotice, ChatWithBuyerButton, PartyBlock, TotalRow, computeWalletDeduction, DOC_C,
 } from "../components/orders/OrderDisplayHelpers.jsx";
 import ConfirmOrderModal from "../components/orders/ConfirmOrderModal.jsx";
 import { confirmSellerOrderWithTransport } from "../utils/api.js"; // see api.js patch
 import ShipOrderModal from "../components/orders/ShipOrderModal.jsx";
 import { shipSellerOrderWithTransport } from "../utils/api.transport.js";
 
+import { getPaymentTerms, orderFreightState } from "../components/orders/OrderDisplayHelpers.jsx";
+
+function aggregateGroupTags(orders) {
+    const credit = orders.some((o) => getPaymentTerms(o) === "credit");
+    const states = [...new Set(orders.map((o) => orderFreightState(o)).filter(Boolean))];
+    const freight = states.length === 0 ? null : states.length > 1 ? "mixed" : states[0];
+    return { credit, freight };
+}
+
+function GroupQuickTags({ orders }) {
+    const { credit, freight } = aggregateGroupTags(orders);
+    if (!credit && !freight) return null;
+    return (
+        <div className="flex items-center gap-1.5">
+            {credit && (
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide" style={{ background: "#4f46e514", color: "#4f46e5" }}>
+                    Credit
+                </span>
+            )}
+            {freight === "included" && (
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide" style={{ background: "#006F8314", color: "#006F83" }}>
+                    Freight included
+                </span>
+            )}
+            {freight === "extra" && (
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide" style={{ background: "#f59e0b1a", color: "#b45309" }}>
+                    Freight extra
+                </span>
+            )}
+            {freight === "mixed" && (
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide" style={{ background: DOC_C.hairSoft, color: DOC_C.muted }}>
+                    Freight varies
+                </span>
+            )}
+        </div>
+    );
+}
+
 // ---------- shared helpers ----------
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
-function round2(n) { return Math.round((Number(n) + Number.EPSILON) * 100) / 100; }
 
 // Small pill used next to the Purchase/Sales tab labels — same visual
 // language as the bell/nav badges elsewhere, just inline instead of
@@ -105,16 +158,23 @@ function PurchaseOrderCard({ order, idx, onCancel }) {
             style={{ borderColor: isSample ? "#7c3aed30" : C.hair }}>
             <OrderUnreadMark count={unreadCount} />
 
-
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                    <p className="font-mono text-[11.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>{order.order_number}</p>
-                    {isSample && <SampleBadge />}
-                    <GroupBadge groupNumber={order.group_number} />
+            {/* Row 1: identity — order #, date, status. Pure metadata, de-emphasized. */}
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-baseline gap-2">
+                    <p className="font-mono text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.ink }}>{order.order_number}</p>
+                    <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                        {new Date(order.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                    </p>
                 </div>
                 <StatusChip status={order.status} />
             </div>
 
+            {/* Row 2: at-a-glance facts — sample / group / credit / freight, one language */}
+            <div className="mt-2">
+                <OrderTagsRow order={order} viewer="buyer" isSample={isSample} groupNumber={order.group_number} />
+            </div>
+
+            {/* Row 3: the product — the actual hero content of the card */}
             <div className="mt-3 flex gap-3">
                 <span className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.hair }}>
                     {item?.image_snapshot ? <img src={item.image_snapshot} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center"><Package className="h-5 w-5" style={{ color: C.muted }} /></div>}
@@ -131,34 +191,29 @@ function PurchaseOrderCard({ order, idx, onCancel }) {
                 </div>
             </div>
 
-            {(item && shouldShowDelivery(order, item)) || shouldShowShortfall(order) ? (
-                <>
-                    <div className="mt-2.5 flex flex-col gap-1.5">
-                        {item && shouldShowDelivery(order, item) && <DeliveryEstimate order={order} item={item} />}
-                        {shouldShowShortfall(order) && <StockShortfallNote audience="buyer" />}
-                    </div>
+            {/* Row 4: logistics — delivery / shortfall / transport, only if relevant */}
+            {((item && shouldShowDelivery(order, item)) || shouldShowShortfall(order) || (order.buyer_transport_mode && !order.transport_mode)) && (
+                <div className="mt-2.5 flex flex-col gap-1.5 rounded-lg px-2.5 py-2" style={{ background: "#fafbfb" }}>
+                    {item && shouldShowDelivery(order, item) && <DeliveryEstimate order={order} item={item} />}
+                    {shouldShowShortfall(order) && <StockShortfallNote audience="buyer" />}
                     {order.buyer_transport_mode && !order.transport_mode && (
-                        <p className="mt-1.5 text-[11px] font-bold tracking-wide" style={{ color: C.secondary }}>
-                            Requested: {transportLabel(order.buyer_transport_mode)}
+                        <p className="text-[11px] font-bold tracking-wide" style={{ color: C.secondary }}>
+                            Requested transport: {transportLabel(order.buyer_transport_mode)}
                         </p>
                     )}
-                </>
-            ) : null}
+                </div>
+            )}
 
-
-
-            <div className="mt-3 flex items-center justify-between gap-2 border-t pt-2.5" style={{ borderColor: C.hairSoft }}>
-                <p className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                    {new Date(order.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                </p>
-                {canCancel && (
+            {/* Footer: action only — date already shown up top, no repeat */}
+            {canCancel && (
+                <div className="mt-3 flex justify-end border-t pt-2.5" style={{ borderColor: C.hairSoft }}>
                     <button disabled={cancelling}
                         onClick={(e) => { e.stopPropagation(); (async () => { setCancelling(true); await onCancel(order.id); setCancelling(false); })(); }}
                         className="rounded-lg border px-3 py-1.5 text-[12.5px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.primary }}>
                         {cancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : "Cancel order"}
                     </button>
-                )}
-            </div>
+                </div>
+            )}
         </motion.div>
     );
 }
@@ -171,9 +226,12 @@ function PurchaseOrderGroup({ group, startIdx, onCancel }) {
     return (
         <div className="rounded-2xl border-2 border-dashed p-3" style={{ borderColor: "#0B728540" }}>
             <div className="flex items-center justify-between px-1 pb-2.5">
-                <p className="text-[11.5px] font-extrabold uppercase tracking-[0.06em]" style={{ color: "#0B7285" }}>
-                    Order Group {group.groupNumber ? `#${group.groupNumber}` : ""} · {group.orders.length} sellers
-                </p>
+                <div className="flex items-center gap-2">
+                    <p className="text-[11.5px] font-extrabold uppercase tracking-[0.06em]" style={{ color: "#0B7285" }}>
+                        Order Group {group.groupNumber ? `#${group.groupNumber}` : ""} · {group.orders.length} sellers
+                    </p>
+                    <GroupQuickTags orders={group.orders} />
+                </div>
                 <p className="text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(combinedTotal)}</p>
             </div>
             <div className="flex flex-col gap-3">
@@ -196,9 +254,6 @@ function PurchaseOrdersView() {
 
     const { orders, loading, reload } = useRealtimeOrders({ channelToken: profile?.notificationChannel, fetcher });
     const handleCancel = async (orderId) => { const res = await cancelMyOrder(token, orderId, "Cancelled by buyer"); if (res?.success) reload(); };
-
-    console.log(profile);
-
 
     const groups = useMemo(() => {
         const map = new Map();
@@ -264,6 +319,11 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions, reload }
     const firstItem = order.items?.[0];
     const [shipModalOpen, setShipModalOpen] = useState(false);
 
+    const walletDeduction = computeWalletDeduction(order);
+    const buyerName = (order.buyer_contact_name || "").trim();
+    const deliverName = (addr.contact_name || "").trim();
+    const hasDifferentRecipient = deliverName && deliverName.toLowerCase() !== buyerName.toLowerCase();
+
     const run = async (action) => {
         if (action.needsTransportModal) { setConfirmModalOpen(true); return; }
         if (action.needsShipModal) { setShipModalOpen(true); return; }
@@ -282,27 +342,31 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions, reload }
             style={{ borderColor: isSample ? "#7c3aed30" : C.hair }}>
             <OrderUnreadMark count={unreadCount} />
 
-
-            <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5">
-                    <p className="font-mono text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{order.order_number}</p>
-                    {isSample && <SampleBadge />}
-                    {order.group_number && (
-                        <span className="rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide" style={{ background: "#0B728514", color: "#0B7285" }}>
-                            Group #{order.group_number}
-                        </span>
-                    )}
+            {/* Row 1: identity */}
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-baseline gap-2">
+                    <p className="font-mono text-[11.5px] font-bold uppercase tracking-wide" style={{ color: C.ink }}>{order.order_number}</p>
+                    <p className="text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                        {new Date(order.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                    </p>
                 </div>
                 <StatusChip status={order.status} />
             </div>
 
+            {/* Row 2: at-a-glance facts */}
+            <div className="mt-2">
+                <OrderTagsRow order={order} viewer="seller" isSample={isSample} groupNumber={order.group_number} />
+            </div>
+
+            {/* Row 3: logistics, only if relevant */}
             {(shouldShowShortfall(order) || shouldShowDelivery(order, firstItem)) && (
-                <div className="mt-2.5 flex flex-col gap-1.5">
+                <div className="mt-2.5 flex flex-col gap-1.5 rounded-lg px-2.5 py-2" style={{ background: "#fafbfb" }}>
                     {shouldShowShortfall(order) && <StockShortfallNote audience="seller" />}
                     {shouldShowDelivery(order, firstItem) && <DeliveryEstimate order={order} item={firstItem} label="Buyer's est. delivery" />}
                 </div>
             )}
 
+            {/* Row 4: items — the hero content */}
             <div className="mt-3 flex flex-col gap-2.5">
                 {(order.items || []).map((item) => (
                     <div key={item.id} className="flex items-center gap-2.5">
@@ -320,39 +384,44 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions, reload }
                 ))}
             </div>
 
-            <div className="mt-3 rounded-xl border p-2.5" style={{ borderColor: C.hair, background: "#fafbfb" }}>
-                <p className="flex items-center gap-1 text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>
-                    <User className="h-3 w-3" /> {order.buyer_contact_name}
-                </p>
-                {order.buyer_business_name && <p className="text-[11.5px] font-semibold tracking-wider" style={{ color: C.muted }}>{order.buyer_business_name}{order.buyer_gstin ? ` · ${order.buyer_gstin}` : ""}</p>}
-                <p className="mt-2 flex flex-wrap items-center gap-x-3 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                    <span className="flex items-center gap-1"><Phone className="h-3 w-3" />{order.buyer_contact_phone}</span>
-                    {order.buyer_contact_email && <span className="flex items-center gap-1"><Mail className="h-3 w-3" />{order.buyer_contact_email}</span>}
-                </p>
-                <p className="mt-2 text-[12.5px] font-medium leading-relaxed tracking-wide" style={{ color: C.muted }}>
-                    Ship to: {addr.contact_name}, {addr.address_line1}{addr.address_line2 ? `, ${addr.address_line2}` : ""}, {addr.city}, {addr.state} - {addr.pincode}
-                </p>
-                {order.buyer_notes && <p className="mt-2 text-[12px] font-medium italic tracking-wide" style={{ color: C.muted }}>"{order.buyer_notes}"</p>}
+            {/* Row 5: who + where — one compact block, name never repeated */}
+            <div className="mt-3 flex items-start justify-between gap-3 border-t pt-3" style={{ borderColor: DOC_C.hair }}>
+                <div className="min-w-0">
+                    <p className="text-[13.5px] font-extrabold tracking-wide" style={{ color: DOC_C.ink }}>{order.buyer_contact_name}</p>
+                    {order.buyer_business_name && (
+                        <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: DOC_C.muted }}>
+                            {order.buyer_business_name}{order.buyer_gstin ? ` · ${order.buyer_gstin}` : ""}
+                        </p>
+                    )}
+                    {hasDifferentRecipient && (
+                        <p className="mt-1 text-[11.5px] font-bold tracking-wide" style={{ color: DOC_C.ink }}>Deliver to: {addr.contact_name}</p>
+                    )}
+                    <p className="mt-1 text-[11.5px] font-medium leading-snug tracking-wide" style={{ color: DOC_C.muted }}>
+                        {formatDeliveryAddress(addr)}
+                    </p>
+                </div>
+                <ChatWithBuyerButton order={order} className="mt-0.5 shrink-0" />
             </div>
 
-            <div className="mt-2.5 flex flex-col gap-2 rounded-xl p-3" style={{ background: isSample ? "#7c3aed08" : `${C.primary}08` }}>
+            {order.buyer_notes && (
+                <p className="mt-2.5 text-[12px] font-medium italic tracking-wide" style={{ color: C.muted }}>"{order.buyer_notes}"</p>
+            )}
+
+            {/* Row 6: money — the other thing sellers actually scan for */}
+            <div className="mt-3 flex flex-col items-end gap-1 border-t pt-3" style={{ borderColor: DOC_C.hair }}>
                 {isSample ? (
-                    <div className="flex items-center justify-between">
-                        <span className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>Free sample · no platform fee</span>
-                        <p className="flex items-center gap-0.5 text-[13.5px] font-extrabold tabular-nums" style={{ color: "#7c3aed" }}>
-                            <IndianRupee className="h-3.5 w-3.5" />{inr(order.seller_payout_amount)}
-                        </p>
-                    </div>
+                    <>
+                        <TotalRow label="You'll receive" value={`₹${inr(order.seller_payout_amount)}`} bold color="#7c3aed" />
+                        <p className="text-right text-[11px] font-medium italic tracking-wide" style={{ color: DOC_C.muted }}>Free sample · no platform fee</p>
+                    </>
                 ) : (
                     <>
-                        <div className="flex items-center justify-between">
-                            <span className="text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>You'll receive</span>
-                            <p className="flex items-center gap-0.5 text-[16px] font-extrabold tabular-nums" style={{ color: C.primary }}>
-                                <IndianRupee className="h-3.5 w-3.5" />{inr(order.subtotal_amount)}
-                            </p>
+                        <div className="flex w-full max-w-[300px] justify-between text-[15px] font-extrabold tracking-wide" style={{ color: DOC_C.ink }}>
+                            <span>You'll receive</span>
+                            <span className="tabular-nums" style={{ color: DOC_C.accent }}>₹{inr(order.subtotal_amount)}</span>
                         </div>
-                        <p className="text-[13px] italic font-medium tracking-wide" style={{ color: C.muted }}>
-                            Wallet deduction: ₹{inr(round2(order.subtotal_amount * order.platform_fee_percent / 100 * 1.18))} ({order.platform_fee_percent}% Promotion & Visibility Budget + 18%GST)
+                        <p className="max-w-[350px] text-right text-[11.5px] font-medium italic tracking-wide" style={{ color: DOC_C.muted }}>
+                            Wallet deduction: ₹{inr(walletDeduction)} ({order.platform_fee_percent}% Promotion & Visibility Budget + 18%GST)
                         </p>
                     </>
                 )}
@@ -371,10 +440,7 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions, reload }
             )}
 
             {confirmModalOpen && (
-                <ConfirmOrderModal
-                    open={confirmModalOpen}
-                    order={order}
-                    sellerTransportOptions={sellerTransportOptions} // ADD
+                <ConfirmOrderModal open={confirmModalOpen} order={order} sellerTransportOptions={sellerTransportOptions}
                     onClose={() => setConfirmModalOpen(false)}
                     onConfirm={async (formData) => {
                         const res = await confirmSellerOrderWithTransport(token, order.id, formData);
@@ -384,9 +450,7 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions, reload }
                 />
             )}
             {shipModalOpen && (
-                <ShipOrderModal
-                    open={shipModalOpen}
-                    order={order}
+                <ShipOrderModal open={shipModalOpen} order={order}
                     onClose={() => setShipModalOpen(false)}
                     onConfirm={async (formData) => {
                         const res = await shipSellerOrderWithTransport(token, order.id, formData);
