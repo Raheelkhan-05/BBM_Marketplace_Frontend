@@ -258,8 +258,12 @@ function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, tog
 // regardless of which mode was used to get there — so the seller always
 // sees the full picture, never has to guess what a % translates to.
 //
-// Percent mode now uses an explicit Decrease/Increase toggle plus a
-// plain, always-positive number — no +/- sign for the seller to parse.
+// Percent mode uses an explicit Decrease/Increase toggle plus a plain,
+// always-positive number — no +/- sign for the seller to parse.
+//
+// The chosen direction is stored on the draft as `percentDirection`
+// (rather than being derived only from the sign of `percentValue`), so the
+// toggle works even before any number has been entered.
 // ---------------------------------------------------------------------
 function ProductEditCard({ row, draft, onDraftChange }) {
     const levels = levelsFor(row);
@@ -267,11 +271,13 @@ function ProductEditCard({ row, draft, onDraftChange }) {
     const preview = draft.canonicalPrice != null ? derivePriceBreakdown(draft.canonicalPrice, row.packSize, row.masterPackSize) : null;
     const appliedPercent = draft.canonicalPrice != null ? percentFromCustomPrice(row.defaultPrice, draft.canonicalPrice) : null;
 
-    // Direction is derived from the stored (signed) percentValue: backend
-    // convention is positive = decrease/discount, negative = increase.
-    // Defaults to "decrease" when nothing has been entered yet.
-    const direction = draft.percentValue !== "" && draft.percentValue != null && Number(draft.percentValue) < 0 ? "increase" : "decrease";
-    const percentAbs = draft.percentValue !== "" && draft.percentValue != null ? Math.abs(Number(draft.percentValue)) : "";
+    const hasPercent = draft.percentValue !== "" && draft.percentValue != null;
+    // Explicit direction wins. Falls back to the sign of the stored value
+    // (backend convention: positive = decrease/discount, negative = increase)
+    // for drafts that were initialised from an already-saved price.
+    const direction = draft.percentDirection
+        ?? (hasPercent && Number(draft.percentValue) < 0 ? "increase" : "decrease");
+    const percentAbs = hasPercent ? Math.abs(Number(draft.percentValue)) : "";
 
     const [wheelFor, setWheelFor] = useState(null); // { kind: "amount", level } | { kind: "percent" } | null
     const gstMode = draft.gstMode || "incl"; // "incl" | "excl" — how the seller is typing amounts in
@@ -283,14 +289,10 @@ function ProductEditCard({ row, draft, onDraftChange }) {
     // was used to type the number in.
     const toInclusive = (raw) => {
         const gst = Number(row.gstPercent) || 0;
-        // console.log("raw", raw);
-        // console.log("gst", gst);
         return gstMode === "excl" ? Number(raw) * (1 + gst / 100) : Number(raw);
     };
     const fromInclusive = (inclusiveVal) => {
         const gst = Number(row.gstPercent) || 0;
-        // console.log("inclusiveVal", inclusiveVal);
-        // console.log("gst", gst);
         return gstMode === "excl" ? inclusiveVal / (1 + gst / 100) : inclusiveVal;
     };
 
@@ -301,10 +303,13 @@ function ProductEditCard({ row, draft, onDraftChange }) {
             const canonical = priceFromLevel(toInclusive(raw), level, row.packSize, row.masterPackSize);
 
             const bd = derivePriceBreakdown(canonical, row.packSize, row.masterPackSize);
+            const pct = percentFromCustomPrice(row.defaultPrice, canonical);
             return {
                 ...prev,
                 canonicalPrice: canonical,
-                percentValue: String(percentFromCustomPrice(row.defaultPrice, canonical)),
+                percentValue: String(pct),
+                // Keep the direction in sync with the amount that was typed.
+                percentDirection: pct < 0 ? "increase" : pct > 0 ? "decrease" : (prev.percentDirection ?? "decrease"),
                 amounts: {
                     unit: level === "unit" ? raw : String(round2(fromInclusive(bd.perBaseUnit)) ?? ""),
                     pack: level === "pack" ? raw : String(round2(fromInclusive(bd.perPack)) ?? ""),
@@ -316,15 +321,20 @@ function ProductEditCard({ row, draft, onDraftChange }) {
 
     // Takes a direction ("decrease" | "increase") and an always-positive
     // magnitude, and converts to the signed value the backend/preview math
-    // expects (positive = decrease).
+    // expects (positive = decrease). The direction is always recorded on the
+    // draft — even when no magnitude has been typed yet — so tapping
+    // "Increase" on an empty field is remembered.
     const setFromDirectionAndAbs = (nextDirection, absRaw) => {
         onDraftChange(row.submissionId, (prev) => {
-            if (absRaw === "" || absRaw == null) return { ...prev, percentValue: absRaw, canonicalPrice: null };
+            if (absRaw === "" || absRaw == null) {
+                return { ...prev, percentDirection: nextDirection, percentValue: "", canonicalPrice: null };
+            }
             const signed = nextDirection === "increase" ? -Math.abs(Number(absRaw)) : Math.abs(Number(absRaw));
             const canonical = Math.round(row.defaultPrice * (1 - signed / 100) * 100) / 100;
             const bd = derivePriceBreakdown(canonical, row.packSize, row.masterPackSize);
             return {
                 ...prev,
+                percentDirection: nextDirection,
                 percentValue: String(signed),
                 canonicalPrice: canonical,
                 amounts: {
@@ -337,7 +347,7 @@ function ProductEditCard({ row, draft, onDraftChange }) {
     };
 
     const clear = () => onDraftChange(row.submissionId, () => ({
-        mode: "amount", amounts: { unit: "", pack: "", master_pack: "" }, percentValue: "", canonicalPrice: null,
+        mode: "amount", amounts: { unit: "", pack: "", master_pack: "" }, percentValue: "", percentDirection: "decrease", canonicalPrice: null,
     }));
 
     // Back-calculate the default price into whatever level/basis is being
@@ -356,13 +366,11 @@ function ProductEditCard({ row, draft, onDraftChange }) {
 
     return (
         <div className="flex flex-col gap-3 rounded-2xl border p-3.5 sm:p-4" style={{ borderColor: invalid ? C.danger : C.hair }}>
+            {/* Product header — image, name, default price, clear button */}
             <div className="flex items-center gap-2.5">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border" style={{ borderColor: C.hair, background: "#F4F5F6" }}>
                     {row.image ? <img src={row.image} alt="" className="h-full w-full object-cover" /> : null}
                 </span>
-                <p className="rounded-lg px-2.5 py-2 text-[11px] font-semibold leading-snug tracking-wide" style={{ background: C.warnBg, color: C.warn }}>
-                    Setting a custom price for this buyer switches off any quantity discounts or price slabs on this product for them — they'll pay exactly this price, however much they order.
-                </p>
                 <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{row.name}</p>
                     <p className="truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
@@ -371,11 +379,20 @@ function ProductEditCard({ row, draft, onDraftChange }) {
                     </p>
                 </div>
                 {draft.canonicalPrice != null && (
-                    <button onClick={clear} className="shrink-0 rounded-lg p-1.5 hover:bg-black/5">
+                    <button type="button" onClick={clear} className="shrink-0 rounded-lg p-1.5 hover:bg-black/5">
                         <Trash2 className="h-3.5 w-3.5" style={{ color: C.muted }} />
                     </button>
                 )}
             </div>
+
+            {/* Notice — sits on its own full-width row under the header so it
+                never squeezes the product name/image */}
+            <p className="flex items-start gap-1.5 rounded-lg px-2.5 py-2 text-[11px] font-semibold leading-snug tracking-wide" style={{ background: C.warnBg, color: C.warn }}>
+                <Info className="mt-[1px] h-3.5 w-3.5 shrink-0" />
+                <span>
+                    Setting a custom price for this buyer switches off any quantity discounts or price slabs on this product for them — they'll pay exactly this price, however much they order.
+                </span>
+            </p>
 
             <ModeToggle mode={draft.mode} onChange={(m) => onDraftChange(row.submissionId, (prev) => ({ ...prev, mode: m }))} />
 
@@ -437,7 +454,7 @@ function ProductEditCard({ row, draft, onDraftChange }) {
                 <div className="flex flex-col gap-1.5">
                     <DirectionToggle
                         direction={direction}
-                        onChange={(nextDirection) => setFromDirectionAndAbs(nextDirection, percentAbs === "" ? "" : percentAbs)}
+                        onChange={(nextDirection) => setFromDirectionAndAbs(nextDirection, percentAbs)}
                     />
                     <div
                         onClick={openPercentWheel}
@@ -688,14 +705,16 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
             // will be re-saved as percent going forward like everything else.
             const canonical = row.effectivePrice;
             const bd = row.effectiveBreakdown;
+            const pct = percentFromCustomPrice(row.defaultPrice, canonical);
             return {
                 mode: "amount",
                 canonicalPrice: canonical,
-                percentValue: String(percentFromCustomPrice(row.defaultPrice, canonical)),
+                percentValue: String(pct),
+                percentDirection: pct < 0 ? "increase" : "decrease",
                 amounts: { unit: String(bd.perBaseUnit ?? ""), pack: String(bd.perPack ?? ""), master_pack: bd.perMasterPack != null ? String(bd.perMasterPack) : "" },
             };
         }
-        return { mode: "amount", canonicalPrice: null, percentValue: "", amounts: { unit: "", pack: "", master_pack: "" } };
+        return { mode: "amount", canonicalPrice: null, percentValue: "", percentDirection: "decrease", amounts: { unit: "", pack: "", master_pack: "" } };
     };
 
     const openEditor = (ids) => {
@@ -740,6 +759,7 @@ export default function CustomPricingModal({ open, onClose, buyerId, buyerLabel,
                     mode: "percent",
                     canonicalPrice: canonical,
                     percentValue: String(pct),
+                    percentDirection: bulkDirection,
                     amounts: { unit: String(bd.perBaseUnit ?? ""), pack: String(bd.perPack ?? ""), master_pack: bd.perMasterPack != null ? String(bd.perMasterPack) : "" },
                 };
             });
