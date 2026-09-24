@@ -17,6 +17,23 @@ import { STEPS, BUSINESS_TYPES, WEEKDAYS, guessBusinessType } from "../component
 import { lookupPincode } from "../utils/sellerListingApi.js";
 import { readPendingProductSubmission } from "./SellPublishProductPage.jsx";
 
+// Works out where this business dispatches from, using what's already on
+// their business (GST) profile: the separate dispatch address if they set
+// one up, otherwise the registered address. The dispatch district isn't
+// stored on the business profile, so for a separate dispatch address it's
+// left blank here and looked up from the pincode by the Operations step.
+function dispatchFromBusiness(bp) {
+  if (!bp) return {};
+  const useDispatch = bp.dispatch_same_as_registered === false && !!bp.dispatch_pincode;
+  const pincode = useDispatch ? bp.dispatch_pincode : bp.pincode;
+  if (!pincode) return {};
+  return {
+    dispatch_pincode: String(pincode),
+    dispatch_district: useDispatch ? "" : (bp.district || ""),
+    dispatch_state: useDispatch ? (bp.dispatch_state || bp.state || "") : (bp.state || ""),
+  };
+}
+
 export function SellerOnboardingForm({ onSubmitted }) {
   const { token } = useAuth();
   const navigate = useNavigate();
@@ -39,21 +56,43 @@ export function SellerOnboardingForm({ onSubmitted }) {
   // this tab is still open on the onboarding form).
   useEffect(() => {
     if (sellerStatusLoading) return;
-    setForm((f) => ({
-      ...f,
-      contact_person: fetchedProfile?.name || f.contact_person || "",
-      whatsapp_number: fetchedProfile?.phone || f.whatsapp_number || "",
-      whatsapp_verified: !!fetchedProfile?.phone_verified,
-      original_verified_number: fetchedProfile?.phone_verified ? fetchedProfile.phone : null,
-      address: gstData?.registered_address || f.address || "",
-      pincode: gstData?.pincode || f.pincode || "",
-      city: gstData?.district || f.city || "",
-      state: gstData?.state || f.state || "",
-      pan: gstData?.pan || f.pan || "",
-      display_name: gstData?.trade_name || gstData?.legal_name || f.display_name || "",
-      business_type: f.business_type || guessBusinessType(gstData?.nature_of_business),
-      ...(liveSeller || {}),
-    }));
+    setForm((f) => {
+      // Dispatch location: keep whatever the seller already saved (or is
+      // typing); only when there's nothing yet, start from the business
+      // profile so they don't have to type it. Applied AFTER the
+      // liveSeller spread below, because a draft seller row has these
+      // fields as null and would otherwise wipe the prefill.
+      const existingPin = liveSeller?.dispatch_pincode || f.dispatch_pincode;
+      const prefill = dispatchFromBusiness(gstData);
+      const dispatchFields = existingPin
+        ? {
+          dispatch_pincode: existingPin,
+          dispatch_district: liveSeller?.dispatch_district || f.dispatch_district || "",
+          dispatch_state: liveSeller?.dispatch_state || f.dispatch_state || "",
+        }
+        : {
+          dispatch_pincode: prefill.dispatch_pincode || "",
+          dispatch_district: prefill.dispatch_district || "",
+          dispatch_state: prefill.dispatch_state || "",
+        };
+
+      return {
+        ...f,
+        contact_person: fetchedProfile?.name || f.contact_person || "",
+        whatsapp_number: fetchedProfile?.phone || f.whatsapp_number || "",
+        whatsapp_verified: !!fetchedProfile?.phone_verified,
+        original_verified_number: fetchedProfile?.phone_verified ? fetchedProfile.phone : null,
+        address: gstData?.registered_address || f.address || "",
+        pincode: gstData?.pincode || f.pincode || "",
+        city: gstData?.district || f.city || "",
+        state: gstData?.state || f.state || "",
+        pan: gstData?.pan || f.pan || "",
+        display_name: gstData?.trade_name || gstData?.legal_name || f.display_name || "",
+        business_type: f.business_type || guessBusinessType(gstData?.nature_of_business),
+        ...(liveSeller || {}),
+        ...dispatchFields,
+      };
+    });
   }, [sellerStatusLoading, fetchedProfile, gstData, liveSeller]);
 
   useEffect(() => {
@@ -443,6 +482,19 @@ function OperationsStep({ form, update }) {
     }
   };
 
+  // Handles the pincode that was prefilled from the business profile (and
+  // any complete 6-digit pincode as soon as it's typed). If the district
+  // and state are already known there's nothing to look up; otherwise
+  // resolve them from the pincode. Never runs while a lookup is in flight
+  // or after one has finished (status is no longer null).
+  useEffect(() => {
+    const pin = form.dispatch_pincode || "";
+    if (!/^\d{6}$/.test(pin) || pincodeStatus !== null) return;
+    if (form.dispatch_district && form.dispatch_state) setPincodeStatus("ok");
+    else confirmPincode(pin);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.dispatch_pincode, form.dispatch_district, form.dispatch_state, pincodeStatus]);
+
   const presetBtnClass = (active) =>
     `rounded-full border px-3 py-1 text-[12.5px] font-bold tracking-wide transition-colors ${active
       ? "border-[#047084] bg-[#047084] text-white"
@@ -528,15 +580,17 @@ function OperationsStep({ form, update }) {
         <Label>Dispatch pincode</Label>
         <input
           value={form.dispatch_pincode || ""}
-          onChange={(e) => { update("dispatch_pincode", e.target.value.replace(/\D/g, "").slice(0, 6)); setPincodeStatus(null); }}
-          onBlur={(e) => confirmPincode(e.target.value)}
+          onChange={(e) => {
+            update("dispatch_pincode", e.target.value.replace(/\D/g, "").slice(0, 6));
+            // clear the old location so the lookup effect resolves the new pincode
+            update("dispatch_district", "");
+            update("dispatch_state", "");
+            setPincodeStatus(null);
+          }}
           inputMode="numeric"
           placeholder="6-digit pincode"
           className={fieldWrap()}
         />
-        <p className="text-[12.5px] font-medium tracking-wide text-slate-400">
-          Where you'll be dispatching orders from?
-        </p>
         {pincodeStatus === "checking" && <p className="text-[12px] font-semibold text-slate-400">Checking…</p>}
         {pincodeStatus === "ok" && <p className="text-[12px] font-bold text-[#047084]">Dispatching from {form.dispatch_district}, {form.dispatch_state}</p>}
         {pincodeStatus === "error" && <p className="text-[12px] font-medium text-[#c71f11]">Couldn't verify this pincode — you can still continue.</p>}
@@ -741,4 +795,4 @@ function FileField({ label, value, onUploaded, token, folder, accept, bucket = "
       </div>
     </div>
   );
-}   
+}
