@@ -1,12 +1,19 @@
 // pages/SellerWalletPage.jsx
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Wallet, Loader2, AlertTriangle, IndianRupee, Clock, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Wallet, Loader2, AlertTriangle, IndianRupee, Clock, ShieldCheck, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchWalletStatus, fetchWalletTransactions, fetchWalletPayments } from "../utils/walletApi.js";
 import { C } from "../components/catalog/tokens";
 import WalletPaymentQRModal from "../components/WalletPaymentQRModal.jsx";
+
+// Module-scoped — survives unmount/remount as you navigate away and back,
+// but resets on a hard page reload (which is fine; a hard reload should
+// fetch fresh anyway). Keyed by nothing since this page is per-seller and
+// the token implicitly scopes it — swap to a Map keyed by seller id if
+// this page is ever reused across accounts without a full remount.
+let walletCache = null; // { wallet, txns, payments }
 
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
 
@@ -31,8 +38,48 @@ const TXN_LABEL = {
     commission_accrued: { label: "Commission + GST deducted", color: "#c71f11", sign: -1 },
     commission_reversed: { label: "Commission reversed", color: "#059669", sign: 1 },
     payment_made: { label: "Credits added", color: "#059669", sign: 1 },
-    manual_adjustment: { label: "Adjustment", color: C.muted, sign: null }, // unknown intent — show raw
+    signup_credit: { label: "Welcome credits", color: "#059669", sign: 1 }, // NEW
+    manual_adjustment: { label: "Adjustment", color: C.muted, sign: null },
 };
+
+function TxnRow({ t, navigate }) {
+
+    const meta = TXN_LABEL[t.type] || { label: t.type, color: C.muted, sign: null };
+    const hasOrder = !!t.order_id;
+    const hasNote = !!(t.note && t.note.trim());
+
+    return (
+        <div className="border-b pb-2.5 last:border-b-0 last:pb-0" style={{ borderColor: C.hairSoft }}>
+            <div
+                className="flex items-start justify-between gap-2"
+                onClick={() => {
+                    if (hasOrder) navigate(`/seller/orders/${t.order_id}`);
+                }}
+                style={{ cursor: (hasOrder || hasNote) ? "pointer" : "default" }}
+            >
+                <div className="min-w-0 flex-1 overflow-hidden">
+                    <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{meta.label}</p>
+                    {hasNote && (
+                        <p
+                            className="mt-0.5 overflow-hidden text-[11.5px] font-medium tracking-wide whitespace-pre-wrap"
+                            style={{ color: C.muted }}
+                        >
+                            {t.note}
+                        </p>
+                    )}
+                    <p className="mt-0.5 text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>{new Date(t.created_at).toLocaleString("en-IN")}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                    <p className="text-[15px] font-extrabold tabular-nums" style={{ color: meta.color }}>
+                        {meta.sign === null
+                            ? `${t.amount > 0 ? "+" : ""}₹${inr(t.amount)}`
+                            : `${meta.sign > 0 ? "+" : "−"}₹${inr(Math.abs(t.amount))}`}
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 function balanceGradient(balance, threshold) {
     const ratio = threshold > 0 ? Math.max(0, Math.min(1, balance / threshold)) : 1;
@@ -45,27 +92,38 @@ function balanceGradient(balance, threshold) {
 export default function SellerWalletPage() {
     const navigate = useNavigate();
     const { token } = useAuth();
-    const [wallet, setWallet] = useState(null);
-    const [txns, setTxns] = useState([]);
-    const [payments, setPayments] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [wallet, setWallet] = useState(walletCache?.wallet ?? null);
+    const [txns, setTxns] = useState(walletCache?.txns ?? []);
+    const [payments, setPayments] = useState(walletCache?.payments ?? []);
+    // Only block on the spinner if we have NOTHING to show yet — a
+    // background refresh should never re-show a full-page loader.
+    const [loading, setLoading] = useState(!walletCache);
 
     const [payAmount, setPayAmount] = useState("");
     const [showQrModal, setShowQrModal] = useState(false);
     const [amountError, setAmountError] = useState(null);
     const [notice, setNotice] = useState(null);
 
-    const load = useCallback(async () => {
+    const load = useCallback(async ({ background = false } = {}) => {
+        if (!background) setLoading(true);
         const [w, t, p] = await Promise.all([fetchWalletStatus(token), fetchWalletTransactions(token), fetchWalletPayments(token)]);
-        if (w?.success) setWallet(w.wallet);
-        if (t?.success) setTxns(t.transactions);
-        if (p?.success) setPayments(p.payments);
+        const next = {
+            wallet: w?.success ? w.wallet : walletCache?.wallet ?? null,
+            txns: t?.success ? t.transactions : walletCache?.txns ?? [],
+            payments: p?.success ? p.payments : walletCache?.payments ?? [],
+        };
+        walletCache = next;
+        setWallet(next.wallet);
+        setTxns(next.txns);
+        setPayments(next.payments);
         setLoading(false);
     }, [token]);
 
     useEffect(() => {
-        if (!token) return; // don't fire wallet calls before auth is ready
-        load();
+        if (!token) return;
+        // If we already have cached data, render it instantly and refresh
+        // quietly in the background instead of blocking on a fresh fetch.
+        load({ background: !!walletCache });
     }, [load, token]);
 
     const handleProceedToPay = () => {
@@ -169,23 +227,7 @@ export default function SellerWalletPage() {
                     <p className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>No transactions yet.</p>
                 ) : (
                     <div className="flex flex-col gap-2.5">
-                        {txns.map((t) => {
-                            const meta = TXN_LABEL[t.type] || { label: t.type, color: C.muted };
-                            return (
-                                <div key={t.id} className="flex items-center justify-between border-b pb-2.5 last:border-b-0 last:pb-0" style={{ borderColor: C.hairSoft }}>
-                                    <div className="min-w-0">
-                                        <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{meta.label}</p>
-                                        <p className="truncate text-[11.5px] font-medium tracking-wider" style={{ color: C.muted }}>{t.note}</p>
-                                        <p className="text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>{new Date(t.created_at).toLocaleString("en-IN")}</p>
-                                    </div>
-                                    <p className="shrink-0 text-[15px] font-extrabold tabular-nums" style={{ color: meta.color }}>
-                                        {meta.sign === null
-                                            ? `${t.amount > 0 ? "+" : ""}₹${inr(t.amount)}`
-                                            : `${meta.sign > 0 ? "+" : "−"}₹${inr(Math.abs(t.amount))}`}
-                                    </p>
-                                </div>
-                            );
-                        })}
+                        {txns.map((t) => <TxnRow key={t.id} t={t} navigate={navigate} />)}
                     </div>
                 )}
             </Card>
