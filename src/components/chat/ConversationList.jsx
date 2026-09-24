@@ -1,9 +1,10 @@
 // components/chat/ConversationList.jsx
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Search, MessageSquare, Loader2, Store } from "lucide-react";
+import { Search, MessageSquare, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { fetchApprovedSellers, getOrCreateDirectConversation } from "../../utils/chatApi.js";
+import { prefetchMessages } from "../../hooks/useChat.js";
 
 const C = { ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83", hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)" };
 const EASE = [0.16, 1, 0.3, 1];
@@ -34,15 +35,19 @@ function RowSkeleton() {
     );
 }
 
+// If the logo fails to load, fall back to initials via state (the old
+// onError handler read `nextSibling`, which doesn't exist here and threw).
 function Avatar({ logoUrl, shopName, size = "h-11 w-11", muted = false }) {
-    if (logoUrl) {
+    const [broken, setBroken] = useState(false);
+    if (logoUrl && !broken) {
         return (
             <img
                 src={logoUrl}
                 alt={shopName || "Shop"}
+                loading="lazy"
                 className={`${size} shrink-0 rounded-full object-cover shadow-sm`}
                 style={{ border: `1px solid ${C.hair}`, filter: muted ? "grayscale(1)" : "none", opacity: muted ? 0.6 : 1 }}
-                onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }}
+                onError={() => setBroken(true)}
             />
         );
     }
@@ -70,6 +75,9 @@ export default function ConversationList({ conversations, loading, activeId, onS
     const [sellers, setSellers] = useState([]);
     const [sellersLoading, setSellersLoading] = useState(true);
     const [starting, setStarting] = useState(null);
+    // sellers we've just opened a chat with — hidden from "Approved sellers"
+    // immediately, without waiting for the conversations list to reload
+    const [started, setStarted] = useState(() => new Set());
 
     useEffect(() => {
         if (!token) return;
@@ -82,6 +90,12 @@ export default function ConversationList({ conversations, loading, activeId, onS
         return () => { cancelled = true; };
     }, [token]);
 
+    // Warm the message cache for the top few chats so opening them is instant.
+    useEffect(() => {
+        if (!token || loading) return;
+        conversations.slice(0, 5).forEach((c) => prefetchMessages(token, c.id));
+    }, [token, loading, conversations]);
+
     // Sellers who don't have an existing conversation yet — those already show up below.
     // Note: fetchApprovedSellers already excludes deleted sellers server-side,
     // so this "start a new chat" list never surfaces one — a deleted seller
@@ -91,18 +105,25 @@ export default function ConversationList({ conversations, loading, activeId, onS
         () => new Set(conversations.filter((c) => c.otherUserId).map((c) => String(c.otherUserId).toLowerCase())),
         [conversations],
     );
-    const newSellers = sellers.filter((s) => !conversationSellerIds.has(String(s.id).toLowerCase()));
+    const newSellers = sellers.filter((s) => {
+        const id = String(s.id).toLowerCase();
+        return !conversationSellerIds.has(id) && !started.has(id);
+    });
 
     const q = query.trim().toLowerCase();
     const filteredConversations = conversations.filter((c) => (c.otherShopName || "").toLowerCase().includes(q));
     const filteredNewSellers = newSellers.filter((s) => (s.shopName || "").toLowerCase().includes(q));
 
+    // Navigates as soon as the conversation id is known; the list refresh
+    // happens in the background instead of blocking the open.
     const startChat = async (seller) => {
+        if (starting) return;
         setStarting(seller.id);
         const res = await getOrCreateDirectConversation(token, seller.id);
         if (res?.success) {
-            await reload();       // wait for the conversations list to include it...
-            onSelect(res.conversationId); // ...before navigating, so the seller list has already dropped it
+            setStarted((prev) => new Set(prev).add(String(seller.id).toLowerCase()));
+            onSelect(res.conversationId);
+            reload();
         }
         setStarting(null);
     };
@@ -119,13 +140,14 @@ export default function ConversationList({ conversations, loading, activeId, onS
                     <input
                         value={query} onChange={(e) => setQuery(e.target.value)}
                         placeholder="Search sellers or chats"
-                        className="w-full bg-transparent text-[13px] font-medium outline-none placeholder:text-slate-400"
+                        // 16px on mobile prevents iOS focus-zoom
+                        className="w-full bg-transparent text-[16px] font-medium outline-none placeholder:text-slate-400 sm:text-[13px]"
                         style={{ color: C.ink }}
                     />
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto overscroll-contain">
                 {/* --- Existing chats --- */}
                 {loading ? (
                     Array.from({ length: 4 }).map((_, i) => <RowSkeleton key={`c-${i}`} />)
@@ -137,6 +159,8 @@ export default function ConversationList({ conversations, loading, activeId, onS
                             <motion.button
                                 key={c.id}
                                 onClick={() => onSelect(c.id)}
+                                onPointerEnter={() => prefetchMessages(token, c.id)}
+                                onTouchStart={() => prefetchMessages(token, c.id)}
                                 initial={{ opacity: 0, y: 4 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.18, delay: Math.min(i * 0.02, 0.12), ease: EASE }}

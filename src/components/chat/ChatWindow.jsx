@@ -3,26 +3,18 @@
 // The whole message-thread experience — header, banner, bubbles,
 // composer — lives in this one file.
 //
-// THIS PASS ADDS:
-//   - Credit limit is now actually passed through on approval
-//     (CreditApprovalDialog -> handleConfirmApproval -> decide()).
-//   - New CreditLimitDialog for sellers responding to a buyer's
-//     "request more credit" ask, wired to update_credit_limit via
-//     the useCredit hook's `updateLimit`.
-//   - MessageBubble renders `credit_limit_request` messages with an
-//     "Update limit" action instead of Approve/Decline.
+// Credit flow: CreditApprovalDialog -> handleConfirmApproval -> decide()
+// passes the limit through on approval; CreditLimitDialog lets a seller
+// respond to a buyer's "request more credit" ask via useCredit().updateLimit.
 //
-// NOTE: this assumes useCredit() (in hooks/useChat.js) exposes an
-// `updateLimit(creditId, newLimit, resetUsed?)` function alongside the
-// existing `decide`, `request`, `toggle` — wired to your
-// updateCreditLimit(token, creditId, newLimit, resetUsed) API client call,
-// the same way `decide` already wraps decideCredit(). If that isn't in
-// useChat.js yet, add it there before this will work end-to-end.
+// MOBILE: the composer keeps the keyboard open after sending, uses 16px
+// text on touch devices (prevents iOS focus-zoom), has no spinner on the
+// send button, and scrolling only ever touches the message list (never the
+// window), so the input never jumps.
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowDown, CreditCard, Loader2, Tag, Pencil, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, X, ShieldOff } from "lucide-react";
+import { ArrowLeft, ArrowDown, CreditCard, Loader2, Tag, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, X, ShieldOff } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { useNavigate } from "react-router-dom";
 import useChatMessages, { usePresence, useCredit } from "../../hooks/useChat.js";
 import { useChatContext } from "../../context/ChatContext.jsx";
 import CustomPricingModal from "./CustomPricingModal.jsx";
@@ -113,19 +105,13 @@ function TypingDots({ color = C.secondary, size = "h-1.5 w-1.5" }) {
 }
 
 function StatusStrip({
-    credit, viewerRole, buyerInfo, otherName,
-    onRequestCredit, onToggleCredit, onDecideCredit, requestingCredit,
-    onRequestIncrease, requestingIncrease, // NEW
+    credit, viewerRole, otherName,
+    onRequestCredit, onToggleCredit, requestingCredit,
+    onRequestIncrease, requestingIncrease,
     disabled,
 }) {
-    const [decidingCredit, setDecidingCredit] = useState(null);
     const [togglingCredit, setTogglingCredit] = useState(false);
 
-    const handleDecideCredit = async (id, decision) => {
-        setDecidingCredit(decision);
-        await onDecideCredit(id, decision);
-        setDecidingCredit(null);
-    };
     const handleToggleCredit = async (enabled) => {
         setTogglingCredit(true);
         await onToggleCredit(enabled);
@@ -138,7 +124,7 @@ function StatusStrip({
     if (viewerRole === "buyer") {
         const cooldownActive = credit?.status === "rejected" && credit.cooldown_until && new Date(credit.cooldown_until) > new Date();
         if (!credit || credit.status === "revoked" || (credit.status === "rejected" && !cooldownActive)) {
-            creditCell = ( /* unchanged "Buy on credit" button */
+            creditCell = (
                 <button onClick={onRequestCredit} disabled={requestingCredit || disabled}
                     className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-60"
                     style={{ background: `${C.secondary}10`, color: C.secondary }}>
@@ -147,7 +133,7 @@ function StatusStrip({
                 </button>
             );
         } else if (credit.status === "pending") {
-            creditCell = ( /* unchanged */
+            creditCell = (
                 <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: C.warnBg, color: C.warn }} title={`Waiting for ${otherName}'s approval`}>
                     <Clock3 className="h-3 w-3" /> Credit pending
                 </span>
@@ -189,7 +175,6 @@ function StatusStrip({
                 </>
             );
         } else if (cooldownActive) {
-            /* unchanged */
             const retryDate = new Date(credit.cooldown_until);
             creditCell = (
                 <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: C.hairSoft, color: C.muted }}
@@ -236,16 +221,14 @@ function StatusStrip({
     );
 }
 
-// components/chat/ChatWindow.jsx
-
-// ChatHeader now takes the trigger as props and renders it as a compact
-// icon button at the end of the header row — same visual weight as the
-// rest of the header, not a second bar competing for attention above it.
+// ChatHeader takes the custom-pricing trigger as props and renders it as a
+// compact icon button at the end of the header row — same visual weight as
+// the rest of the header, not a second bar competing for attention.
 function ChatHeader({ meta, otherPresence, otherTyping, onBack, showCustomPricing, onOpenCustomPricing }) {
     const isDeleted = !!meta?.otherIsDeletedSeller;
     return (
         <div className="flex items-center gap-3 border-b px-3.5 py-2.5" style={{ borderColor: C.hair, background: C.surface }}>
-            <button onClick={onBack} className="rounded-full p-1.5 transition-colors hover:bg-black/5 sm:hidden">
+            <button onClick={onBack} className="rounded-full p-1.5 transition-colors hover:bg-black/5 sm:hidden" aria-label="Back">
                 <ArrowLeft className="h-4 w-4" style={{ color: C.ink }} />
             </button>
             <div className="relative shrink-0">
@@ -320,10 +303,6 @@ function ChatHeader({ meta, otherPresence, otherTyping, onBack, showCustomPricin
                 )}
             </div>
 
-            {/* NEW — folded into the header row itself, icon-only so it reads
-                as a header action (like a settings/menu button would) rather
-                than a second competing bar. aria-label carries the meaning
-                for screen readers since there's no visible text. */}
             {showCustomPricing && (
                 <button
                     onClick={onOpenCustomPricing}
@@ -365,8 +344,8 @@ function DeletedSellerNotice({ shopName }) {
     );
 }
 
-// ---- FIXED: onConfirm now passes the numeric limit up, and the button
-// is disabled until a positive limit is entered.
+// onConfirm passes the numeric limit up; the button is disabled until a
+// positive limit is entered.
 function CreditApprovalDialog({ open, onClose, onConfirm, buyerLabel, confirming }) {
     const [limit, setLimit] = useState("");
     const numericLimit = Number(limit);
@@ -400,7 +379,7 @@ function CreditApprovalDialog({ open, onClose, onConfirm, buyerLabel, confirming
                                     They'll be able to place orders with you on credit terms you arrange directly.
                                 </p>
                             </div>
-                            <button onClick={onClose} className="shrink-0 rounded-full p-1 transition-colors hover:bg-black/5">
+                            <button onClick={onClose} className="shrink-0 rounded-full p-1 transition-colors hover:bg-black/5" aria-label="Close">
                                 <X className="h-4 w-4" style={{ color: C.muted }} />
                             </button>
                         </div>
@@ -415,7 +394,7 @@ function CreditApprovalDialog({ open, onClose, onConfirm, buyerLabel, confirming
                                     type="number" inputMode="decimal" value={limit}
                                     onChange={(e) => setLimit(e.target.value)}
                                     placeholder="e.g. 30000"
-                                    className="w-full bg-transparent text-[14px] font-bold tabular-nums outline-none"
+                                    className="w-full bg-transparent text-[16px] font-bold tabular-nums outline-none sm:text-[14px]"
                                 />
                             </div>
                             <p className="mt-1 text-[11px] font-medium tracking-wider" style={{ color: C.muted }}>
@@ -439,7 +418,6 @@ function CreditApprovalDialog({ open, onClose, onConfirm, buyerLabel, confirming
                                 style={{ borderColor: C.hair, color: C.muted }}>
                                 Cancel
                             </button>
-                            {/* FIXED: was onClick={onConfirm} with no arg, and missing !canConfirm in disabled */}
                             <button onClick={() => onConfirm(numericLimit)} disabled={confirming || !canConfirm}
                                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97] disabled:opacity-60"
                                 style={{ background: C.ok }}>
@@ -454,9 +432,9 @@ function CreditApprovalDialog({ open, onClose, onConfirm, buyerLabel, confirming
     );
 }
 
-// NEW — the seller-side "respond to a limit-increase request" dialog.
-// Same shape as CreditApprovalDialog but no legal disclaimer (terms were
-// already accepted at initial approval) and it prefills the current limit.
+// Seller-side "respond to a limit-increase request" dialog. Same shape as
+// CreditApprovalDialog but no legal disclaimer (terms were already accepted
+// at initial approval) and it prefills the current limit.
 function CreditLimitDialog({ open, onClose, onConfirm, buyerLabel, currentLimit, confirming }) {
     const [limit, setLimit] = useState("");
     const numericLimit = Number(limit);
@@ -489,7 +467,7 @@ function CreditLimitDialog({ open, onClose, onConfirm, buyerLabel, currentLimit,
                                     {buyerLabel} asked you to reconsider their monthly credit limit.
                                 </p>
                             </div>
-                            <button onClick={onClose} className="shrink-0 rounded-full p-1 transition-colors hover:bg-black/5">
+                            <button onClick={onClose} className="shrink-0 rounded-full p-1 transition-colors hover:bg-black/5" aria-label="Close">
                                 <X className="h-4 w-4" style={{ color: C.muted }} />
                             </button>
                         </div>
@@ -504,7 +482,7 @@ function CreditLimitDialog({ open, onClose, onConfirm, buyerLabel, currentLimit,
                                     type="number" inputMode="decimal" value={limit}
                                     onChange={(e) => setLimit(e.target.value)}
                                     placeholder="e.g. 50000"
-                                    className="w-full bg-transparent text-[14px] font-bold tabular-nums outline-none"
+                                    className="w-full bg-transparent text-[16px] font-bold tabular-nums outline-none sm:text-[14px]"
                                 />
                             </div>
                             <p className="mt-1 text-[11px] font-medium" style={{ color: C.muted }}>
@@ -553,11 +531,9 @@ const MessageBubble = memo(function MessageBubble({
     disabled,
 }) {
     const [menuOpen, setMenuOpen] = useState(false);
-    const [decidingAction, setDecidingAction] = useState(null);
     const [decliningIncrease, setDecliningIncrease] = useState(false);
     const [decidingCredit, setDecidingCredit] = useState(null); // 'approved' | 'rejected' | null, local to this bubble
     const menuRef = useRef(null);
-
 
     if (message.message_type === "credit_request" || message.message_type === "credit_limit_request") {
         const isLimitRequest = message.message_type === "credit_limit_request";
@@ -602,7 +578,6 @@ const MessageBubble = memo(function MessageBubble({
             await onDeclineLimitIncrease(credit.id);
             setDecliningIncrease(false);
         };
-
 
         const buyerLabel = buyerInfo?.businessName || buyerInfo?.name;
         const needsDecision = !isMine && isLiveRequest && status === "pending" && !disabled;
@@ -704,7 +679,7 @@ const MessageBubble = memo(function MessageBubble({
                         </div>
                     )}
 
-                    {/* decision — Approve/Decline for a fresh request, Update limit for a limit-increase ask */}
+                    {/* decision — Update limit / Decline for a limit-increase ask, Approve / Decline for a fresh request */}
                     {needsDecision && (
                         isLimitRequest ? (
                             <div className="flex gap-2 px-3.5 pb-3.5">
@@ -722,31 +697,19 @@ const MessageBubble = memo(function MessageBubble({
                                 </button>
                             </div>
                         ) : (
-                            isLimitRequest ? (
-                                <div className="flex gap-2 px-3.5 pb-3.5">
-                                    <button
-                                        onClick={() => onRequestLimitUpdate(credit.id, buyerLabel || "this buyer", credit.credit_limit)}
-                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97]"
-                                        style={{ background: C.secondary }}
-                                    >
-                                        <CreditCard className="h-3.5 w-3.5" /> Update limit
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="flex gap-2 px-3.5 pb-3.5">
-                                    <button onClick={() => onRequestApproval(credit.id, buyerLabel || "this buyer")} disabled={!!decidingCredit}
-                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97] disabled:opacity-60"
-                                        style={{ background: C.ok }}>
-                                        <Check className="h-3.5 w-3.5" /> Approve
-                                    </button>
-                                    <button onClick={handleDecline} disabled={!!decidingCredit}
-                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] disabled:opacity-60"
-                                        style={{ borderColor: C.hair, color: C.muted }}>
-                                        {decidingCredit === "rejected" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                        Decline
-                                    </button>
-                                </div>
-                            )
+                            <div className="flex gap-2 px-3.5 pb-3.5">
+                                <button onClick={() => onRequestApproval(credit.id, buyerLabel || "this buyer")} disabled={!!decidingCredit}
+                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97] disabled:opacity-60"
+                                    style={{ background: C.ok }}>
+                                    <Check className="h-3.5 w-3.5" /> Approve
+                                </button>
+                                <button onClick={handleDecline} disabled={!!decidingCredit}
+                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] disabled:opacity-60"
+                                    style={{ borderColor: C.hair, color: C.muted }}>
+                                    {decidingCredit === "rejected" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                    Decline
+                                </button>
+                            </div>
                         )
                     )}
                     <div className="flex items-center justify-end px-3.5 pb-3">
@@ -775,7 +738,7 @@ const MessageBubble = memo(function MessageBubble({
         >
             {isMine && !isDeleted && (
                 <div className="relative opacity-0 transition-opacity group-hover:opacity-100" ref={menuRef}>
-                    <button onClick={() => setMenuOpen((v) => !v)} className="rounded-full p-1 hover:bg-black/5">
+                    <button onClick={() => setMenuOpen((v) => !v)} className="rounded-full p-1 hover:bg-black/5" aria-label="Message options">
                         <MoreVertical className="h-3.5 w-3.5" style={{ color: C.muted }} />
                     </button>
                     <AnimatePresence>
@@ -834,25 +797,35 @@ const MessageBubble = memo(function MessageBubble({
 
 // ---- composer -----------------------------------------------------------
 
-function ChatComposer({ onSend, sending, onTypingChange, disabled }) {
+function ChatComposer({ onSend, onTypingChange, disabled }) {
     const [value, setValue] = useState("");
     const textareaRef = useRef(null);
 
-    const autoGrow = (e) => {
+    const onChange = (e) => {
         setValue(e.target.value);
         onTypingChange?.(e.target.value.length > 0);
         e.target.style.height = "auto";
         e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
     };
+
     const submit = () => {
-        if (!value.trim() || disabled) return;
-        onSend(value);
+        const text = value.trim();
+        if (!text || disabled) return;
+        onSend(text);
         onTypingChange?.(false);
         setValue("");
-        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        const ta = textareaRef.current;
+        if (ta) {
+            ta.style.height = "auto";
+            ta.focus({ preventScroll: true }); // keep the keyboard open after sending
+        }
     };
+
     const onKeyDown = (e) => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+        // On phones Enter inserts a new line (the send button sends);
+        // on desktop Enter sends and Shift+Enter inserts a new line.
+        const touch = window.matchMedia?.("(pointer: coarse)").matches;
+        if (e.key === "Enter" && !e.shiftKey && !touch) { e.preventDefault(); submit(); }
     };
 
     if (disabled) {
@@ -864,24 +837,34 @@ function ChatComposer({ onSend, sending, onTypingChange, disabled }) {
     }
 
     return (
-        <div className="flex items-end gap-2 border-t px-3 py-2.5 sm:px-4" style={{ borderColor: C.hair, background: C.surface }}>
+        <div
+            className="flex shrink-0 items-end gap-2 border-t px-3 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:px-4"
+            style={{ borderColor: C.hair, background: C.surface }}
+        >
             <textarea
                 ref={textareaRef}
                 value={value}
-                onChange={autoGrow}
+                onChange={onChange}
                 onKeyDown={onKeyDown}
                 rows={1}
+                enterKeyHint="send"
+                autoComplete="off"
+                autoCorrect="on"
                 placeholder="Type a message…"
-                className="max-h-[120px] flex-1 resize-none rounded-2xl border bg-[#FAFAF9] px-3.5 py-2.5 text-[13.5px] font-medium leading-snug tracking-wide outline-none transition-colors placeholder:text-slate-400 focus:border-[#006F83] focus:bg-white"
+                // 16px on mobile prevents iOS focus-zoom (the main cause of the "jump")
+                className="max-h-[120px] flex-1 resize-none rounded-2xl border bg-[#FAFAF9] px-3.5 py-2.5 text-[16px] font-medium leading-snug tracking-wide outline-none transition-colors placeholder:text-slate-400 focus:border-[#006F83] focus:bg-white sm:text-[13.5px]"
                 style={{ borderColor: C.hair, color: C.ink }}
             />
             <button
+                type="button"
+                onPointerDown={(e) => e.preventDefault()} // don't steal focus → keyboard stays up
                 onClick={submit}
-                disabled={!value.trim() || sending}
+                disabled={!value.trim()}
+                aria-label="Send"
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-transform active:scale-95 disabled:opacity-40 disabled:active:scale-100"
                 style={{ background: C.secondary }}
             >
-                {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                <Send className="h-4 w-4" />
             </button>
         </div>
     );
@@ -912,6 +895,8 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     const presence = usePresence(meta?.otherUserId ? [meta.otherUserId] : []);
     const otherPresence = meta?.otherUserId ? presence[meta.otherUserId] : null;
 
+    const { credit, viewerRole, buyerInfo, request, decide, toggle, updateLimit, requestIncrease, declineIncrease } = useCredit(meta?.otherUserId);
+
     // ---- credit approval dialog ----
     const [approvalDialog, setApprovalDialog] = useState(null); // { creditId, buyerLabel } | null
     const [confirmingApproval, setConfirmingApproval] = useState(false);
@@ -920,7 +905,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         setApprovalDialog({ creditId, buyerLabel });
     }, []);
 
-    // FIXED: now accepts and forwards the numeric limit typed into the dialog
+    // accepts and forwards the numeric limit typed into the dialog
     const handleConfirmApproval = async (limit) => {
         if (!approvalDialog) return;
         setConfirmingApproval(true);
@@ -929,7 +914,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         setApprovalDialog(null);
     };
 
-    // ---- NEW: credit limit-update dialog (seller responding to a buyer's ask) ----
+    // ---- credit limit-update dialog (seller responding to a buyer's ask) ----
     const [limitDialog, setLimitDialog] = useState(null); // { creditId, buyerLabel, currentLimit } | null
     const [confirmingLimit, setConfirmingLimit] = useState(false);
 
@@ -945,14 +930,8 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         setLimitDialog(null);
     };
 
-    // `updateLimit` must be exposed by useCredit() the same way `decide` is —
-    // see the NOTE at the top of this file.
-    const { credit, viewerRole, buyerInfo, request, decide, toggle, updateLimit, requestIncrease, declineIncrease } = useCredit(meta?.otherUserId);
-
-    console.log("viewerRole : ", viewerRole);
-
     const [requestingCredit, setRequestingCredit] = useState(false);
-    const [requestingIncrease, setRequestingIncrease] = useState(false); // NEW
+    const [requestingIncrease, setRequestingIncrease] = useState(false);
 
     const handleRequestIncrease = useCallback(async () => {
         if (!credit?.id) return;
@@ -965,7 +944,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
         await declineIncrease(creditId);
     }, [declineIncrease]);
 
-
     const handleRequestCredit = async () => {
         setRequestingCredit(true);
         await request();
@@ -974,7 +952,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
 
     const {
         messages, loading, loadingOlder, hasMore, loadOlder,
-        send, retry, deleteMessage, sending, otherTyping, notifyTyping, connected,
+        send, retry, deleteMessage, otherTyping, notifyTyping, connected,
         canSend,
         sendError,
     } = useChatMessages(conversationId, meta?.otherUserId);
@@ -1006,8 +984,13 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
 
     useEffect(() => () => clearTimeout(highlightTimeoutRef.current), []);
 
+    // Only ever scrolls the message list itself — never the window or any
+    // other ancestor (scrollIntoView did, which caused page jumps whenever
+    // the mobile keyboard opened or closed).
     const jumpToBottom = useCallback((smooth = false) => {
-        bottomRef.current?.scrollIntoView(smooth && !prefersReducedMotion ? { behavior: "smooth", block: "end" } : { block: "end" });
+        const el = scrollRef.current;
+        if (!el) return;
+        el.scrollTo({ top: el.scrollHeight, behavior: smooth && !prefersReducedMotion ? "smooth" : "auto" });
     }, []);
 
     useEffect(() => {
@@ -1077,15 +1060,19 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     const pinnedRef = useRef(true);
     useEffect(() => { pinnedRef.current = isNearBottom; }, [isNearBottom]);
 
+    // Keeps the list pinned to the bottom when either the container resizes
+    // (mobile keyboard opening/closing) or its content grows (new messages,
+    // images, typing bubble).
     useEffect(() => {
         const el = scrollRef.current;
         if (!el || typeof ResizeObserver === "undefined") return;
         const ro = new ResizeObserver(() => {
-            if (pinnedRef.current) jumpToBottom(false);
+            if (pinnedRef.current) el.scrollTop = el.scrollHeight;
         });
         ro.observe(el);
+        if (el.firstElementChild) ro.observe(el.firstElementChild);
         return () => ro.disconnect();
-    }, [jumpToBottom]);
+    }, []);
 
     const onScroll = () => {
         const el = scrollRef.current;
@@ -1107,7 +1094,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     let lastDay = null;
 
     return (
-        <div className="flex h-full flex-col" style={{ background: C.canvas }}>
+        <div className="flex h-full flex-col overscroll-none" style={{ background: C.canvas }}>
             {!connected && (
                 <div className="px-4 py-1.5 text-center text-[11px] font-bold text-white" style={{ background: C.danger }}>
                     Reconnecting…
@@ -1146,7 +1133,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                     onWheel={stopScrollPropagation}
                     onTouchStart={stopScrollPropagation}
                     onTouchMove={stopScrollPropagation}
-                    className="h-full overflow-y-auto px-3 py-3 sm:px-4"
+                    className="h-full overflow-y-auto overscroll-contain px-3 py-3 sm:px-4"
                 >
                     {loadingOlder && (
                         <div className="flex justify-center py-2"><Loader2 className="h-3.5 w-3.5 animate-spin" style={{ color: C.muted }} /></div>
@@ -1240,7 +1227,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
 
             <ChatComposer
                 onSend={send}
-                sending={sending}
                 onTypingChange={notifyTyping}
                 disabled={isLockedOut}
             />
