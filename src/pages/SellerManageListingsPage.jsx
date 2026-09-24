@@ -2,7 +2,43 @@
 //
 // ... (all header comments unchanged from the previous version) ...
 //
-// BUGFIX (this pass): submissionToInitialValues() had two unit-conversion
+// KEEP PANEL OPEN AFTER PRICE SAVE (latest pass):
+// Confirming a price wheel still saves instantly, but the Quick Update
+// panel now STAYS OPEN afterwards so the seller can keep editing MOQ /
+// stock / etc. Only the panel's own Save button closes it.
+//   - handleQuickSave(id, payload, patch, { keepOpen }) skips
+//     setQuickEditId(null) when keepOpen is true, and returns
+//     { ok, submission } so the panel knows how the save went.
+//   - On success the panel re-syncs Base/Final display and the "Current
+//     price" wheel anchors to what the server actually stored, and shows
+//     a small "Price updated" confirmation.
+//   - On failure the row is rolled back (as before) AND the panel's price
+//     fields are reverted to their pre-edit values, so the panel never
+//     shows a price that wasn't saved.
+//
+// PRICE SYNC + ONE-TAP SAVE (previous pass):
+// 1. "Base price flashes, then final price replaces it" — root cause: the
+//    optimistic patch applied on Save set the row's `price` to the raw
+//    BASE price, but the server response (patchItem(id, res.submission))
+//    carries the GST-INCLUSIVE final price the list actually displays. So
+//    every save showed base → final. The optimistic value is now computed
+//    with the SAME computeFinalPrice(base, gst) formula the server uses,
+//    so the row goes straight to the number it will end up at and the
+//    server response is a no-op visually.
+// 2. One-tap price update: the Base/Final PriceWheelPicker's confirm button
+//    is now the commit. Confirming it applies the picked price AND saves
+//    the whole quick-update form in one go (no second tap on "Save").
+//    The wheel closes, the panel closes optimistically, the request goes
+//    out in the background and rolls back with a toast on failure. The
+//    panel's own Save button still exists for MOQ / dispatch time / stock /
+//    promotion budget edits.
+//    save() now takes explicit overrides for the price so it never reads
+//    stale React state (setState is async; calling save() right after
+//    applyBasePrice() would otherwise send the OLD price).
+// 3. The price wheel confirm button is labelled "Save ₹X" here (new
+//    `confirmVerb` prop on PriceWheelPicker) so it's clear it commits.
+//
+// BUGFIX (previous pass): submissionToInitialValues() had two unit-conversion
 // bugs that only showed up in the Edit form (the read-only Detail modal
 // was always correct, which is why the two disagreed):
 //   1. stockQuantityBasis was hardcoded to "per_pack" even though
@@ -19,7 +55,7 @@
 // Both are fixed below; the Detail modal's Sample row had the same
 // display bug and is fixed too.
 //
-// FIX (this pass): the live "submissions_changed" listener used to go
+// FIX (previous pass): the live "submissions_changed" listener used to go
 // through useAuth().subscribeUserEvent, which was wired to a Supabase
 // Realtime broadcast channel that nothing on the backend ever publishes
 // to (every real push goes out via this app's Socket.IO server — see
@@ -29,7 +65,7 @@
 // directly on the real socket.io-client connection (same one
 // useRealtimeNotifications.js already uses successfully).
 //
-// SCROLL-LOCK FIX (this pass): useLockBodyScroll() called lenis?.stop()
+// SCROLL-LOCK FIX (previous pass): useLockBodyScroll() called lenis?.stop()
 // and set document.body.style.overflow = "hidden", but background
 // scrolling still leaked through with both modals open. Root cause:
 // lenis.stop() only pauses LENIS'S OWN smooth-scroll tracking/animation —
@@ -55,7 +91,7 @@
 // EditListingModal's own scrollable content areas are marked with
 // data-scroll-lock-allow so scrolling inside them still works normally.
 //
-// QUICK UPDATE PANEL REDESIGN (this pass):
+// QUICK UPDATE PANEL REDESIGN (previous pass):
 // - Base Price, Promotion & Visibility Budget %, and Final Price are no longer plain
 //   number inputs. Each is now a tap target that opens the same
 //   PriceWheelPicker already used in the full listing form, for three
@@ -790,10 +826,10 @@ function StockAdjuster({ value, onChange, saleUnit }) {
 // On open, this still fetches the full submission because it needs the
 // real (base price, GST%) inputs to edit, not just the single opaque
 // "price" number. `onSave(payload, optimisticPatch)` is called once the
-// seller hits Save; the parent applies `optimisticPatch` to the list
-// immediately (so the UI updates with zero perceived delay) and only
-// sends `payload` to the server in the background, rolling back if it's
-// rejected.
+// seller hits Save (or confirms a price wheel); the parent applies
+// `optimisticPatch` to the list immediately (so the UI updates with zero
+// perceived delay) and only sends `payload` to the server in the
+// background, rolling back if it's rejected.
 function QuickUpdatePanel({ item, onCancel, onSave }) {
     const { token } = useAuth();
 
@@ -802,6 +838,9 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
     const [form, setForm] = useState(null);
     const [saving, setSaving] = useState(false);
     const [justSaved, setJustSaved] = useState(false);
+    // Brief "Price updated" confirmation shown after a wheel-confirm save,
+    // since the panel now stays open instead of closing as the signal.
+    const [priceSaved, setPriceSaved] = useState(false);
     const [error, setError] = useState("");
 
     // The values this listing had when the panel opened — used ONLY as
@@ -839,6 +878,17 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
         });
     }, []);
 
+    // The load effect below must run ONLY when the listing (or token)
+    // changes. It used to also depend on item.lead_time and
+    // item.units_per_master_pack — but a price save patches the list row
+    // (including lead_time), which changed those deps, re-ran the effect,
+    // flipped `loading` back to true and re-fetched everything: that was
+    // the whole-panel skeleton "reload" after every price update. The
+    // row's values are only fallbacks for missing server fields, so they're
+    // read from a ref instead of being effect dependencies.
+    const itemRef = useRef(item);
+    itemRef.current = item;
+
     useEffect(() => {
         let cancelled = false;
         setLoading(true);
@@ -847,8 +897,9 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             if (cancelled) return;
             if (!res?.success) { setLoadError(res?.message || "Couldn't load pricing details."); setLoading(false); return; }
             const s = res.submission;
+            const rowFallback = itemRef.current;
             const nextForm = {
-                unitsPerMasterPack: s.units_per_master_pack ?? item.units_per_master_pack ?? 1,
+                unitsPerMasterPack: s.units_per_master_pack ?? rowFallback.units_per_master_pack ?? 1,
                 basePrice: s.base_price != null ? String(s.base_price) : "",
                 gstPercent: s.gst_percent ?? 18,
                 moq: s.moq != null ? String(s.moq) : "",
@@ -858,7 +909,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                 leadTime: String(
                     s.stock_type === "made_to_order"
                         ? (s.production_lead_time_days ?? "")
-                        : (s.dispatch_time_days ?? item.lead_time ?? "")
+                        : (s.dispatch_time_days ?? rowFallback.lead_time ?? "")
                 ),
             };
             setForm(nextForm);
@@ -876,7 +927,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
             setLoading(false);
         });
         return () => { cancelled = true; };
-    }, [item.id, item.lead_time, item.units_per_master_pack, token]);
+    }, [item.id, token]);
 
     const saleUnit = form ? saleUnitLabel(form.unitsPerMasterPack) : null;
     const gstAmount = form ? computeGstAmount(form.basePrice, form.gstPercent) : 0;
@@ -887,9 +938,9 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
 
     const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
 
-    // Setting Base Price (now via wheel, not typing): store it directly,
-    // and re-derive what Final Price should show from it. This direction
-    // has no precision loss (base → final is a single multiply, not a
+    // Setting Base Price (via wheel): store it directly, and re-derive
+    // what Final Price should show from it. This direction has no
+    // precision loss (base → final is a single multiply, not a
     // round-trip).
     const applyBasePrice = (value) => {
         setPriceEditSource("base");
@@ -923,56 +974,124 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
         });
     };
 
-    async function save() {
+    // Validates + submits the whole quick-update form.
+    //
+    // `overrides.basePrice` exists because the price wheels call this in
+    // the SAME tick they set the price: React state updates are async, so
+    // reading form.basePrice here would still yield the OLD price. Passing
+    // the freshly-picked base price explicitly guarantees the payload
+    // always carries exactly what the seller just confirmed.
+    //
+    // `instant` (wheel path) skips the 420ms "Saved" pulse — the wheel's
+    // own confirm tap was the acknowledgement, and the optimistic row
+    // update should feel immediate.
+    async function save({ overrides = {}, instant = false } = {}) {
         setError("");
         if (!form) return;
-        if (!(Number(form.basePrice) > 0)) return setError("Price must be greater than 0.");
-        if (!(Number(form.moq) > 0)) return setError("MOQ must be greater than 0.");
-        if (form.stockType === "ready_stock" && form.stockQuantity !== "" && Number(form.stockQuantity) < 0) {
+
+        const values = {
+            ...form,
+            ...(overrides.basePrice !== undefined ? { basePrice: String(overrides.basePrice) } : {}),
+        };
+
+        if (!(Number(values.basePrice) > 0)) return setError("Price must be greater than 0.");
+        if (!(Number(values.moq) > 0)) return setError("MOQ must be greater than 0.");
+        if (values.stockType === "ready_stock" && values.stockQuantity !== "" && Number(values.stockQuantity) < 0) {
             return setError("Stock can't be negative.");
         }
-        if (!(Number(form.marketingCommissionPercent) >= 0.25 && Number(form.marketingCommissionPercent) <= 100)) {
+        if (!(Number(values.marketingCommissionPercent) >= 0.25 && Number(values.marketingCommissionPercent) <= 100)) {
             return setError("Promotion & Visibility Budget must be between 0.25% and 100%.");
         }
 
         setSaving(true);
 
         const payload = {
-            basePrice: Number(form.basePrice),
-            gstPercent: Number(form.gstPercent),
+            basePrice: Number(values.basePrice),
+            gstPercent: Number(values.gstPercent),
             // GST is always added on top now — never stored as inclusive.
             gstInclusive: false,
-            moq: Number(form.moq),
-            marketingCommissionPercent: Number(form.marketingCommissionPercent),
-            ...(form.stockType === "ready_stock"
+            moq: Number(values.moq),
+            marketingCommissionPercent: Number(values.marketingCommissionPercent),
+            ...(values.stockType === "ready_stock"
                 ? {
-                    stockQuantity: form.stockQuantity === "" ? null : Number(form.stockQuantity),
-                    dispatchTimeDays: form.leadTime === "" ? null : Number(form.leadTime),
+                    stockQuantity: values.stockQuantity === "" ? null : Number(values.stockQuantity),
+                    dispatchTimeDays: values.leadTime === "" ? null : Number(values.leadTime),
                 }
-                : { productionLeadTimeDays: form.leadTime === "" ? null : Number(form.leadTime) }),
+                : { productionLeadTimeDays: values.leadTime === "" ? null : Number(values.leadTime) }),
         };
 
         // Applied to the list row the instant Save is pressed — before the
         // network call even resolves — so there's no visible lag.
+        //
+        // `price` MUST be the GST-inclusive final price, computed with the
+        // same formula the server uses. The list row displays the final
+        // price (that's what patchItem(id, res.submission) sets once the
+        // server responds). Using the raw base price here is what caused
+        // the row to flash "base" and then jump to "final".
         const optimisticPatch = {
-            price: Number(form.basePrice),   // keep the row showing the seller's entered base price, consistent with how it displays before any edit
-            moq: Number(form.moq),
-            lead_time: form.leadTime === "" ? null : Number(form.leadTime),
-            units_per_master_pack: form.unitsPerMasterPack,
-            marketing_commission_percent: Number(form.marketingCommissionPercent),
-            ...(form.stockType === "ready_stock"
-                ? { stock_quantity: form.stockQuantity === "" ? null : Number(form.stockQuantity) }
+            price: computeFinalPrice(payload.basePrice, payload.gstPercent),
+            moq: Number(values.moq),
+            lead_time: values.leadTime === "" ? null : Number(values.leadTime),
+            units_per_master_pack: values.unitsPerMasterPack,
+            marketing_commission_percent: Number(values.marketingCommissionPercent),
+            ...(values.stockType === "ready_stock"
+                ? { stock_quantity: values.stockQuantity === "" ? null : Number(values.stockQuantity) }
                 : {}),
         };
 
-        // Brief, visible confirmation before the panel closes — closes the
-        // loop so a tap on Save is never left ambiguous.
-        setJustSaved(true);
-        await new Promise((r) => setTimeout(r, 420));
+        if (!instant) {
+            // Brief, visible confirmation before the panel closes — closes
+            // the loop so a tap on Save is never left ambiguous.
+            setJustSaved(true);
+            await new Promise((r) => setTimeout(r, 420));
+        }
 
-        await onSave(payload, optimisticPatch);
+        // instant (price-wheel) saves keep the panel open; the panel's own
+        // Save button still closes it.
+        const result = await onSave(payload, optimisticPatch, { keepOpen: instant });
+
+        if (instant) {
+            if (result?.ok) {
+                // Re-sync to what the server actually stored, so the panel
+                // and the list row can never disagree.
+                const sub = result.submission;
+                const savedBase = sub?.base_price != null ? String(sub.base_price) : String(payload.basePrice);
+                const savedGst = sub?.gst_percent ?? payload.gstPercent;
+                const savedFinal = computeFinalPrice(savedBase, savedGst);
+                setForm((f) => ({ ...f, basePrice: savedBase }));
+                setFinalPriceInput(String(savedFinal));
+                setPriceEditSource("base");
+                setOriginal((o) => ({ ...(o || {}), basePrice: savedBase, finalPrice: savedFinal }));
+                setPriceSaved(true);
+                setTimeout(() => setPriceSaved(false), 2200);
+            } else if (original) {
+                // Save was rejected (row already rolled back by the parent)
+                // — put the panel's price fields back too.
+                setForm((f) => ({ ...f, basePrice: original.basePrice ?? f.basePrice }));
+                setFinalPriceInput(original.finalPrice != null ? String(original.finalPrice) : "");
+                setPriceEditSource("base");
+            }
+        }
         setSaving(false);
     }
+
+    // Price wheel "confirm" = the commit. Apply the picked price to the
+    // form (so the panel is correct if the save is rejected validation-wise
+    // and stays open), close the wheel, and save everything in one go.
+    const handleBaseWheelConfirm = (price) => {
+        const base = Number(price);
+        applyBasePrice(base);
+        setPriceWheel(null);
+        save({ overrides: { basePrice: base }, instant: true });
+    };
+
+    const handleFinalWheelConfirm = (price) => {
+        const final = Number(price);
+        const base = computeBasePriceFromFinal(final, form.gstPercent);
+        applyFinalPrice(final);
+        setPriceWheel(null);
+        save({ overrides: { basePrice: base }, instant: true });
+    };
 
     return (
         <div className="overflow-hidden px-3 pb-3 sm:px-4 mt-3">
@@ -1015,7 +1134,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                                     label={`Base Price (₹/${saleUnit})`}
                                     displayValue={form.basePrice ? `₹${formatMoney(form.basePrice)}` : ""}
                                     placeholder="Tap to set"
-                                    onOpen={() => setPriceWheel("base")}
+                                    onOpen={() => !saving && setPriceWheel("base")}
                                 />
 
                                 {/* Read-only — deliberately no border/input chrome (unlike
@@ -1032,11 +1151,21 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                                     label={`Final Price (₹/${saleUnit})`}
                                     displayValue={finalPriceInput ? `₹${formatMoney(finalPriceInput)}` : ""}
                                     placeholder="Tap to set"
-                                    onOpen={() => setPriceWheel("final")}
+                                    onOpen={() => !saving && setPriceWheel("final")}
                                 />
                                 <p className="px-0.5 text-[10.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
-                                    Final Price is exactly what the buyer pays. Change either Base or Final — the other updates to match.
+                                    Final Price is exactly what the buyer pays. Change either Base or Final — the other updates to match. Confirming a price saves it right away.
                                 </p>
+                                {(saving && !justSaved) && (
+                                    <p className="flex items-center gap-1 px-0.5 text-[11px] font-bold" style={{ color: C.muted }}>
+                                        <Loader2 className="h-3 w-3 animate-spin" /> Saving price…
+                                    </p>
+                                )}
+                                {priceSaved && !saving && (
+                                    <p className="flex items-center gap-1 px-0.5 text-[11px] font-bold" style={{ color: "#15803d" }}>
+                                        <CheckCircle2 className="h-3 w-3" /> Price updated
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -1084,7 +1213,7 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                         {error && <p className="text-[11.5px] font-semibold" style={{ color: "#c71f11" }}>{error}</p>}
 
                         <div className="flex gap-2 pt-0.5">
-                            <button onClick={save} disabled={saving}
+                            <button onClick={() => save()} disabled={saving}
                                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-50 sm:flex-none sm:px-6"
                                 style={{ background: justSaved ? "#15803d" : C.secondary }}>
                                 {saving ? (justSaved ? <Check className="h-3.5 w-3.5" /> : <Loader2 className="h-3.5 w-3.5 animate-spin" />) : <Check className="h-3.5 w-3.5" />}
@@ -1102,11 +1231,12 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                                 open
                                 unit="currency"
                                 unitLabel={saleUnit}
+                                confirmVerb="Save"
                                 initialValue={form.basePrice ? Number(form.basePrice) : (original?.basePrice ? Number(original.basePrice) : 0)}
                                 referenceValue={original?.basePrice ? Number(original.basePrice) : null}
                                 referenceLabel="Current price"
                                 onClose={() => setPriceWheel(null)}
-                                onConfirm={(price) => { applyBasePrice(price); setPriceWheel(null); }}
+                                onConfirm={handleBaseWheelConfirm}
                             />
                         )}
                         {priceWheel === "final" && (
@@ -1114,11 +1244,12 @@ function QuickUpdatePanel({ item, onCancel, onSave }) {
                                 open
                                 unit="currency"
                                 unitLabel={saleUnit}
+                                confirmVerb="Save"
                                 initialValue={finalPriceInput ? Number(finalPriceInput) : (original?.finalPrice || 0)}
                                 referenceValue={original?.finalPrice || null}
                                 referenceLabel="Current final price"
                                 onClose={() => setPriceWheel(null)}
-                                onConfirm={(price) => { applyFinalPrice(price); setPriceWheel(null); }}
+                                onConfirm={handleFinalWheelConfirm}
                             />
                         )}
                     </motion.div>
@@ -1155,8 +1286,6 @@ function DeactivateConfirm({ busy, onConfirm, onCancel }) {
         </div>
     );
 }
-
-/* ============================== list row ============================== */
 
 /* ============================== list row ============================== */
 
@@ -1284,13 +1413,6 @@ function ListingRow({
                 >
                     {true && (
                         <>
-                            {/* =====================================================
-            MOBILE — 3-row grid: image spans all 3 rows in col 1,
-            text stack in col 2, icon stack (toggle/share/edit) in
-            col 3. Grid auto-placement fills col 2 then col 3 for
-            each row since col 1 is already occupied by the
-            row-span-3 image.
-            ===================================================== */}
                             {/* =====================================================
     MOBILE — flex row: image stretches to match the height
     of the text stack, text stack in the middle, icon stack
@@ -1488,12 +1610,14 @@ function ListingRow({
                                     onCancel={onCancelQuickEdit}
                                     onSave={(
                                         payload,
-                                        optimisticPatch
+                                        optimisticPatch,
+                                        opts
                                     ) =>
                                         onQuickSave(
                                             it.id,
                                             payload,
-                                            optimisticPatch
+                                            optimisticPatch,
+                                            opts
                                         )
                                     }
                                 />
@@ -1563,7 +1687,7 @@ function ListingRow({
 // instance (from main.jsx) kept running untouched, which is why
 // background scroll kept leaking through no matter what the lock did.
 //
-// Bug #2 (this pass): with the duplicate gone, lenis.stop() now DOES
+// Bug #2: with the duplicate gone, lenis.stop() now DOES
 // target the real instance — but Lenis (configured with no `wrapper` in
 // SmoothScrollProvider.jsx, so it controls `window` globally) listens
 // for wheel/touch events EVERYWHERE on the page and calls
@@ -1831,13 +1955,7 @@ export default function SellerManageListingsPage() {
 
     useEffect(() => { reload(); }, [reload]);
 
-    // FIX (this pass): was `subscribeUserEvent?.("submissions_changed", ...)`
-    // from useAuth() — that's wired to a Supabase Realtime broadcast
-    // channel nothing on the backend ever publishes to (see
-    // AuthContext.jsx's removal notes). This page only ever appeared to
-    // update live because of the tab-visibility resync effect further
-    // below, not because the broadcast was actually received. Now
-    // listens directly on the real socket.io-client connection, same as
+    // Listens directly on the real socket.io-client connection, same as
     // useRealtimeNotifications.js already does successfully.
     useEffect(() => {
         if (!socket) return;
@@ -1946,17 +2064,27 @@ export default function SellerManageListingsPage() {
     // server rejects the change, the row is rolled back to its previous
     // state and a toast explains what happened — the seller never has to
     // sit and stare at a spinner to know their edit "took".
-    async function handleQuickSave(id, payload, optimisticPatch) {
+    //
+    // The optimistic `price` is the GST-inclusive final price (see
+    // QuickUpdatePanel.save), so when the server response lands and
+    // patchItem(id, res.submission) runs, the displayed price doesn't
+    // change again.
+    //
+    // `opts.keepOpen` (price-wheel saves) leaves the quick-update panel
+    // open; otherwise it closes as before. Returns { ok, submission } so
+    // the panel can re-sync itself to what was actually stored.
+    async function handleQuickSave(id, payload, optimisticPatch, opts = {}) {
         const prevItem = items.find((it) => it.id === id);
         patchItem(id, optimisticPatch);
-        setQuickEditId(null);
+        if (!opts.keepOpen) setQuickEditId(null);
         const res = await updateSellerProductSubmission(token, id, payload);
         if (res?.success) {
             patchItem(id, res.submission);
-        } else {
-            if (prevItem) patchItem(id, prevItem);
-            setToastMsg(res?.message || "Couldn't save changes — reverted.");
+            return { ok: true, submission: res.submission };
         }
+        if (prevItem) patchItem(id, prevItem);
+        setToastMsg(res?.message || "Couldn't save changes — reverted.");
+        return { ok: false };
     }
 
     if (!isApprovedSeller) {
@@ -2113,7 +2241,6 @@ export default function SellerManageListingsPage() {
                                 isConfirmingDeactivate={confirmDeactivateId === it.id}
                                 togglingId={togglingId}
                                 onOpenDetail={(item) => setViewingId(item.id)}
-                                // onQuickEdit={(id) => { setConfirmDeactivateId(null); setQuickEditId(id); }}
                                 onQuickEdit={(id) => {
                                     setConfirmDeactivateId(null);
                                     if (quickEditId === id) {
