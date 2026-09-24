@@ -1,18 +1,8 @@
 // components/orders/PurchaseOrderDocument.jsx
-//
-// NEW (this pass):
-//  - "Payment" meta field: credit orders are shown to buyer AND seller;
-//    advance-payment orders are shown to the seller only.
-//  - Freight: a clear line under Total Payable saying whether freight is
-//    included in the price (per-item pills only when items differ).
-//  - Vendor / Deliver To use the shared PartyBlock (same markup as
-//    before, now also used by the Sales order card).
-//  - Wallet deduction uses the shared computeWalletDeduction().
-// NOTE: generateOrderPdf (utils/orderPdf.js) is a separate file and is not
-// changed here — the PDF won't show payment/freight until it's updated too.
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import { transportLabel } from "../../../shared/transportOptions.js";
+import { computeOrderBreakdown, DEFAULT_GST_PERCENT } from "../../../shared/orderPricing.js";
 import {
     ItemQuantityLine, parseDeliveryDate, PartyBlock, TotalRow, FreightPill,
     itemFreightIncluded, orderFreightState, visiblePaymentTerms, paymentTermsLabel,
@@ -20,7 +10,6 @@ import {
 } from "./OrderDisplayHelpers.jsx";
 
 const C = DOC_C;
-const GST_PERCENT = 18;
 
 function fmtDate(d) {
     if (!d) return null;
@@ -28,8 +17,6 @@ function fmtDate(d) {
     return isNaN(dt) ? null : dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-// Reads the same source (item.lead_time_snapshot via parseDeliveryDate)
-// as the Fulfilment card's DeliveryEstimate, so the two can't disagree.
 function deliveryDateLabel(order, firstItem) {
     if (order.status === "delivered") {
         const ts = order.updated_at;
@@ -49,17 +36,6 @@ function transportSummary(order) {
     if (order.transport_mode) return { confirmed: true, label: transportLabel(order.transport_mode) };
     if (order.buyer_transport_mode) return { confirmed: false, label: transportLabel(order.buyer_transport_mode) };
     return { confirmed: false, label: null };
-}
-
-function saleQtyOf(item) {
-    return Number(item.pack_quantity_snapshot) || Number(item.quantity) || 0;
-}
-function baseRateExclGst(item) {
-    const inclGst = Number(item.base_price_applied ?? item.unit_price) || 0;
-    return round2(inclGst / (1 + GST_PERCENT / 100));
-}
-function amountExclGst(item) {
-    return round2(baseRateExclGst(item) * saleQtyOf(item));
 }
 
 // Per-item freight pill — only rendered when items in the order differ.
@@ -92,16 +68,16 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
     const buyerState = addr.state || null;
     const isIntraState = !!(sellerState && buyerState && sellerState.trim().toLowerCase() === buyerState.trim().toLowerCase());
 
-    const subtotal = round2(items.reduce((s, it) => s + amountExclGst(it), 0));
-    const gstAmount = round2(Math.max((Number(order.total_amount) || 0) - subtotal, 0));
+    // Single source of truth for every number below — see
+    // shared/orderPricing.js for the step-by-step derivation.
+    const { rows: breakdownRows, totals, gstPercent } = computeOrderBreakdown(order);
+    const { grossAmount, discountAmount, taxableValue, gstAmount, totalPayable } = totals;
     const half = round2(gstAmount / 2);
+    const halfPercent = round2(gstPercent / 2);
 
-    // Wallet impact sits next to Total Payable for sellers.
     const walletDeduction = computeWalletDeduction(order);
-
-    // Credit → buyer + seller; advance → seller only.
     const paymentTerms = visiblePaymentTerms(order, variant);
-    const freightState = orderFreightState(order); // "included" | "extra" | "mixed" | null
+    const freightState = orderFreightState(order);
 
     const handleDownload = async () => {
         setDownloading(true);
@@ -157,20 +133,23 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
                     </PartyBlock>
                 </div>
 
-                {/* Desktop table */}
+                {/* Desktop table — Rate / Discount / Taxable value are all in the
+                    SAME (GST-excluded) unit system, so Gross − Discount = Taxable
+                    value is checkable at a glance without doing tax math. */}
                 <div className="mt-4 hidden overflow-hidden rounded-lg border sm:block" style={{ borderColor: C.hair }}>
                     <table className="w-full text-[12.5px]">
                         <thead>
                             <tr style={{ background: C.accent }}>
                                 <Th className="w-10">Sr</Th>
                                 <Th>Description of Goods</Th>
-                                <Th className="w-44">Qty</Th>
-                                <Th className="w-28 text-right">Base Price<br /><span className="font-normal normal-case opacity-80">(Excl. GST)</span></Th>
-                                <Th className="w-32 text-right">Amount<br /><span className="font-normal normal-case opacity-80">(Excl. GST)</span></Th>
+                                <Th className="w-40">Qty</Th>
+                                <Th className="w-24 text-right">Rate<br /><span className="font-normal normal-case opacity-80">(excl. GST, before discount)</span></Th>
+                                <Th className="w-24 text-right">Discount</Th>
+                                <Th className="w-28 text-right">Taxable Value</Th>
                             </tr>
                         </thead>
                         <tbody>
-                            {items.map((it, i) => (
+                            {breakdownRows.map(({ item: it, breakdown: b }, i) => (
                                 <tr key={it.id || i} className="border-t align-top" style={{ borderColor: C.hair, background: i % 2 === 1 ? "#fafbfb" : "#fff" }}>
                                     <Td>{i + 1}</Td>
                                     <Td>
@@ -183,8 +162,13 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
                                         {freightState === "mixed" && <ItemFreightPill item={it} order={order} viewer={variant} />}
                                     </Td>
                                     <Td><ItemQuantityLine item={it} mutedColor={C.muted} /></Td>
-                                    <Td className="text-right tabular-nums">₹{inr(baseRateExclGst(it))}</Td>
-                                    <Td className="text-right tabular-nums font-bold">₹{inr(amountExclGst(it))}</Td>
+                                    <Td className="text-right tabular-nums">₹{inr(b.rate)}</Td>
+                                    <Td className="text-right tabular-nums">
+                                        {b.discountPercent > 0 ? (
+                                            <span style={{ color: "#059669" }}>{b.discountPercent}%<br />(−₹{inr(b.discountAmount)})</span>
+                                        ) : "—"}
+                                    </Td>
+                                    <Td className="text-right tabular-nums font-bold">₹{inr(b.taxableValue)}</Td>
                                 </tr>
                             ))}
                         </tbody>
@@ -193,14 +177,14 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
 
                 {/* Mobile stacked rows */}
                 <div className="mt-4 flex flex-col gap-2 sm:hidden">
-                    {items.length > 0 && (
+                    {breakdownRows.length > 0 && (
                         <div className="flex items-center justify-between px-1">
                             <span className="text-[10px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Items</span>
-                            <span className="text-[10px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Amount</span>
+                            <span className="text-[10px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>Taxable value</span>
                         </div>
                     )}
 
-                    {items.map((it, i) => (
+                    {breakdownRows.map(({ item: it, breakdown: b }, i) => (
                         <div key={it.id || i} className="rounded-lg border p-2.5" style={{ borderColor: C.hair }}>
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
@@ -210,39 +194,51 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
                                     )}
                                     {freightState === "mixed" && <ItemFreightPill item={it} order={order} viewer={variant} />}
                                 </div>
-                                <span className="shrink-0 text-[14px] font-extrabold tracking-wide" style={{ color: C.ink }}>₹{inr(amountExclGst(it))}</span>
+                                <span className="shrink-0 text-[14px] font-extrabold tracking-wide" style={{ color: C.ink }}>₹{inr(b.taxableValue)}</span>
                             </div>
 
                             <div className="mt-1.5 flex flex-col gap-0.5 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                 <span>Quantity: <ItemQuantityLine item={it} mutedColor={C.muted} /></span>
-                                <span>Base Price: ₹{inr(baseRateExclGst(it))}</span>
+                                <span>Rate (excl. GST): ₹{inr(b.rate)}</span>
+                                {b.discountPercent > 0 && (
+                                    <span style={{ color: "#059669" }}>Discount: {b.discountPercent}% (−₹{inr(b.discountAmount)})</span>
+                                )}
                             </div>
                         </div>
                     ))}
                 </div>
 
+                {/* Totals — everything up to Taxable value stays GST-excluded;
+                    GST is introduced exactly once, then Total Payable. */}
                 <div className="mt-4 flex flex-col items-end gap-1.5 border-t pt-4" style={{ borderColor: C.hair }}>
                     {isSample ? (
                         <TotalRow label="Total" value={`₹${inr(order.total_amount)}`} bold />
                     ) : (
                         <>
-                            <TotalRow label="Subtotal" value={`₹${inr(subtotal)}`} />
+                            <TotalRow label="Gross amount (excl. GST)" value={`₹${inr(grossAmount)}`} />
+                            {discountAmount > 0 && (
+                                <TotalRow label="Discount" value={`− ₹${inr(discountAmount)}`} color="#059669" />
+                            )}
+                            {round2(grossAmount) !== round2(taxableValue) && (
+                                <TotalRow
+                                    label="Taxable value"
+                                    value={`₹${inr(taxableValue)}`}
+                                />
+                            )}
                             {isIntraState ? (
                                 <>
-                                    <TotalRow label={`CGST (${GST_PERCENT / 2}%)`} value={`₹${inr(half)}`} />
-                                    <TotalRow label={`SGST (${GST_PERCENT / 2}%)`} value={`₹${inr(round2(gstAmount - half))}`} />
+                                    <TotalRow label={`CGST (${halfPercent}%)`} value={`₹${inr(half)}`} />
+                                    <TotalRow label={`SGST (${halfPercent}%)`} value={`₹${inr(round2(gstAmount - half))}`} />
                                 </>
                             ) : (
-                                <TotalRow label={`IGST (${GST_PERCENT}%)`} value={`₹${inr(gstAmount)}`} />
+                                <TotalRow label={`IGST (${gstPercent}%)`} value={`₹${inr(gstAmount)}`} />
                             )}
                             <div className="mt-1 flex w-full max-w-[300px] justify-between border-t pt-2 text-[15px] font-extrabold tracking-wide" style={{ borderColor: C.hair, color: C.ink }}>
-                                <span>Total Payable</span><span className="tabular-nums" style={{ color: C.accent }}>₹{inr(order.total_amount)}</span>
+                                <span>Total Payable</span><span className="tabular-nums" style={{ color: C.accent }}>₹{inr(totalPayable)}</span>
                             </div>
                         </>
                     )}
 
-                    {/* Freight — stated explicitly so nobody has to guess whether
-                        the final price already covers delivery. */}
                     {freightState === "included" && (
                         <p className="mt-0.5 flex max-w-[300px] items-center justify-end gap-1.5 text-right text-[12px] font-semibold tracking-wide" style={{ color: "#006F83" }}>
                             <FreightPill included viewer={variant} />
@@ -261,8 +257,6 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
                         </p>
                     )}
 
-                    {/* Seller-only, screen-only wallet/commission note.
-                        Not passed to generateOrderPdf, so the PDF stays clean. */}
                     {isSellerView && !isSample && (
                         <p className="mt-1 max-w-[350px] text-right text-[12px] font-medium italic tracking-wide" style={{ color: C.muted }}>
                             Wallet deduction: ₹{inr(walletDeduction)} ({order.platform_fee_percent}% Promotion & Visibility Budget + 18%GST)

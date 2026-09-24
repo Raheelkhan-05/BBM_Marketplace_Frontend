@@ -360,6 +360,9 @@ function ProductEditCard({ row, draft, onDraftChange }) {
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border" style={{ borderColor: C.hair, background: "#F4F5F6" }}>
                     {row.image ? <img src={row.image} alt="" className="h-full w-full object-cover" /> : null}
                 </span>
+                <p className="rounded-lg px-2.5 py-2 text-[11px] font-semibold leading-snug tracking-wide" style={{ background: C.warnBg, color: C.warn }}>
+                    Setting a custom price for this buyer switches off any quantity discounts or price slabs on this product for them — they'll pay exactly this price, however much they order.
+                </p>
                 <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{row.name}</p>
                     <p className="truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>

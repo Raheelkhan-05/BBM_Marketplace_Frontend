@@ -1157,7 +1157,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                             <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                 {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
                                                 {totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
-                                                {pricing?.discountPercent > 0
+                                                {!s.is_custom_priced && pricing?.discountPercent > 0
                                                     ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
                                                     : ""}
                                             </p>
