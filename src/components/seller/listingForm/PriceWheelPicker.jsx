@@ -73,6 +73,33 @@ const PERCENT_STEPS = [
 ];
 const PERCENT_DECREASE_MAX = 99;
 
+// mustInclude: if given, that exact value is spliced into the generated
+// grid (even though it isn't an exact multiple of `step` from `anchor`),
+// so the very first render of a wheel never has to approximate a real
+// stored value onto the nearest grid tick. Without this, loading an
+// existing listing's saved price (e.g. 1000) into a wheel anchored on the
+// catalog's reference price snapped it to the nearest 2%-step tick
+// (e.g. 991.2) purely for display — silently showing the wrong number
+// even though nothing was ever actually changed.
+function buildValues(anchor, step, span = WHEEL_SPAN, filterFn, mustInclude) {
+    const values = [];
+    for (let i = -span; i <= span; i++) {
+        const v = Math.round((anchor + i * step) * 100) / 100;
+        if (!filterFn || filterFn(v)) values.push(v);
+    }
+    if (mustInclude != null) {
+        const rounded = Math.round(mustInclude * 100) / 100;
+        if (!filterFn || filterFn(rounded)) {
+            const idx = values.findIndex((v) => v === rounded);
+            if (idx === -1) {
+                values.push(rounded);
+                values.sort((a, b) => a - b);
+            }
+        }
+    }
+    return values;
+}
+
 // Keeps only digits and a single dot, with at most 2 decimal places —
 // matches the 2-dp rounding the wheel itself uses for its values.
 export function sanitizeDecimal(raw) {
@@ -84,22 +111,22 @@ export function sanitizeDecimal(raw) {
     return s.slice(0, 10);
 }
 
-// filterFn decides which generated values are valid for this wheel —
-// currency: strictly positive; percent decrease: 0..99; percent increase: 0..∞.
-function buildValues(anchor, step, span = WHEEL_SPAN, filterFn) {
-    const values = [];
-    for (let i = -span; i <= span; i++) {
-        const v = Math.round((anchor + i * step) * 100) / 100;
-        if (!filterFn || filterFn(v)) values.push(v);
-    }
-    return values;
-}
-
 export function useWheelColumn(initialValue, initialStep, filterFn, gridAnchor) {
     const anchorRef = useRef(gridAnchor != null ? gridAnchor : initialValue);
     const [step, setStep] = useState(initialStep);
-    const [values, setValues] = useState(() => buildValues(anchorRef.current, initialStep, WHEEL_SPAN, filterFn));
-    const [selected, setSelected] = useState(() => nearestValue(values, initialValue));
+    // mustInclude=initialValue — guarantees the seller's real saved price
+    // is exactly selectable on first mount, never approximated to a
+    // nearby reference-price tick.
+    const [values, setValues] = useState(() => buildValues(anchorRef.current, initialStep, WHEEL_SPAN, filterFn, initialValue));
+    const [selected, setSelected] = useState(() => nearestValue(values, initialValue)); // now finds an EXACT match, since it's guaranteed present
+    // Tags WHY `selected` last changed, so a consumer (InlineWheelField)
+    // can tell "the seller actually scrolled this field" apart from "this
+    // field was just resynced programmatically" (initial mount, or a
+    // jumpTo/jumpToExact triggered by a sibling field's edit, a GST-mode
+    // flip, etc). Only a real scroll should ever be treated as the seller
+    // choosing THIS field's basis — a programmatic resync must never
+    // silently commit its value back up as if the seller had picked it.
+    const changeSource = useRef("init"); // "init" | "scroll" | "programmatic"
 
     const containerRef = useRef(null);
     const rafRef = useRef(null);
@@ -127,45 +154,18 @@ export function useWheelColumn(initialValue, initialStep, filterFn, gridAnchor) 
         const list = buildValues(useAnchor, useStep, WHEEL_SPAN, filterFn);
 
         const snapped = nearestValue(list, targetValue);
+        changeSource.current = "programmatic";
         setStep(useStep);
         setValues(list);
         setSelected(snapped);
         pendingScrollRef.current = snapped;
     }, [step, filterFn]);
 
-    // Used ONLY for a value the seller typed by hand. Unlike jumpTo, this
-    // NEVER rounds to the nearest grid point — it builds the value list
-    // centred exactly on the typed number itself, so the exact number the
-    // seller entered is what ends up selected and displayed. It deliberately
-    // does NOT touch anchorRef, so if the seller scrolls again afterwards,
-    // the wheel resumes ticking in clean 2%-of-default steps from the
-    // original grid — only the one-off typed value is exempt from snapping.
-    // Used for any value that must land EXACTLY as given — a typed entry,
-    // or an external seed sync that should never be forced onto the grid.
-    // Unlike jumpTo, this never rounds to the nearest grid point.
-    //
-    // It also REBASES anchorRef to this exact value. That's the fix for
-    // "scroll after a manual edit should step 2% from the NEW number, not
-    // from the original default" — once the seller has explicitly set an
-    // exact value, that value becomes the new fixed point every future
-    // scroll tick is measured from (v, v±step, v±2*step, ...), instead of
-    // ticks staying pinned to the original reference price forever.
-    // Used for any value that must land EXACTLY as given — a typed entry,
-    // or an external resync that should never be forced onto the grid.
-    // Unlike jumpTo, this never rounds to the nearest grid point.
-    //
-    // Now also accepts an optional targetStep, so an external resync that
-    // changes the step size (e.g. GST-mode toggling changes what "2% of
-    // reference" means in the currently displayed basis) actually takes
-    // effect — previously jumpToExact silently kept the OLD step forever,
-    // so grid spacing went stale after a GST-mode flip.
-    //
-    // It also REBASES anchorRef to this exact value — future scroll ticks
-    // are measured from THIS number, not the original default.
     const jumpToExact = useCallback((targetValue, targetStep) => {
         const useStep = targetStep ?? step;
         const v = Math.round(targetValue * 100) / 100;
         anchorRef.current = v;
+        changeSource.current = "programmatic";
         setStep(useStep);
         setValues(buildValues(v, useStep, WHEEL_SPAN, filterFn));
         setSelected(v);
@@ -182,16 +182,14 @@ export function useWheelColumn(initialValue, initialStep, filterFn, gridAnchor) 
             const idx = Math.round(el.scrollTop / ITEM_HEIGHT);
             const clamped = Math.max(0, Math.min(values.length - 1, idx));
             const val = values[clamped];
-            if (val !== undefined && val !== selected) setSelected(val);
+            if (val !== undefined && val !== selected) {
+                changeSource.current = "scroll"; // ← the only path a real drag takes
+                setSelected(val);
+            }
         });
     }, [values, selected]);
 
-    // Only ever extends the list with values the filterFn accepts — so once
-    // a bound (e.g. 99% on decrease, or 0 on either side) is hit, there's
-    // nothing left to prepend/append and the wheel naturally stops growing
-    // instead of letting the scroll hijack past a valid range.
-
-    return { values, selected, step, containerRef, handleScroll, jumpTo, jumpToExact };
+    return { values, selected, step, containerRef, handleScroll, jumpTo, jumpToExact, changeSource };
 }
 
 // Embedded, no modal/backdrop/confirm button. The wheel itself updates its
@@ -249,12 +247,31 @@ export function InlineWheelField({ seed, step, filterFn, formatValue, prefix, su
 
     const lastCommitAt = useRef(0);
     const lastSeed = useRef(seed);
+    // gridAnchor/step are derived from an async value (e.g. the catalog's
+    // lowest price) that's often not ready on first mount — useWheelColumn
+    // then falls back to a placeholder anchor/step, building a tiny value
+    // window nowhere near the real seed. `seed` itself (the actual price)
+    // doesn't change once that async value later arrives, so watching only
+    // `seed` never notices gridAnchor going from "placeholder" to "real",
+    // and the wheel stays stuck on whatever edge of that first tiny window
+    // it originally snapped to.
+    const lastGridAnchor = useRef(gridAnchor);
     const commitTimer = useRef(null);
 
     // Scroll/nudge settling → commit up to the parent, and stamp the time
     // we did it. Debounced so we commit once the value has actually
     // settled, not on every intermediate frame while still moving.
     useEffect(() => {
+        // Only ever commit up to the parent when the seller ACTUALLY scrolled
+        // this field. A mount (source "init") or a programmatic resync
+        // (source "programmatic" — from jumpToExact, e.g. the gridAnchor
+        // resync when the reference price finishes loading, or a sibling
+        // field's edit recomputing this field's derived seed) must never be
+        // mistaken for "the seller picked this field's basis" — that's what
+        // was letting the three price fields silently stomp on each other's
+        // basePrice/priceBasis a moment after the form opened.
+        if (wheel.changeSource.current !== "scroll") return;
+
         clearTimeout(commitTimer.current);
         commitTimer.current = setTimeout(() => {
             lastCommitAt.current = Date.now();
@@ -265,8 +282,11 @@ export function InlineWheelField({ seed, step, filterFn, formatValue, prefix, su
     }, [wheel.selected]);
 
     useEffect(() => {
-        if (seed === lastSeed.current) return;
+        const seedChanged = seed !== lastSeed.current;
+        const anchorChanged = gridAnchor !== lastGridAnchor.current;
+        if (!seedChanged && !anchorChanged) return;
         lastSeed.current = seed;
+        lastGridAnchor.current = gridAnchor;
 
         const isLikelyOwnEcho = Date.now() - lastCommitAt.current < RESYNC_GRACE_MS;
         if (isLikelyOwnEcho) return; // ignore — this is our own last commit settling back down
@@ -276,7 +296,7 @@ export function InlineWheelField({ seed, step, filterFn, formatValue, prefix, su
             lastCommitAt.current = Date.now(); // treat as a fresh baseline; don't let it re-trigger
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [seed, step]);
+    }, [seed, step, gridAnchor]);
 
     const parseDraft = () => {
         if (draft.trim() === "" || draft === ".") return null;

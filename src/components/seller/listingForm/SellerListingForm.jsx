@@ -37,7 +37,7 @@
 //      accepts a drag-and-drop of image files, isolated from the
 //      separate certificates dropzone in FormPrimitives.jsx.
 //
-// THIS PASS: two real bugfixes to the above.
+// PREVIOUS PASS: two real bugfixes to the above.
 //   1. "Next field" was always computed as "the first missing field in a
 //      fixed global list", NOT "the next missing field relative to where
 //      the seller currently is". That meant: (a) Tab/Enter inside a later
@@ -58,6 +58,21 @@
 //      window-level dragend listener force-resets the image dropzone's
 //      highlight state so it can never get stuck "on" the way it could
 //      before if a drag was abandoned without a clean dragleave.
+//
+// THIS PASS: implements the `onlySection` prop SellerManageListingsPage
+// already passes in (previously a documented no-op). When set, this form
+// renders ONLY the matching section card — collapse/expand is disabled
+// for it (there's nothing else to collapse in favour of, so it just
+// stays permanently open), every other section is not rendered at all,
+// and the section header shows a small "Editing just this section" note
+// instead of the missing/total pill (which counts fields across the
+// WHOLE form's section, not just what's currently editable, and would
+// otherwise be confusing sitting next to a form that only shows one
+// section). SellerManageListingsPage's SECTION_FILTERS keys are
+// "identity" | "packaging" | "pricing" | "fulfilment" | "dispatch" |
+// "policies" — this file's own internal section ids are "product" |
+// "packaging" | "pricing" | "fulfilment" | "terms" | "delivery", so
+// ONLY_SECTION_ALIAS maps the caller's vocabulary onto this file's.
 import { useEffect, useMemo, useState, useRef } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
@@ -143,6 +158,23 @@ const FIELD_TO_SECTION = Object.entries(SECTION_FIELD_MAP).reduce((acc, [section
 }, {});
 
 FIELD_TO_SECTION["stockTypeAmount"] = "fulfilment";
+
+// Maps SellerManageListingsPage's SECTION_FILTERS keys ("identity" |
+// "packaging" | "pricing" | "fulfilment" | "dispatch" | "policies") onto
+// this file's own internal section ids ("product" | "packaging" |
+// "pricing" | "fulfilment" | "terms" | "delivery"). Anything already
+// spelled the same way on both sides (packaging, pricing, fulfilment)
+// doesn't need an entry — it's looked up as-is.
+const ONLY_SECTION_ALIAS = {
+    identity: "product",
+    dispatch: "delivery",
+    policies: "terms",
+};
+
+function resolveOnlySection(onlySection) {
+    if (!onlySection) return null;
+    return ONLY_SECTION_ALIAS[onlySection] || onlySection;
+}
 
 // Canonical top-to-bottom field order — mirrors the ACTUAL on-page order
 // the sections render in (Product → Packaging → Pricing → Fulfilment →
@@ -468,9 +500,15 @@ export default function SellerListingForm({
     readOnly = false,        // NEW — renders the whole form non-interactive
     onEdit,                  // NEW — footer "Edit this listing" callback when readOnly
     onClose,                 // NEW — footer "Close" callback when readOnly
+    onlySection = null,      // NEW — when set, render only this one section (see ONLY_SECTION_ALIAS)
 }) {
     const locked = identityReadOnly ?? identityLocked ?? mode === "edit";
     const identity = brandDisplay ?? lockedIdentity;
+
+    // Caller-facing key ("identity" | "dispatch" | "policies" | ...)
+    // translated into this file's own internal section id. null when the
+    // full form should render, same as before.
+    const resolvedOnlySection = useMemo(() => resolveOnlySection(onlySection), [onlySection]);
 
     const { token } = useAuth();
     const [form, setForm] = useState(() => {
@@ -543,6 +581,7 @@ export default function SellerListingForm({
     const [error, setError] = useState(null);
     const [touched, setTouched] = useState({});
     const [checkingBrandMatch, setCheckingBrandMatch] = useState(false);
+    const [pricingTouched, setPricingTouched] = useState(false);
 
     const [priceWheel, setPriceWheel] = useState(null); // { basis: "per_unit" | "per_pack" | "per_master_pack" } | null
     const [lowestPrice, setLowestPrice] = useState(null);
@@ -568,7 +607,11 @@ export default function SellerListingForm({
     // All sections start collapsed. Only one section open at a time —
     // opening one closes any other that was open (see handleSectionToggle
     // below, which also handles scrolling the newly-opened section into view).
-    const [openSection, setOpenSection] = useState(null);
+    //
+    // When onlySection is set, that one section is always the open one —
+    // there is nothing else on the page to toggle it against, so it
+    // simply stays open for the lifetime of this form instance.
+    const [openSection, setOpenSection] = useState(() => resolvedOnlySection || null);
 
     // Opening a section while a different section is currently open causes
     // that other section to collapse (shrinking) at the same time this one
@@ -591,6 +634,12 @@ export default function SellerListingForm({
     const STICKY_HEADER_OFFSET = 64; // px — swap for a measured value if it can vary
 
     const handleSectionToggle = (key, opening) => {
+        // In single-section mode there's only ever one card rendered, so
+        // there's no "other" section to collapse in its favour and nothing
+        // useful a collapse would do — keep it permanently open instead of
+        // letting a stray click hide the only section on the page.
+        if (resolvedOnlySection) { setOpenSection(resolvedOnlySection); return; }
+
         const wasAlreadyOpenElsewhere = openSection && openSection !== key;
         setOpenSection(opening ? key : null);
         if (!opening) return;
@@ -770,7 +819,6 @@ export default function SellerListingForm({
     // - Exclusive: entered price is the base as-is, GST + commission are both
     //   added on top for the buyer (unchanged).
     const pricePreview = useMemo(() => {
-        const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
         const price = Number(form.basePrice) || 0;
         const gst = Number(form.gstPercent) || 0;
         const pack = Number(form.packSize) > 0 ? Number(form.packSize) : 1;
@@ -784,28 +832,28 @@ export default function SellerListingForm({
 
         let basePricePerSaleUnit, gstAmount, subtotalAfterGst;
         if (form.gstInclusive) {
-            subtotalAfterGst = round2(perSaleUnit);
-            basePricePerSaleUnit = round2(subtotalAfterGst / (1 + gst / 100));
-            gstAmount = round2(subtotalAfterGst - basePricePerSaleUnit);
+            subtotalAfterGst = perSaleUnit;
+            basePricePerSaleUnit = subtotalAfterGst / (1 + gst / 100);
+            gstAmount = subtotalAfterGst - basePricePerSaleUnit;
         } else {
-            basePricePerSaleUnit = round2(perSaleUnit);
-            gstAmount = round2(basePricePerSaleUnit * (gst / 100));
-            subtotalAfterGst = round2(basePricePerSaleUnit + gstAmount);
+            basePricePerSaleUnit = perSaleUnit;
+            gstAmount = basePricePerSaleUnit * (gst / 100);
+            subtotalAfterGst = basePricePerSaleUnit + gstAmount;
         }
 
-        // Buyer-facing price — matches exactly what toListingRow/normalizeEnteredPrice
-        // stores as `price`. Commission is NEVER added on top for the buyer.
         const finalPricePerSaleUnit = subtotalAfterGst;
-
-        // Commission is deducted from what the SELLER keeps — mirrors
-        // getOrderQuote's sellerPayoutAmount: subtotal - platformFee.
-        const commissionAmount = round2(subtotalAfterGst * (effectiveCommissionPercent / 100));
-        const sellerPayoutPerSaleUnit = round2(subtotalAfterGst - commissionAmount);
+        const commissionAmount = subtotalAfterGst * (effectiveCommissionPercent / 100);
+        const sellerPayoutPerSaleUnit = subtotalAfterGst - commissionAmount;
 
         return {
-            basePricePerSaleUnit, gstPercent: gst, gstAmount, subtotalAfterGst,
-            commissionPercent: effectiveCommissionPercent, commissionAmount,
-            finalPricePerSaleUnit, sellerPayoutPerSaleUnit,
+            basePricePerSaleUnit: round2(basePricePerSaleUnit),
+            gstPercent: gst,
+            gstAmount: round2(gstAmount),
+            subtotalAfterGst: round2(subtotalAfterGst),
+            commissionPercent: effectiveCommissionPercent,
+            commissionAmount: round2(commissionAmount),
+            finalPricePerSaleUnit: round2(finalPricePerSaleUnit),
+            sellerPayoutPerSaleUnit: round2(sellerPayoutPerSaleUnit),
         };
     }, [form.basePrice, form.gstPercent, form.packSize, form.masterPackSize, form.hasOuterPack, form.gstInclusive, form.priceBasis, effectiveCommissionPercent]);
 
@@ -815,25 +863,35 @@ export default function SellerListingForm({
         const master = Number(form.masterPackSize) > 0 ? Number(form.masterPackSize) : 1;
         const gst = Number(form.gstPercent) || 0;
 
-        const totalUnits = round2(form.hasOuterPack ? moqSaleUnits * master * pack : moqSaleUnits * pack);
-        const grossSubtotal = round2(pricePreview.basePricePerSaleUnit * moqSaleUnits);
+        const totalUnits = form.hasOuterPack ? moqSaleUnits * master * pack : moqSaleUnits * pack;
+        const grossSubtotal = pricePreview.basePricePerSaleUnit * moqSaleUnits; // note: this already came from a rounded, stored basePricePerSaleUnit — that's correct, it's the true stored price
 
         const slab = getApplicableSlab(form.priceSlabs, moqSaleUnits);
         const discountPercent = slab ? Number(slab.discountPercent) : 0;
-        const discountAmount = round2(grossSubtotal * (discountPercent / 100));
-        const netSubtotal = round2(grossSubtotal - discountAmount);
+        const discountAmount = grossSubtotal * (discountPercent / 100);
+        const netSubtotal = grossSubtotal - discountAmount;
 
-        const gstAmount = round2(netSubtotal * (gst / 100));
-        const totalAmount = round2(netSubtotal + gstAmount); // what the buyer pays
-        const commissionAmount = round2(totalAmount * (effectiveCommissionPercent / 100));
-        const commissionGstAmount = round2(commissionAmount * (gst / 100)); // GST on the platform's fee invoice
-        const totalCommissionDeducted = round2(commissionAmount + commissionGstAmount);
-        const netPayout = round2(totalAmount - totalCommissionDeducted);
+        const gstAmount = netSubtotal * (gst / 100);
+        const totalAmount = netSubtotal + gstAmount; // what the buyer pays
+        const commissionAmount = totalAmount * (effectiveCommissionPercent / 100);
+        const commissionGstAmount = commissionAmount * (gst / 100);
+        const totalCommissionDeducted = commissionAmount + commissionGstAmount;
+        const netPayout = totalAmount - totalCommissionDeducted;
 
         return {
-            saleUnitQty: moqSaleUnits, totalUnits, grossSubtotal, discountPercent, discountAmount,
-            netSubtotal, gstAmount, totalAmount, commissionPercent: effectiveCommissionPercent,
-            commissionAmount, commissionGstAmount, totalCommissionDeducted, netPayout,
+            saleUnitQty: moqSaleUnits,
+            totalUnits: round2(totalUnits),
+            grossSubtotal: round2(grossSubtotal),
+            discountPercent,
+            discountAmount: round2(discountAmount),
+            netSubtotal: round2(netSubtotal),
+            gstAmount: round2(gstAmount),
+            totalAmount: round2(totalAmount),
+            commissionPercent: effectiveCommissionPercent,
+            commissionAmount: round2(commissionAmount),
+            commissionGstAmount: round2(commissionGstAmount),
+            totalCommissionDeducted: round2(totalCommissionDeducted),
+            netPayout: round2(netPayout),
         };
     }, [form.moq, form.packSize, form.masterPackSize, form.hasOuterPack, form.priceSlabs, form.gstPercent, pricePreview, effectiveCommissionPercent]);
 
@@ -966,7 +1024,7 @@ export default function SellerListingForm({
 
     function jumpToError(firstMissing) {
         const section = FIELD_TO_SECTION[firstMissing.key];
-        const needsSwitch = section && section !== openSection;
+        const needsSwitch = section && section !== openSection && !resolvedOnlySection;
         if (needsSwitch) setOpenSection(section);
 
         setTimeout(() => {
@@ -987,7 +1045,7 @@ export default function SellerListingForm({
     // "advance" flow and jumpToError-style jumps.
     function focusFieldKey(key, { select = false } = {}) {
         const section = FIELD_TO_SECTION[key];
-        const needsSwitch = section && section !== openSection;
+        const needsSwitch = section && section !== openSection && !resolvedOnlySection;
         if (needsSwitch) setOpenSection(section);
 
         setTimeout(() => {
@@ -1021,6 +1079,10 @@ export default function SellerListingForm({
     // back up to the first remaining gap higher up, same as before, but
     // WITHOUT clobbering forward progress through a section that already
     // has later fields correctly filled.
+    //
+    // In single-section mode (resolvedOnlySection set), advancing is
+    // scoped to just that section's own fields — Tab/Enter should never
+    // jump the seller into a section that isn't even rendered on the page.
     function handleFieldAdvance(fieldKey, direction = "forward", isSubmitAttempt = false) {
         setTouched((t) => (t[fieldKey] ? t : { ...t, [fieldKey]: true }));
 
@@ -1037,7 +1099,10 @@ export default function SellerListingForm({
             }
 
             // Purely positional: next/prev visible field in FIELD_ORDER, looping.
-            const visibleOrder = FIELD_ORDER.filter((key) => isFieldVisible(key, currentForm));
+            let visibleOrder = FIELD_ORDER.filter((key) => isFieldVisible(key, currentForm));
+            if (resolvedOnlySection) {
+                visibleOrder = visibleOrder.filter((key) => FIELD_TO_SECTION[key] === resolvedOnlySection);
+            }
             const idx = visibleOrder.indexOf(orderKeyFor(fieldKey));
             if (idx === -1 || visibleOrder.length === 0) return;
 
@@ -1052,10 +1117,18 @@ export default function SellerListingForm({
     }
 
     const handleSubmit = () => {
-        if (missing.length) {
-            setTouched((t) => ({ ...t, ...Object.fromEntries(missing.map((m) => [m.key, true])) }));
-            setError(`Please complete: ${missing.slice(0, 4).map((m) => m.label).join(", ")}${missing.length > 4 ? `, +${missing.length - 4} more` : ""}.`);
-            jumpToError(missing[0]);
+        // In single-section mode, only that section's own fields block
+        // submission — the rest of the form (untouched here) was already
+        // valid when the listing was created/last saved, and re-demanding
+        // every other field defeats the entire point of a focused edit.
+        const relevantMissing = resolvedOnlySection
+            ? missing.filter((m) => FIELD_TO_SECTION[m.key] === resolvedOnlySection)
+            : missing;
+
+        if (relevantMissing.length) {
+            setTouched((t) => ({ ...t, ...Object.fromEntries(relevantMissing.map((m) => [m.key, true])) }));
+            setError(`Please complete: ${relevantMissing.slice(0, 4).map((m) => m.label).join(", ")}${relevantMissing.length > 4 ? `, +${relevantMissing.length - 4} more` : ""}.`);
+            jumpToError(relevantMissing[0]);
             return;
         }
         setError(null);
@@ -1102,6 +1175,7 @@ export default function SellerListingForm({
             marketingCommissionPercent: String(round2(Number(form.marketingCommissionPercent))),
             genericProductBrandId: form.brandItemMatch?.id || null,
             moq: String(round2ToInt(form.moq)),
+            pricingTouched,
             sampleQuantity: form.sampleAvailable ? String(sampleQuantityBaseUnits) : form.sampleQuantity,
             stockQuantity: form.stockType === "ready_stock" ? String(stockQuantitySaleUnits) : form.stockQuantity,
             dispatchingLocations,
@@ -1125,6 +1199,12 @@ export default function SellerListingForm({
         }
     };
 
+    // Single-section mode: only this section id renders at all. Every
+    // SectionCard block below is gated with `showSection("...")` so the
+    // rest of the form's JSX doesn't need to change shape — sections that
+    // aren't the chosen one are simply never mounted, not just collapsed.
+    const showSection = (key) => !resolvedOnlySection || resolvedOnlySection === key;
+
     return (
         <div className="flex flex-col gap-3 pb-24 sm:gap-3.5" onKeyDown={handleRootKeyDown}>
             {error && (
@@ -1134,584 +1214,597 @@ export default function SellerListingForm({
             )}
 
             {/* ---------------- Product ---------------- */}
-            <SectionCard id="section-product" icon={Package} title="Product" subtitle={locked ? "Already approved · locked" : "Name, brand, images & documents"}
-                open={openSection === "product"} onOpenChange={(v) => handleSectionToggle("product", v)}
-                missingCount={missingCountBySection.product} totalCount={totalCountBySection.product}
-                readOnly={readOnly}>
-                {locked ? (
-                    <div className="flex items-center gap-3 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
-                        {form.images?.[0] && <img src={form.images[0]} alt="" className="h-12 w-12 shrink-0 rounded-lg border object-cover" style={{ borderColor: C.hair }} />}
-                        <div className="min-w-0">
-                            <p className="truncate text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{form.productName}</p>
-                            {form.brandName && <p className="truncate text-[12px] font-bold tracking-wider" style={{ color: C.primary }}>{form.brandName}</p>}
+            {showSection("product") && (
+                <SectionCard id="section-product" icon={Package} title="Product" subtitle={locked ? "Already approved · locked" : "Name, brand, images & documents"}
+                    open={resolvedOnlySection ? true : openSection === "product"} onOpenChange={(v) => handleSectionToggle("product", v)}
+                    missingCount={missingCountBySection.product} totalCount={totalCountBySection.product}
+                    readOnly={readOnly}>
+                    {locked ? (
+                        <div className="flex items-center gap-3 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
+                            {form.images?.[0] && <img src={form.images[0]} alt="" className="h-12 w-12 shrink-0 rounded-lg border object-cover" style={{ borderColor: C.hair }} />}
+                            <div className="min-w-0">
+                                <p className="truncate text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>{form.productName}</p>
+                                {form.brandName && <p className="truncate text-[12px] font-bold tracking-wider" style={{ color: C.primary }}>{form.brandName}</p>}
+                            </div>
                         </div>
-                    </div>
-                ) : (
-                    <>
-                        <FieldAnchor fieldKey="productName">
-                            <TextField required label="Product name" value={form.productName} onChange={(v) => setField("productName", v)} onBlur={() => touch("productName")} error={isErr("productName")} placeholder="e.g. Premium Stainless Steel Hinges" onEnterKey={(dir) => handleFieldAdvance("productName", dir)} />
-                        </FieldAnchor>
+                    ) : (
+                        <>
+                            <FieldAnchor fieldKey="productName">
+                                <TextField required label="Product name" value={form.productName} onChange={(v) => setField("productName", v)} onBlur={() => touch("productName")} error={isErr("productName")} placeholder="e.g. Premium Stainless Steel Hinges" onEnterKey={(dir) => handleFieldAdvance("productName", dir)} />
+                            </FieldAnchor>
 
-                        <FieldAnchor fieldKey="brandName">
-                            <BrandCombobox
-                                value={form.brandName} notApplicable={form.brandNotApplicable} image={form.brandImage}
-                                onChange={({ brandName, brandImage, brandNotApplicable }) => setForm((f) => ({ ...f, brandName, brandImage, brandNotApplicable }))}
-                            />
-                        </FieldAnchor>
+                            <FieldAnchor fieldKey="brandName">
+                                <BrandCombobox
+                                    value={form.brandName} notApplicable={form.brandNotApplicable} image={form.brandImage}
+                                    onChange={({ brandName, brandImage, brandNotApplicable }) => setForm((f) => ({ ...f, brandName, brandImage, brandNotApplicable }))}
+                                />
+                            </FieldAnchor>
 
-                        <FieldAnchor fieldKey="images">
-                            <div className="flex flex-col gap-1.5">
-                                <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
-                                    Product images {form.images.length > 0 && `(${form.images.length})`} <span style={{ color: C.primary }}>*</span>
-                                </span>
-                                {/* Drag-and-drop zone for product photos. Handlers are scoped
+                            <FieldAnchor fieldKey="images">
+                                <div className="flex flex-col gap-1.5">
+                                    <span className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
+                                        Product images {form.images.length > 0 && `(${form.images.length})`} <span style={{ color: C.primary }}>*</span>
+                                    </span>
+                                    {/* Drag-and-drop zone for product photos. Handlers are scoped
                                     to this div only (stopPropagation on every drag event), so
                                     dropping here can never be picked up by the certificates
                                     dropzone elsewhere on the form, or vice versa. */}
-                                <div
-                                    className="flex flex-wrap gap-2 rounded-xl transition-colors duration-150"
-                                    style={imageDragActive ? { boxShadow: `0 0 0 2px ${C.secondary}55`, background: `${C.secondary}06`, padding: "8px", margin: "-8px" } : undefined}
-                                    onDragEnter={handleImageDragEnter}
-                                    onDragOver={handleImageDragOver}
-                                    onDragLeave={handleImageDragLeave}
-                                    onDrop={handleImageDrop}
-                                >
-                                    {form.images.map((src, i) => (
-                                        <div key={src + i} className="relative h-16 w-16 sm:h-[72px] sm:w-[72px]">
-                                            <img src={src} alt="" className="h-full w-full rounded-xl border object-cover" style={{ borderColor: C.hair }} />
-                                            <button type="button" onClick={() => removeImageAt(i)} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[10px] leading-none text-white">×</button>
-                                            {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-xl bg-black/60 py-0.5 text-center text-[8px] font-bold text-white">Cover</span>}
-                                        </div>
-                                    ))}
-                                    <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed sm:h-[72px] sm:w-[72px]" style={imageDragActive ? { borderColor: C.secondary, color: C.secondary, background: `${C.secondary}0a` } : { borderColor: C.hair, color: C.muted }}>
-                                        {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : imageDragActive ? <UploadCloud className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}
-                                        <span className="text-[9px] font-bold">{uploadingImage ? "Uploading…" : imageDragActive ? "Drop here" : "Add"}</span>
-                                        <input type="file" accept="image/*" multiple onChange={handleImageFiles} className="hidden" disabled={uploadingImage} />
-                                    </label>
-                                </div>
-                                {!imageDragActive && (
-                                    <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>
-                                        Or drag & drop image files anywhere in this box.
-                                    </p>
-                                )}
-                            </div>
-                        </FieldAnchor>
-
-                        <CertificateUploadField
-                            label="Quality & certifications"
-                            hint=""
-                            rows={form.qualityCertificates}
-                            onChange={(rows) => setField("qualityCertificates", rows)}
-                            token={token}
-                        />
-
-                        <TextAreaField label="Note to admin" value={form.noteToAdmin} onChange={(v) => setField("noteToAdmin", v)} rows={2}
-                            hint="Anything that'll help us approve this faster — e.g. context on the product, sourcing, or images." placeholder="Optional" />
-                    </>
-                )}
-            </SectionCard>
-
-            {/* ---------------- Packaging ---------------- */}
-            <SectionCard id="section-packaging" icon={Boxes} title="Packaging"
-                open={openSection === "packaging"} onOpenChange={(v) => handleSectionToggle("packaging", v)}
-                missingCount={missingCountBySection.packaging} totalCount={totalCountBySection.packaging}
-                readOnly={readOnly}>
-                {checkingBrandMatch && (
-                    <p className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.muted }}>
-                        <Loader2 className="h-3 w-3 animate-spin" /> Checking if this product already exists…
-                    </p>
-                )}
-
-                {form.brandItemMatch ? (
-                    <div className="flex items-center gap-2 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
-                        <Boxes className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
-                        <div className="min-w-0">
-                            <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Fixed by this product</p>
-                            <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                1 Pack = {form.packSize} {form.unit}
-                                {Number(form.masterPackSize) > 1 && ` · 1 Master Pack = ${form.masterPackSize} Packs`}
-                            </p>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex flex-col gap-2.5">
-                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                            <FieldAnchor fieldKey="unit">
-                                <SelectField required dense halfOnMobile label="What is the Selling Unit of this Product?" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} onEnterKey={(dir) => handleFieldAdvance("unit", dir)} />
-                            </FieldAnchor>
-                            <FieldAnchor fieldKey="packSize">
-                                <TextField required dense tinyOnMobile placeholder="1234" label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" onEnterKey={(dir) => handleFieldAdvance("packSize", dir)} />
-                            </FieldAnchor>
-                        </div>
-
-                        <FieldAnchor fieldKey="hasOuterPack">
-                            <ToggleField2
-                                label="Does this have an Outer Pack?"
-                                value={form.hasOuterPack}
-                                onChange={(v) => { handleOuterPackToggle(v); touch("hasOuterPack"); }}
-                                error={isErr("hasOuterPack")}
-                                onEnterKey={(dir) => handleFieldAdvance("hasOuterPack", dir)}
-                                infoBlock={
-                                    <div className="mb-1 flex items-start gap-2 rounded-xl">
-                                        <p className="text-[8.5px] font-semibold leading-snug tracking-wide" style={{ color: C.primary }}>
-                                            An outer pack is a larger pack / <b style={{ color: C.primary }}>Master Pack</b> containing multiple individual Packs.
+                                    <div
+                                        className="flex flex-wrap gap-2 rounded-xl transition-colors duration-150"
+                                        style={imageDragActive ? { boxShadow: `0 0 0 2px ${C.secondary}55`, background: `${C.secondary}06`, padding: "8px", margin: "-8px" } : undefined}
+                                        onDragEnter={handleImageDragEnter}
+                                        onDragOver={handleImageDragOver}
+                                        onDragLeave={handleImageDragLeave}
+                                        onDrop={handleImageDrop}
+                                    >
+                                        {form.images.map((src, i) => (
+                                            <div key={src + i} className="relative h-16 w-16 sm:h-[72px] sm:w-[72px]">
+                                                <img src={src} alt="" className="h-full w-full rounded-xl border object-cover" style={{ borderColor: C.hair }} />
+                                                <button type="button" onClick={() => removeImageAt(i)} className="absolute right-1 top-1 rounded-full bg-black/60 px-1.5 text-[10px] leading-none text-white">×</button>
+                                                {i === 0 && <span className="absolute bottom-0 left-0 right-0 rounded-b-xl bg-black/60 py-0.5 text-center text-[8px] font-bold text-white">Cover</span>}
+                                            </div>
+                                        ))}
+                                        <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed sm:h-[72px] sm:w-[72px]" style={imageDragActive ? { borderColor: C.secondary, color: C.secondary, background: `${C.secondary}0a` } : { borderColor: C.hair, color: C.muted }}>
+                                            {uploadingImage ? <Loader2 className="h-4 w-4 animate-spin" /> : imageDragActive ? <UploadCloud className="h-4 w-4" /> : <ImagePlus className="h-4 w-4" />}
+                                            <span className="text-[9px] font-bold">{uploadingImage ? "Uploading…" : imageDragActive ? "Drop here" : "Add"}</span>
+                                            <input type="file" accept="image/*" multiple onChange={handleImageFiles} className="hidden" disabled={uploadingImage} />
+                                        </label>
+                                    </div>
+                                    {!imageDragActive && (
+                                        <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>
+                                            Or drag & drop image files anywhere in this box.
                                         </p>
-                                    </div>
-                                }
-                            />
-                        </FieldAnchor>
-
-                        {form.hasOuterPack && (
-                            <>
-                                <FieldAnchor fieldKey="masterPackSize">
-                                    <TextField
-                                        required dense tinyOnMobile
-                                        placeholder="1234"
-                                        label="How many Packs are there in one Outer Pack?"
-                                        hint="How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)"
-                                        value={form.masterPackSize}
-                                        onChange={(v) => setField("masterPackSize", v.replace(/[^\d]/g, ""))}
-                                        onBlur={() => touch("masterPackSize")}
-                                        error={isErr("masterPackSize")}
-                                        inputMode="numeric"
-                                        onEnterKey={(dir) => handleFieldAdvance("masterPackSize", dir)}
-                                    />
-                                </FieldAnchor>
-                            </>
-                        )}
-                        {/* Derived packaging summary — recalculates live from Unit / Pack size /
-                        Master pack size, shown just above MOQ so the seller can sanity-check
-                        the numbers they just entered before setting a minimum order quantity. */}
-                        {form.unit && Number(form.packSize) > 0 && (
-                            <p className="text-[13px] font-bold tracking-wider mt-1" style={{ color: C.ink }}>
-                                {form.hasOuterPack && Number(form.masterPackSize) >= 2
-                                    ? `1 Master Pack = ${form.masterPackSize} Packs = ${Number(form.packSize) * Number(form.masterPackSize)} ${form.unit}`
-                                    : `1 Pack = ${form.packSize} ${form.unit}`}
-                            </p>
-                        )}
-                    </div>
-                )}
-
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    <FieldAnchor fieldKey="moq">
-                        <TextField required dense tinyOnMobile placeholder="1234" label={getMoqLabel(form.hasOuterPack)} hint={getMoqHint(form.hasOuterPack)}
-                            value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))}
-                            onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" onEnterKey={(dir) => handleFieldAdvance("moq", dir)} />
-                    </FieldAnchor>
-                </div>
-                <FieldAnchor fieldKey="sampleAvailable">
-                    <ToggleField
-                        label="Sample available?"
-                        value={form.sampleAvailable}
-                        onChange={(v) => { setField("sampleAvailable", v); touch("sampleAvailable"); }}
-                        error={isErr("sampleAvailable")}
-                        onEnterKey={(dir) => handleFieldAdvance("sampleAvailable", dir)}
-                    />
-                </FieldAnchor>
-                {form.sampleAvailable && (
-                    <FieldAnchor fieldKey="sampleQuantity">
-                        <TextFieldWithUnitSelect
-                            required dense
-                            label="Sample quantity"
-                            value={form.sampleQuantity}
-                            onChange={(v) => setField("sampleQuantity", v.replace(/[^\d.]/g, ""))}
-                            onBlur={() => touch("sampleQuantity")}
-                            error={isErr("sampleQuantity")}
-                            inputMode="decimal"
-                            unitValue={form.sampleUnitBasis}
-                            unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
-                            onUnitChange={changeSampleBasis}
-                            onEnterKey={(dir) => handleFieldAdvance("sampleQuantity", dir)}
-                        />
-                    </FieldAnchor>
-                )}
-
-            </SectionCard>
-
-            {/* ---------------- Pricing ---------------- */}
-            <SectionCard id="section-pricing" icon={IndianRupee} title="Tax & Pricing"
-                open={openSection === "pricing"} onOpenChange={(v) => handleSectionToggle("pricing", v)}
-                missingCount={missingCountBySection.pricing} totalCount={totalCountBySection.pricing}
-                readOnly={readOnly}>
-                <ChipToggleGroup
-                    dense label="Applicable GST % for this Product"
-                    value={form.gstPercent === "" || form.gstPercent == null ? "" : Number(form.gstPercent)}
-                    onChange={(v) => setField("gstPercent", Number(v))}
-                    options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))}
-                    onEnterKey={(dir) => handleFieldAdvance("gstPercent", dir)}
-                />
-                {(() => {
-                    const showMaster = form.hasOuterPack && Number(form.masterPackSize) >= 2;
-                    const hasPrice = form.basePrice !== "" && form.basePrice != null;
-                    const { perUnit, perPack, perMaster } = hasPrice
-                        ? computeThreeTierPrices(form.priceBasis, form.basePrice, form.packSize, form.masterPackSize)
-                        : { perUnit: "", perPack: "", perMaster: "" };
-
-                    const unitValue = !hasPrice ? "" : (form.priceBasis === "per_unit" ? form.basePrice : String(perUnit));
-                    const packValue = !hasPrice ? "" : (form.priceBasis === "per_pack" ? form.basePrice : String(perPack));
-                    const masterValue = !hasPrice ? "" : (form.priceBasis === "per_master_pack" ? form.basePrice : String(perMaster));
-
-                    const dialEnabled = !!form.brandItemMatch;
-
-                    // Reference (grid anchor) for each basis, from the catalog's lowest
-                    // price — same number used by the old modal's "jump to reference".
-                    // Every InlineWheelField below anchors its 2% grid to THIS fixed
-                    // value, so ticks stay clean 2%-of-reference steps no matter which
-                    // field the seller is currently looking at.
-                    const refUnit = lowestPriceForBasis("per_unit", lowestPrice, form.packSize, form.masterPackSize);
-                    const refPack = lowestPriceForBasis("per_pack", lowestPrice, form.packSize, form.masterPackSize);
-                    const refMaster = lowestPriceForBasis("per_master_pack", lowestPrice, form.packSize, form.masterPackSize);
-
-                    const commitBasis = (basis) => (price) => {
-                        setForm((f) => ({ ...f, basePrice: String(price), priceBasis: basis }));
-                        touch("basePrice");
-                    };
-
-                    return (
-                        <FieldAnchor fieldKey="basePrice">
-                            <p className="text-[11.5px] font-semibold leading-snug tracking-wide pb-1" style={{ color: C.ink }}>
-                                The standard price before applying quantity-based discounts
-                                {dialEnabled && <span className="ml-1 font-medium" style={{ color: C.muted }}>· scroll or tap a field to dial in the price</span>}
-                            </p>
-                            <div className={`grid gap-2.5 ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
-                                {dialEnabled ? (
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-center" style={{ color: C.muted }}>
-                                            Per {form.unit || "Unit"}
-                                        </span>
-                                        <InlineWheelField
-                                            seed={Number(unitValue) || refUnit || 0}
-                                            step={round2((refUnit || 1) * 0.02) || 1}
-                                            gridAnchor={refUnit || 1}
-                                            filterFn={(v) => v > 0}
-                                            formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
-                                            prefix="₹" suffix={null}
-                                            rangeMessage="Enter a price greater than ₹0."
-                                            onCommit={commitBasis("per_unit")}
-                                        />
-                                    </div>
-                                ) : (
-                                    <TextField2
-                                        required dense label={`Per ${form.unit || "Unit"}`} prefix="₹"
-                                        hint={`Price for 1 ${form.unit || "Unit"} — the other fields recalculate automatically`}
-                                        value={unitValue}
-                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_unit" }))}
-                                        onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal"
-                                        onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
-                                    />
-                                )}
-
-                                {dialEnabled ? (
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-center" style={{ color: C.muted }}>
-                                            Per Pack
-                                        </span>
-                                        <InlineWheelField
-                                            seed={Number(packValue) || refPack || 0}
-                                            step={round2((refPack || 1) * 0.02) || 1}
-                                            gridAnchor={refPack || 1}
-                                            filterFn={(v) => v > 0}
-                                            formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
-                                            prefix="₹" suffix={null}
-                                            rangeMessage="Enter a price greater than ₹0."
-                                            onCommit={commitBasis("per_pack")}
-                                        />
-                                    </div>
-                                ) : (
-                                    <TextField2
-                                        required dense label="Per Pack" prefix="₹"
-                                        hint={`Price for 1 Pack (${form.packSize || "?"} ${form.unit || "Unit"}) — the other fields recalculate automatically`}
-                                        value={packValue}
-                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_pack" }))}
-                                        onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal"
-                                        onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
-                                    />
-                                )}
-
-                                {showMaster && (dialEnabled ? (
-                                    <div className="flex flex-col gap-1">
-                                        <span className="text-[10px] font-bold uppercase tracking-wider text-center" style={{ color: C.muted }}>
-                                            Per Master Pack
-                                        </span>
-                                        <InlineWheelField
-                                            seed={Number(masterValue) || refMaster || 0}
-                                            step={round2((refMaster || 1) * 0.02) || 1}
-                                            gridAnchor={refMaster || 1}
-                                            filterFn={(v) => v > 0}
-                                            formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
-                                            prefix="₹" suffix={null}
-                                            rangeMessage="Enter a price greater than ₹0."
-                                            onCommit={commitBasis("per_master_pack")}
-                                        />
-                                    </div>
-                                ) : (
-                                    <TextField2
-                                        required dense label="Per Master Pack" prefix="₹"
-                                        hint={`Price for 1 Master Pack (${form.masterPackSize || "?"} Packs) — the other fields recalculate automatically`}
-                                        value={masterValue}
-                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_master_pack" }))}
-                                        onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal"
-                                        onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
-                                    />
-                                ))}
-                            </div>
-                            <div className={`mt-1 grid gap-2.5 items-start ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
-                                <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per 1 {form.unit || "Unit"}</p>
-                                <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per {form.packSize || "?"} {form.unit || "Unit"}</p>
-                                {showMaster && <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per {form.masterPackSize} packs</p>}
-                            </div>
-                        </FieldAnchor>
-                    );
-                })()}
-                <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
-                    <FieldAnchor fieldKey="gstInclusive">
-                        <ToggleField3
-                            label="Price includes GST?"
-                            value={form.gstInclusive}
-                            onChange={(v) => { setField("gstInclusive", v); touch("gstInclusive"); }}
-                            error={isErr("gstInclusive")}
-                            onEnterKey={(dir) => handleFieldAdvance("gstInclusive", dir)}
-                        />
-                    </FieldAnchor>
-                </div>
-                <FieldAnchor fieldKey="marketingCommissionPercent">
-                    <CommissionSlider
-                        value={form.marketingCommissionPercent === "" ? "" : Number(form.marketingCommissionPercent)}
-                        onChange={(v) => {
-                            setField("marketingCommissionPercent", String(v));
-                            touch("marketingCommissionPercent");
-                        }}
-                        C={C}
-                        isErr={isErr("marketingCommissionPercent")}
-                    />
-                </FieldAnchor>
-                <RepeatableRows2
-                    label="Discount slabs"
-                    hint={form.hasOuterPack ? "Extra % off above a quantity threshold, in Master Packs" : "Extra % off above a quantity threshold, in Packs"}
-                    rows={form.priceSlabs}
-                    onChange={(rows) => setField("priceSlabs", rows)}
-                    addLabel="Add slab"
-                    columns={[
-                        {
-                            key: "minQty",
-                            placeholder: form.hasOuterPack ? "Min qty (Master Packs)" : "Min qty (Packs)",
-                            inputMode: "decimal",
-                            flex: 7,
-                            suffix: (row) => {
-                                const unitLabel = form.hasOuterPack ? "Master Pack" : "Pack";
-                                return Number(row.minQty) === 1 ? unitLabel : `${unitLabel}s`;
-                            },
-                        },
-                        {
-                            key: "discountPercent",
-                            placeholder: "Discount %",
-                            inputMode: "decimal",
-                            flex: 3,
-                            suffix: "%",
-                        },
-                    ]}
-                />
-                {form.priceSlabs.some((s) => s.discountPercent) && (
-                    <div className="flex flex-col gap-1 rounded-xl border px-3 py-2" style={{ borderColor: C.hairSoft }}>
-                        {form.priceSlabs
-                            .map((raw, i) => ({ raw, display: form.priceSlabs[i] }))
-                            .filter(({ raw }) => raw.minQty && raw.discountPercent)
-                            .map(({ raw, display }, i) => (
-                                <p key={i} className="text-[12px] font-semibold tabular-nums" style={{ color: C.muted }}>
-                                    Above {display.minQty} {form.hasOuterPack ? "Master Pack" : "Pack"}{Number(display.minQty) === 1 ? "" : "s"}: ₹{discountedPreview(raw)} / {form.hasOuterPack ? "Master Pack" : "Pack"}
-                                </p>
-                            ))}
-                    </div>
-                )}
-
-                <div className="rounded-2xl border p-3 flex flex-col gap-2" style={{ borderColor: C.hairSoft, background: `${C.secondary}08` }}>
-                    <p className="text-[13px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.ink }}>
-                        Demo Price breakdown for {form.hasOuterPack ? `${form.moq || 1} Master Packs` : `${form.moq || 1} Packs`}
-                    </p>
-
-                    {Number(form.packSize) > 0 ? (
-                        <div className="flex flex-col gap-1.5">
-                            <div className="flex flex-col gap-1">
-                                <p className="text-[11px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
-                                    Quantity at MOQ
-                                </p>
-                                <div className="flex flex-col gap-1 rounded-lg px-2.5 py-2 pt-0 pe-0" >
-                                    <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                        <span>Total {form.unit}</span>
-                                        <span className="tabular-nums font-bold" style={{ color: C.ink }}>
-                                            {moqPreview.totalUnits.toLocaleString("en-IN")} {form.unit || "units"}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                        <span>Packs</span>
-                                        <span className="tabular-nums font-bold" style={{ color: C.ink }}>
-                                            {moqSaleUnitsToPacks(moqPreview.saleUnitQty, form.hasOuterPack, form.masterPackSize).toLocaleString("en-IN")} Pack{moqSaleUnitsToPacks(moqPreview.saleUnitQty, form.hasOuterPack, form.masterPackSize) === 1 ? "" : "s"}
-                                        </span>
-                                    </div>
-                                    {form.hasOuterPack && Number(form.masterPackSize) >= 2 && (
-                                        <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                            <span>Master Packs</span>
-                                            <span className="tabular-nums font-bold" style={{ color: C.ink }}>
-                                                {Number(form.moq).toLocaleString("en-IN")} Master Pack{Number(form.moq) === 1 ? "" : "s"}
-                                            </span>
-                                        </div>
                                     )}
                                 </div>
+                            </FieldAnchor>
+
+                            <CertificateUploadField
+                                label="Quality & certifications"
+                                hint=""
+                                rows={form.qualityCertificates}
+                                onChange={(rows) => setField("qualityCertificates", rows)}
+                                token={token}
+                            />
+
+                            <TextAreaField label="Note to admin" value={form.noteToAdmin} onChange={(v) => setField("noteToAdmin", v)} rows={2}
+                                hint="Anything that'll help us approve this faster — e.g. context on the product, sourcing, or images." placeholder="Optional" />
+                        </>
+                    )}
+                </SectionCard>
+            )}
+
+            {/* ---------------- Packaging ---------------- */}
+            {showSection("packaging") && (
+                <SectionCard id="section-packaging" icon={Boxes} title="Packaging"
+                    open={resolvedOnlySection ? true : openSection === "packaging"} onOpenChange={(v) => handleSectionToggle("packaging", v)}
+                    missingCount={missingCountBySection.packaging} totalCount={totalCountBySection.packaging}
+                    readOnly={readOnly}>
+                    {checkingBrandMatch && (
+                        <p className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.muted }}>
+                            <Loader2 className="h-3 w-3 animate-spin" /> Checking if this product already exists…
+                        </p>
+                    )}
+
+                    {form.brandItemMatch ? (
+                        <div className="flex items-center gap-2 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
+                            <Boxes className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Fixed by this product</p>
+                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                    1 Pack = {form.packSize} {form.unit}
+                                    {Number(form.masterPackSize) > 1 && ` · 1 Master Pack = ${form.masterPackSize} Packs`}
+                                </p>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-2.5">
+                            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                                <FieldAnchor fieldKey="unit">
+                                    <SelectField required dense halfOnMobile label="What is the Selling Unit of this Product?" hint="Smallest measure this product is sold in (e.g. Pieces, Kg, Litres)" value={form.unit} onChange={(v) => setField("unit", v)} onBlur={() => touch("unit")} error={isErr("unit")} options={UNITS} onEnterKey={(dir) => handleFieldAdvance("unit", dir)} />
+                                </FieldAnchor>
+                                <FieldAnchor fieldKey="packSize">
+                                    <TextField required dense tinyOnMobile placeholder="1234" label={getPackSizeLabel(form.unit)} hint={getPackSizeHint(form.unit)} value={form.packSize} onChange={(v) => setField("packSize", v.replace(/[^\d.]/g, ""))} onBlur={() => touch("packSize")} error={isErr("packSize")} inputMode="decimal" onEnterKey={(dir) => handleFieldAdvance("packSize", dir)} />
+                                </FieldAnchor>
                             </div>
 
-                            <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                <span>Basic price</span>
-                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>
-                                    ₹{moqPreview.grossSubtotal.toLocaleString("en-IN")}
-                                </span>
-                            </div>
+                            <FieldAnchor fieldKey="hasOuterPack">
+                                <ToggleField2
+                                    label="Does this have an Outer Pack?"
+                                    value={form.hasOuterPack}
+                                    onChange={(v) => { handleOuterPackToggle(v); touch("hasOuterPack"); }}
+                                    error={isErr("hasOuterPack")}
+                                    onEnterKey={(dir) => handleFieldAdvance("hasOuterPack", dir)}
+                                    infoBlock={
+                                        <div className="mb-1 flex items-start gap-2 rounded-xl">
+                                            <p className="text-[8.5px] font-semibold leading-snug tracking-wide" style={{ color: C.primary }}>
+                                                An outer pack is a larger pack / <b style={{ color: C.primary }}>Master Pack</b> containing multiple individual Packs.
+                                            </p>
+                                        </div>
+                                    }
+                                />
+                            </FieldAnchor>
 
-                            {moqPreview.discountPercent > 0 && (
-                                <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.secondary }}>
-                                    <span>Discount ({moqPreview.discountPercent}%)</span>
-                                    <span className="tabular-nums font-bold">
-                                        − ₹{moqPreview.discountAmount.toLocaleString("en-IN")}
+                            {form.hasOuterPack && (
+                                <>
+                                    <FieldAnchor fieldKey="masterPackSize">
+                                        <TextField
+                                            required dense tinyOnMobile
+                                            placeholder="1234"
+                                            label="How many Packs are there in one Outer Pack?"
+                                            hint="How many Packs make up 1 Master Pack (e.g. 1 Master Pack = 5 Packs)"
+                                            value={form.masterPackSize}
+                                            onChange={(v) => setField("masterPackSize", v.replace(/[^\d]/g, ""))}
+                                            onBlur={() => touch("masterPackSize")}
+                                            error={isErr("masterPackSize")}
+                                            inputMode="numeric"
+                                            onEnterKey={(dir) => handleFieldAdvance("masterPackSize", dir)}
+                                        />
+                                    </FieldAnchor>
+                                </>
+                            )}
+                            {/* Derived packaging summary — recalculates live from Unit / Pack size /
+                        Master pack size, shown just above MOQ so the seller can sanity-check
+                        the numbers they just entered before setting a minimum order quantity. */}
+                            {form.unit && Number(form.packSize) > 0 && (
+                                <p className="text-[13px] font-bold tracking-wider mt-1" style={{ color: C.ink }}>
+                                    {form.hasOuterPack && Number(form.masterPackSize) >= 2
+                                        ? `1 Master Pack = ${form.masterPackSize} Packs = ${Number(form.packSize) * Number(form.masterPackSize)} ${form.unit}`
+                                        : `1 Pack = ${form.packSize} ${form.unit}`}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        <FieldAnchor fieldKey="moq">
+                            <TextField required dense tinyOnMobile placeholder="1234" label={getMoqLabel(form.hasOuterPack)} hint={getMoqHint(form.hasOuterPack)}
+                                value={form.moq} onChange={(v) => setField("moq", v.replace(/[^\d.]/g, ""))}
+                                onBlur={() => touch("moq")} error={isErr("moq")} inputMode="decimal" onEnterKey={(dir) => handleFieldAdvance("moq", dir)} />
+                        </FieldAnchor>
+                    </div>
+                    <FieldAnchor fieldKey="sampleAvailable">
+                        <ToggleField
+                            label="Sample available?"
+                            value={form.sampleAvailable}
+                            onChange={(v) => { setField("sampleAvailable", v); touch("sampleAvailable"); }}
+                            error={isErr("sampleAvailable")}
+                            onEnterKey={(dir) => handleFieldAdvance("sampleAvailable", dir)}
+                        />
+                    </FieldAnchor>
+                    {form.sampleAvailable && (
+                        <FieldAnchor fieldKey="sampleQuantity">
+                            <TextFieldWithUnitSelect
+                                required dense
+                                label="Sample quantity"
+                                value={form.sampleQuantity}
+                                onChange={(v) => setField("sampleQuantity", v.replace(/[^\d.]/g, ""))}
+                                onBlur={() => touch("sampleQuantity")}
+                                error={isErr("sampleQuantity")}
+                                inputMode="decimal"
+                                unitValue={form.sampleUnitBasis}
+                                unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
+                                onUnitChange={changeSampleBasis}
+                                onEnterKey={(dir) => handleFieldAdvance("sampleQuantity", dir)}
+                            />
+                        </FieldAnchor>
+                    )}
+
+                </SectionCard>
+            )}
+
+            {/* ---------------- Pricing ---------------- */}
+            {showSection("pricing") && (
+                <SectionCard id="section-pricing" icon={IndianRupee} title="Tax & Pricing"
+                    open={resolvedOnlySection ? true : openSection === "pricing"} onOpenChange={(v) => handleSectionToggle("pricing", v)}
+                    missingCount={missingCountBySection.pricing} totalCount={totalCountBySection.pricing}
+                    readOnly={readOnly}>
+                    <ChipToggleGroup
+                        dense label="Applicable GST % for this Product"
+                        value={form.gstPercent === "" || form.gstPercent == null ? "" : Number(form.gstPercent)}
+                        onChange={(v) => setField("gstPercent", Number(v))}
+                        options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))}
+                        onEnterKey={(dir) => handleFieldAdvance("gstPercent", dir)}
+                    />
+                    {(() => {
+                        const showMaster = form.hasOuterPack && Number(form.masterPackSize) >= 2;
+                        const hasPrice = form.basePrice !== "" && form.basePrice != null;
+                        const { perUnit, perPack, perMaster } = hasPrice
+                            ? computeThreeTierPrices(form.priceBasis, form.basePrice, form.packSize, form.masterPackSize)
+                            : { perUnit: "", perPack: "", perMaster: "" };
+
+                        const unitValue = !hasPrice ? "" : (form.priceBasis === "per_unit" ? form.basePrice : String(perUnit));
+                        const packValue = !hasPrice ? "" : (form.priceBasis === "per_pack" ? form.basePrice : String(perPack));
+                        const masterValue = !hasPrice ? "" : (form.priceBasis === "per_master_pack" ? form.basePrice : String(perMaster));
+
+                        const dialEnabled = !!form.brandItemMatch;
+                        // const dialEnabled = !!form.brandItemMatch?.id;
+
+                        // Reference (grid anchor) for each basis, from the catalog's lowest
+                        // price — same number used by the old modal's "jump to reference".
+                        // Every InlineWheelField below anchors its 2% grid to THIS fixed
+                        // value, so ticks stay clean 2%-of-reference steps no matter which
+                        // field the seller is currently looking at.
+                        const refUnit = lowestPriceForBasis("per_unit", lowestPrice, form.packSize, form.masterPackSize);
+                        const refPack = lowestPriceForBasis("per_pack", lowestPrice, form.packSize, form.masterPackSize);
+                        const refMaster = lowestPriceForBasis("per_master_pack", lowestPrice, form.packSize, form.masterPackSize);
+
+                        const commitBasis = (basis) => (price) => {
+                            setForm((f) => ({ ...f, basePrice: String(price), priceBasis: basis }));
+                            touch("basePrice");
+                        };
+
+                        return (
+                            <FieldAnchor fieldKey="basePrice">
+                                <p className="text-[11.5px] font-semibold leading-snug tracking-wide pb-1" style={{ color: C.ink }}>
+                                    The standard price before applying quantity-based discounts
+                                    {dialEnabled && <span className="ml-1 font-medium" style={{ color: C.muted }}>· scroll or tap a field to dial in the price</span>}
+                                </p>
+                                <div className={`grid gap-2.5 ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
+                                    {dialEnabled ? (
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-center" style={{ color: C.muted }}>
+                                                Per {form.unit || "Unit"}
+                                            </span>
+                                            <InlineWheelField
+                                                seed={Number(unitValue) || refUnit || 0}
+                                                step={round2((refUnit || 1) * 0.02) || 1}
+                                                gridAnchor={refUnit || 1}
+                                                filterFn={(v) => v > 0}
+                                                formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
+                                                prefix="₹" suffix={null}
+                                                rangeMessage="Enter a price greater than ₹0."
+                                                onCommit={commitBasis("per_unit")}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <TextField2
+                                            required dense label={`Per ${form.unit || "Unit"}`} prefix="₹"
+                                            hint={`Price for 1 ${form.unit || "Unit"} — the other fields recalculate automatically`}
+                                            value={unitValue}
+                                            onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_unit" }))}
+                                            onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal"
+                                            onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
+                                        />
+                                    )}
+
+                                    {dialEnabled ? (
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-center" style={{ color: C.muted }}>
+                                                Per Pack
+                                            </span>
+                                            <InlineWheelField
+                                                seed={Number(packValue) || refPack || 0}
+                                                step={round2((refPack || 1) * 0.02) || 1}
+                                                gridAnchor={refPack || 1}
+                                                filterFn={(v) => v > 0}
+                                                formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
+                                                prefix="₹" suffix={null}
+                                                rangeMessage="Enter a price greater than ₹0."
+                                                onCommit={commitBasis("per_pack")}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <TextField2
+                                            required dense label="Per Pack" prefix="₹"
+                                            hint={`Price for 1 Pack (${form.packSize || "?"} ${form.unit || "Unit"}) — the other fields recalculate automatically`}
+                                            value={packValue}
+                                            onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_pack" }))}
+                                            onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal"
+                                            onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
+                                        />
+                                    )}
+
+                                    {showMaster && (dialEnabled ? (
+                                        <div className="flex flex-col gap-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-center" style={{ color: C.muted }}>
+                                                Per Master Pack
+                                            </span>
+                                            <InlineWheelField
+                                                seed={Number(masterValue) || refMaster || 0}
+                                                step={round2((refMaster || 1) * 0.02) || 1}
+                                                gridAnchor={refMaster || 1}
+                                                filterFn={(v) => v > 0}
+                                                formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
+                                                prefix="₹" suffix={null}
+                                                rangeMessage="Enter a price greater than ₹0."
+                                                onCommit={commitBasis("per_master_pack")}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <TextField2
+                                            required dense label="Per Master Pack" prefix="₹"
+                                            hint={`Price for 1 Master Pack (${form.masterPackSize || "?"} Packs) — the other fields recalculate automatically`}
+                                            value={masterValue}
+                                            onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_master_pack" }))}
+                                            onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal"
+                                            onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
+                                        />
+                                    ))}
+                                </div>
+                                <div className={`mt-1 grid gap-2.5 items-start ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
+                                    <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per 1 {form.unit || "Unit"}</p>
+                                    <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per {form.packSize || "?"} {form.unit || "Unit"}</p>
+                                    {showMaster && <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per {form.masterPackSize} packs</p>}
+                                </div>
+                            </FieldAnchor>
+                        );
+                    })()}
+                    <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
+                        <FieldAnchor fieldKey="gstInclusive">
+                            <ToggleField3
+                                label="Price includes GST?"
+                                value={form.gstInclusive}
+                                onChange={(v) => { setField("gstInclusive", v); touch("gstInclusive"); }}
+                                error={isErr("gstInclusive")}
+                                onEnterKey={(dir) => handleFieldAdvance("gstInclusive", dir)}
+                            />
+                        </FieldAnchor>
+                    </div>
+                    <FieldAnchor fieldKey="marketingCommissionPercent">
+                        <CommissionSlider
+                            value={form.marketingCommissionPercent === "" ? "" : Number(form.marketingCommissionPercent)}
+                            onChange={(v) => {
+                                setField("marketingCommissionPercent", String(v));
+                                touch("marketingCommissionPercent");
+                            }}
+                            C={C}
+                            isErr={isErr("marketingCommissionPercent")}
+                        />
+                    </FieldAnchor>
+                    <RepeatableRows2
+                        label="Discount slabs"
+                        hint={form.hasOuterPack ? "Extra % off above a quantity threshold, in Master Packs" : "Extra % off above a quantity threshold, in Packs"}
+                        rows={form.priceSlabs}
+                        onChange={(rows) => setField("priceSlabs", rows)}
+                        addLabel="Add slab"
+                        columns={[
+                            {
+                                key: "minQty",
+                                placeholder: form.hasOuterPack ? "Min qty (Master Packs)" : "Min qty (Packs)",
+                                inputMode: "decimal",
+                                flex: 7,
+                                suffix: (row) => {
+                                    const unitLabel = form.hasOuterPack ? "Master Pack" : "Pack";
+                                    return Number(row.minQty) === 1 ? unitLabel : `${unitLabel}s`;
+                                },
+                            },
+                            {
+                                key: "discountPercent",
+                                placeholder: "Discount %",
+                                inputMode: "decimal",
+                                flex: 3,
+                                suffix: "%",
+                            },
+                        ]}
+                    />
+                    {form.priceSlabs.some((s) => s.discountPercent) && (
+                        <div className="flex flex-col gap-1 rounded-xl border px-3 py-2" style={{ borderColor: C.hairSoft }}>
+                            {form.priceSlabs
+                                .map((raw, i) => ({ raw, display: form.priceSlabs[i] }))
+                                .filter(({ raw }) => raw.minQty && raw.discountPercent)
+                                .map(({ raw, display }, i) => (
+                                    <p key={i} className="text-[12px] font-semibold tabular-nums" style={{ color: C.muted }}>
+                                        Above {display.minQty} {form.hasOuterPack ? "Master Pack" : "Pack"}{Number(display.minQty) === 1 ? "" : "s"}: ₹{discountedPreview(raw)} / {form.hasOuterPack ? "Master Pack" : "Pack"}
+                                    </p>
+                                ))}
+                        </div>
+                    )}
+
+                    <div className="rounded-2xl border p-3 flex flex-col gap-2" style={{ borderColor: C.hairSoft, background: `${C.secondary}08` }}>
+                        <p className="text-[13px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.ink }}>
+                            Demo Price breakdown for {form.hasOuterPack ? `${form.moq || 1} Master Packs` : `${form.moq || 1} Packs`}
+                        </p>
+
+                        {Number(form.packSize) > 0 ? (
+                            <div className="flex flex-col gap-1.5">
+                                <div className="flex flex-col gap-1">
+                                    <p className="text-[11px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
+                                        Quantity at MOQ
+                                    </p>
+                                    <div className="flex flex-col gap-1 rounded-lg px-2.5 py-2 pt-0 pe-0" >
+                                        <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                            <span>Total {form.unit}</span>
+                                            <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                                {moqPreview.totalUnits.toLocaleString("en-IN")} {form.unit || "units"}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                            <span>Packs</span>
+                                            <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                                {moqSaleUnitsToPacks(moqPreview.saleUnitQty, form.hasOuterPack, form.masterPackSize).toLocaleString("en-IN")} Pack{moqSaleUnitsToPacks(moqPreview.saleUnitQty, form.hasOuterPack, form.masterPackSize) === 1 ? "" : "s"}
+                                            </span>
+                                        </div>
+                                        {form.hasOuterPack && Number(form.masterPackSize) >= 2 && (
+                                            <div className="flex items-center justify-between gap-2 text-[13px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                <span>Master Packs</span>
+                                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                                    {Number(form.moq).toLocaleString("en-IN")} Master Pack{Number(form.moq) === 1 ? "" : "s"}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                    <span>Basic price</span>
+                                    <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                        ₹{moqPreview.grossSubtotal.toLocaleString("en-IN")}
                                     </span>
                                 </div>
-                            )}
 
-                            <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                <span>GST ({form.gstPercent}%){form.gstInclusive ? " " : ""}</span>
-                                <span className="tabular-nums font-bold" style={{ color: C.ink }}>
-                                    ₹{moqPreview.gstAmount.toLocaleString("en-IN")}
-                                </span>
-                            </div>
+                                {moqPreview.discountPercent > 0 && (
+                                    <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.secondary }}>
+                                        <span>Discount ({moqPreview.discountPercent}%)</span>
+                                        <span className="tabular-nums font-bold">
+                                            − ₹{moqPreview.discountAmount.toLocaleString("en-IN")}
+                                        </span>
+                                    </div>
+                                )}
 
-                            <div className="flex items-center justify-between gap-2 border-y py-1.5 my-0.5" style={{ borderColor: C.hair }}>
-                                <span className="text-[14px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>
-                                    Total amount
-                                </span>
-                                <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                                    ₹{moqPreview.totalAmount.toLocaleString("en-IN")}
-                                </span>
-                            </div>
+                                <div className="flex items-center justify-between gap-2 text-[13.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                    <span>GST ({form.gstPercent}%){form.gstInclusive ? " " : ""}</span>
+                                    <span className="tabular-nums font-bold" style={{ color: C.ink }}>
+                                        ₹{moqPreview.gstAmount.toLocaleString("en-IN")}
+                                    </span>
+                                </div>
 
-                            {/* <div className="flex items-center justify-between gap-2 text-[11px] font-semibold" style={{ color: C.muted }}>
+                                <div className="flex items-center justify-between gap-2 border-y py-1.5 my-0.5" style={{ borderColor: C.hair }}>
+                                    <span className="text-[14px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>
+                                        Total amount
+                                    </span>
+                                    <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                        ₹{moqPreview.totalAmount.toLocaleString("en-IN")}
+                                    </span>
+                                </div>
+
+                                {/* <div className="flex items-center justify-between gap-2 text-[11px] font-semibold" style={{ color: C.muted }}>
                                 <span>Platform commission ({effectiveCommissionPercent}% + {form.gstPercent}% GST) <span className="italic font-medium">— for reference</span></span>
                                 <span className="tabular-nums font-bold" style={{ color: C.primary }}>
                                     ₹{moqPreview.totalCommissionDeducted.toLocaleString("en-IN")}
                                 </span>
                             </div> */}
-                            {moqPreview.commissionPercent > 0 && (
-                                <div className="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                    <span>Promotion & Visibility Budget ({moqPreview.commissionPercent}% + {form.gstPercent}% GST on fee)</span>
-                                    <span className="tabular-nums font-bold" style={{ color: "#c71f11" }}>
-                                        − ₹{moqPreview.totalCommissionDeducted.toLocaleString("en-IN")}
+                                {moqPreview.commissionPercent > 0 && (
+                                    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                        <span>Promotion & Visibility Budget ({moqPreview.commissionPercent}% + {form.gstPercent}% GST on fee)</span>
+                                        <span className="tabular-nums font-bold" style={{ color: "#c71f11" }}>
+                                            − ₹{moqPreview.totalCommissionDeducted.toLocaleString("en-IN")}
+                                        </span>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between gap-2 border-t pt-1.5" style={{ borderColor: C.hair }}>
+                                    <span className="text-[13px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>You'll receive</span>
+                                    <span className="text-[15px] font-extrabold tabular-nums" style={{ color: "#15803d" }}>
+                                        ₹{moqPreview.netPayout.toLocaleString("en-IN")}
                                     </span>
                                 </div>
-                            )}
-                            <div className="flex items-center justify-between gap-2 border-t pt-1.5" style={{ borderColor: C.hair }}>
-                                <span className="text-[13px] font-extrabold uppercase tracking-wide" style={{ color: C.ink }}>You'll receive</span>
-                                <span className="text-[15px] font-extrabold tabular-nums" style={{ color: "#15803d" }}>
-                                    ₹{moqPreview.netPayout.toLocaleString("en-IN")}
-                                </span>
                             </div>
-                        </div>
-                    ) : (
-                        <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
-                            Enter Pack size and MOQ above to see the full price breakdown
-                        </p>
-                    )}
-                </div>
-                <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
-                    <FieldAnchor fieldKey="freightIncluded">
-                        <ToggleField
-                            label="Freight included?"
-                            value={form.freightIncluded}
-                            onChange={(v) => { setField("freightIncluded", v); touch("freightIncluded"); }}
-                            error={isErr("freightIncluded")}
-                            onEnterKey={(dir) => handleFieldAdvance("freightIncluded", dir)}
+                        ) : (
+                            <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
+                                Enter Pack size and MOQ above to see the full price breakdown
+                            </p>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
+                        <FieldAnchor fieldKey="freightIncluded">
+                            <ToggleField
+                                label="Freight included?"
+                                value={form.freightIncluded}
+                                onChange={(v) => { setField("freightIncluded", v); touch("freightIncluded"); }}
+                                error={isErr("freightIncluded")}
+                                onEnterKey={(dir) => handleFieldAdvance("freightIncluded", dir)}
+                            />
+                        </FieldAnchor>
+                    </div>
+
+
+                    {commissionWheelOpen && (
+                        <PriceWheelPicker
+                            open
+                            unit="percent"
+                            direction="increase"
+                            min={0.25}
+                            max={100}
+                            unitLabel="Commission"
+                            referenceLabel="Platform minimum"
+                            referenceValue={platformDefaultCommissionPercent}
+                            initialValue={Number(form.marketingCommissionPercent) || platformDefaultCommissionPercent}
+                            onClose={() => setCommissionWheelOpen(false)}
+                            onConfirm={(v) => {
+                                setField("marketingCommissionPercent", String(v));
+                                touch("marketingCommissionPercent");
+                                setCommissionWheelOpen(false);
+                            }}
                         />
-                    </FieldAnchor>
-                </div>
-
-
-                {commissionWheelOpen && (
-                    <PriceWheelPicker
-                        open
-                        unit="percent"
-                        direction="increase"
-                        min={0.25}
-                        max={100}
-                        unitLabel="Commission"
-                        referenceLabel="Platform minimum"
-                        referenceValue={platformDefaultCommissionPercent}
-                        initialValue={Number(form.marketingCommissionPercent) || platformDefaultCommissionPercent}
-                        onClose={() => setCommissionWheelOpen(false)}
-                        onConfirm={(v) => {
-                            setField("marketingCommissionPercent", String(v));
-                            touch("marketingCommissionPercent");
-                            setCommissionWheelOpen(false);
-                        }}
-                    />
-                )}
-            </SectionCard>
+                    )}
+                </SectionCard>
+            )}
 
             {/* ---------------- Fulfilment ---------------- */}
-            <SectionCard id="section-fulfilment" icon={Truck} title="Fulfilment"
-                open={openSection === "fulfilment"} onOpenChange={(v) => handleSectionToggle("fulfilment", v)}
-                missingCount={missingCountBySection.fulfilment} totalCount={totalCountBySection.fulfilment}
-                readOnly={readOnly}>
-                <FieldAnchor fieldKey="stockType">
-                    <ChipToggleGroup label="Fulfilment" value={form.stockType}
-                        onChange={(v) => { setField("stockType", v); touch("stockType"); }}
-                        error={isErr("stockType")}
-                        options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]}
-                        onEnterKey={(dir) => handleFieldAdvance("stockType", dir)} />
+            {showSection("fulfilment") && (
+                <SectionCard id="section-fulfilment" icon={Truck} title="Fulfilment"
+                    open={resolvedOnlySection ? true : openSection === "fulfilment"} onOpenChange={(v) => handleSectionToggle("fulfilment", v)}
+                    missingCount={missingCountBySection.fulfilment} totalCount={totalCountBySection.fulfilment}
+                    readOnly={readOnly}>
+                    <FieldAnchor fieldKey="stockType">
+                        <ChipToggleGroup label="Fulfilment" value={form.stockType}
+                            onChange={(v) => { setField("stockType", v); touch("stockType"); }}
+                            error={isErr("stockType")}
+                            options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]}
+                            onEnterKey={(dir) => handleFieldAdvance("stockType", dir)} />
 
-                </FieldAnchor>
-                {form.stockType === "ready_stock" ? (
-                    <FieldAnchor fieldKey="stockQuantity">
-                        <TextFieldWithUnitSelect
-                            required dense
-                            label="Available stock"
-                            value={form.stockQuantity}
-                            onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))}
-                            onBlur={() => touch("stockQuantity")}
-                            error={isErr("stockQuantity")}
-                            inputMode="decimal"
-                            unitValue={form.stockQuantityBasis}
-                            unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
-                            onUnitChange={changeStockBasis}
-                            onEnterKey={(dir) => handleFieldAdvance("stockQuantity", dir)}
-                        />
                     </FieldAnchor>
-                ) : (
-                    <FieldAnchor fieldKey="productionLeadTimeDays">
-                        <TextField required dense label="Lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" onEnterKey={(dir) => handleFieldAdvance("productionLeadTimeDays", dir)} />
-                    </FieldAnchor>
-                )}
-            </SectionCard>
+                    {form.stockType === "ready_stock" ? (
+                        <FieldAnchor fieldKey="stockQuantity">
+                            <TextFieldWithUnitSelect
+                                required dense
+                                label="Available stock"
+                                value={form.stockQuantity}
+                                onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))}
+                                onBlur={() => touch("stockQuantity")}
+                                error={isErr("stockQuantity")}
+                                inputMode="decimal"
+                                unitValue={form.stockQuantityBasis}
+                                unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
+                                onUnitChange={changeStockBasis}
+                                onEnterKey={(dir) => handleFieldAdvance("stockQuantity", dir)}
+                            />
+                        </FieldAnchor>
+                    ) : (
+                        <FieldAnchor fieldKey="productionLeadTimeDays">
+                            <TextField required dense label="Lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" onEnterKey={(dir) => handleFieldAdvance("productionLeadTimeDays", dir)} />
+                        </FieldAnchor>
+                    )}
+                </SectionCard>
+            )}
 
             {/* ---------------- Terms ---------------- */}
-            <SectionCard id="section-terms" icon={FileText} title="Terms"
-                open={openSection === "terms"} onOpenChange={(v) => handleSectionToggle("terms", v)}
-                missingCount={missingCountBySection.terms} totalCount={totalCountBySection.terms}
-                readOnly={readOnly}>
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                    <FieldAnchor fieldKey="returnPolicyKey">
-                        <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => { setField("returnPolicyKey", v); handleFieldAdvance("returnPolicyKey", "forward"); }} error={isErr("returnPolicyKey")} />
-                    </FieldAnchor>
-                    <FieldAnchor fieldKey="warrantyKey">
-                        <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => { setField("warrantyKey", v); handleFieldAdvance("warrantyKey", "forward"); }} error={isErr("warrantyKey")} />
-                    </FieldAnchor>
-                </div>
-            </SectionCard>
+            {showSection("terms") && (
+                <SectionCard id="section-terms" icon={FileText} title="Terms"
+                    open={resolvedOnlySection ? true : openSection === "terms"} onOpenChange={(v) => handleSectionToggle("terms", v)}
+                    missingCount={missingCountBySection.terms} totalCount={totalCountBySection.terms}
+                    readOnly={readOnly}>
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        <FieldAnchor fieldKey="returnPolicyKey">
+                            <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => { setField("returnPolicyKey", v); handleFieldAdvance("returnPolicyKey", "forward"); }} error={isErr("returnPolicyKey")} />
+                        </FieldAnchor>
+                        <FieldAnchor fieldKey="warrantyKey">
+                            <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => { setField("warrantyKey", v); handleFieldAdvance("warrantyKey", "forward"); }} error={isErr("warrantyKey")} />
+                        </FieldAnchor>
+                    </div>
+                </SectionCard>
+            )}
 
             {/* ---------------- Delivery ---------------- */}
-            <SectionCard id="section-delivery" icon={Truck} title="Delivery"
-                open={openSection === "delivery"} onOpenChange={(v) => handleSectionToggle("delivery", v)}
-                missingCount={missingCountBySection.delivery} totalCount={totalCountBySection.delivery}
-                readOnly={readOnly}>
-                <FieldAnchor fieldKey="dispatchingLocations">
-                    <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
-                </FieldAnchor>
-            </SectionCard>
+            {showSection("delivery") && (
+                <SectionCard id="section-delivery" icon={Truck} title="Delivery"
+                    open={resolvedOnlySection ? true : openSection === "delivery"} onOpenChange={(v) => handleSectionToggle("delivery", v)}
+                    missingCount={missingCountBySection.delivery} totalCount={totalCountBySection.delivery}
+                    readOnly={readOnly}>
+                    <FieldAnchor fieldKey="dispatchingLocations">
+                        <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
+                    </FieldAnchor>
+                </SectionCard>
+            )}
 
             {readOnly ? (
                 <div className={`sticky ${stickyBottomClassName} z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4`} style={{ borderColor: C.hair }}>
