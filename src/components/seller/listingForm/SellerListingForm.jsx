@@ -381,7 +381,7 @@ function computeThreeTierPrices(basis, rawPrice, packSize, masterPackSize) {
 // Fields hidden outright when the product is a locked catalog match
 // (brandItemMatch set) — these get replaced by the read-only "Fixed by
 // this product" summary, so they should never be counted at all.
-const LOCKED_WHEN_MATCHED_FIELDS = ["unit", "packSize", "hasOuterPack", "masterPackSize"];
+const LOCKED_WHEN_MATCHED_FIELDS = ["unit", "packSize", "hasOuterPack", "masterPackSize", "gstPercent"];
 
 const CONDITIONAL_FIELD_VISIBILITY = {
     masterPackSize: (f) => !f.brandItemMatch && f.hasOuterPack === true,
@@ -439,11 +439,12 @@ function computeMissing(form) {
         add(!(Number(form.packSize) > 0), "packSize", "Pack size");
         add(form.hasOuterPack == null, "hasOuterPack", "Outer pack");
         add(form.hasOuterPack && !(Number(form.masterPackSize) >= 2), "masterPackSize", "Master pack size");
+        add(form.gstPercent === "" || form.gstPercent == null, "gstPercent", "GST %"); // moved here
     }
 
     add(!(Number(form.moq) > 0), "moq", "MOQ");
     add(form.sampleAvailable == null, "sampleAvailable", "Sample availability");
-    add(form.gstPercent === "" || form.gstPercent == null, "gstPercent", "GST %");
+    // (gstPercent check removed from its old spot below this)
     add(form.gstInclusive == null, "gstInclusive", "Price includes GST");
     add(!(Number(form.basePrice) > 0), "basePrice", "Base price");
     add(form.freightIncluded == null, "freightIncluded", "Freight included");
@@ -761,6 +762,7 @@ export default function SellerListingForm({
                         packSize: String(res.match.packSize),
                         hasOuterPack: matchHasOuterPack,
                         masterPackSize: matchHasOuterPack ? String(res.match.masterPackSize) : "1",
+                        gstPercent: res.match.gstPercent ?? f.gstPercent, // NEW
                     };
                 }
                 // No match — clear any previously-locked packaging so the
@@ -1418,13 +1420,31 @@ export default function SellerListingForm({
                     open={resolvedOnlySection ? true : openSection === "pricing"} onOpenChange={(v) => handleSectionToggle("pricing", v)}
                     missingCount={missingCountBySection.pricing} totalCount={totalCountBySection.pricing}
                     readOnly={readOnly}>
-                    <ChipToggleGroup
-                        dense label="Applicable GST % for this Product"
-                        value={form.gstPercent === "" || form.gstPercent == null ? "" : Number(form.gstPercent)}
-                        onChange={(v) => setField("gstPercent", Number(v))}
-                        options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))}
-                        onEnterKey={(dir) => handleFieldAdvance("gstPercent", dir)}
-                    />
+                    <FieldAnchor fieldKey="gstPercent">
+                        {form.brandItemMatch ? (
+                            <div className="flex items-center gap-2 rounded-xl p-2.5" style={{ background: C.hairSoft }}>
+                                <IndianRupee className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
+                                <div className="min-w-0">
+                                    <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
+                                        GST % · fixed for this product
+                                    </p>
+                                    <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                        {form.gstPercent === "" || form.gstPercent == null
+                                            ? "Not set yet"
+                                            : `${form.gstPercent}% GST will be applied to this listing`}
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            <ChipToggleGroup
+                                dense label="Applicable GST % for this Product"
+                                value={form.gstPercent === "" || form.gstPercent == null ? "" : Number(form.gstPercent)}
+                                onChange={(v) => setField("gstPercent", Number(v))}
+                                options={GST_OPTIONS.map((g) => ({ value: g, label: `${g}%` }))}
+                                onEnterKey={(dir) => handleFieldAdvance("gstPercent", dir)}
+                            />
+                        )}
+                    </FieldAnchor>
                     {(() => {
                         const showMaster = form.hasOuterPack && Number(form.masterPackSize) >= 2;
                         const hasPrice = form.basePrice !== "" && form.basePrice != null;

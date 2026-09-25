@@ -83,6 +83,7 @@ export default function SellThisItemModal({ brand, onClose }) {
         unit: detail?.unit || "",
         packSize: detail?.packSize != null ? String(detail.packSize) : "",
         masterPackSize: detail?.unitsPerMasterPack != null ? String(detail.unitsPerMasterPack) : "",
+        gstPercent: detail?.gstPercent ?? "", // NEW
     };
 
     const handleSubmit = async (formValues) => {
