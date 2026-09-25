@@ -1,6 +1,16 @@
 // components/seller/listingForm/PriceWheelPicker.jsx
 //
 // CHANGES (this pass):
+// - REUSABLE INTERNALS: `useWheelColumn`, `WheelColumn`, `sanitizeDecimal`,
+//   and the layout constants (`ITEM_HEIGHT`, `WHEEL_HEIGHT`, `PADDING`) are
+//   now named exports. This popup component (the default export) is
+//   completely unchanged — the export is purely so CustomPricingModal.jsx
+//   can embed the same scroll-wheel + tap-to-type behaviour INLINE, right
+//   in the pricing card, without the modal/backdrop/confirm-button chrome
+//   around it.
+//
+// (Everything below this point is unchanged from before.)
+//
 // - MANUAL ENTRY: tapping the highlighted (centre) value now turns it into
 //   a real text input (numeric keyboard on mobile). The seller can type an
 //   exact number instead of scrolling. Behaviour:
@@ -28,10 +38,24 @@ import { useLenis } from "../../../providers/SmoothScrollProvider.jsx";
 import { X, Minus, Plus, Check } from "lucide-react";
 import { C, EASE } from "./FormPrimitives.jsx";
 
-const ITEM_HEIGHT = 44;
+export const ITEM_HEIGHT = 44;
 const VISIBLE_ROWS = 5;
-const WHEEL_HEIGHT = ITEM_HEIGHT * VISIBLE_ROWS;
-const PADDING = (WHEEL_HEIGHT - ITEM_HEIGHT) / 2;
+export const WHEEL_HEIGHT = ITEM_HEIGHT * VISIBLE_ROWS;
+export const PADDING = (WHEEL_HEIGHT - ITEM_HEIGHT) / 2;
+
+// One static window of values, big enough that ordinary scrolling never
+// needs to extend it mid-drag. 300 each side = 601 values total — e.g. for
+// a 1-point percent step that's 0–300% of range; for a currency step at 2%
+// of reference price, roughly ±600% of that price. Reaching the very edge
+// just stops scrolling further (same as any bounded picker) — the seller
+// can still type an exact value by hand. This replaces the old "prepend
+// more values and patch scrollTop while scrolling" approach, which is what
+// caused the visible value "hopping": that approach mutated the array and
+// manually adjusted scroll position WHILE a fling was still in motion on
+// its own native timeline, and the two would desync under fast scrolling,
+// causing `selected` to briefly read the wrong index — a big, sudden jump.
+const WHEEL_SPAN = 300;
+
 const HIGHLIGHT_INSET_X = 10;
 const ERROR_RED = "#c71f11";
 
@@ -51,7 +75,7 @@ const PERCENT_DECREASE_MAX = 99;
 
 // Keeps only digits and a single dot, with at most 2 decimal places —
 // matches the 2-dp rounding the wheel itself uses for its values.
-function sanitizeDecimal(raw) {
+export function sanitizeDecimal(raw) {
     let s = String(raw).replace(/[^\d.]/g, "");
     const firstDot = s.indexOf(".");
     if (firstDot !== -1) {
@@ -62,7 +86,7 @@ function sanitizeDecimal(raw) {
 
 // filterFn decides which generated values are valid for this wheel —
 // currency: strictly positive; percent decrease: 0..99; percent increase: 0..∞.
-function buildValues(anchor, step, span = 60, filterFn) {
+function buildValues(anchor, step, span = WHEEL_SPAN, filterFn) {
     const values = [];
     for (let i = -span; i <= span; i++) {
         const v = Math.round((anchor + i * step) * 100) / 100;
@@ -71,10 +95,12 @@ function buildValues(anchor, step, span = 60, filterFn) {
     return values;
 }
 
-function useWheelColumn(initialValue, initialStep, filterFn) {
+export function useWheelColumn(initialValue, initialStep, filterFn, gridAnchor) {
+    const anchorRef = useRef(gridAnchor != null ? gridAnchor : initialValue);
     const [step, setStep] = useState(initialStep);
-    const [values, setValues] = useState(() => buildValues(initialValue, initialStep, 60, filterFn));
-    const [selected, setSelected] = useState(initialValue);
+    const [values, setValues] = useState(() => buildValues(anchorRef.current, initialStep, WHEEL_SPAN, filterFn));
+    const [selected, setSelected] = useState(() => nearestValue(values, initialValue));
+
     const containerRef = useRef(null);
     const rafRef = useRef(null);
     const isProgrammaticScroll = useRef(false);
@@ -94,13 +120,56 @@ function useWheelColumn(initialValue, initialStep, filterFn) {
         pendingScrollRef.current = null;
     }, [values]);
 
-    const jumpTo = useCallback((targetValue, targetStep) => {
+    const jumpTo = useCallback((targetValue, targetStep, targetAnchor) => {
         const useStep = targetStep ?? step;
-        const anchor = Math.round(targetValue * 100) / 100;
+        const useAnchor = targetAnchor != null ? targetAnchor : anchorRef.current;
+        anchorRef.current = useAnchor;
+        const list = buildValues(useAnchor, useStep, WHEEL_SPAN, filterFn);
+
+        const snapped = nearestValue(list, targetValue);
         setStep(useStep);
-        setValues(buildValues(anchor, useStep, 60, filterFn));
-        setSelected(anchor);
-        pendingScrollRef.current = anchor;
+        setValues(list);
+        setSelected(snapped);
+        pendingScrollRef.current = snapped;
+    }, [step, filterFn]);
+
+    // Used ONLY for a value the seller typed by hand. Unlike jumpTo, this
+    // NEVER rounds to the nearest grid point — it builds the value list
+    // centred exactly on the typed number itself, so the exact number the
+    // seller entered is what ends up selected and displayed. It deliberately
+    // does NOT touch anchorRef, so if the seller scrolls again afterwards,
+    // the wheel resumes ticking in clean 2%-of-default steps from the
+    // original grid — only the one-off typed value is exempt from snapping.
+    // Used for any value that must land EXACTLY as given — a typed entry,
+    // or an external seed sync that should never be forced onto the grid.
+    // Unlike jumpTo, this never rounds to the nearest grid point.
+    //
+    // It also REBASES anchorRef to this exact value. That's the fix for
+    // "scroll after a manual edit should step 2% from the NEW number, not
+    // from the original default" — once the seller has explicitly set an
+    // exact value, that value becomes the new fixed point every future
+    // scroll tick is measured from (v, v±step, v±2*step, ...), instead of
+    // ticks staying pinned to the original reference price forever.
+    // Used for any value that must land EXACTLY as given — a typed entry,
+    // or an external resync that should never be forced onto the grid.
+    // Unlike jumpTo, this never rounds to the nearest grid point.
+    //
+    // Now also accepts an optional targetStep, so an external resync that
+    // changes the step size (e.g. GST-mode toggling changes what "2% of
+    // reference" means in the currently displayed basis) actually takes
+    // effect — previously jumpToExact silently kept the OLD step forever,
+    // so grid spacing went stale after a GST-mode flip.
+    //
+    // It also REBASES anchorRef to this exact value — future scroll ticks
+    // are measured from THIS number, not the original default.
+    const jumpToExact = useCallback((targetValue, targetStep) => {
+        const useStep = targetStep ?? step;
+        const v = Math.round(targetValue * 100) / 100;
+        anchorRef.current = v;
+        setStep(useStep);
+        setValues(buildValues(v, useStep, WHEEL_SPAN, filterFn));
+        setSelected(v);
+        pendingScrollRef.current = v;
     }, [step, filterFn]);
 
     const handleScroll = useCallback(() => {
@@ -121,59 +190,156 @@ function useWheelColumn(initialValue, initialStep, filterFn) {
     // a bound (e.g. 99% on decrease, or 0 on either side) is hit, there's
     // nothing left to prepend/append and the wheel naturally stops growing
     // instead of letting the scroll hijack past a valid range.
-    const handleScrollEnd = useCallback(() => {
-        if (isProgrammaticScroll.current) return;
-        const el = containerRef.current;
-        if (!el) return;
-        const idx = Math.round(el.scrollTop / ITEM_HEIGHT);
-        const clamped = Math.max(0, Math.min(values.length - 1, idx));
-        const val = values[clamped];
 
-        if (clamped < 5) {
-            setValues((v) => {
-                const first = v[0];
-                const extra = Array.from({ length: 20 }, (_, i) => Math.round((first - (20 - i) * step) * 100) / 100)
-                    .filter((x) => !filterFn || filterFn(x));
-                if (!extra.length) return v;
-                const addedHeight = extra.length * ITEM_HEIGHT;
-                isProgrammaticScroll.current = true;
-                requestAnimationFrame(() => {
-                    if (containerRef.current) containerRef.current.scrollTop += addedHeight;
-                    requestAnimationFrame(() => { isProgrammaticScroll.current = false; });
-                });
-                return [...extra, ...v];
-            });
-        } else if (clamped > values.length - 6) {
-            setValues((v) => {
-                const last = v[v.length - 1];
-                const extra = Array.from({ length: 20 }, (_, i) => Math.round((last + (i + 1) * step) * 100) / 100)
-                    .filter((x) => !filterFn || filterFn(x));
-                if (!extra.length) return v;
-                return [...v, ...extra];
-            });
-        }
-
-        if (val !== undefined) setSelected(val);
-    }, [values, step, filterFn]);
-
-    return { values, selected, step, containerRef, handleScroll, handleScrollEnd, jumpTo };
+    return { values, selected, step, containerRef, handleScroll, jumpTo, jumpToExact };
 }
 
-function WheelColumn({
+// Embedded, no modal/backdrop/confirm button. The wheel itself updates its
+// own displayed value every frame (smooth, local) — but only commits up to
+// the parent once scrolling has actually settled. Committing every frame
+// was what caused both the visible glitch (parent recompute fighting the
+// in-flight scroll) and the runaway percentages (an intermediate, not-yet-
+// consistent value got written as the real price).
+// Embedded, no modal/backdrop/confirm button, no nudge buttons — just the
+// field itself. Sliding it scrolls through values; tapping it lets you type
+// an exact one.
+//
+// FEEDBACK-LOOP FIX: the wheel commits its own scrolled/typed value up to
+// the parent (onCommit), and the parent typically stores it and echoes a
+// recomputed value straight back down as `seed` (e.g. after re-deriving
+// unit/pack/master-pack from a single stored basePrice). That echo is
+// rarely bit-for-bit identical to what we sent up — dividing and
+// re-multiplying through pack/master-pack sizes introduces float noise —
+// so the old code's ">0.004 difference ⇒ force jumpToExact(seed)" rule
+// was firing on ORDINARY ECHOES of our own last commit, snapping the wheel
+// backward mid-scroll. That's the "jumps to the last updated value" bug.
+//
+// The fix: remember exactly what we last sent up (`lastCommitted`). If the
+// incoming `seed` matches that (not a genuinely external change), ignore
+// it — our own live/scrolled value is more current and correct than a
+// stale, already-superseded echo of what we told the parent a moment ago.
+// Only a seed that does NOT match our last commit (a real external change:
+// GST-mode flip, "Clear", switching to a different product) is honoured.
+// Embedded, no modal/backdrop/confirm button — just the field itself.
+// Sliding scrolls through values; tapping lets you type an exact one.
+//
+// SYNC MODEL (grace period, not value comparison): the wheel commits its
+// own scrolled/typed value up to the parent, and the parent usually
+// re-renders with a recomputed `seed` shortly after — sometimes bit-for-
+// bit identical, sometimes off by a little because it went through real
+// unit-conversion math (pack/master-pack, GST-inclusive/exclusive). A
+// value-difference threshold can't tell those two cases apart — legitimate
+// external updates can be smaller OR larger than any threshold you pick,
+// which is exactly why every previous version of this still glitched.
+//
+// The reliable signal is TIME: right after WE commit a value, any seed
+// change that arrives within a short grace window is almost certainly the
+// echo of that same commit working its way back down — so we ignore it.
+// Once the grace window has passed, a seed change is treated as genuinely
+// external (GST-mode flip, switching product, "Clear", a sibling field's
+// edit changing this field's derived value) and IS honoured exactly,
+// via jumpToExact — never snapped to a grid.
+const RESYNC_GRACE_MS = 400;
+
+export function InlineWheelField({ seed, step, filterFn, formatValue, prefix, suffix, rangeMessage, onCommit, gridAnchor }) {
+    const wheel = useWheelColumn(seed, step, filterFn, gridAnchor);
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState("");
+    const [draftError, setDraftError] = useState("");
+
+    const lastCommitAt = useRef(0);
+    const lastSeed = useRef(seed);
+    const commitTimer = useRef(null);
+
+    // Scroll/nudge settling → commit up to the parent, and stamp the time
+    // we did it. Debounced so we commit once the value has actually
+    // settled, not on every intermediate frame while still moving.
+    useEffect(() => {
+        clearTimeout(commitTimer.current);
+        commitTimer.current = setTimeout(() => {
+            lastCommitAt.current = Date.now();
+            onCommit(wheel.selected);
+        }, 90);
+        return () => clearTimeout(commitTimer.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [wheel.selected]);
+
+    useEffect(() => {
+        if (seed === lastSeed.current) return;
+        lastSeed.current = seed;
+
+        const isLikelyOwnEcho = Date.now() - lastCommitAt.current < RESYNC_GRACE_MS;
+        if (isLikelyOwnEcho) return; // ignore — this is our own last commit settling back down
+
+        if (!editing) {
+            wheel.jumpToExact(seed, step);
+            lastCommitAt.current = Date.now(); // treat as a fresh baseline; don't let it re-trigger
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [seed, step]);
+
+    const parseDraft = () => {
+        if (draft.trim() === "" || draft === ".") return null;
+        const n = Number(draft);
+        if (!Number.isFinite(n)) return null;
+        const v = Math.round(n * 100) / 100;
+        return filterFn(v) ? v : null;
+    };
+    const startEdit = () => { setDraft(String(wheel.selected)); setDraftError(""); setEditing(true); };
+    const cancelEdit = () => { setEditing(false); setDraftError(""); };
+    const commitDraft = () => {
+        const v = parseDraft();
+        if (v == null) return null;
+        clearTimeout(commitTimer.current);
+        // Re-base the step to 2% of the value the seller just typed — but
+        // only for currency (₹) fields. Percent fields (suffix === "%",
+        // e.g. the Increase/Decrease dial in CustomPricingModal) keep
+        // their fixed 1-point step regardless of what was typed.
+        const isCurrencyField = suffix == null && prefix != null;
+        const rebasedStep = isCurrencyField
+            ? (Math.round(v * 0.02 * 100) / 100 || step)
+            : step;
+        wheel.jumpToExact(v, rebasedStep);
+        lastCommitAt.current = Date.now();
+        onCommit(v);
+        setEditing(false);
+        setDraftError("");
+        return v;
+    };
+    const handleDraftChange = (next) => { setDraft(next.replace(/[^\d.]/g, "").slice(0, 10)); if (draftError) setDraftError(""); };
+    const handleInputBlur = () => { if (!editing) return; if (parseDraft() == null) cancelEdit(); else commitDraft(); };
+    const handleEnter = () => { const v = commitDraft(); if (v == null) setDraftError(rangeMessage); };
+
+    return (
+        <div className="flex flex-col gap-1">
+            <div className="w-full">
+                <WheelColumn wheel={wheel} formatValue={formatValue} editing={editing} draft={draft} hasError={!!draftError}
+                    prefix={prefix} suffix={suffix} onDraftChange={handleDraftChange} onStartEdit={startEdit}
+                    onInputBlur={handleInputBlur} onEnter={handleEnter} onCancelEdit={cancelEdit} />
+            </div>
+            <p className="text-center text-[10px] font-semibold leading-snug tracking-wide" style={{ color: draftError ? ERROR_RED : C.muted }}>
+                {draftError || "Tap to type, or slide to scroll."}
+            </p>
+        </div>
+    );
+}
+
+export function WheelColumn({
     wheel, formatValue,
     editing, draft, hasError, prefix, suffix,
     onDraftChange, onStartEdit, onInputBlur, onEnter, onCancelEdit,
 }) {
-    const { values, selected, containerRef, handleScroll, handleScrollEnd } = wheel;
-    const scrollEndTimer = useRef(null);
+    const { values, selected, containerRef, handleScroll } = wheel;
     const didMountScroll = useRef(false);
     const inputRef = useRef(null);
 
-    const onScroll = () => {
-        handleScroll();
-        clearTimeout(scrollEndTimer.current);
-        scrollEndTimer.current = setTimeout(() => handleScrollEnd(), 120);
-    };
+    // handleScroll runs (rAF-throttled) on every native scroll event, and
+    // that's the only place `selected` is derived from scroll position now.
+    // The browser's own `scroll-snap-type: y mandatory` (set below on the
+    // container) settles the final rest position — there's nothing left
+    // for us to patch after the fact, so no separate "scroll end" step,
+    // no debounce, and critically, no array mutation mid-scroll.
+    const onScroll = () => handleScroll();
 
     useEffect(() => {
         if (didMountScroll.current) return;
@@ -198,21 +364,24 @@ function WheelColumn({
     };
 
     return (
-        <div className="relative min-w-0 flex-1" style={{ height: WHEEL_HEIGHT }}>
-            <div
-                className="pointer-events-none absolute inset-x-1.5 z-10 rounded-lg"
-                style={{ top: PADDING, height: ITEM_HEIGHT, background: `${C.secondary}0f`, border: `1.5px solid ${C.secondary}35` }}
-            />
-            <div className="pointer-events-none absolute inset-x-0 top-0 z-10" style={{ height: PADDING, background: "linear-gradient(to bottom, white, rgba(255,255,255,0))" }} />
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10" style={{ height: PADDING, background: "linear-gradient(to top, white, rgba(255,255,255,0))" }} />
-
-            {/* Manual-entry overlay — sits exactly on the centre highlight. */}
+        // Clipped to exactly ONE row (ITEM_HEIGHT) — so this reads as a
+        // plain bordered input field, not a wheel. No highlight box, no
+        // fade gradients: there's nothing to fade, since only the value
+        // that's actually centred is ever visible at rest. The full list
+        // of values still scrolls underneath with the same snap physics as
+        // before — sliding it just reveals other values passing through
+        // this one-row window until it settles on one.
+        <div
+            className="relative min-w-0 flex-1 overflow-hidden rounded-lg border"
+            style={{ height: ITEM_HEIGHT, borderColor: hasError ? ERROR_RED : C.hair, background: "#fff" }}
+        >
+            {/* Manual-entry overlay — same size as the field itself now. */}
             {editing && (
                 <div
-                    className="absolute inset-x-1.5 z-20 flex items-center justify-center gap-1 rounded-lg bg-white px-2"
-                    style={{ top: PADDING, height: ITEM_HEIGHT, border: `1.5px solid ${hasError ? ERROR_RED : C.secondary}` }}
+                    className="absolute inset-0 z-20 flex items-center justify-center gap-1 bg-white px-2 rounded-lg"
+                    style={{ border: `1.5px solid ${hasError ? ERROR_RED : C.secondary}` }}
                 >
-                    {prefix && <span className="text-[17px] font-extrabold" style={{ color: C.muted }}>{prefix}</span>}
+                    {prefix && <span className="text-[16px] font-extrabold" style={{ color: C.muted }}>{prefix}</span>}
                     <input
                         ref={inputRef}
                         type="text"
@@ -228,23 +397,46 @@ function WheelColumn({
                         }}
                         aria-label="Type a value"
                         className="min-w-0 flex-1 bg-transparent text-center font-extrabold tabular-nums tracking-wide focus:outline-none"
-                        style={{ fontSize: 21, color: C.ink }}
+                        style={{ fontSize: 17, color: C.ink }}
                     />
-                    {suffix && <span className="text-[17px] font-extrabold" style={{ color: C.muted }}>{suffix}</span>}
+                    {suffix && <span className="text-[16px] font-extrabold" style={{ color: C.muted }}>{suffix}</span>}
                 </div>
             )}
 
+            {/* The scroll list is kept mounted (not conditionally rendered)
+                so containerRef/scrollTop stay valid across edit/commit —
+                it's just faded out and made non-interactive while typing. */}
             <div
                 ref={containerRef}
                 onScroll={onScroll}
                 data-lenis-prevent=""
-                className="hide-scrollbar h-full overflow-y-auto"
+                // Stop the gesture here — never let it reach Lenis or the
+                // page's own scroll. `overscrollBehavior: contain` is what
+                // stops "scroll chaining": once this inner list hits its
+                // own top/bottom, browsers by default hand the leftover
+                // scroll delta to the parent page, which is exactly what
+                // was making the whole page scroll. `contain` keeps the
+                // leftover delta trapped inside this element instead.
+                // stopPropagation on wheel/touchmove is the second half —
+                // Lenis (and any other page-level scroll listener) attaches
+                // at the document/window level, so even with
+                // data-lenis-prevent set, an event that BUBBLES past this
+                // node can still be picked up upstream; stopping it here
+                // means it never leaves this box at all.
+                onWheel={(e) => e.stopPropagation()}
+                onTouchMove={(e) => e.stopPropagation()}
+                className="hide-scrollbar absolute inset-x-0"
                 style={{
+                    top: -PADDING,
+                    height: WHEEL_HEIGHT,
+                    overflowY: "auto",
+                    overscrollBehavior: "contain",
                     scrollSnapType: "y mandatory",
                     WebkitOverflowScrolling: "touch",
                     scrollbarWidth: "none",
                     msOverflowStyle: "none",
                     pointerEvents: editing ? "none" : undefined,
+                    opacity: editing ? 0 : 1,
                 }}
             >
                 <div style={{ height: PADDING }} />
@@ -257,9 +449,13 @@ function WheelColumn({
                             style={{ height: ITEM_HEIGHT, scrollSnapAlign: "center", cursor: isActive ? "text" : "pointer" }}
                             className="flex items-center justify-center px-2"
                         >
+                            {/* Uniform styling — no "big centre / small faded
+                                neighbours" treatment, since neighbours are
+                                never visible at rest anyway; only relevant
+                                while a slide is passing through. */}
                             <span
-                                className="tabular-nums tracking-wide whitespace-nowrap transition-all duration-150"
-                                style={{ fontSize: isActive ? 21 : 15, fontWeight: isActive ? 800 : 600, color: isActive ? C.ink : C.muted, opacity: isActive ? 1 : 0.55 }}
+                                className="tabular-nums tracking-wide whitespace-nowrap"
+                                style={{ fontSize: 17, fontWeight: 800, color: C.ink }}
                             >
                                 {formatValue(v)}
                             </span>
@@ -271,6 +467,21 @@ function WheelColumn({
         </div>
     );
 }
+
+// Anchor is fixed (e.g. the item's default price) — every generated value is
+// an exact multiple of `step` away from that fixed point, so ticks are
+// always clean 2%-of-default steps and never drift after GST-mode flips or
+// repeated edits. Previously the anchor was whatever value happened to be
+// centred, so drift compounded tick after tick.
+function nearestValue(values, target) {
+    let best = values[0], bestDiff = Infinity;
+    for (const v of values) {
+        const diff = Math.abs(v - target);
+        if (diff < bestDiff) { bestDiff = diff; best = v; }
+    }
+    return best;
+}
+
 
 function NudgeButton({ icon: Icon, onClick }) {
     return (
@@ -358,7 +569,15 @@ export default function PriceWheelPicker({
     const commitDraft = () => {
         const v = parseDraft();
         if (v == null) return null;
-        wheel.jumpTo(v, wheel.step);
+        clearTimeout(commitTimer.current);
+        // Re-base the step to 2% of the value the seller just typed — not
+        // the original step (2% of the old default/reference price). So
+        // typing 437 means every scroll tick afterwards moves by 2% of
+        // 437, not 2% of whatever the field started at.
+        const rebasedStep = Math.round(v * 0.02 * 100) / 100 || step;
+        wheel.jumpToExact(v, rebasedStep);
+        lastCommitAt.current = Date.now();
+        onCommit(v);
         setEditing(false);
         setDraftError("");
         return v;

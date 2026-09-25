@@ -78,7 +78,7 @@ import {
     Label,
     CertificateUploadField,
 } from "./FormPrimitives.jsx";
-import PriceWheelPicker from "./PriceWheelPicker.jsx";
+import PriceWheelPicker, { InlineWheelField } from "./PriceWheelPicker.jsx";
 import { fetchLowestPriceForBrandItem } from "../../../utils/api.js";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
@@ -1351,133 +1351,117 @@ export default function SellerListingForm({
                     const packValue = !hasPrice ? "" : (form.priceBasis === "per_pack" ? form.basePrice : String(perPack));
                     const masterValue = !hasPrice ? "" : (form.priceBasis === "per_master_pack" ? form.basePrice : String(perMaster));
 
-                    // Whatever basis is currently focused, seed the wheel from THAT
-                    // field's own current value — not always basePrice — so re-opening
-                    // it always starts where the seller's eyes already are.
-                    const valueForBasis = { per_unit: unitValue, per_pack: packValue, per_master_pack: masterValue };
-                    const labelForBasis = { per_unit: form.unit || "Unit", per_pack: "Pack", per_master_pack: "Master Pack" };
                     const dialEnabled = !!form.brandItemMatch;
 
-                    const openWheel = (basis) => (e) => {
-                        if (!dialEnabled) return;
-                        e.target.blur();
-                        setPriceWheel({ basis });
+                    // Reference (grid anchor) for each basis, from the catalog's lowest
+                    // price — same number used by the old modal's "jump to reference".
+                    // Every InlineWheelField below anchors its 2% grid to THIS fixed
+                    // value, so ticks stay clean 2%-of-reference steps no matter which
+                    // field the seller is currently looking at.
+                    const refUnit = lowestPriceForBasis("per_unit", lowestPrice, form.packSize, form.masterPackSize);
+                    const refPack = lowestPriceForBasis("per_pack", lowestPrice, form.packSize, form.masterPackSize);
+                    const refMaster = lowestPriceForBasis("per_master_pack", lowestPrice, form.packSize, form.masterPackSize);
+
+                    const commitBasis = (basis) => (price) => {
+                        setForm((f) => ({ ...f, basePrice: String(price), priceBasis: basis }));
+                        touch("basePrice");
                     };
 
                     return (
                         <FieldAnchor fieldKey="basePrice">
                             <p className="text-[11.5px] font-semibold leading-snug tracking-wide pb-1" style={{ color: C.ink }}>
                                 The standard price before applying quantity-based discounts
-                                {dialEnabled && <span className="ml-1 font-medium" style={{ color: C.muted }}>· tap a field to dial in the price</span>}
+                                {dialEnabled && <span className="ml-1 font-medium" style={{ color: C.muted }}>· scroll or tap a field to dial in the price</span>}
                             </p>
                             <div className={`grid gap-2.5 ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
-                                <TextField2
-                                    required dense
-                                    label={`Per ${form.unit || "Unit"}`}
-                                    prefix="₹"
-                                    hint={`Price for 1 ${form.unit || "Unit"} — the other fields recalculate automatically`}
-                                    value={unitValue}
-                                    onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_unit" }))}
-                                    onFocus={openWheel("per_unit")}
-                                    readOnly={dialEnabled}
-                                    onBlur={() => touch("basePrice")}
-                                    error={isErr("basePrice")}
-                                    inputMode="decimal"
-                                    onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
-                                />
-                                <TextField2
-                                    required dense
-                                    label="Per Pack"
-                                    prefix="₹"
-                                    hint={`Price for 1 Pack (${form.packSize || "?"} ${form.unit || "Unit"}) — the other fields recalculate automatically`}
-                                    value={packValue}
-                                    onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_pack" }))}
-                                    onFocus={openWheel("per_pack")}
-                                    readOnly={dialEnabled}
-                                    onBlur={() => touch("basePrice")}
-                                    error={isErr("basePrice")}
-                                    inputMode="decimal"
-                                    onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
-                                />
-                                {showMaster && (
+                                {dialEnabled ? (
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-center" style={{ color: C.muted }}>
+                                            Per {form.unit || "Unit"}
+                                        </span>
+                                        <InlineWheelField
+                                            seed={Number(unitValue) || refUnit || 0}
+                                            step={round2((refUnit || 1) * 0.02) || 1}
+                                            gridAnchor={refUnit || 1}
+                                            filterFn={(v) => v > 0}
+                                            formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
+                                            prefix="₹" suffix={null}
+                                            rangeMessage="Enter a price greater than ₹0."
+                                            onCommit={commitBasis("per_unit")}
+                                        />
+                                    </div>
+                                ) : (
                                     <TextField2
-                                        required dense
-                                        label="Per Master Pack"
-                                        prefix="₹"
-                                        hint={`Price for 1 Master Pack (${form.masterPackSize || "?"} Packs) — the other fields recalculate automatically`}
-                                        value={masterValue}
-                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_master_pack" }))}
-                                        onFocus={openWheel("per_master_pack")}
-                                        readOnly={dialEnabled}
-                                        onBlur={() => touch("basePrice")}
-                                        error={isErr("basePrice")}
-                                        inputMode="decimal"
+                                        required dense label={`Per ${form.unit || "Unit"}`} prefix="₹"
+                                        hint={`Price for 1 ${form.unit || "Unit"} — the other fields recalculate automatically`}
+                                        value={unitValue}
+                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_unit" }))}
+                                        onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal"
                                         onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
                                     />
                                 )}
+
+                                {dialEnabled ? (
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-center" style={{ color: C.muted }}>
+                                            Per Pack
+                                        </span>
+                                        <InlineWheelField
+                                            seed={Number(packValue) || refPack || 0}
+                                            step={round2((refPack || 1) * 0.02) || 1}
+                                            gridAnchor={refPack || 1}
+                                            filterFn={(v) => v > 0}
+                                            formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
+                                            prefix="₹" suffix={null}
+                                            rangeMessage="Enter a price greater than ₹0."
+                                            onCommit={commitBasis("per_pack")}
+                                        />
+                                    </div>
+                                ) : (
+                                    <TextField2
+                                        required dense label="Per Pack" prefix="₹"
+                                        hint={`Price for 1 Pack (${form.packSize || "?"} ${form.unit || "Unit"}) — the other fields recalculate automatically`}
+                                        value={packValue}
+                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_pack" }))}
+                                        onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal"
+                                        onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
+                                    />
+                                )}
+
+                                {showMaster && (dialEnabled ? (
+                                    <div className="flex flex-col gap-1">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-center" style={{ color: C.muted }}>
+                                            Per Master Pack
+                                        </span>
+                                        <InlineWheelField
+                                            seed={Number(masterValue) || refMaster || 0}
+                                            step={round2((refMaster || 1) * 0.02) || 1}
+                                            gridAnchor={refMaster || 1}
+                                            filterFn={(v) => v > 0}
+                                            formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
+                                            prefix="₹" suffix={null}
+                                            rangeMessage="Enter a price greater than ₹0."
+                                            onCommit={commitBasis("per_master_pack")}
+                                        />
+                                    </div>
+                                ) : (
+                                    <TextField2
+                                        required dense label="Per Master Pack" prefix="₹"
+                                        hint={`Price for 1 Master Pack (${form.masterPackSize || "?"} Packs) — the other fields recalculate automatically`}
+                                        value={masterValue}
+                                        onChange={(v) => setForm((f) => ({ ...f, basePrice: v.replace(/[^\d.]/g, ""), priceBasis: "per_master_pack" }))}
+                                        onBlur={() => touch("basePrice")} error={isErr("basePrice")} inputMode="decimal"
+                                        onEnterKey={(dir) => handleFieldAdvance("basePrice", dir)}
+                                    />
+                                ))}
                             </div>
                             <div className={`mt-1 grid gap-2.5 items-start ${showMaster ? "grid-cols-3" : "grid-cols-2"}`}>
                                 <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per 1 {form.unit || "Unit"}</p>
                                 <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per {form.packSize || "?"} {form.unit || "Unit"}</p>
                                 {showMaster && <p className="text-[9.5px] font-semibold tracking-wide leading-tight" style={{ color: C.muted }}>Price per {form.masterPackSize} packs</p>}
                             </div>
-
-                            {priceWheel && (() => {
-                                const basis = priceWheel.basis;
-                                const currentVal = Number(valueForBasis[basis]) || 0;
-                                const lowestForThisBasis = lowestPriceForBasis(basis, lowestPrice, form.packSize, form.masterPackSize);
-                                // If the field already has a real value, seed from that (editing an
-                                // existing price). Otherwise fall back to the back-calculated lowest
-                                // price for THIS SPECIFIC basis — never a generic ₹100 default, and
-                                // never always-Per-Pack regardless of which field was actually opened.
-                                const seedValue = currentVal > 0 ? currentVal : (lowestForThisBasis || 0);
-
-                                return (
-                                    <PriceWheelPicker
-                                        open
-                                        unitLabel={labelForBasis[basis]}
-                                        initialValue={seedValue}
-                                        lowestPrice={lowestForThisBasis}
-                                        loadingLowest={loadingLowest}
-                                        onClose={() => setPriceWheel(null)}
-                                        onConfirm={(price) => {
-                                            setForm((f) => ({ ...f, basePrice: String(price), priceBasis: basis }));
-                                            touch("basePrice");
-                                            setPriceWheel(null);
-                                        }}
-                                    />
-                                );
-                            })()}
                         </FieldAnchor>
                     );
-                    {
-                        priceWheel && (() => {
-                            const basis = priceWheel.basis;
-                            const currentVal = Number(valueForBasis[basis]) || 0;
-                            const lowestForThisBasis = lowestPriceForBasis(basis, lowestPrice, form.packSize, form.masterPackSize);
-                            // If the field already has a real value, seed from that (editing an
-                            // existing price). Otherwise fall back to the back-calculated lowest
-                            // price for THIS SPECIFIC basis — never a generic ₹100 default, and
-                            // never always-Per-Pack regardless of which field was actually opened.
-                            const seedValue = currentVal > 0 ? currentVal : (lowestForThisBasis || 0);
-
-                            return (
-                                <PriceWheelPicker
-                                    open
-                                    unitLabel={labelForBasis[basis]}
-                                    initialValue={seedValue}
-                                    lowestPrice={lowestForThisBasis}
-                                    loadingLowest={loadingLowest}
-                                    onClose={() => setPriceWheel(null)}
-                                    onConfirm={(price) => {
-                                        setForm((f) => ({ ...f, basePrice: String(price), priceBasis: basis }));
-                                        touch("basePrice");
-                                        setPriceWheel(null);
-                                    }}
-                                />
-                            );
-                        })()
-                    }
                 })()}
                 <div className="grid grid-cols-1 gap-2.5 items-end justify-end self-end">
                     <FieldAnchor fieldKey="gstInclusive">

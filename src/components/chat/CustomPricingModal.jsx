@@ -1,13 +1,13 @@
 // components/chat/CustomPricingModal.jsx
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Search, Percent, AlertTriangle, IndianRupee, Trash2, Check, Loader2, Tag, ChevronLeft, ArrowRight, Info, TrendingDown, TrendingUp } from "lucide-react";
+import { X, Search, Percent, AlertTriangle, IndianRupee, Trash2, Check, Loader2, Tag, ChevronLeft, ArrowRight, Info, TrendingDown, TrendingUp, Minus, Plus } from "lucide-react";
 import {
     fetchCustomPricing, saveCustomPricing, deleteCustomPricing as deleteCustomPricingApi, bulkClearCustomPricing,
 } from "../../utils/api.js";
 import { priceFromLevel, derivePriceBreakdown, percentFromCustomPrice, violatesMinUnitPrice, MIN_UNIT_PRICE } from "../../../shared/customPricing.js";
 import ImageLightbox from "../ImageLightbox.jsx";
-import PriceWheelPicker from "../seller/listingForm/PriceWheelPicker.jsx";
+import { useWheelColumn, WheelColumn, ITEM_HEIGHT, InlineWheelField } from "../seller/listingForm/PriceWheelPicker.jsx";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#D2462B", secondary: "#006F83",
@@ -28,7 +28,8 @@ function levelsFor(row) { return row.hasMasterPack ? ["unit", "pack", "master_pa
 // Positive percentValue (backend convention) = price decrease = discount.
 // Negative percentValue = price increase.
 function percentChangeLabel(pct) {
-    return pct >= 0 ? `${pct}% decrease` : `${Math.abs(pct)}% increase`;
+    const rounded = Math.round(Number(pct) * 10) / 10; // 1 decimal max, hides FP noise
+    return rounded >= 0 ? `${rounded}% decrease` : `${Math.abs(rounded)}% increase`;
 }
 
 function ModeToggle({ mode, onChange }) {
@@ -112,6 +113,19 @@ function GstEntryToggle({ gstMode, onChange }) {
                 Price excl. GST
             </button>
         </div>
+    );
+}
+
+function InlineNudgeButton({ icon: Icon, onClick }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors duration-150 active:scale-90"
+            style={{ borderColor: C.hair, color: C.secondary }}
+        >
+            <Icon className="h-3.5 w-3.5" />
+        </button>
     );
 }
 
@@ -203,9 +217,6 @@ function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, tog
                                                 <span style={{ color: C.muted, textDecoration: "line-through" }}>₹{inr(row.defaultBreakdown.perPack)}/pack</span>
                                                 <ArrowRight className="h-3 w-3 shrink-0" style={{ color: C.muted }} />
                                                 <span className="text-[11px]" style={{ color: C.secondary }}>₹{inr(row.effectiveBreakdown.perPack)}/pack</span>
-                                                {/* <span className="rounded-full px-1.5 py-[1px] text-[10px] font-bold uppercase tracking-wider" style={{ background: pct >= 0 ? C.okBg : C.warnBg, color: pct >= 0 ? C.ok : C.warn }}>
-                                                    {percentChangeLabel(pct)}
-                                                </span> */}
                                             </p>
                                         ) : (
                                             <p className="truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
@@ -253,17 +264,13 @@ function ListScreen({ rows, loading, query, setQuery, tab, setTab, selected, tog
 }
 
 // ---------------------------------------------------------------------
-// Screen 2 — Edit. Each product: Amount/Percent toggle, and a live
-// preview strip showing the resulting unit/pack/master-pack breakdown
-// regardless of which mode was used to get there — so the seller always
-// sees the full picture, never has to guess what a % translates to.
-//
-// Percent mode uses an explicit Decrease/Increase toggle plus a plain,
-// always-positive number — no +/- sign for the seller to parse.
-//
-// The chosen direction is stored on the draft as `percentDirection`
-// (rather than being derived only from the sign of `percentValue`), so the
-// toggle works even before any number has been entered.
+// Screen 2 — Edit. Each product: Amount/Percent toggle, and an inline
+// scroll-wheel per value (same wheel + tap-to-type as the old popup,
+// just embedded) right where the field used to be. Amount wheels step
+// by 2% of that field's own default (reference) price; the percent
+// wheel steps by a flat 1 percentage point. No per-field "Use" button —
+// scrolling/typing updates the draft immediately, and Review changes →
+// Confirm & save (bottom of the sheet) is the only save action.
 // ---------------------------------------------------------------------
 function ProductEditCard({ row, draft, onDraftChange }) {
     const levels = levelsFor(row);
@@ -279,7 +286,6 @@ function ProductEditCard({ row, draft, onDraftChange }) {
         ?? (hasPercent && Number(draft.percentValue) < 0 ? "increase" : "decrease");
     const percentAbs = hasPercent ? Math.abs(Number(draft.percentValue)) : "";
 
-    const [wheelFor, setWheelFor] = useState(null); // { kind: "amount", level } | { kind: "percent" } | null
     const gstMode = draft.gstMode || "incl"; // "incl" | "excl" — how the seller is typing amounts in
 
     // The system stores/derives everything off the GST-inclusive price (same
@@ -351,18 +357,9 @@ function ProductEditCard({ row, draft, onDraftChange }) {
     }));
 
     // Back-calculate the default price into whatever level/basis is being
-    // dialed, so the "Jump here" reference is always correct per-field —
-    // same pattern as the seller-listing price wheel.
+    // dialed, so each amount wheel is centred/stepped around the right
+    // reference — same pattern the seller-listing price wheel used.
     const referenceForLevel = (level) => row.defaultBreakdown[LEVEL_FIELD[level]];
-
-    const openAmountWheel = (level) => (e) => {
-        e.target.blur();
-        setWheelFor({ kind: "amount", level });
-    };
-    const openPercentWheel = (e) => {
-        e.target.blur();
-        setWheelFor({ kind: "percent" });
-    };
 
     return (
         <div className="flex flex-col gap-3 rounded-2xl border p-3.5 sm:p-4" style={{ borderColor: invalid ? C.danger : C.hair }}>
@@ -425,30 +422,39 @@ function ProductEditCard({ row, draft, onDraftChange }) {
             )}
 
             {draft.mode === "amount" ? (
-                <div className={`grid gap-2 ${levels.length === 3 ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-1 sm:grid-cols-2"}`}>
-                    {levels.map((level) => (
-                        <div key={level} className="flex flex-col gap-1">
-                            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
-                                Price / {LEVEL_LABEL[level](row.unit)} <span className="normal-case font-medium" style={{ color: C.muted }}>({gstMode === "excl" ? "excl. GST" : "incl. GST"})</span>
-                            </span>
-                            <div
-                                onClick={openAmountWheel(level)}
-                                className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-2 transition-colors duration-150 hover:bg-black/[0.02]"
-                                style={{ borderColor: invalid ? C.danger : C.hair }}
-                            >
-                                <span className="text-[12px] font-bold tracking-wide" style={{ color: C.muted }}>₹</span>
-                                <input
-                                    readOnly
-                                    tabIndex={-1}
-                                    type="text" inputMode="decimal"
-                                    value={draft.amounts[level] ?? ""}
-                                    placeholder={inr(row.defaultBreakdown[LEVEL_FIELD[level]])}
-                                    className="w-full min-w-0 cursor-pointer bg-transparent text-[13px] font-bold tabular-nums tracking-wide outline-none"
-                                    style={{ color: C.ink }}
+                <div className={`grid gap-3 ${levels.length === 3 ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-1 sm:grid-cols-2"}`}>
+                    {levels.map((level) => {
+                        // row.defaultBreakdown is always GST-INCLUSIVE (same
+                        // convention as row.defaultPrice). The field itself,
+                        // though, displays GST-exclusive numbers when
+                        // gstMode === "excl" — so the reference used to build
+                        // the 2% grid has to be converted into THAT SAME basis,
+                        // or "2% steps" silently means something different from
+                        // what's on screen the moment exclusive mode is active.
+                        const referenceInclusive = referenceForLevel(level);
+                        const reference = gstMode === "excl" ? fromInclusive(referenceInclusive) : referenceInclusive;
+                        const currentRaw = draft.amounts[level];
+                        const currentVal = currentRaw !== "" && currentRaw != null ? Number(currentRaw) : reference;
+                        const step = round2(reference * 0.02) || 1; // 2% of the reference price, in the CURRENTLY DISPLAYED basis
+                        return (
+                            <div key={`${level}-${gstMode}`} className="flex flex-col gap-1">
+                                <span className="text-center text-[10px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
+                                    Price / {LEVEL_LABEL[level](row.unit)} <span className="normal-case font-medium" style={{ color: C.muted }}>({gstMode === "excl" ? "excl. GST" : "incl. GST"})</span>
+                                </span>
+                                <InlineWheelField
+                                    seed={currentVal}
+                                    step={step}
+                                    filterFn={(v) => v > 0}
+                                    formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
+                                    prefix="₹"
+                                    suffix={null}
+                                    rangeMessage="Enter a price greater than ₹0."
+                                    gridAnchor={reference}
+                                    onCommit={(v) => setFromAmount(level, String(v))}
                                 />
                             </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             ) : (
                 <div className="flex flex-col gap-1.5">
@@ -456,26 +462,21 @@ function ProductEditCard({ row, draft, onDraftChange }) {
                         direction={direction}
                         onChange={(nextDirection) => setFromDirectionAndAbs(nextDirection, percentAbs)}
                     />
-                    <div
-                        onClick={openPercentWheel}
-                        className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-2 transition-colors duration-150 hover:bg-black/[0.02]"
-                        style={{ borderColor: invalid ? C.danger : C.hair }}
-                    >
-                        <input
-                            readOnly
-                            tabIndex={-1}
-                            type="text" inputMode="decimal"
-                            value={percentAbs !== "" ? String(percentAbs) : ""}
-                            placeholder="e.g. 10"
-                            className="w-full min-w-0 cursor-pointer bg-transparent text-[13px] font-bold tabular-nums tracking-wide outline-none"
-                            style={{ color: C.ink }}
-                        />
-                        <span className="shrink-0 text-[13px] font-bold tracking-wide" style={{ color: C.muted }}>% vs default</span>
-                    </div>
+                    <InlineWheelField
+                        key={direction}
+                        seed={percentAbs !== "" ? Number(percentAbs) : 0}
+                        step={1}
+                        filterFn={(v) => v >= 0 && v <= (direction === "increase" ? Infinity : 99)}
+                        formatValue={(v) => `${v}%`}
+                        prefix={null}
+                        suffix="%"
+                        rangeMessage={direction === "increase" ? "Enter a value of 0% or more." : "Enter a value between 0% and 99%."}
+                        onCommit={(v) => setFromDirectionAndAbs(direction, String(v))}
+                    />
                     <p className="flex items-start gap-1 text-[11px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
                         <Info className="mt-[1px] h-3 w-3 shrink-0" />
                         <span>
-                            Pick <span className="font-bold" style={{ color: C.ok }}>Decrease</span> for a discount, or <span className="font-bold" style={{ color: C.warn }}>Increase</span> to charge this buyer more, then enter the percent.
+                            Pick <span className="font-bold" style={{ color: C.ok }}>Decrease</span> for a discount, or <span className="font-bold" style={{ color: C.warn }}>Increase</span> to charge this buyer more, then scroll or tap the value to type a percent.
                         </span>
                     </p>
                 </div>
@@ -502,42 +503,6 @@ function ProductEditCard({ row, draft, onDraftChange }) {
                     </div>
                 </div>
             )}
-
-            {wheelFor?.kind === "amount" && (() => {
-                const level = wheelFor.level;
-                const current = draft.amounts[level];
-                const currentVal = current !== "" && current != null ? Number(current) : null;
-                const reference = referenceForLevel(level);
-                const seedValue = currentVal != null ? currentVal : reference;
-                return (
-                    <PriceWheelPicker
-                        open
-                        unit="currency"
-                        unitLabel={LEVEL_LABEL[level](row.unit)}
-                        initialValue={seedValue}
-                        referenceValue={reference}
-                        referenceLabel="Default price"
-                        onClose={() => setWheelFor(null)}
-                        onConfirm={(price) => { setFromAmount(level, String(price)); setWheelFor(null); }}
-                    />
-                );
-            })()}
-
-            {wheelFor?.kind === "percent" && (() => {
-                const currentAbs = percentAbs !== "" ? Number(percentAbs) : 0;
-                return (
-                    <PriceWheelPicker
-                        open
-                        unit="percent"
-                        direction={direction}
-                        referenceValue={row.defaultPrice}
-                        referenceLabel="Default price"
-                        initialValue={currentAbs}
-                        onClose={() => setWheelFor(null)}
-                        onConfirm={(pct) => { setFromDirectionAndAbs(direction, String(pct)); setWheelFor(null); }}
-                    />
-                );
-            })()}
         </div>
     );
 }
