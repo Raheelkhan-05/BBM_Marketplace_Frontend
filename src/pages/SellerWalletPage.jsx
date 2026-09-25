@@ -1,5 +1,5 @@
 // pages/SellerWalletPage.jsx
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Wallet, Loader2, AlertTriangle, IndianRupee, Clock, ShieldCheck, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -34,16 +34,34 @@ function Card({ title, children, right }) {
 // as a negative amount (legacy from the old debt model, where a payment
 // reduced a debt total). Deriving sign from type instead of trusting
 // t.amount's sign keeps the ledger readable without needing a DB migration.
+// pages/SellerWalletPage.jsx — reordered, top to bottom:
+
 const TXN_LABEL = {
     commission_accrued: { label: "Commission + GST deducted", color: "#c71f11", sign: -1 },
     commission_reversed: { label: "Commission reversed", color: "#059669", sign: 1 },
     payment_made: { label: "Credits added", color: "#059669", sign: 1 },
-    signup_credit: { label: "Welcome credits", color: "#059669", sign: 1 }, // NEW
+    signup_credit: { label: "Welcome credits", color: "#059669", sign: 1 },
     manual_adjustment: { label: "Adjustment", color: C.muted, sign: null },
 };
 
-function TxnRow({ t, navigate }) {
+function round2(n) { return Math.round((Number(n) + Number.EPSILON) * 100) / 100; }
 
+function effectOnBalance(t) {
+    const meta = TXN_LABEL[t.type];
+    if (!meta || meta.sign === null) return Number(t.amount) || 0;
+    return meta.sign * Math.abs(Number(t.amount) || 0);
+}
+
+function withClosingBalances(txns, currentBalance) {
+    let running = Number(currentBalance) || 0;
+    return txns.map((t) => {
+        const closingBalance = running;
+        running = round2(running - effectOnBalance(t));
+        return { ...t, closingBalance };
+    });
+}
+
+function TxnRow({ t, navigate }) {
     const meta = TXN_LABEL[t.type] || { label: t.type, color: C.muted, sign: null };
     const hasOrder = !!t.order_id;
     const hasNote = !!(t.note && t.note.trim());
@@ -52,28 +70,31 @@ function TxnRow({ t, navigate }) {
         <div className="border-b pb-2.5 last:border-b-0 last:pb-0" style={{ borderColor: C.hairSoft }}>
             <div
                 className="flex items-start justify-between gap-2"
-                onClick={() => {
-                    if (hasOrder) navigate(`/seller/orders/${t.order_id}`);
-                }}
+                onClick={() => { if (hasOrder) navigate(`/seller/orders/${t.order_id}`); }}
                 style={{ cursor: (hasOrder || hasNote) ? "pointer" : "default" }}
             >
                 <div className="min-w-0 flex-1 overflow-hidden">
                     <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{meta.label}</p>
                     {hasNote && (
-                        <p
-                            className="mt-0.5 overflow-hidden text-[11.5px] font-medium tracking-wide whitespace-pre-wrap"
-                            style={{ color: C.muted }}
-                        >
+                        <p className="mt-0.5 overflow-hidden text-[11.5px] font-medium tracking-wide whitespace-pre-wrap" style={{ color: C.muted }}>
                             {t.note}
                         </p>
                     )}
-                    <p className="mt-0.5 text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>{new Date(t.created_at).toLocaleString("en-IN")}</p>
+                    <p className="mt-0.5 text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>
+                        {new Date(t.created_at).toLocaleString("en-IN")}
+                    </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-1.5">
+                <div className="flex shrink-0 flex-col items-end gap-0.5">
                     <p className="text-[15px] font-extrabold tabular-nums" style={{ color: meta.color }}>
                         {meta.sign === null
                             ? `${t.amount > 0 ? "+" : ""}₹${inr(t.amount)}`
                             : `${meta.sign > 0 ? "+" : "−"}₹${inr(Math.abs(t.amount))}`}
+                    </p>
+                    {/* Closing balance — the running credits balance right after
+                        this transaction posted, same "balance after" convention
+                        a bank passbook uses. */}
+                    <p className="text-[10.5px] font-semibold tabular-nums tracking-wide" style={{ color: C.muted }}>
+                        Bal: ₹{inr(t.closingBalance)}
                     </p>
                 </div>
             </div>
@@ -118,6 +139,11 @@ export default function SellerWalletPage() {
         setPayments(next.payments);
         setLoading(false);
     }, [token]);
+
+    const annotatedTxns = useMemo(
+        () => withClosingBalances(txns, wallet?.balance_due),
+        [txns, wallet?.balance_due]
+    );
 
     useEffect(() => {
         if (!token) return;
@@ -222,24 +248,65 @@ export default function SellerWalletPage() {
             )}
 
             {/* ---- Ledger ---- */}
-            <Card title="Transaction ledger">
-                {txns.length === 0 ? (
+            {/* ---- Ledger ---- */}
+            <Card
+                title="Transaction ledger"
+                right={
+                    annotatedTxns.length > 0 && (
+                        <span className="text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                            Latest balance: ₹{inr(annotatedTxns[0].closingBalance)}
+                        </span>
+                    )
+                }
+            >
+                {annotatedTxns.length === 0 ? (
                     <p className="text-[12.5px] font-semibold tracking-wide" style={{ color: C.muted }}>No transactions yet.</p>
                 ) : (
-                    <div className="flex flex-col gap-2.5">
-                        {txns.map((t) => <TxnRow key={t.id} t={t} navigate={navigate} />)}
-                    </div>
+                    <>
+                        <div className="flex flex-col gap-2.5">
+                            {annotatedTxns.map((t) => <TxnRow key={t.id} t={t} navigate={navigate} />)}
+                        </div>
+
+                        {/* Opening balance — what the balance was BEFORE the oldest
+                transaction shown, so the ledger reads as a closed loop
+                rather than just "closing balance per row" floating with
+                no anchor at the bottom. */}
+                        <div className="mt-3 border-t pt-2.5" style={{ borderColor: C.hairSoft }}>
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>
+                                    Opening balance
+                                </span>
+                                <span className="text-[12px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                    ₹{inr(
+                                        annotatedTxns[annotatedTxns.length - 1].closingBalance
+                                        - effectOnBalance(annotatedTxns[annotatedTxns.length - 1])
+                                    )}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* This page's ledger endpoint returns at most 100 rows — a
+                seller with more history than that would otherwise see
+                the list just stop with no indication why. */}
+                        {txns.length >= 100 && (
+                            <p className="mt-2 text-[11px] font-medium" style={{ color: C.muted }}>
+                                Showing your most recent 100 transactions.
+                            </p>
+                        )}
+                    </>
                 )}
             </Card>
 
-            {showQrModal && (
-                <WalletPaymentQRModal
-                    token={token}
-                    amount={Number(payAmount)}
-                    onClose={() => setShowQrModal(false)}
-                    onSubmitted={handlePaymentSubmitted}
-                />
-            )}
-        </div>
+            {
+                showQrModal && (
+                    <WalletPaymentQRModal
+                        token={token}
+                        amount={Number(payAmount)}
+                        onClose={() => setShowQrModal(false)}
+                        onSubmitted={handlePaymentSubmitted}
+                    />
+                )
+            }
+        </div >
     );
 }
