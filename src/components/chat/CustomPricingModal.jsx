@@ -89,6 +89,32 @@ function DirectionToggle({ direction, onChange }) {
     );
 }
 
+// Plain-language helper — replaces percentChangeLabel's use inside the
+// preview box. Literacy-first: leads with what actually happens in
+// concrete rupees/behavior, percent is a small supporting detail only.
+function priceChangeSummary(pct) {
+    const rounded = Math.round(Number(pct) * 10) / 10;
+    if (rounded > 0) {
+        return {
+            isDecrease: true,
+            headline: "This buyer will pay LESS",
+            caption: `${rounded}% less than your usual price`,
+        };
+    }
+    if (rounded < 0) {
+        return {
+            isDecrease: false,
+            headline: "This buyer will pay MORE",
+            caption: `${Math.abs(rounded)}% more than your usual price`,
+        };
+    }
+    return {
+        isDecrease: true,
+        headline: "Price is unchanged",
+        caption: "Same as your usual price",
+    };
+}
+
 function GstEntryToggle({ gstMode, onChange }) {
     return (
         <div className="flex w-full overflow-hidden rounded-lg border" style={{ borderColor: C.hair }}>
@@ -422,24 +448,17 @@ function ProductEditCard({ row, draft, onDraftChange }) {
             )}
 
             {draft.mode === "amount" ? (
-                <div className={`grid gap-3 ${levels.length === 3 ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-1 sm:grid-cols-2"}`}>
+                <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${levels.length}, 1fr)` }}>
                     {levels.map((level) => {
-                        // row.defaultBreakdown is always GST-INCLUSIVE (same
-                        // convention as row.defaultPrice). The field itself,
-                        // though, displays GST-exclusive numbers when
-                        // gstMode === "excl" — so the reference used to build
-                        // the 2% grid has to be converted into THAT SAME basis,
-                        // or "2% steps" silently means something different from
-                        // what's on screen the moment exclusive mode is active.
                         const referenceInclusive = referenceForLevel(level);
                         const reference = gstMode === "excl" ? fromInclusive(referenceInclusive) : referenceInclusive;
                         const currentRaw = draft.amounts[level];
                         const currentVal = currentRaw !== "" && currentRaw != null ? Number(currentRaw) : reference;
-                        const step = round2(reference * 0.02) || 1; // 2% of the reference price, in the CURRENTLY DISPLAYED basis
+                        const step = round2(reference * 0.02) || 1;
                         return (
-                            <div key={`${level}-${gstMode}`} className="flex flex-col gap-1">
-                                <span className="text-center text-[10px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
-                                    Price / {LEVEL_LABEL[level](row.unit)} <span className="normal-case font-medium" style={{ color: C.muted }}>({gstMode === "excl" ? "excl. GST" : "incl. GST"})</span>
+                            <div key={`${level}-${gstMode}`} className="flex min-w-0 flex-col gap-1">
+                                <span className="truncate text-center text-[9px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
+                                    {LEVEL_LABEL[level](row.unit)} <span className="normal-case font-medium">({gstMode === "excl" ? "excl. GST" : "incl. GST"})</span>
                                 </span>
                                 <InlineWheelField
                                     seed={currentVal}
@@ -489,20 +508,51 @@ function ProductEditCard({ row, draft, onDraftChange }) {
                 </p>
             )}
 
-            {preview && !invalid && (
-                <div className="flex flex-col gap-1.5 rounded-lg px-2.5 py-2" style={{ background: C.okBg }}>
-                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: C.ok }}>
-                        {percentChangeLabel(appliedPercent)} vs default
-                    </span>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        {levels.map((level) => (
-                            <span key={level} className="text-[11.5px] font-bold tabular-nums tracking-wide" style={{ color: C.ok }}>
-                                ₹{inr(preview[LEVEL_FIELD[level]])}<span className="font-medium tracking-wide"> /{LEVEL_LABEL[level](row.unit)}</span>
+            {preview && !invalid && (() => {
+                const summary = priceChangeSummary(appliedPercent);
+                const tone = summary.isDecrease
+                    ? { bg: C.okBg, fg: C.ok, Icon: TrendingDown }
+                    : { bg: C.warnBg, fg: C.warn, Icon: TrendingUp };
+
+                return (
+                    <div className="flex flex-col gap-2.5 rounded-xl px-3 py-3" style={{ background: tone.bg }}>
+                        {/* Headline — plain words, not a percentage, so the outcome is
+                unmistakable at a glance regardless of reading level. */}
+                        <div className="flex items-center gap-2">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full" style={{ background: `${tone.fg}22` }}>
+                                <tone.Icon className="h-4 w-4" style={{ color: tone.fg }} />
                             </span>
-                        ))}
+                            <div className="flex min-w-0 flex-col">
+                                <span className="text-[13px] font-extrabold tracking-wide" style={{ color: tone.fg }}>
+                                    {summary.headline}
+                                </span>
+                                <span className="text-[10.5px] font-semibold tracking-wide" style={{ color: tone.fg, opacity: 0.85 }}>
+                                    {summary.caption}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Before → After, per unit/pack/master pack, all in one row
+                so the whole comparison is scannable at a glance. */}
+                        <div className="grid gap-2 rounded-lg bg-white/60 px-2.5 py-2" style={{ gridTemplateColumns: `repeat(${levels.length}, 1fr)` }}>
+                            {levels.map((level) => (
+                                <div key={level} className="flex flex-col items-center gap-1 text-center">
+                                    <span className="text-[10px] font-semibold tracking-wide" style={{ color: C.ink }}>
+                                        Per {LEVEL_LABEL[level](row.unit)}
+                                    </span>
+                                    <span className="text-[10.5px] font-semibold tabular-nums tracking-wide" style={{ color: C.muted, textDecoration: "line-through" }}>
+                                        ₹{inr(row.defaultBreakdown[LEVEL_FIELD[level]])}
+                                    </span>
+                                    <ArrowRight className="h-3 w-3 shrink-0 rotate-90" style={{ color: C.muted }} />
+                                    <span className="text-[13px] font-extrabold tabular-nums tracking-wide" style={{ color: tone.fg }}>
+                                        ₹{inr(preview[LEVEL_FIELD[level]])}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 }
