@@ -1274,6 +1274,11 @@ export async function fetchCustomPricing(token, buyerId) {
   return apiGet(`/seller/custom-pricing/${buyerId}`, token);
 }
 
+// GET — product-centric: every buyer who has a custom price on ONE listing.
+export async function fetchCustomPricingForSubmission(token, submissionId) {
+  return apiGet(`/seller/custom-pricing/by-submission/${submissionId}`, token);
+}
+
 // POST — upsert one or more overrides in a single call.
 // items: [{ submissionId, overrideType: 'percent'|'fixed', value, inputMode?: 'typed_price'|'percent'|'absolute' }]
 export async function saveCustomPricing(token, buyerId, items) {

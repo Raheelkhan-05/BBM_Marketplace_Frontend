@@ -264,6 +264,7 @@ export default function SellPublishProductPage() {
                     onSubmit={handleSubmit}
                     submitting={submitting}
                     submitLabel={isEdit ? "Save changes" : "Submit"}
+                    submissionId={isEdit ? submissionId : undefined}  // NEW
                 />
             </div>
 

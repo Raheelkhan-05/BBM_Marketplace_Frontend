@@ -184,6 +184,7 @@ export default function EditListingModal({ token, submissionId, focusSection, on
                                     submitLabel="Update"
                                     stickyBottomClassName="-bottom-4"
                                     onlySection={focusSection || null}
+                                    submissionId={submissionId}
                                 />
                             </motion.div>
                         ) : null}

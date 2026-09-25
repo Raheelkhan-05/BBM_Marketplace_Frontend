@@ -5,7 +5,7 @@ import { X, Search, Percent, AlertTriangle, IndianRupee, Trash2, Check, Loader2,
 import {
     fetchCustomPricing, saveCustomPricing, deleteCustomPricing as deleteCustomPricingApi, bulkClearCustomPricing,
 } from "../../utils/api.js";
-import { priceFromLevel, derivePriceBreakdown, percentFromCustomPrice, violatesMinUnitPrice, MIN_UNIT_PRICE } from "../../../shared/customPricing.js";
+import { priceFromLevel, derivePriceBreakdown, percentFromCustomPrice, violatesMinUnitPrice, MIN_UNIT_PRICE, LEVEL_LABEL, LEVEL_FIELD, levelsFor } from "../../../shared/customPricing.js";
 import ImageLightbox from "../ImageLightbox.jsx";
 import { useWheelColumn, WheelColumn, ITEM_HEIGHT, InlineWheelField } from "../seller/listingForm/PriceWheelPicker.jsx";
 
@@ -19,10 +19,6 @@ const EASE = [0.16, 1, 0.3, 1];
 function inr(n) { return (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 }); }
 
 function round2(n) { return n == null ? n : Math.round(n * 100) / 100; }
-
-const LEVEL_LABEL = { unit: (u) => u || "unit", pack: () => "pack", master_pack: () => "master pack" };
-const LEVEL_FIELD = { unit: "perBaseUnit", pack: "perPack", master_pack: "perMasterPack" };
-function levelsFor(row) { return row.hasMasterPack ? ["unit", "pack", "master_pack"] : ["unit", "pack"]; }
 
 // Shared label/color for a resulting percent change, everywhere it's shown.
 // Positive percentValue (backend convention) = price decrease = discount.

@@ -77,10 +77,11 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
     Loader2, CheckCircle2, AlertTriangle, ImagePlus,
-    Info, Pencil, UploadCloud
+    Info, Pencil, UploadCloud, Tag,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { uploadSellerFile } from "../../../utils/api.js";
+import ProductBuyerPricing from "./ProductBuyerPricing.jsx";
 import { fetchCommissionInfo, fetchDefaultListingTemplates, lookupPincode, findBrandItemMatch } from "../../../utils/sellerListingApi.js";
 import {
     C, TextField, TextAreaField, SelectField, ToggleField, ChipToggleGroup, RepeatableRows,
@@ -497,11 +498,12 @@ export default function SellerListingForm({
     onSubmit, submitting, submitLabel = "Submit",
     mode = "create", identityReadOnly, brandDisplay, initialValues,
     identityLocked, lockedIdentity,
-    stickyBottomClassName = "-bottom-1 md:bottom-0", // default (page/edit route)
-    readOnly = false,        // NEW — renders the whole form non-interactive
-    onEdit,                  // NEW — footer "Edit this listing" callback when readOnly
-    onClose,                 // NEW — footer "Close" callback when readOnly
-    onlySection = null,      // NEW — when set, render only this one section (see ONLY_SECTION_ALIAS)
+    stickyBottomClassName = "-bottom-1 md:bottom-0",
+    readOnly = false,
+    onEdit,
+    onClose,
+    onlySection = null,
+    submissionId = null, // NEW — this listing's own id; enables "Custom pricing" below, only once the listing actually exists
 }) {
     const locked = identityReadOnly ?? identityLocked ?? mode === "edit";
     const identity = brandDisplay ?? lockedIdentity;
@@ -1823,6 +1825,16 @@ export default function SellerListingForm({
                     <FieldAnchor fieldKey="dispatchingLocations">
                         <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
                     </FieldAnchor>
+                </SectionCard>
+            )}
+
+            {/* ---------------- Custom pricing ---------------- */}
+            {showSection("customPricing") && mode === "edit" && submissionId && (
+                <SectionCard id="section-customPricing" icon={Tag} title="Custom pricing"
+                    open={resolvedOnlySection ? true : openSection === "customPricing"} onOpenChange={(v) => handleSectionToggle("customPricing", v)}
+                    missingCount={0} totalCount={0}
+                    readOnly={readOnly}>
+                    <ProductBuyerPricing submissionId={submissionId} />
                 </SectionCard>
             )}
 
