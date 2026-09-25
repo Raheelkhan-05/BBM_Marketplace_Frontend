@@ -119,6 +119,7 @@ import {
 import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
+import EditListingModal from "../components/seller/listingForm/EditListingModal.jsx";
 import SellerListingForm, { unflattenDispatchingLocations } from "../components/seller/listingForm/SellerListingForm.jsx";
 // Same shared convention BuyNowModal.jsx / HomeProductFeed.jsx already use
 // for "what unit is this listing actually sold and priced in" — imported
@@ -329,115 +330,6 @@ function submissionToInitialValues(s) {
         returnPolicyKey: s.return_policy_key || "",
         warrantyKey: s.warranty_key || "",
     };
-}
-
-function EditListingModal({ token, submissionId, focusSection, onClose, onSaved }) {
-    useLenisScrollLock();
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const [initialValues, setInitialValues] = useState(null);
-    const [brandDisplay, setBrandDisplay] = useState(null);
-    const [submitting, setSubmitting] = useState(false);
-    const [submitError, setSubmitError] = useState(null);
-
-    useEffect(() => {
-        let cancelled = false;
-        setLoading(true); setError("");
-        fetchSellerSubmissionDetail(token, submissionId).then((res) => {
-            if (cancelled) return;
-            if (!res?.success) { setError(res?.message || "Couldn't load this listing."); setLoading(false); return; }
-            const s = res.submission;
-            setInitialValues(submissionToInitialValues(s));
-            setBrandDisplay({
-                name: s.product_name || s.brand?.name,
-                brandName: s.brand_name || s.brand?.brand_name,
-                image: s.image || s.brand?.image,
-            });
-            setLoading(false);
-        });
-        return () => { cancelled = true; };
-    }, [token, submissionId]);
-
-    const handleSubmit = async (payload) => {
-        setSubmitting(true);
-        setSubmitError(null);
-        const res = await updateSellerProductSubmission(token, submissionId, payload);
-        setSubmitting(false);
-        if (!res?.success) { setSubmitError(res?.message || "Couldn't save changes."); return; }
-        onSaved(submissionId, res.submission, res.message || "Changes submitted for review.");
-    };
-
-    return (
-        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-2.5 sm:p-4" onClick={onClose}>
-            <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white" style={{ height: "92vh" }}>
-                <div className="flex shrink-0 items-center justify-between border-b px-5 py-3.5" style={{ borderColor: C.hairSoft }}>
-                    <div className="min-w-0">
-                        <h3 className="text-[15px] font-extrabold" style={{ color: C.ink }}>Edit listing</h3>
-                        {focusSection && (
-                            <p className="mt-0.5 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                Editing {getSectionLabel(focusSection)}
-                            </p>
-                        )}
-                    </div>
-                    <button onClick={onClose} className="shrink-0 rounded-full p-1.5 transition-colors duration-150 hover:bg-black/[0.05]" style={{ color: C.muted }}>
-                        <X className="h-4 w-4" />
-                    </button>
-                </div>
-
-                {/* data-scroll-lock-allow: this is the ONE element inside this
-                    modal the global scroll-lock listener (see
-                    useLenisScrollLock below) treats as "cursor is inside the
-                    foreground modal" — wheel/touch here scrolls this div,
-                    everything else on the page stays locked. */}
-                <div
-                    className="flex-1 overflow-y-auto px-5 py-4"
-                    style={{ minHeight: 0, overscrollBehavior: "contain" }}
-                    data-scroll-lock-allow=""
-                    data-lenis-prevent=""
-                >
-                    <AnimatePresence mode="wait" initial={false}>
-                        {loading ? (
-                            <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
-                                <EditListingModalSkeleton />
-                            </motion.div>
-                        ) : error ? (
-                            <motion.p
-                                key="error"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                className="py-8 text-center text-[13px] font-semibold"
-                                style={{ color: "#c71f11" }}
-                            >
-                                {error}
-                            </motion.p>
-                        ) : initialValues ? (
-                            <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
-                                {submitError && (
-                                    <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{submitError}</p>
-                                )}
-                                <SellerListingForm
-                                    mode="edit"
-                                    identityReadOnly
-                                    brandDisplay={brandDisplay}
-                                    initialValues={initialValues}
-                                    onSubmit={handleSubmit}
-                                    submitting={submitting}
-                                    submitLabel="Update"
-                                    stickyBottomClassName="-bottom-4"
-                                    // NOTE: onlySection is new — SellerListingForm.jsx
-                                    // needs to accept it and render only the matching
-                                    // section (falling back to the full form when
-                                    // null/unsupported). See the header comment at the
-                                    // top of this file.
-                                    onlySection={focusSection || null}
-                                />
-                            </motion.div>
-                        ) : null}
-                    </AnimatePresence>
-                </div>
-            </div>
-        </div>
-    );
 }
 
 function stockState(stock, moq) {

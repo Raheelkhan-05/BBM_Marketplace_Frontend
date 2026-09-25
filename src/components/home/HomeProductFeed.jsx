@@ -67,9 +67,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Package, Info, Store, ShieldCheck, Loader2, Truck, Lock, Zap, MapPin } from "lucide-react";
-import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses } from "../../utils/api";
+import { ChevronDown, Package, Info, Store, ChevronRight, ShieldCheck, Loader2, Pencil, Truck, Lock, Zap, MapPin } from "lucide-react";
+import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses, updateSellerProductSubmission } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
@@ -77,6 +78,10 @@ import SellThisItemModal from "../catalog/SellThisItemModal";
 import BuyNowModal from "../BuyNowModal";
 import { resizedImageUrl } from "../../utils/imageUrl";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { round2 } from "../../shared/packUnits.js";
+import { InlineWheelField } from "../seller/listingForm/PriceWheelPicker.jsx";
+import EditListingModal from "../seller/listingForm/EditListingModal.jsx";
+import { useLenis } from "../../providers/SmoothScrollProvider.jsx";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
@@ -141,6 +146,148 @@ function sortModeToApiSort(sortMode) {
     if (sortMode === "min_moq") return "moq_asc";
     if (sortMode === "fastest_delivery") return "fastest_delivery";
     return "price_asc";
+}
+
+// One grid cell whose text content animates in/out — used as a direct
+// grid child, so it never disturbs the surrounding grid's columns or
+// baseline alignment (previously wrapped in an extra flex span, which
+// is what broke the layout).
+
+function AnimatedPriceValue({ value, direction, className, style }) {
+    return (
+        <span className="relative inline-block overflow-hidden align-bottom" style={{ height: "1.15em" }}>
+            <AnimatePresence mode="popLayout" initial={false}>
+                <motion.span
+                    key={value}
+                    initial={{ y: direction >= 0 ? 14 : -14, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: direction >= 0 ? -14 : 14, opacity: 0 }}
+                    transition={{ duration: 0.16, ease: EASE }}
+                    className={className}
+                    style={{ ...style, display: "block", whiteSpace: "nowrap" }}
+                >
+                    {value}
+                </motion.span>
+            </AnimatePresence>
+        </span>
+    );
+}
+
+function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
+    const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
+    const masterPackSize = Number(seller.units_per_master_pack) > 0 ? Number(seller.units_per_master_pack) : 1;
+    const hasOuter = hasOuterPack(seller.units_per_master_pack);
+    const gst = Number(seller.gst_percent) || 0;
+
+    const canonicalInclusive = round2(Number(seller.price) || 0);
+    const canonicalDisplayed = round2(includeGst ? canonicalInclusive : canonicalInclusive / (1 + gst / 100));
+
+    const [saleUnitPrice, setSaleUnitPrice] = useState(canonicalDisplayed);
+    const [lastDirection, setLastDirection] = useState(1);
+    const step = round2((canonicalDisplayed || 1) * 0.02) || 1;
+
+    const dragging = useRef(false);
+    const dragStartY = useRef(0);
+    const dragAccum = useRef(0);
+
+    useEffect(() => { setSaleUnitPrice(canonicalDisplayed); }, [canonicalDisplayed]);
+
+    const applyDelta = useCallback((deltaSteps, dir) => {
+        if (!deltaSteps) return;
+        setLastDirection(dir);
+        setSaleUnitPrice((p) => round2(Math.max(step, p + deltaSteps * step)));
+    }, [step]);
+
+    const onWheel = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const dir = e.deltaY < 0 ? 1 : -1;
+        applyDelta(dir, dir);
+    }, [applyDelta]);
+
+    const PX_PER_STEP = 10;
+    const onWindowMove = useCallback((clientY) => {
+        const totalDeltaY = dragStartY.current - clientY;
+        const totalSteps = Math.trunc(totalDeltaY / PX_PER_STEP);
+        const newSteps = totalSteps - dragAccum.current;
+        if (newSteps !== 0) {
+            applyDelta(newSteps, newSteps > 0 ? 1 : -1);
+            dragAccum.current = totalSteps;
+        }
+    }, [applyDelta]);
+
+    useEffect(() => {
+        const onMouseMove = (e) => { if (dragging.current) onWindowMove(e.clientY); };
+        const onMouseUp = () => { dragging.current = false; };
+        const onTouchMove = (e) => { if (dragging.current) { e.preventDefault(); onWindowMove(e.touches[0].clientY); } };
+        const onTouchEnd = () => { dragging.current = false; };
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+        window.addEventListener("touchmove", onTouchMove, { passive: false });
+        window.addEventListener("touchend", onTouchEnd);
+        return () => {
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+            window.removeEventListener("touchmove", onTouchMove);
+            window.removeEventListener("touchend", onTouchEnd);
+        };
+    }, [onWindowMove]);
+
+    const startDrag = (clientY) => { dragging.current = true; dragStartY.current = clientY; dragAccum.current = 0; };
+
+    const derived = deriveDisplayPrices(saleUnitPrice, packSize, masterPackSize);
+    const dirty = round2(saleUnitPrice) !== canonicalDisplayed;
+
+    const handleConfirm = () => {
+        const finalInclusive = round2(includeGst ? saleUnitPrice : saleUnitPrice * (1 + gst / 100));
+        const newBasePrice = round2(finalInclusive / (1 + gst / 100));
+        onApply(newBasePrice, hasOuter ? "per_master_pack" : "per_pack", finalInclusive);
+    };
+
+    const rows = [
+        seller.unit ? { label: seller.unit, value: derived.perBaseUnit } : null,
+        { label: "Pack", value: derived.perPack },
+        hasOuter ? { label: "M Pack", value: derived.perMasterPack } : null,
+    ].filter(Boolean);
+
+    return (
+        <div className="flex flex-col items-end gap-1">
+            <div
+                data-price-editor=""
+                onMouseDown={(e) => { e.stopPropagation(); startDrag(e.clientY); }}
+                onTouchStart={(e) => { e.stopPropagation(); startDrag(e.touches[0].clientY); }}
+                onWheel={onWheel}
+                onClick={(e) => e.stopPropagation()}
+                title="Scroll or drag to change your price"
+                // Explicit stacked rows — each row is its own flex line
+                // (value + label), rows stacked vertically via flex-col.
+                // This replaces the earlier CSS-grid + `contents` trick,
+                // which stopped reliably wrapping to separate lines once
+                // the value became an animated (non-plain-text) node.
+                className="flex flex-col items-end gap-y-0.5 rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-black/[0.04]"
+                style={{ cursor: "ns-resize", touchAction: "none" }}
+            >
+                {rows.map((r) => (
+                    <div key={r.label} className="flex items-baseline gap-1">
+                        <AnimatedPriceValue
+                            value={`₹${inr(r.value)}`}
+                            direction={lastDirection}
+                            className="text-right text-[12.5px] font-extrabold tabular-nums whitespace-nowrap"
+                            style={{ color: C.ink }}
+                        />
+                        <span className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap" style={{ color: C.muted }}>
+                            /{r.label}
+                        </span>
+                    </div>
+                ))}
+            </div>
+            {dirty && (
+                <div className="w-[132px]">
+                    <SlideToConfirm resetKey={saleUnitPrice} busy={submitting} label="Slide to confirm" onConfirm={handleConfirm} />
+                </div>
+            )}
+        </div>
+    );
 }
 
 function SellerSortToggle({ value, onChange, options = SELLER_SORT_OPTIONS }) {
@@ -942,8 +1089,8 @@ function LoginPromptModal({ open, message, onConfirm, onCancel }) {
     );
 }
 
-// Replace the useEdgeAwareLenisForward hook entirely with this:
 function useLenisPreventToggle() {
+    const lenis = useLenis();
     const ref = useRef(null);
     const touchStartYRef = useRef(0);
 
@@ -953,75 +1100,84 @@ function useLenisPreventToggle() {
         const { scrollTop, scrollHeight, clientHeight } = el;
         const atTop = scrollTop <= 0;
         const atBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight;
-        const goingUp = deltaY < 0;
-        const goingDown = deltaY > 0;
-        return (atTop && goingUp) || (atBottom && goingDown);
+        return (atTop && deltaY < 0) || (atBottom && deltaY > 0);
     }, []);
 
-    const handleWheel = useCallback((e) => {
-        if (!isAtBlockingEdge(e.deltaY)) e.stopPropagation();
-    }, [isAtBlockingEdge]);
+    const forwardToLenis = useCallback((deltaY) => {
+        if (lenis && typeof lenis.scrollTo === "function") {
+            lenis.scrollTo(lenis.scroll + deltaY, { immediate: true });
+        } else {
+            window.scrollBy(0, deltaY); // fallback if Lenis isn't mounted yet
+        }
+    }, [lenis]);
 
-    // Native listeners — attached directly via addEventListener, in the
-    // CAPTURE phase, with passive:false so stopPropagation/preventDefault
-    // actually take effect before Lenis's own window/document listener
-    // (also native, also outside React) gets to run. React's synthetic
-    // onTouchStart/onTouchMove are NOT reliable here — they're dispatched
-    // through React's own system, separately from real DOM bubble order,
-    // and default to passive, so stopPropagation on the synthetic event
-    // doesn't guarantee anything about what Lenis's real listener sees.
+    const handleWheel = useCallback((e) => {
+        if (isAtBlockingEdge(e.deltaY)) forwardToLenis(e.deltaY);
+        else e.stopPropagation();
+    }, [isAtBlockingEdge, forwardToLenis]);
+
+    // components/home/HomeProductFeed.jsx — inside useLenisPreventToggle
     useEffect(() => {
         const el = ref.current;
         if (!el) return;
 
+        // Anything inside a price editor handles its own drag/scroll — the
+        // list's own capture-phase listener must never intercept those
+        // events, since capture fires before the price cell's own handlers
+        // ever get a chance to call stopPropagation.
+        const isInsidePriceEditor = (e) => !!e.target?.closest?.("[data-price-editor]");
+
         const onTouchStart = (e) => {
+            if (isInsidePriceEditor(e)) return;
             touchStartYRef.current = e.touches[0].clientY;
         };
-
         const onTouchMove = (e) => {
+            if (isInsidePriceEditor(e)) return;
             const currentY = e.touches[0].clientY;
             const deltaY = touchStartYRef.current - currentY;
             touchStartYRef.current = currentY;
-
-            if (!isAtBlockingEdge(deltaY)) {
-                e.stopPropagation();
-            }
-            // at an edge → don't stop it → real event keeps bubbling →
-            // Lenis's native listener sees it and scrolls the page
+            if (isAtBlockingEdge(deltaY)) { e.preventDefault(); forwardToLenis(deltaY); }
+            else e.stopPropagation();
         };
 
         el.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
         el.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
-
         return () => {
             el.removeEventListener("touchstart", onTouchStart, { capture: true });
             el.removeEventListener("touchmove", onTouchMove, { capture: true });
         };
-    }, [isAtBlockingEdge]);
+    }, [isAtBlockingEdge, forwardToLenis]);
 
     return { ref, handleWheel };
 }
 
-// Add near your other small hooks/helpers in HomeProductFeed.jsx
-function useEdgeAwareLenisForward(scrollRef) {
-    return useCallback((e) => {
-        const el = scrollRef.current;
-        if (!el) return;
-        const { scrollTop, scrollHeight, clientHeight } = el;
-        const atTop = scrollTop <= 0;
-        const atBottom = Math.ceil(scrollTop + clientHeight) >= scrollHeight;
-        const goingUp = e.deltaY < 0;
-        const goingDown = e.deltaY > 0;
+// components/home/HomeProductFeed.jsx — new component
+function SlideToConfirm({ label, onConfirm, busy, resetKey }) {
+    const trackRef = useRef(null);
+    const [confirmed, setConfirmed] = useState(false);
 
-        if ((atTop && goingUp) || (atBottom && goingDown)) {
-            // This box has nowhere left to scroll in this direction, but
-            // data-lenis-prevent means Lenis already ignored this event
-            // entirely — so without forwarding it manually, the scroll
-            // just vanishes here instead of continuing the page.
-            window.lenis?.scrollTo(window.lenis.scroll + e.deltaY, { immediate: true });
-        }
-        // Otherwise: let native scroll inside the box handle it as usual.
-    }, [scrollRef]);
+    return (
+        <div ref={trackRef} className="relative h-8 w-full overflow-hidden rounded-full" style={{ background: C.hairSoft }}>
+            <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-2 text-center text-[9.5px] font-bold tracking-wide ps-8" style={{ color: C.muted }}>
+                {busy ? "Updating…" : confirmed ? "Updated" : label}
+            </p>
+            <motion.div
+                key={resetKey /* remounting resets the drag position to 0 */}
+                drag={busy || confirmed ? false : "x"}
+                dragConstraints={trackRef}
+                dragElastic={0}
+                dragMomentum={false}
+                onDragEnd={(_, info) => {
+                    const maxX = (trackRef.current?.offsetWidth || 32) - 32;
+                    if (info.offset.x >= maxX * 0.85) { setConfirmed(true); onConfirm(); }
+                }}
+                className="absolute left-0 top-0 flex h-8 w-8 cursor-grab items-center justify-center rounded-full text-white active:cursor-grabbing"
+                style={{ background: C.primary }}
+            >
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronRight className="h-3.5 w-3.5" style={{ transform: "rotate(0deg)" }} />}
+            </motion.div>
+        </div>
+    );
 }
 
 function sellerPricingForMode(seller, sortMode, includeGst) {
@@ -1031,13 +1187,28 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
     return bestAchievablePricing(seller, includeGst); // "best_price" and "fastest_delivery" both show effective-at-MOQ-style pricing here
 }
 
+
+function computeListingLowestFromSellers(sellers) {
+    let best = null;
+    for (const s of sellers) {
+        const price = Number(s.price);
+        if (!(price > 0)) continue;
+        if (!best || price < Number(best.price)) best = s;
+    }
+    return best;
+}
+
 // Inline seller accordion. `state` is { loading, items, error, total,
 // hasMore } for this item's fetch — items already arrive from the
 // backend correctly ordered for whichever `sortMode` was requested (see
 // loadSellersFor in the parent). `buyerAddress` drives whether the
 // "Fastest delivery" tab is even shown, and is what total_delivery_days
 // on each seller row was computed against.
-function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange, currentUserId, onRequireLogin, isLoggedIn, buyerAddress, navigate }) {
+function SellerDropdown({
+    item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange,
+    currentUserId, onRequireLogin, isLoggedIn, buyerAddress, navigate,
+    token, onOwnListingPriceApplied, onOwnListingSaved, onEditOwnListing,
+}) {
     const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
 
     // const { ref: listRef, handleWheel, handleTouchStart, handleTouchMove } = useLenisPreventToggle();
@@ -1067,6 +1238,21 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
     }, [sortMode, hasKnownDestination, sortedItems]);
 
     const alreadySelling = item?.has_own_listing === true;
+
+    const [savingOwnPrice, setSavingOwnPrice] = useState(false);
+
+    const [savingOwnPriceId, setSavingOwnPriceId] = useState(null);
+
+
+    const handleOwnPriceSave = async (submissionId, basePrice, priceBasis, optimisticFinalPrice) => {
+        onOwnListingPriceApplied?.(submissionId, optimisticFinalPrice); // instant reflect, before the network call
+        setSavingOwnPriceId(submissionId);
+        const res = await updateSellerProductSubmission(token, submissionId, {
+            basePrice: String(basePrice), priceBasis, gstInclusive: false,
+        });
+        setSavingOwnPriceId(null);
+        if (res?.success) onOwnListingSaved?.(); // background reconciliation
+    };
 
     return (
         <motion.div
@@ -1142,7 +1328,7 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                         }}
                                         aria-disabled={outOfStock || isOwn}
                                         className="flex items-start gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9]"
-                                        style={outOfStock || isOwn ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
+                                        style={outOfStock ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
                                     >
 
                                         <div className="min-w-0 flex-1">
@@ -1174,11 +1360,29 @@ function SellerDropdown({ item, state, onBuySeller, onSell, includeGst, sortMode
                                                 </span>
                                             ) : !isLoggedIn ? (
                                                 <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
+                                            ) : isOwn ? (
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <OwnListingPriceCell
+                                                        seller={s}
+                                                        includeGst={includeGst}
+                                                        submitting={savingOwnPriceId === s.submission_id}
+                                                        onApply={(basePrice, priceBasis, finalInclusive) =>
+                                                            handleOwnPriceSave(s.submission_id, basePrice, priceBasis, finalInclusive)}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); onEditOwnListing(s.submission_id); }}
+                                                        className="rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white"
+                                                        style={{ background: C.primary }}
+                                                    >
+                                                        Edit listing
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <>
                                                     <SellerPriceBlock pricing={pricing} unit={s.unit} />
                                                     <span className="rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white" style={{ background: C.primary }}>
-                                                        {isOwn ? "Your listing" : "Buy now"}
+                                                        Buy now
                                                     </span>
                                                 </>
                                             )}
@@ -1234,6 +1438,8 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [lightboxSrc, setLightboxSrc] = useState(null);
+
+    const [editingSubmissionId, setEditingSubmissionId] = useState(null);
     const [infoItemId, setInfoItemId] = useState(null);
 
     const [sellerSortMode, setSellerSortMode] = useState("best_price");
@@ -1369,6 +1575,36 @@ export default function HomeProductFeed({ category, q = "" }) {
         setOpenItemId(item.id);
         loadSellersFor(item.id);
     }, [openItemId, closeDropdown, loadSellersFor]);
+
+    // inside HomeProductFeed
+    useEffect(() => {
+        Object.entries(sellerState).forEach(([itemId, entry]) => {
+            if (!entry?.items?.length) return;
+            const best = computeListingLowestFromSellers(entry.items);
+            if (!best) return;
+            setItems((prev) => {
+                let changed = false;
+                const next = prev.map((it) => {
+                    if (String(it.id) !== String(itemId)) return it;
+                    if (it.lowest_price === best.price && it.lowest_price_pack_size === best.pack_size) return it;
+                    changed = true;
+                    return {
+                        ...it,
+                        lowest_price: best.price,
+                        lowest_price_pack_size: best.pack_size,
+                        lowest_price_master_pack_size: best.units_per_master_pack,
+                        lowest_price_unit: best.unit,
+                        lowest_price_gst_percent: best.gst_percent,
+                        lowest_price_is_custom: best.is_custom_priced,
+                        lowest_price_stock_type: best.stock_type,
+                        lowest_price_available_stock: best.stock_quantity,
+                        lowest_price_moq: best.moq,
+                    };
+                });
+                return changed ? next : prev;
+            });
+        });
+    }, [sellerState]);
 
     // Refetch — with the new sort applied server-side — whenever the
     // buyer switches tabs on an already-open dropdown, or when their
@@ -1523,6 +1759,20 @@ export default function HomeProductFeed({ category, q = "" }) {
         return fresh;
     }, [items]);
 
+    // components/home/HomeProductFeed.jsx — inside HomeProductFeed
+    const patchOwnListingPrice = useCallback((itemId, submissionId, newPrice) => {
+        setSellerState((prev) => {
+            const entry = prev[itemId];
+            if (!entry) return prev;
+            return {
+                ...prev, [itemId]: {
+                    ...entry, items: entry.items.map((row) =>
+                        row.submission_id === submissionId ? { ...row, price: newPrice } : row)
+                }
+            };
+        });
+    }, []);
+
     const columnCount = useResponsiveColumnCount();
     const columns = useMemo(() => bucketItemsByColumn(items, columnCount), [items, columnCount]);
 
@@ -1606,7 +1856,6 @@ export default function HomeProductFeed({ category, q = "" }) {
 
                                                 <AnimatePresence initial={false}>
                                                     {isOpen && (
-
                                                         <SellerDropdown
                                                             item={item}
                                                             state={sellerState[item.id]}
@@ -1620,6 +1869,10 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                             currentUserId={currentUserId}
                                                             buyerAddress={buyerAddress}
                                                             navigate={navigate}
+                                                            token={token}
+                                                            onOwnListingPriceApplied={(submissionId, newPrice) => patchOwnListingPrice(item.id, submissionId, newPrice)}
+                                                            onOwnListingSaved={() => loadSellersFor(item.id, { silent: true })}
+                                                            onEditOwnListing={(submissionId) => setEditingSubmissionId(submissionId)}
                                                         />
                                                     )}
                                                 </AnimatePresence>
@@ -1676,7 +1929,27 @@ export default function HomeProductFeed({ category, q = "" }) {
                     />
                 )}
 
+
             </AnimatePresence>
+
+            {editingSubmissionId && (
+                EditListingModal
+                    ? createPortal(
+                        <EditListingModal
+                            token={token}
+                            submissionId={editingSubmissionId}
+                            focusSection={null}
+                            onClose={() => setEditingSubmissionId(null)}
+                            onSaved={() => {
+                                setEditingSubmissionId(null);
+                                if (openItemId) loadSellersFor(openItemId, { silent: true });
+                            }}
+                        />,
+                        document.body
+                    )
+                    : (console.error("EditListingModal failed to import — check the file path/export"), null)
+            )}
+
 
             {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />}
         </div>
