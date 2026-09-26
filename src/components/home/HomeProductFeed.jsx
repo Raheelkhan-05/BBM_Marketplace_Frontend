@@ -347,15 +347,21 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
                 type="button"
                 data-price-editor=""
                 onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-                className="grid items-baseline gap-x-1 gap-y-0.5 rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-black/[0.04]"
+                className="grid items-baseline gap-x-1 gap-y-0.5 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-blue-50"
                 style={{ gridTemplateColumns: "auto auto" }}
             >
                 {rows.map((r) => (
                     <div key={r.label} className="contents">
-                        <span className="text-right text-[12.5px] font-extrabold tabular-nums whitespace-nowrap" style={{ color: C.ink }}>
+                        <span
+                            className="text-right text-[12.5px] font-extrabold tabular-nums whitespace-nowrap underline decoration-dotted underline-offset-2"
+                            style={{ color: "#2563eb" }}
+                        >
                             {r.value}
                         </span>
-                        <span className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap" style={{ color: C.muted }}>
+                        <span
+                            className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap"
+                            style={{ color: "#2563eb" }}
+                        >
                             /{r.label}
                         </span>
                     </div>
