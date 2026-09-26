@@ -183,13 +183,30 @@ export function useWheelColumn(initialValue, initialStep, filterFn, gridAnchor) 
             const clamped = Math.max(0, Math.min(values.length - 1, idx));
             const val = values[clamped];
             if (val !== undefined && val !== selected) {
-                changeSource.current = "scroll"; // ← the only path a real drag takes
+                changeSource.current = "scroll";
                 setSelected(val);
             }
         });
     }, [values, selected]);
 
-    return { values, selected, step, containerRef, handleScroll, jumpTo, jumpToExact, changeSource };
+    // NEW — reads scrollTop directly, bypassing any stale/throttled state.
+    // Called once the browser reports scrolling has TRULY finished
+    // (scrollend, or a settle-timeout fallback), so it always reflects
+    // where the wheel actually came to rest — not wherever the last
+    // rAF-throttled poll happened to catch it mid-fling.
+    const syncToActualScrollPosition = useCallback(() => {
+        const el = containerRef.current;
+        if (!el || isProgrammaticScroll.current) return;
+        const idx = Math.round(el.scrollTop / ITEM_HEIGHT);
+        const clamped = Math.max(0, Math.min(values.length - 1, idx));
+        const val = values[clamped];
+        if (val !== undefined) {
+            changeSource.current = "scroll";
+            setSelected(val); // no-op if already correct, but guarantees correctness if it wasn't
+        }
+    }, [values]);
+
+    return { values, selected, step, containerRef, handleScroll, syncToActualScrollPosition, jumpTo, jumpToExact, changeSource };
 }
 
 // Embedded, no modal/backdrop/confirm button. The wheel itself updates its
@@ -276,7 +293,7 @@ export function InlineWheelField({ seed, step, filterFn, formatValue, prefix, su
         commitTimer.current = setTimeout(() => {
             lastCommitAt.current = Date.now();
             onCommit(wheel.selected);
-        }, 90);
+        }, 200); // was 90 — gives scrollend's correction time to land first
         return () => clearTimeout(commitTimer.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [wheel.selected]);
@@ -344,22 +361,35 @@ export function InlineWheelField({ seed, step, filterFn, formatValue, prefix, su
     );
 }
 
-export function WheelColumn({
-    wheel, formatValue,
-    editing, draft, hasError, prefix, suffix,
-    onDraftChange, onStartEdit, onInputBlur, onEnter, onCancelEdit,
-}) {
-    const { values, selected, containerRef, handleScroll } = wheel;
+export function WheelColumn({ wheel, formatValue, editing, draft, hasError, prefix, suffix, onDraftChange, onStartEdit, onInputBlur, onEnter, onCancelEdit }) {
+    const { values, selected, containerRef, handleScroll, syncToActualScrollPosition } = wheel;
     const didMountScroll = useRef(false);
     const inputRef = useRef(null);
+    const fallbackTimer = useRef(null);
 
-    // handleScroll runs (rAF-throttled) on every native scroll event, and
-    // that's the only place `selected` is derived from scroll position now.
-    // The browser's own `scroll-snap-type: y mandatory` (set below on the
-    // container) settles the final rest position — there's nothing left
-    // for us to patch after the fact, so no separate "scroll end" step,
-    // no debounce, and critically, no array mutation mid-scroll.
-    const onScroll = () => handleScroll();
+    const onScroll = () => {
+        handleScroll();
+        // Fallback settle-check for browsers without `scrollend` (older
+        // Safari): if no further scroll events arrive for 120ms, treat
+        // that as settled and re-read the exact final position.
+        clearTimeout(fallbackTimer.current);
+        fallbackTimer.current = setTimeout(syncToActualScrollPosition, 120);
+    };
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        // Authoritative signal: the browser itself says scrolling (incl.
+        // momentum + snap-settling) has fully finished. Always wins over
+        // the rAF-throttled poll above, which can catch the position one
+        // row early on a fast multi-row fling.
+        const onScrollEnd = () => { clearTimeout(fallbackTimer.current); syncToActualScrollPosition(); };
+        el.addEventListener("scrollend", onScrollEnd);
+        return () => {
+            el.removeEventListener("scrollend", onScrollEnd);
+            clearTimeout(fallbackTimer.current);
+        };
+    }, [containerRef, syncToActualScrollPosition]);
 
     useEffect(() => {
         if (didMountScroll.current) return;

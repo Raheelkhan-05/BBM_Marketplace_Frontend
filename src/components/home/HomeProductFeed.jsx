@@ -81,7 +81,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Package, Info, Store, ChevronRight, ShieldCheck, Loader2, Pencil, Truck, Lock, Zap, MapPin } from "lucide-react";
+import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, Loader2, Pencil, Truck, Lock, Zap, MapPin } from "lucide-react";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses, updateSellerProductSubmission } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -185,7 +185,161 @@ function AnimatedPriceValue({ value, direction, className, style }) {
     );
 }
 
+// Full-screen (backdrop-blurred) modal for editing your own listing's
+// price — replaces the old inline drag/scroll cell, which was too cramped
+// to actually work with. Uses the same InlineWheelField the create/edit
+// listing form already uses (so tap-to-type manual entry comes for free),
+// and SlideToConfirm as the final commit gesture so a price never changes
+// from an accidental tap.
+// Converts a per-sale-unit price into all three display levels. Mirrors
+// deriveDisplayPrices, just named locally so the conversion math below
+// (going the OTHER way — from any edited level back to per-sale-unit) sits
+// next to it and stays easy to follow.
+function threeTierFromSaleUnit(perSaleUnit, packSize, masterPackSize, hasOuter) {
+    const d = deriveDisplayPrices(perSaleUnit, packSize, masterPackSize);
+    return { unit: d.perBaseUnit, pack: d.perPack, master: hasOuter ? d.perMasterPack : null };
+}
+
+// Inverse: given a value the seller just typed/scrolled AT a specific
+// level, convert it back to the canonical per-sale-unit price (per Pack,
+// or per Master Pack when this listing has an outer pack) — the same
+// basis `seller.price` is always stored in.
+function saleUnitFromLevel(level, value, packSize, masterPackSize, hasOuter) {
+    if (level === "unit") {
+        return hasOuter ? value * packSize * masterPackSize : value * packSize;
+    }
+    if (level === "pack") {
+        return hasOuter ? value * masterPackSize : value;
+    }
+    return value; // level === "master" — already per sale unit
+}
+
+function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose }) {
+    const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
+    const masterPackSize = Number(seller.units_per_master_pack) > 0 ? Number(seller.units_per_master_pack) : 1;
+    const hasOuter = hasOuterPack(seller.units_per_master_pack);
+    const gst = Number(seller.gst_percent) || 0;
+    const saleUnitLabelText = hasOuter ? "Master Pack" : "Pack";
+
+    const canonicalInclusive = round2(Number(seller.price) || 0);
+    const canonicalPerSaleUnit = round2(includeGst ? canonicalInclusive : canonicalInclusive / (1 + gst / 100));
+
+    const reference = useMemo(
+        () => threeTierFromSaleUnit(canonicalPerSaleUnit, packSize, masterPackSize, hasOuter),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        []
+    );
+
+    // FULL-PRECISION source of truth — never rounded until display/apply.
+    // Fixes compounding drift: previously every commit re-derived from an
+    // already-rounded display value, so several quick commits (scrolling
+    // several rows fast) stacked rounding error on top of rounding error.
+    // Now every conversion always starts from this one exact number.
+    const rawPerSaleUnitRef = useRef(canonicalPerSaleUnit);
+
+    const [values, setValues] = useState(reference);
+    const [perSaleUnit, setPerSaleUnit] = useState(canonicalPerSaleUnit); // rounded, for display/dirty-check only
+
+    const commitLevel = (level) => (v) => {
+        // Convert the EDITED level straight from its exact typed/scrolled
+        // value into a precise per-sale-unit number — no intermediate
+        // rounding — then re-derive all three fresh from that.
+        const rawNext = saleUnitFromLevel(level, v, packSize, masterPackSize, hasOuter);
+        rawPerSaleUnitRef.current = rawNext;
+
+        const rounded = round2(rawNext);
+        setPerSaleUnit(rounded);
+        setValues((prev) => ({ ...threeTierFromSaleUnit(rawNext, packSize, masterPackSize, hasOuter), [level]: v }));
+    };
+
+    const dirty = round2(perSaleUnit) !== canonicalPerSaleUnit;
+
+    useEffect(() => {
+        const prevOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => { document.body.style.overflow = prevOverflow; };
+    }, []);
+
+    const handleConfirm = () => {
+        // Round ONLY here, at the final commit — not at every intermediate step.
+        const exactPerSaleUnit = rawPerSaleUnitRef.current;
+        const finalInclusive = round2(includeGst ? exactPerSaleUnit : exactPerSaleUnit * (1 + gst / 100));
+        const newBasePrice = round2(finalInclusive / (1 + gst / 100));
+        onApply(newBasePrice, hasOuter ? "per_master_pack" : "per_pack", finalInclusive);
+    };
+
+    const fields = [
+        seller.unit ? { level: "unit", label: `Per ${seller.unit}`, value: values.unit, refValue: reference.unit } : null,
+        { level: "pack", label: "Per Pack", value: values.pack, refValue: reference.pack },
+        hasOuter ? { level: "master", label: "Per Master Pack", value: values.master, refValue: reference.master } : null,
+    ].filter(Boolean);
+
+    return createPortal(
+        <motion.div
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={submitting ? undefined : onClose}
+        >
+            <motion.div
+                initial={{ y: 24, opacity: 0, scale: 0.97 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: 16, opacity: 0, scale: 0.97 }}
+                transition={{ duration: 0.2, ease: EASE }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-sm rounded-[22px] bg-white p-5"
+            >
+                <div className="flex items-center justify-between">
+                    <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>Update your price</p>
+                    <button onClick={onClose} disabled={submitting} className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-black/[0.05] disabled:opacity-40">
+                        <X className="h-4 w-4" style={{ color: C.muted }} />
+                    </button>
+                </div>
+                <p className="mt-1 text-[11.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
+                    MOQ {seller.moq} {saleUnitLabelText}{Number(seller.moq) === 1 ? "" : "s"} · {includeGst ? "GST included" : "GST excluded"}
+                </p>
+                <p className="mt-2 text-[10.5px] font-semibold leading-snug" style={{ color: C.muted }}>
+                    Update the price at any level — the others adjust automatically.
+                </p>
+
+                <div className={`mt-4 grid gap-2.5 ${fields.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+                    {fields.map((f) => (
+                        <div key={f.level} className="flex flex-col gap-1">
+                            <span className="truncate text-center text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
+                                {f.label}
+                            </span>
+                            <InlineWheelField
+                                seed={f.value}
+                                step={round2((f.refValue || 1) * 0.02) || 1}
+                                gridAnchor={f.refValue || 1}
+                                filterFn={(v) => v > 0}
+                                formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
+                                prefix="₹" suffix={null}
+                                rangeMessage="Enter a price greater than ₹0."
+                                onCommit={commitLevel(f.level)}
+                            />
+                        </div>
+                    ))}
+                </div>
+
+                <div className="mt-5">
+                    <SlideToConfirm
+                        resetKey={perSaleUnit}
+                        busy={submitting}
+                        disabled={!dirty}
+                        label={dirty ? "Slide to confirm price change" : "Change a price above first"}
+                        onConfirm={handleConfirm}
+                    />
+                </div>
+            </motion.div>
+        </motion.div>,
+        document.body
+    );
+}
+
+// Compact trigger shown inline in the seller row — tapping it opens
+// OwnListingPriceModal above. Replaces the old always-editable drag cell.
 function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
+    const [open, setOpen] = useState(false);
     const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
     const masterPackSize = Number(seller.units_per_master_pack) > 0 ? Number(seller.units_per_master_pack) : 1;
     const hasOuter = hasOuterPack(seller.units_per_master_pack);
@@ -193,68 +347,7 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
 
     const canonicalInclusive = round2(Number(seller.price) || 0);
     const canonicalDisplayed = round2(includeGst ? canonicalInclusive : canonicalInclusive / (1 + gst / 100));
-
-    const [saleUnitPrice, setSaleUnitPrice] = useState(canonicalDisplayed);
-    const [lastDirection, setLastDirection] = useState(1);
-    const step = round2((canonicalDisplayed || 1) * 0.02) || 1;
-
-    const dragging = useRef(false);
-    const dragStartY = useRef(0);
-    const dragAccum = useRef(0);
-
-    useEffect(() => { setSaleUnitPrice(canonicalDisplayed); }, [canonicalDisplayed]);
-
-    const applyDelta = useCallback((deltaSteps, dir) => {
-        if (!deltaSteps) return;
-        setLastDirection(dir);
-        setSaleUnitPrice((p) => round2(Math.max(step, p + deltaSteps * step)));
-    }, [step]);
-
-    const onWheel = useCallback((e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const dir = e.deltaY < 0 ? 1 : -1;
-        applyDelta(dir, dir);
-    }, [applyDelta]);
-
-    const PX_PER_STEP = 10;
-    const onWindowMove = useCallback((clientY) => {
-        const totalDeltaY = dragStartY.current - clientY;
-        const totalSteps = Math.trunc(totalDeltaY / PX_PER_STEP);
-        const newSteps = totalSteps - dragAccum.current;
-        if (newSteps !== 0) {
-            applyDelta(newSteps, newSteps > 0 ? 1 : -1);
-            dragAccum.current = totalSteps;
-        }
-    }, [applyDelta]);
-
-    useEffect(() => {
-        const onMouseMove = (e) => { if (dragging.current) onWindowMove(e.clientY); };
-        const onMouseUp = () => { dragging.current = false; };
-        const onTouchMove = (e) => { if (dragging.current) { e.preventDefault(); onWindowMove(e.touches[0].clientY); } };
-        const onTouchEnd = () => { dragging.current = false; };
-        window.addEventListener("mousemove", onMouseMove);
-        window.addEventListener("mouseup", onMouseUp);
-        window.addEventListener("touchmove", onTouchMove, { passive: false });
-        window.addEventListener("touchend", onTouchEnd);
-        return () => {
-            window.removeEventListener("mousemove", onMouseMove);
-            window.removeEventListener("mouseup", onMouseUp);
-            window.removeEventListener("touchmove", onTouchMove);
-            window.removeEventListener("touchend", onTouchEnd);
-        };
-    }, [onWindowMove]);
-
-    const startDrag = (clientY) => { dragging.current = true; dragStartY.current = clientY; dragAccum.current = 0; };
-
-    const derived = deriveDisplayPrices(saleUnitPrice, packSize, masterPackSize);
-    const dirty = round2(saleUnitPrice) !== canonicalDisplayed;
-
-    const handleConfirm = () => {
-        const finalInclusive = round2(includeGst ? saleUnitPrice : saleUnitPrice * (1 + gst / 100));
-        const newBasePrice = round2(finalInclusive / (1 + gst / 100));
-        onApply(newBasePrice, hasOuter ? "per_master_pack" : "per_pack", finalInclusive);
-    };
+    const derived = deriveDisplayPrices(canonicalDisplayed, packSize, masterPackSize);
 
     const rows = [
         seller.unit ? { label: seller.unit, value: derived.perBaseUnit } : null,
@@ -263,42 +356,40 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
     ].filter(Boolean);
 
     return (
-        <div className="flex flex-col items-end gap-1">
-            <div
+        <>
+            <button
+                type="button"
                 data-price-editor=""
-                onMouseDown={(e) => { e.stopPropagation(); startDrag(e.clientY); }}
-                onTouchStart={(e) => { e.stopPropagation(); startDrag(e.touches[0].clientY); }}
-                onWheel={onWheel}
-                onClick={(e) => e.stopPropagation()}
-                title="Scroll or drag to change your price"
-                // Explicit stacked rows — each row is its own flex line
-                // (value + label), rows stacked vertically via flex-col.
-                // This replaces the earlier CSS-grid + `contents` trick,
-                // which stopped reliably wrapping to separate lines once
-                // the value became an animated (non-plain-text) node.
+                onClick={(e) => { e.stopPropagation(); setOpen(true); }}
                 className="flex flex-col items-end gap-y-0.5 rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-black/[0.04]"
-                style={{ cursor: "ns-resize", touchAction: "none" }}
             >
                 {rows.map((r) => (
                     <div key={r.label} className="flex items-baseline gap-1">
-                        <AnimatedPriceValue
-                            value={`₹${inr(r.value)}`}
-                            direction={lastDirection}
-                            className="text-right text-[12.5px] font-extrabold tabular-nums whitespace-nowrap"
-                            style={{ color: C.ink }}
-                        />
+                        <span className="text-right text-[12.5px] font-extrabold tabular-nums whitespace-nowrap" style={{ color: C.ink }}>
+                            ₹{inr(r.value)}
+                        </span>
                         <span className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap" style={{ color: C.muted }}>
                             /{r.label}
                         </span>
                     </div>
                 ))}
-            </div>
-            {dirty && (
-                <div className="w-[132px]">
-                    <SlideToConfirm resetKey={saleUnitPrice} busy={submitting} label="Slide to confirm" onConfirm={handleConfirm} />
-                </div>
-            )}
-        </div>
+            </button>
+
+            <AnimatePresence>
+                {open && (
+                    <OwnListingPriceModal
+                        seller={seller}
+                        includeGst={includeGst}
+                        submitting={submitting}
+                        onClose={() => setOpen(false)}
+                        onApply={(basePrice, priceBasis, finalInclusive) => {
+                            onApply(basePrice, priceBasis, finalInclusive);
+                            setOpen(false);
+                        }}
+                    />
+                )}
+            </AnimatePresence>
+        </>
     );
 }
 
@@ -1163,19 +1254,18 @@ function useLenisPreventToggle() {
     return { ref, handleWheel };
 }
 
-// components/home/HomeProductFeed.jsx — new component
-function SlideToConfirm({ label, onConfirm, busy, resetKey }) {
+function SlideToConfirm({ label, onConfirm, busy, resetKey, disabled = false }) {
     const trackRef = useRef(null);
     const [confirmed, setConfirmed] = useState(false);
 
     return (
-        <div ref={trackRef} className="relative h-8 w-full overflow-hidden rounded-full" style={{ background: C.hairSoft }}>
+        <div ref={trackRef} className="relative h-8 w-full overflow-hidden rounded-full" style={{ background: C.hairSoft, opacity: disabled ? 0.5 : 1 }}>
             <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-2 text-center text-[9.5px] font-bold tracking-wide ps-8" style={{ color: C.muted }}>
                 {busy ? "Updating…" : confirmed ? "Updated" : label}
             </p>
             <motion.div
-                key={resetKey /* remounting resets the drag position to 0 */}
-                drag={busy || confirmed ? false : "x"}
+                key={resetKey}
+                drag={busy || confirmed || disabled ? false : "x"}
                 dragConstraints={trackRef}
                 dragElastic={0}
                 dragMomentum={false}
@@ -1183,10 +1273,10 @@ function SlideToConfirm({ label, onConfirm, busy, resetKey }) {
                     const maxX = (trackRef.current?.offsetWidth || 32) - 32;
                     if (info.offset.x >= maxX * 0.85) { setConfirmed(true); onConfirm(); }
                 }}
-                className="absolute left-0 top-0 flex h-8 w-8 cursor-grab items-center justify-center rounded-full text-white active:cursor-grabbing"
-                style={{ background: C.primary }}
+                className="absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full text-white"
+                style={{ background: C.primary, cursor: disabled ? "not-allowed" : "grab" }}
             >
-                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronRight className="h-3.5 w-3.5" style={{ transform: "rotate(0deg)" }} />}
+                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronRight className="h-3.5 w-3.5" />}
             </motion.div>
         </div>
     );
