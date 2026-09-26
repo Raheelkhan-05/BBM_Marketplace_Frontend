@@ -165,6 +165,100 @@ function pluralizeUnit(qty, label) {
     return `${label}${Number(qty) === 1 ? "" : "s"}`;
 }
 
+function packagingSummary(it) {
+    const pack = Number(it.pack_size) || 0;
+    const master = Number(it.units_per_master_pack) || 0;
+    const unit = it.unit || "";
+    if (!pack || !unit) return "Packaging not set";
+    if (master > 1) return `1 Master Pack = ${master} Pack${master === 1 ? "" : "s"} = ${master * pack} ${unit}`;
+    return `1 Pack = ${pack} ${unit}`;
+}
+
+// Returns exactly what the row's subtitle line and its right-hand column
+// should show for the currently active section chip — computed purely
+// from fields already present on the light list payload, so switching
+// chips never triggers a refetch; it's instant, client-side derivation.
+function getSectionDisplay(it, activeSection, saleUnit) {
+    const stock = it.stock_quantity;
+    const sState = stockState(stock, it.moq);
+    const isActive = it.is_active !== false;
+
+    const stockLabel = sState === "out" ? "Out of stock"
+        : stock != null ? `${stock} ${pluralizeUnit(stock, saleUnit)} left` : "Stock not set";
+    const stockTone = sState === "out" ? "#c71f11" : sState === "low" ? "#b45309" : C.muted;
+
+    switch (activeSection) {
+        case "packaging":
+            return {
+                subtitle: packagingSummary(it),
+                rightPrimary: `MOQ ${it.moq ?? "—"}`,
+                rightPrimaryColor: C.ink,
+                rightSecondary: pluralizeUnit(it.moq, saleUnit),
+                rightSecondaryColor: C.muted,
+            };
+        case "pricing":
+            return {
+                subtitle: [
+                    `₹${formatMoney(it.price)}/${saleUnit}`,
+                    it.marketing_commission_percent != null ? `Promo ${it.marketing_commission_percent}%` : null,
+                ].filter(Boolean).join(" · "),
+                rightPrimary: `₹${formatMoney(it.price)}`,
+                rightPrimaryColor: C.ink,
+                rightSecondary: it.base_price != null ? `Base ₹${formatMoney(it.base_price)}` : `/${saleUnit}`,
+                rightSecondaryColor: C.muted,
+            };
+        case "customPricing":
+            return {
+                subtitle: brandName_line(it),
+                rightPrimary: it.visibility_mode === "restricted" ? "Restricted" : "Public",
+                rightPrimaryColor: it.visibility_mode === "restricted" ? "#b45309" : "#15803d",
+                rightSecondary: it.visibility_mode === "restricted" ? "Selected buyers only" : "All buyers",
+                rightSecondaryColor: C.muted,
+            };
+        case "fulfilment":
+            return {
+                subtitle: it.stock_type === "made_to_order" ? "Made-to-order" : "Ready stock",
+                rightPrimary: it.stock_type === "made_to_order"
+                    ? `${it.production_lead_time_days ?? "—"}d lead time`
+                    : stockLabel,
+                rightPrimaryColor: it.stock_type === "made_to_order" ? C.ink : stockTone,
+                rightSecondary: it.stock_type === "made_to_order" ? "" : `MOQ ${it.moq ?? "—"} ${saleUnit}`,
+                rightSecondaryColor: C.muted,
+            };
+        case "dispatch":
+            return {
+                subtitle: [it.dispatch_district, it.dispatch_state].filter(Boolean).join(", ") || "Tap to set dispatch location",
+                rightPrimary: "",
+                rightSecondary: "Edit →",
+                rightSecondaryColor: C.secondary,
+            };
+        case "policies":
+            return {
+                subtitle: (it.return_policy_key || it.warranty_key) ? "Return & warranty set" : "Tap to view policies",
+                rightPrimary: "",
+                rightSecondary: "Edit →",
+                rightSecondaryColor: C.secondary,
+            };
+        default: // "all"
+            return {
+                subtitle: [
+                    `MOQ ${it.moq} ${pluralizeUnit(it.moq, saleUnit)}`,
+                    it.lead_time != null ? `${it.lead_time}d` : null,
+                    it.visibility_mode === "restricted" ? "Limited visibility" : null,
+                ].filter(Boolean).join(" · "),
+                rightPrimary: `₹${formatMoney(it.price)}`,
+                rightPrimaryColor: C.ink,
+                rightSecondary: isActive ? stockLabel : "Hidden from buyers",
+                rightSecondaryColor: isActive ? stockTone : C.muted,
+                showPriceUnitSuffix: true,
+            };
+    }
+}
+
+function brandName_line(it) {
+    return it.brand_name ? it.brand_name : "No brand";
+}
+
 // sample_quantity is persisted on the backend in BASE UNITS (Pieces/Kg/
 // etc.) regardless of which basis (Unit/Pack/Master Pack) it was
 // originally entered in — sample_unit_basis just records which of those
@@ -584,6 +678,7 @@ function RowIconButton({ icon: Icon, label, onClick, tone = C.ink, hoverBg = "rg
 
 function ListingRow({
     it, idx, isHighlighted, isConfirmingDeactivate, togglingId,
+    activeSection,
     onOpenDetail, onEdit,
     onAskDeactivate, onCancelDeactivate, onConfirmDeactivate, onActivate,
     onOpenImage, onShare,
@@ -608,6 +703,7 @@ function ListingRow({
 
     const saleUnit = saleUnitLabel(it.units_per_master_pack);
     const status = getListingStatus(it, isActive, sState);
+    const rowInfo = getSectionDisplay(it, activeSection, saleUnit);
 
     const stockLabel =
         sState === "out"
@@ -726,21 +822,24 @@ function ListingRow({
                                         )}
                                     </div>
 
-                                    <p className="min-w-0 truncate text-[10.5px] font-medium leading-tight tracking-wide" style={{ color: C.muted }}>
-                                        {brandName ? `${brandName} · ` : ""}
-                                        MOQ {it.moq} {pluralizeUnit(it.moq, saleUnit)}
-                                        {it.lead_time != null && ` · ${it.lead_time}d`}
-                                        {it.visibility_mode === "restricted" && " · Limited visibility"}
+
+                                    <p className="min-w-0 truncate text-[11px] font-medium leading-tight tracking-wide" style={{ color: C.muted }}>
+                                        {activeSection === "all" && brandName ? `${brandName} · ` : ""}
+                                        {rowInfo.subtitle}
                                     </p>
 
                                     <div className="flex min-w-0 items-center gap-2">
-                                        <span className="shrink-0 text-[13px] font-bold tracking-wide tabular-nums" style={{ color: C.ink }}>
-                                            ₹{formatMoney(it.price)}
-                                            <span className="ml-0.5 text-[9px] font-semibold tracking-wider" style={{ color: C.muted }}>/{saleUnit}</span>
-                                        </span>
-                                        <span className="h-3 w-px shrink-0" style={{ background: C.hair }} />
-                                        <p className="min-w-0 truncate text-[10.5px] font-bold tracking-wide tabular-nums" style={{ color: isActive ? stockTone : C.muted }}>
-                                            {isActive ? stockLabel : "Hidden from buyers"}
+                                        {rowInfo.rightPrimary && (
+                                            <span className="shrink-0 text-[13px] font-bold tracking-wide tabular-nums" style={{ color: rowInfo.rightPrimaryColor }}>
+                                                {rowInfo.rightPrimary}
+                                                {rowInfo.showPriceUnitSuffix && (
+                                                    <span className="ml-0.5 text-[9px] font-semibold tracking-wider" style={{ color: C.muted }}>/{saleUnit}</span>
+                                                )}
+                                            </span>
+                                        )}
+                                        {rowInfo.rightPrimary && rowInfo.rightSecondary && <span className="h-3 w-px shrink-0" style={{ background: C.hair }} />}
+                                        <p className="min-w-0 truncate text-[12px] font-bold tracking-wide tabular-nums" style={{ color: rowInfo.rightSecondaryColor }}>
+                                            {rowInfo.rightSecondary}
                                         </p>
                                     </div>
                                 </div>
@@ -806,21 +905,25 @@ function ListingRow({
                                         )}
                                     </div>
                                     <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                        {brandName ? `${brandName} · ` : ""}
-                                        MOQ {it.moq} {pluralizeUnit(it.moq, saleUnit)}
-                                        {it.lead_time != null && ` · ${it.lead_time}d`}
+                                        {activeSection === "all" && brandName ? `${brandName} · ` : ""}
+                                        {rowInfo.subtitle}
                                     </p>
+
                                 </div>
 
                                 {/* Price + stock */}
                                 <div className="flex shrink-0 items-center gap-3">
                                     <div className="text-right">
-                                        <p className="leading-none">
-                                            <span className="text-[14px] font-bold tracking-wide tabular-nums" style={{ color: C.ink }}>₹{formatMoney(it.price)}</span>
-                                            <span className="ml-0.5 text-[9.5px] font-semibold tracking-wider" style={{ color: C.muted }}>/{saleUnit}</span>
-                                        </p>
-                                        <p className="mt-1 whitespace-nowrap text-[10px] font-bold tracking-wide tabular-nums" style={{ color: isActive ? stockTone : C.muted }}>
-                                            {isActive ? stockLabel : "Hidden from buyers"}
+                                        {rowInfo.rightPrimary && (
+                                            <p className="leading-none">
+                                                <span className="text-[14px] font-bold tracking-wide tabular-nums" style={{ color: rowInfo.rightPrimaryColor }}>{rowInfo.rightPrimary}</span>
+                                                {rowInfo.showPriceUnitSuffix && (
+                                                    <span className="ml-0.5 text-[9.5px] font-semibold tracking-wider" style={{ color: C.muted }}>/{saleUnit}</span>
+                                                )}
+                                            </p>
+                                        )}
+                                        <p className="mt-1 whitespace-nowrap text-[10px] font-bold tracking-wide tabular-nums" style={{ color: rowInfo.rightSecondaryColor }}>
+                                            {rowInfo.rightSecondary}
                                         </p>
                                     </div>
 
@@ -1453,6 +1556,7 @@ export default function SellerManageListingsPage() {
                                 key={it.id}
                                 it={it}
                                 idx={i}
+                                activeSection={activeSection}
                                 isHighlighted={highlightedIds.has(it.id)}
                                 isConfirmingDeactivate={confirmDeactivateId === it.id}
                                 togglingId={togglingId}
