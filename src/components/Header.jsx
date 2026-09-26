@@ -200,10 +200,10 @@ export default function Header({ onOpenRfq }) {
   const [navMaxWidth, setNavMaxWidth] = useState(null);
   const { isLoggedIn, profile, signOut, effectiveLoggedIn } = useAuth();
 
-  console.log("effectiveLoggedIn", effectiveLoggedIn);
-  console.log("profile", profile);
-  console.log("signOut", signOut);
-  console.log("isLoggedIn", isLoggedIn);
+  // console.log("effectiveLoggedIn", effectiveLoggedIn);
+  // console.log("profile", profile);
+  // console.log("signOut", signOut);
+  // console.log("isLoggedIn", isLoggedIn);
 
   // DELETE these two lines — now sourced from context:
   // const onboardingDone = !isLoggedIn || profile?.onboarding_step === "done";
