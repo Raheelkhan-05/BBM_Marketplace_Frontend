@@ -1294,7 +1294,7 @@ function SlideToConfirm({ label, onConfirm, busy, resetKey, disabled = false }) 
     const trackRef = useRef(null);
     const [confirmed, setConfirmed] = useState(false);
     return (
-        <div ref={trackRef} className="relative h-8 w-full overflow-hidden rounded-full" style={{ background: C.hairSoft, opacity: disabled ? 0.5 : 1 }}>
+        <div ref={trackRef} className="relative h-12 w-full overflow-hidden rounded-full" style={{ background: C.hairSoft, opacity: disabled ? 0.5 : 1 }}>
             <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-2 text-center text-[9.5px] font-bold tracking-wide ps-8" style={{ color: C.muted }}>
                 {busy ? "Updating…" : confirmed ? "Updated" : label}
             </p>
