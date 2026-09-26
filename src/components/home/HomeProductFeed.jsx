@@ -85,6 +85,7 @@ import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, Loader
 import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses, updateSellerProductSubmission } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
+import CommissionSlider from "../seller/listingForm/CommissionSlider.jsx";
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
 import SellThisItemModal from "../catalog/SellThisItemModal";
 import BuyNowModal from "../BuyNowModal";
@@ -185,34 +186,11 @@ function AnimatedPriceValue({ value, direction, className, style }) {
     );
 }
 
-// Full-screen (backdrop-blurred) modal for editing your own listing's
-// price — replaces the old inline drag/scroll cell, which was too cramped
-// to actually work with. Uses the same InlineWheelField the create/edit
-// listing form already uses (so tap-to-type manual entry comes for free),
-// and SlideToConfirm as the final commit gesture so a price never changes
-// from an accidental tap.
-// Converts a per-sale-unit price into all three display levels. Mirrors
-// deriveDisplayPrices, just named locally so the conversion math below
-// (going the OTHER way — from any edited level back to per-sale-unit) sits
-// next to it and stays easy to follow.
-function threeTierFromSaleUnit(perSaleUnit, packSize, masterPackSize, hasOuter) {
-    const d = deriveDisplayPrices(perSaleUnit, packSize, masterPackSize);
-    return { unit: d.perBaseUnit, pack: d.perPack, master: hasOuter ? d.perMasterPack : null };
-}
-
-// Inverse: given a value the seller just typed/scrolled AT a specific
-// level, convert it back to the canonical per-sale-unit price (per Pack,
-// or per Master Pack when this listing has an outer pack) — the same
-// basis `seller.price` is always stored in.
-function saleUnitFromLevel(level, value, packSize, masterPackSize, hasOuter) {
-    if (level === "unit") {
-        return hasOuter ? value * packSize * masterPackSize : value * packSize;
-    }
-    if (level === "pack") {
-        return hasOuter ? value * masterPackSize : value;
-    }
-    return value; // level === "master" — already per sale unit
-}
+// C-shaped color object CommissionSlider expects — same tokens already
+// used throughout this file, just re-exposed under the property names
+// CommissionSlider's own markup reads (it was written against
+// SellerListingForm's own `C`, which uses these exact keys).
+const SLIDER_C = { ...C, warn: "#a16207", ok: "#059669" };
 
 function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose }) {
     const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
@@ -223,6 +201,7 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
 
     const canonicalInclusive = round2(Number(seller.price) || 0);
     const canonicalPerSaleUnit = round2(includeGst ? canonicalInclusive : canonicalInclusive / (1 + gst / 100));
+    const canonicalCommission = Number(seller.marketing_commission_percent) || 0.25;
 
     const reference = useMemo(
         () => threeTierFromSaleUnit(canonicalPerSaleUnit, packSize, masterPackSize, hasOuter),
@@ -230,29 +209,22 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
         []
     );
 
-    // FULL-PRECISION source of truth — never rounded until display/apply.
-    // Fixes compounding drift: previously every commit re-derived from an
-    // already-rounded display value, so several quick commits (scrolling
-    // several rows fast) stacked rounding error on top of rounding error.
-    // Now every conversion always starts from this one exact number.
     const rawPerSaleUnitRef = useRef(canonicalPerSaleUnit);
-
     const [values, setValues] = useState(reference);
-    const [perSaleUnit, setPerSaleUnit] = useState(canonicalPerSaleUnit); // rounded, for display/dirty-check only
+    const [perSaleUnit, setPerSaleUnit] = useState(canonicalPerSaleUnit);
+    const [commissionPercent, setCommissionPercent] = useState(canonicalCommission);
 
     const commitLevel = (level) => (v) => {
-        // Convert the EDITED level straight from its exact typed/scrolled
-        // value into a precise per-sale-unit number — no intermediate
-        // rounding — then re-derive all three fresh from that.
         const rawNext = saleUnitFromLevel(level, v, packSize, masterPackSize, hasOuter);
         rawPerSaleUnitRef.current = rawNext;
-
         const rounded = round2(rawNext);
         setPerSaleUnit(rounded);
         setValues((prev) => ({ ...threeTierFromSaleUnit(rawNext, packSize, masterPackSize, hasOuter), [level]: v }));
     };
 
-    const dirty = round2(perSaleUnit) !== canonicalPerSaleUnit;
+    const priceDirty = round2(perSaleUnit) !== canonicalPerSaleUnit;
+    const commissionDirty = round2(commissionPercent) !== round2(canonicalCommission);
+    const dirty = priceDirty || commissionDirty;
 
     useEffect(() => {
         const prevOverflow = document.body.style.overflow;
@@ -261,11 +233,15 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
     }, []);
 
     const handleConfirm = () => {
-        // Round ONLY here, at the final commit — not at every intermediate step.
         const exactPerSaleUnit = rawPerSaleUnitRef.current;
         const finalInclusive = round2(includeGst ? exactPerSaleUnit : exactPerSaleUnit * (1 + gst / 100));
         const newBasePrice = round2(finalInclusive / (1 + gst / 100));
-        onApply(newBasePrice, hasOuter ? "per_master_pack" : "per_pack", finalInclusive);
+        onApply({
+            basePrice: newBasePrice,
+            priceBasis: hasOuter ? "per_master_pack" : "per_pack",
+            finalInclusive,
+            marketingCommissionPercent: commissionDirty ? round2(commissionPercent) : undefined,
+        });
     };
 
     const fields = [
@@ -276,7 +252,7 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
 
     return createPortal(
         <motion.div
-            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+            className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4 py-6 overflow-y-auto"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={submitting ? undefined : onClose}
         >
@@ -286,10 +262,10 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
                 exit={{ y: 16, opacity: 0, scale: 0.97 }}
                 transition={{ duration: 0.2, ease: EASE }}
                 onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-sm rounded-[22px] bg-white p-5"
+                className="my-auto w-full max-w-sm rounded-[22px] bg-white p-5"
             >
                 <div className="flex items-center justify-between">
-                    <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>Update your price</p>
+                    <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>Update your listing</p>
                     <button onClick={onClose} disabled={submitting} className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-black/[0.05] disabled:opacity-40">
                         <X className="h-4 w-4" style={{ color: C.muted }} />
                     </button>
@@ -297,36 +273,44 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
                 <p className="mt-1 text-[11.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
                     MOQ {seller.moq} {saleUnitLabelText}{Number(seller.moq) === 1 ? "" : "s"} · {includeGst ? "GST included" : "GST excluded"}
                 </p>
-                <p className="mt-2 text-[10.5px] font-semibold leading-snug" style={{ color: C.muted }}>
-                    Update the price at any level — the others adjust automatically.
-                </p>
 
-                <div className={`mt-4 grid gap-2.5 ${fields.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
-                    {fields.map((f) => (
-                        <div key={f.level} className="flex flex-col gap-1">
-                            <span className="truncate text-center text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
-                                {f.label}
-                            </span>
-                            <InlineWheelField
-                                seed={f.value}
-                                step={round2((f.refValue || 1) * 0.02) || 1}
-                                gridAnchor={f.refValue || 1}
-                                filterFn={(v) => v > 0}
-                                formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
-                                prefix="₹" suffix={null}
-                                rangeMessage="Enter a price greater than ₹0."
-                                onCommit={commitLevel(f.level)}
-                            />
-                        </div>
-                    ))}
+                <div className="mt-4">
+                    <div className={`grid gap-2.5 ${fields.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
+                        {fields.map((f) => (
+                            <div key={f.level} className="flex flex-col gap-1">
+                                <span className="truncate text-center text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
+                                    {f.label}
+                                </span>
+                                <InlineWheelField
+                                    seed={f.value}
+                                    step={round2((f.refValue || 1) * 0.02) || 1}
+                                    gridAnchor={f.refValue || 1}
+                                    filterFn={(v) => v > 0}
+                                    formatValue={(v) => `₹${v.toLocaleString("en-IN")}`}
+                                    prefix="₹" suffix={null}
+                                    rangeMessage="Enter a price greater than ₹0."
+                                    onCommit={commitLevel(f.level)}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="mt-4">
+                    <CommissionSlider
+                        value={commissionPercent}
+                        onChange={setCommissionPercent}
+                        C={SLIDER_C}
+                        isErr={false}
+                    />
                 </div>
 
                 <div className="mt-5">
                     <SlideToConfirm
-                        resetKey={perSaleUnit}
+                        resetKey={`${perSaleUnit}-${commissionPercent}`}
                         busy={submitting}
                         disabled={!dirty}
-                        label={dirty ? "Slide to confirm price change" : "Change a price above first"}
+                        label={dirty ? "Slide to confirm changes" : "Change something above first"}
                         onConfirm={handleConfirm}
                     />
                 </div>
@@ -336,8 +320,8 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
     );
 }
 
-// Compact trigger shown inline in the seller row — tapping it opens
-// OwnListingPriceModal above. Replaces the old always-editable drag cell.
+// Compact trigger shown inline in the seller row — shows price breakdown
+// AND the current commission %. Clicking either opens OwnListingPriceModal.
 function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
     const [open, setOpen] = useState(false);
     const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
@@ -348,11 +332,13 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
     const canonicalInclusive = round2(Number(seller.price) || 0);
     const canonicalDisplayed = round2(includeGst ? canonicalInclusive : canonicalInclusive / (1 + gst / 100));
     const derived = deriveDisplayPrices(canonicalDisplayed, packSize, masterPackSize);
+    const commissionPercent = Number(seller.marketing_commission_percent) || 0.25;
 
     const rows = [
-        seller.unit ? { label: seller.unit, value: derived.perBaseUnit } : null,
-        { label: "Pack", value: derived.perPack },
-        hasOuter ? { label: "M Pack", value: derived.perMasterPack } : null,
+        seller.unit ? { label: seller.unit, value: `₹${inr(derived.perBaseUnit)}` } : null,
+        { label: "Pack", value: `₹${inr(derived.perPack)}` },
+        hasOuter ? { label: "M Pack", value: `₹${inr(derived.perMasterPack)}` } : null,
+        { label: "Promo", value: `${commissionPercent}%` },
     ].filter(Boolean);
 
     return (
@@ -361,12 +347,13 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
                 type="button"
                 data-price-editor=""
                 onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-                className="flex flex-col items-end gap-y-0.5 rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-black/[0.04]"
+                className="grid items-baseline gap-x-1 gap-y-0.5 rounded-md px-1 py-0.5 transition-colors duration-150 hover:bg-black/[0.04]"
+                style={{ gridTemplateColumns: "auto auto" }}
             >
                 {rows.map((r) => (
-                    <div key={r.label} className="flex items-baseline gap-1">
+                    <div key={r.label} className="contents">
                         <span className="text-right text-[12.5px] font-extrabold tabular-nums whitespace-nowrap" style={{ color: C.ink }}>
-                            ₹{inr(r.value)}
+                            {r.value}
                         </span>
                         <span className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap" style={{ color: C.muted }}>
                             /{r.label}
@@ -382,15 +369,23 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
                         includeGst={includeGst}
                         submitting={submitting}
                         onClose={() => setOpen(false)}
-                        onApply={(basePrice, priceBasis, finalInclusive) => {
-                            onApply(basePrice, priceBasis, finalInclusive);
-                            setOpen(false);
-                        }}
+                        onApply={(payload) => { onApply(payload); setOpen(false); }}
                     />
                 )}
             </AnimatePresence>
         </>
     );
+}
+
+// Add near the other pure helpers (computePriceBreakdown, etc.):
+function threeTierFromSaleUnit(perSaleUnit, packSize, masterPackSize, hasOuter) {
+    const d = deriveDisplayPrices(perSaleUnit, packSize, masterPackSize);
+    return { unit: d.perBaseUnit, pack: d.perPack, master: hasOuter ? d.perMasterPack : null };
+}
+function saleUnitFromLevel(level, value, packSize, masterPackSize, hasOuter) {
+    if (level === "unit") return hasOuter ? value * packSize * masterPackSize : value * packSize;
+    if (level === "pack") return hasOuter ? value * masterPackSize : value;
+    return value;
 }
 
 function SellerSortToggle({ value, onChange, options = SELLER_SORT_OPTIONS }) {
@@ -734,10 +729,10 @@ function PriceBreakdown({ breakdown, unit, size = "row" }) {
         <div className="grid items-baseline gap-x-1 gap-y-0.5" style={{ gridTemplateColumns: "auto auto" }}>
             {rows.map((r) => (
                 <div key={r.label} className="contents">
-                    <span className={`${valueClass} text - right whitespace - nowrap`} style={{ color: C.ink }}>
+                    <span className={`${valueClass} text-right whitespace-nowrap`} style={{ color: C.ink }}>
                         ₹{inr(r.value)}
                     </span>
-                    <span className={`${labelClass} text - left whitespace - nowrap`} style={{ color: C.muted }}>
+                    <span className={`${labelClass} text-left whitespace-nowrap`} style={{ color: C.muted }}>
                         /{r.label}
                     </span>
                 </div>
@@ -1257,7 +1252,6 @@ function useLenisPreventToggle() {
 function SlideToConfirm({ label, onConfirm, busy, resetKey, disabled = false }) {
     const trackRef = useRef(null);
     const [confirmed, setConfirmed] = useState(false);
-
     return (
         <div ref={trackRef} className="relative h-8 w-full overflow-hidden rounded-full" style={{ background: C.hairSoft, opacity: disabled ? 0.5 : 1 }}>
             <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-2 text-center text-[9.5px] font-bold tracking-wide ps-8" style={{ color: C.muted }}>
@@ -1266,9 +1260,7 @@ function SlideToConfirm({ label, onConfirm, busy, resetKey, disabled = false }) 
             <motion.div
                 key={resetKey}
                 drag={busy || confirmed || disabled ? false : "x"}
-                dragConstraints={trackRef}
-                dragElastic={0}
-                dragMomentum={false}
+                dragConstraints={trackRef} dragElastic={0} dragMomentum={false}
                 onDragEnd={(_, info) => {
                     const maxX = (trackRef.current?.offsetWidth || 32) - 32;
                     if (info.offset.x >= maxX * 0.85) { setConfirmed(true); onConfirm(); }
@@ -1346,14 +1338,16 @@ function SellerDropdown({
     const [savingOwnPriceId, setSavingOwnPriceId] = useState(null);
 
 
-    const handleOwnPriceSave = async (submissionId, basePrice, priceBasis, optimisticFinalPrice) => {
-        onOwnListingPriceApplied?.(submissionId, optimisticFinalPrice); // instant reflect, before the network call
+    const handleOwnPriceSave = async (submissionId, { basePrice, priceBasis, finalInclusive, marketingCommissionPercent }) => {
+        onOwnListingPriceApplied?.(submissionId, finalInclusive);
         setSavingOwnPriceId(submissionId);
-        const res = await updateSellerProductSubmission(token, submissionId, {
-            basePrice: String(basePrice), priceBasis, gstInclusive: false,
-        });
+        const payload = { basePrice: String(basePrice), priceBasis, gstInclusive: false };
+        if (marketingCommissionPercent !== undefined) {
+            payload.marketingCommissionPercent = String(marketingCommissionPercent);
+        }
+        const res = await updateSellerProductSubmission(token, submissionId, payload);
         setSavingOwnPriceId(null);
-        if (res?.success) onOwnListingSaved?.(); // background reconciliation
+        if (res?.success) onOwnListingSaved?.();
     };
 
     return (
@@ -1468,8 +1462,7 @@ function SellerDropdown({
                                                         seller={s}
                                                         includeGst={includeGst}
                                                         submitting={savingOwnPriceId === s.submission_id}
-                                                        onApply={(basePrice, priceBasis, finalInclusive) =>
-                                                            handleOwnPriceSave(s.submission_id, basePrice, priceBasis, finalInclusive)}
+                                                        onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)}
                                                     />
                                                     <button
                                                         type="button"
