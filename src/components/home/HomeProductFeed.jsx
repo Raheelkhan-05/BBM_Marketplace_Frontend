@@ -302,6 +302,7 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
                         onChange={setCommissionPercent}
                         C={SLIDER_C}
                         isErr={false}
+                        hideHint
                     />
                 </div>
 

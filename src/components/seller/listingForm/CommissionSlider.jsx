@@ -172,7 +172,7 @@ function InfoTooltip({ C }) {
     );
 }
 
-function CommissionSlider({ value, onChange, C, isErr }) {
+function CommissionSlider({ value, onChange, C, isErr, hideHint = false }) {
     // value: number | "" — the committed value from form state
     // local text lets the user type freely (e.g. "12." or "0.") without
     // getting clamped/reformatted on every keystroke
@@ -246,9 +246,12 @@ function CommissionSlider({ value, onChange, C, isErr }) {
                         Promotion & Visibility Budget <span style={{ color: C.primary }}>*</span>
                         <InfoTooltip C={C} />
                     </span>
-                    <span className="text-[10px] font-medium leading-snug tracking-wider" style={{ color: C.muted }}>
-                        Higher promotional budgets may receive higher placement and greater visibility, subject to relevance and platform performance
-                    </span>
+                    {!hideHint && (
+                        <span className="text-[10px] font-medium leading-snug tracking-wider" style={{ color: C.muted }}>
+                            Higher promotional budgets may receive higher placement and greater visibility, subject to relevance and platform performance
+                        </span>
+                    )}
+
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1 rounded-xl px-2 py-1.5" style={{ background: `${C.muted}14` }}>
