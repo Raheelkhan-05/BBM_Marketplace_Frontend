@@ -1129,6 +1129,7 @@ const SECTION_FILTERS = [
     // { key: "identity", label: "Identity" },
     { key: "packaging", label: "Packaging" },
     { key: "pricing", label: "Tax & Pricing" },
+    { key: "customPricing", label: "Custom Pricing" },
     { key: "fulfilment", label: "Fulfilment" },
     { key: "dispatch", label: "Dispatch" },
     { key: "policies", label: "Policies" },
