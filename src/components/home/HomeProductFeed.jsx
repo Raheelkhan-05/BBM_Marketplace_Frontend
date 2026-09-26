@@ -885,7 +885,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             {/* COL 1 — IMAGE */}
             <div className="flex h-full items-center justify-center">
                 <span
-                    className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border"
+                    className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl"
                     style={{
                         borderColor: C.hair,
                         background: C.imgBg,
@@ -1803,7 +1803,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                 no rounded corners, no side border, so it never reads as a "card".
                 The rounded/bordered "card" look returns from sm: and up. */}
             <div
-                className="-mx-3 border-y bg-white sm:mx-0 sm:rounded-2xl sm:border"
+                className="-mx-3 bg-white sm:mx-0 sm:rounded-2xl sm:border"
                 style={{ borderColor: C.hair }}
             >
 
@@ -1835,7 +1835,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                             style={{ borderColor: C.hair, opacity: loading ? 0.55 : 1, transition: "opacity 0.15s ease" }}
                         >
                             {columns.map((colItems, colIdx) => (
-                                <div key={colIdx} className="min-w-0 flex-1 divide-y" style={{ borderColor: C.hairSoft }}>
+                                <div key={colIdx} className="min-w-0 flex-1 sm:divide-y" style={{ borderColor: C.hairSoft }}>
                                     {colItems.map((item) => {
                                         const isOpen = openItemId === item.id;
                                         const i = items.indexOf(item);

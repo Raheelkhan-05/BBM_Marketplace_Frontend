@@ -1260,8 +1260,11 @@ export async function adminResolveHelpRequest(token, id, notes) {
   } catch { return { success: false, message: "Network error." }; }
 }
 
-export function fetchSharedProductLink(submissionId) {
-  return fetch(`${API_BASE}/catalog/shared/${submissionId}`).then((r) => r.json());
+export async function fetchSharedProductLink(submissionId, token) {
+  const res = await fetch(`${API_BASE}/catalog/shared/${submissionId}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  return res.json();
 }
 
 // ---------------------------------------------------------------------

@@ -730,6 +730,7 @@ function ListingRow({
                                         {brandName ? `${brandName} · ` : ""}
                                         MOQ {it.moq} {pluralizeUnit(it.moq, saleUnit)}
                                         {it.lead_time != null && ` · ${it.lead_time}d`}
+                                        {it.visibility_mode === "restricted" && " · Limited visibility"}
                                     </p>
 
                                     <div className="flex min-w-0 items-center gap-2">

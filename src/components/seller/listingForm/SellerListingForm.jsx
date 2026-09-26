@@ -81,7 +81,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { uploadSellerFile } from "../../../utils/api.js";
-import ProductBuyerPricing from "./ProductBuyerPricing.jsx";
+import BuyerAccessPricing from "./BuyerAccessPricing.jsx";
 import { fetchCommissionInfo, fetchDefaultListingTemplates, lookupPincode, findBrandItemMatch } from "../../../utils/sellerListingApi.js";
 import {
     C, TextField, TextAreaField, SelectField, ToggleField, ChipToggleGroup, RepeatableRows,
@@ -1830,11 +1830,11 @@ export default function SellerListingForm({
 
             {/* ---------------- Custom pricing ---------------- */}
             {showSection("customPricing") && mode === "edit" && submissionId && (
-                <SectionCard id="section-customPricing" icon={Tag} title="Custom pricing"
+                <SectionCard id="section-customPricing" icon={Tag} title="Buyer access & pricing"
                     open={resolvedOnlySection ? true : openSection === "customPricing"} onOpenChange={(v) => handleSectionToggle("customPricing", v)}
                     missingCount={0} totalCount={0}
                     readOnly={readOnly}>
-                    <ProductBuyerPricing submissionId={submissionId} />
+                    <BuyerAccessPricing submissionId={submissionId} />
                 </SectionCard>
             )}
 

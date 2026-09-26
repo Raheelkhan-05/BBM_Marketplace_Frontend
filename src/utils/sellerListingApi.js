@@ -26,6 +26,43 @@ export async function fetchCommissionInfo() {
     return res.json(); // { success, commissionPercent }
 }
 
+// utils/sellerListingApi.js — additions
+export async function searchEligibleBuyers(token, q, submissionId) {
+    const params = new URLSearchParams({ q });
+    if (submissionId) params.set("submissionId", submissionId);
+    return authedJson(`/seller/catalog/buyers/search?${params}`, token);
+}
+
+export async function fetchListingAccess(token, submissionId) {
+    return authedJson(`/seller/catalog/submissions/${submissionId}/access`, token);
+}
+
+export async function setListingVisibilityMode(token, submissionId, mode) {
+    return authedJson(`/seller/catalog/submissions/${submissionId}/visibility-mode`, token, {
+        method: "PATCH", body: JSON.stringify({ mode }),
+    });
+}
+
+export async function addListingVisibilityBuyer(token, submissionId, buyerId) {
+    return authedJson(`/seller/catalog/submissions/${submissionId}/visibility/buyers`, token, {
+        method: "POST", body: JSON.stringify({ buyerId }),
+    });
+}
+
+export async function removeListingVisibilityBuyer(token, submissionId, buyerId) {
+    return authedJson(`/seller/catalog/submissions/${submissionId}/visibility/buyers/${buyerId}`, token, { method: "DELETE" });
+}
+
+export async function saveCustomPricingForBuyer(token, buyerId, items) {
+    return authedJson(`/seller/custom-pricing/${buyerId}`, token, {
+        method: "POST", body: JSON.stringify({ items }),
+    });
+}
+
+export async function deleteCustomPricingForBuyer(token, buyerId, submissionId) {
+    return authedJson(`/seller/custom-pricing/${buyerId}/${submissionId}`, token, { method: "DELETE" });
+}
+
 export async function fetchSubmissionDetail(token, id) {
     return authedJson(`/seller/catalog/submissions/${id}`, token);
 }
