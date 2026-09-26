@@ -322,8 +322,21 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
 
 // Compact trigger shown inline in the seller row — shows price breakdown
 // AND the current commission %. Clicking either opens OwnListingPriceModal.
+// Compact trigger shown inline in the seller row — shows price breakdown
+// AND the current commission %. Clicking either opens OwnListingPriceModal.
+//
+// VISUAL REDESIGN: replaced blue dotted-underline "fake link" text (which
+// read as a broken hyperlink, not an editable control) with a contained
+// card-like surface — a light bordered chip with its own background,
+// subtle hover/press feedback, and a small pencil icon as the ONE clear
+// "this is editable" cue. Price stays in high-contrast ink (it's the
+// primary information), while the edit affordance is secondary and quiet
+// — this mirrors how editable price/quantity fields read in most
+// checkout/marketplace UIs (e.g. Amazon's own "Change" chips): the data
+// is bold, the action to change it is a small, separate, low-emphasis tag.
 function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
     const [open, setOpen] = useState(false);
+    const [pressed, setPressed] = useState(false);
     const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
     const masterPackSize = Number(seller.units_per_master_pack) > 0 ? Number(seller.units_per_master_pack) : 1;
     const hasOuter = hasOuterPack(seller.units_per_master_pack);
@@ -334,11 +347,10 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
     const derived = deriveDisplayPrices(canonicalDisplayed, packSize, masterPackSize);
     const commissionPercent = Number(seller.marketing_commission_percent) || 0.25;
 
-    const rows = [
+    const priceRows = [
         seller.unit ? { label: seller.unit, value: `₹${inr(derived.perBaseUnit)}` } : null,
         { label: "Pack", value: `₹${inr(derived.perPack)}` },
         hasOuter ? { label: "M Pack", value: `₹${inr(derived.perMasterPack)}` } : null,
-        { label: "Promo", value: `${commissionPercent}%` },
     ].filter(Boolean);
 
     return (
@@ -347,25 +359,47 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
                 type="button"
                 data-price-editor=""
                 onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-                className="grid items-baseline gap-x-1 gap-y-0.5 rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-blue-50"
-                style={{ gridTemplateColumns: "auto auto" }}
+                onMouseDown={() => setPressed(true)}
+                onMouseUp={() => setPressed(false)}
+                onMouseLeave={() => setPressed(false)}
+                className="group flex flex-col items-end gap-1 rounded-xl border px-2.5 py-2 text-left transition-all duration-150"
+                style={{
+                    borderColor: C.hair,
+                    background: pressed ? C.hairSoft : "#fff",
+                    transform: pressed ? "scale(0.98)" : "scale(1)",
+                }}
             >
-                {rows.map((r) => (
-                    <div key={r.label} className="contents">
-                        <span
-                            className="text-right text-[12.5px] font-extrabold tabular-nums whitespace-nowrap underline decoration-dotted underline-offset-2"
-                            style={{ color: "#2563eb" }}
-                        >
-                            {r.value}
-                        </span>
-                        <span
-                            className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap"
-                            style={{ color: "#2563eb" }}
-                        >
-                            /{r.label}
-                        </span>
-                    </div>
-                ))}
+                {/* Price rows — high-contrast, the actual information */}
+                <div className="grid items-baseline gap-x-1 gap-y-0.5" style={{ gridTemplateColumns: "auto auto" }}>
+                    {priceRows.map((r) => (
+                        <div key={r.label} className="contents">
+                            <span className="text-right text-[13px] font-extrabold tabular-nums whitespace-nowrap" style={{ color: C.ink }}>
+                                {r.value}
+                            </span>
+                            <span className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap" style={{ color: C.muted }}>
+                                /{r.label}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+
+                {/* Divider + Promo row, visually subordinate to price */}
+                <div className="flex w-full items-center gap-1.5 border-t pt-1" style={{ borderColor: C.hairSoft }}>
+                    <span className="text-[9.5px] font-bold tracking-wide" style={{ color: C.muted }}>Promo</span>
+                    <span className="text-[10.5px] font-extrabold tabular-nums" style={{ color: C.ink }}>{commissionPercent}%</span>
+                </div>
+
+                {/* The ONE clear edit affordance — small, quiet, unmistakable */}
+                <span
+                    className="mt-0.5 flex items-center gap-1 self-stretch justify-center rounded-lg px-2 py-1 text-[9.5px] font-bold tracking-wide transition-colors duration-150"
+                    style={{
+                        background: pressed ? `${C.secondary}14` : C.hairSoft,
+                        color: C.secondary,
+                    }}
+                >
+                    <Pencil className="h-2.5 w-2.5" strokeWidth={2.5} />
+                    Edit
+                </span>
             </button>
 
             <AnimatePresence>
@@ -1429,7 +1463,8 @@ function SellerDropdown({
                                             if ((e.key === "Enter" || e.key === " ") && !outOfStock && !isOwn) { e.preventDefault(); onBuySeller(s); }
                                         }}
                                         aria-disabled={outOfStock || isOwn}
-                                        className="flex items-start gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9]"
+
+                                        className="relative flex items-start gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9]"
                                         style={outOfStock ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
                                     >
 
@@ -1453,6 +1488,17 @@ function SellerDropdown({
                                                 <FreightPill included={s.freight_included} />
                                                 {isFastest && <FastestBadge />}
                                             </div>
+                                            {isOwn && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => { e.stopPropagation(); onEditOwnListing(s.submission_id); }}
+                                                    className="mt-2.5 rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white"
+                                                    style={{ background: C.primary }}
+                                                >
+                                                    Edit listing
+                                                </button>
+                                            )}
+
                                         </div>
 
                                         <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5 text-right">
@@ -1463,22 +1509,13 @@ function SellerDropdown({
                                             ) : !isLoggedIn ? (
                                                 <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
                                             ) : isOwn ? (
-                                                <div className="flex flex-col items-end gap-1">
-                                                    <OwnListingPriceCell
-                                                        seller={s}
-                                                        includeGst={includeGst}
-                                                        submitting={savingOwnPriceId === s.submission_id}
-                                                        onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); onEditOwnListing(s.submission_id); }}
-                                                        className="rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white"
-                                                        style={{ background: C.primary }}
-                                                    >
-                                                        Edit listing
-                                                    </button>
-                                                </div>
+                                                <OwnListingPriceCell
+                                                    seller={s}
+                                                    includeGst={includeGst}
+                                                    submitting={savingOwnPriceId === s.submission_id}
+                                                    onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)}
+                                                />
+
                                             ) : (
                                                 <>
                                                     <SellerPriceBlock pricing={pricing} unit={s.unit} />
