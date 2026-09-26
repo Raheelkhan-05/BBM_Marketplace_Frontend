@@ -1482,9 +1482,26 @@ export default function SellerManageListingsPage() {
                     focusSection={activeSection === "all" ? null : activeSection}
                     onClose={() => setEditingId(null)}
                     onSaved={(id, submission, message) => {
+                        // Optimistic: reflect the change instantly using whatever
+                        // fields the update response gave us.
                         patchItem(id, submission);
                         setEditingId(null);
                         setToastMsg(message);
+
+                        // Reconcile: updateSellerProductSubmission's response may not
+                        // carry every joined/computed field ListingRow actually renders
+                        // (brand.name, brand.image, images[], units_per_master_pack,
+                        // the computed sale-unit "price", etc. — fields that only
+                        // fetchMySellerSubmissions populates). If any of those are
+                        // missing or shaped differently on the update response, the
+                        // shallow patchItem() merge can leave the row showing stale or
+                        // blank values even though the save itself succeeded — which
+                        // is exactly the "have to manually refresh" symptom you're
+                        // seeing. So right after the optimistic patch, quietly refetch
+                        // the full list in the background and let it overwrite the row
+                        // with the real, authoritative shape. No spinner, no full-page
+                        // reload — reload({ silent: true }) already exists for this.
+                        reload({ silent: true });
                     }}
                 />,
                 document.body
