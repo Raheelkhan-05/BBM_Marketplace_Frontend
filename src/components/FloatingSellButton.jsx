@@ -28,8 +28,8 @@ export default function FloatingSellButton({ to = "/seller/sell", label = "Sell"
                     to   { opacity: 1; transform: translateY(0) scale(1); }
                 }
                 @keyframes fsb-breathe {
-                    0%, 100% { box-shadow: 0 8px 22px -6px rgba(210,70,43,0.5); }
-                    50%      { box-shadow: 0 10px 30px -4px rgba(210,70,43,0.68); }
+                    0%, 100% { box-shadow: 0 8px 22px -6px rgba(255, 255, 255, 0.5); }
+                    50%      { box-shadow: 0 10px 30px -4px rgba(255, 255, 255, 0.68); }
                 }
 
                 .fsb-wrap {
