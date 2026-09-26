@@ -64,6 +64,18 @@
 //   their address becomes known after a dropdown was already open — never
 //   silently in the background — so nothing reshuffles under someone
 //   while they're reading the list.
+//
+// MOBILE FULL-WIDTH LAYOUT (this revision):
+// - The feed's outer wrapper used to always render as a "card":
+//   `rounded-2xl border bg-white`, regardless of viewport. On phones that
+//   reads as a boxed-in product list with visible margins on both sides.
+// - FIXED: on mobile the wrapper now drops the rounded corners and side
+//   border and bleeds edge-to-edge (`-mx-3` cancels a parent's assumed
+//   `px-3` horizontal padding — adjust this if the parent uses a
+//   different padding value), keeping only a top/bottom hairline
+//   (`border-y`). The rounded "card" look (`sm:rounded-2xl sm:border`)
+//   only kicks back in at the `sm:` breakpoint and up, where there's
+//   room for it. Nothing about the row/column logic itself changed.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -1785,7 +1797,15 @@ export default function HomeProductFeed({ category, q = "" }) {
                 <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
             </div>
 
-            <div className="rounded-2xl border bg-white" style={{ borderColor: C.hair }}>
+            {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
+                (-mx-3 cancels a parent's assumed px-3 padding; tweak to match your
+                actual page padding) with only a top/bottom hairline (border-y) —
+                no rounded corners, no side border, so it never reads as a "card".
+                The rounded/bordered "card" look returns from sm: and up. */}
+            <div
+                className="-mx-3 border-y bg-white sm:mx-0 sm:rounded-2xl sm:border"
+                style={{ borderColor: C.hair }}
+            >
 
                 {showFullSkeleton
                     ? (
