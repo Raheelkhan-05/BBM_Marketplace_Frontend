@@ -1416,7 +1416,7 @@ export default function SellerManageListingsPage() {
                 </div>
 
                 {/* list */}
-                <div className="mt-4 overflow-hidden rounded-[20px] border bg-white" style={{ borderColor: C.hair }}>
+                <div className="mt-4 -mx-3 overflow-hidden sm:mx-0 sm:rounded-2xl sm:border bg-white" style={{ borderColor: C.hair }}>
                     {loading && Array.from({ length: 5 }).map((_, i) => (
                         <div key={i} className="flex items-center gap-3 border-b px-3 py-3.5 sm:px-4" style={{ borderColor: C.hairSoft }}>
                             <div className="h-14 w-14 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
