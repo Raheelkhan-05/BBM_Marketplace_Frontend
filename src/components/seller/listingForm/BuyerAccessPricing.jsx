@@ -242,7 +242,7 @@ function BuyerPriceEditor({ product, draft, setDraft }) {
     );
 }
 
-function BuyerRow({ buyer, product, mode, isEditing, onToggleEdit, draft, setDraft, onDelete, onRemoveAccess, deleting, removingAccess, isPending }) {
+function BuyerRow({ buyer, product, mode, isEditing, onToggleEdit, draft, setDraft, onDelete, onRemoveAccess, onDiscard, deleting, removingAccess, isPending }) {
     const name = buyer.shopName || buyer.name || "Buyer";
     const pct = buyer.override ? percentFromCustomPrice(product.defaultPrice, buyer.effectivePrice) : null;
 
@@ -297,6 +297,13 @@ function BuyerRow({ buyer, product, mode, isEditing, onToggleEdit, draft, setDra
                             {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Remove price
                         </button>
                     )}
+                    {!buyer.override && mode === "public" && onDiscard && (
+                        <button type="button" onClick={onDiscard}
+                            className="flex items-center gap-1.5 self-start rounded-lg border px-3 py-2 text-[11px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.muted }}>
+                            <X className="h-3.5 w-3.5" /> Remove buyer
+                        </button>
+                    )}
+
                 </div>
             )}
         </div>
@@ -382,15 +389,41 @@ function DraftBuyerAccessPricing({ product, value, onChange }) {
         });
     };
 
+
+    const addBuyerForPricing = (candidate) => {
+        setQuery(""); setDropdownOpen(false);
+
+        const existing = buyers.find((b) => b.buyerId === candidate.buyer_id);
+        if (existing) {
+            openExisting(candidate.buyer_id, existing);
+            return;
+        }
+
+        const newBuyer = {
+            buyerId: candidate.buyer_id, name: candidate.name, phone: candidate.phone,
+            email: candidate.email, shopName: candidate.shop_name, override: null,
+            pendingPricing: true,
+        };
+
+
+        onChange({
+            ...value,
+            buyers: [...buyers, newBuyer].sort((a, b) => (a.shopName || a.name || "").localeCompare(b.shopName || b.name || "")),
+        });
+
+        openExisting(candidate.buyer_id, newBuyer);
+    };
+
     const removeBuyer = (buyerId) => {
         onChange({ ...value, buyers: buyers.filter((b) => b.buyerId !== buyerId) });
         setEditingId((id) => (id === buyerId ? null : id));
         setDrafts((d) => { const next = { ...d }; delete next[buyerId]; return next; });
     };
 
-    const openExisting = (buyerId) => {
+    const openExisting = (buyerId, buyerOverride) => {
         if (editingId === buyerId) { setEditingId(null); return; }
-        const buyer = buyers.find((b) => b.buyerId === buyerId);
+        const buyer = buyerOverride || buyers.find((b) => b.buyerId === buyerId);
+        if (!buyer) return;
         setDrafts((d) => ({ ...d, [buyerId]: d[buyerId] || (buyer.override ? { ...emptyDraft(), ...buyer.override } : emptyDraft()) }));
         setEditingId(buyerId);
     };
@@ -414,7 +447,9 @@ function DraftBuyerAccessPricing({ product, value, onChange }) {
         setDrafts((d) => { const next = { ...d }; delete next[buyerId]; return next; });
     };
 
-    const visibleList = mode === "restricted" ? buyers : buyers.filter((b) => b.override);
+    const visibleList = mode === "restricted"
+        ? buyers
+        : buyers.filter((b) => b.override || b.pendingPricing);
 
     return (
         <div className="flex flex-col gap-3">
@@ -439,13 +474,15 @@ function DraftBuyerAccessPricing({ product, value, onChange }) {
                 </div>
             )}
 
-            {mode === "restricted" && (
+            {(
                 <div className="relative">
                     <div className="flex items-center gap-2 rounded-full border px-3 py-1.5" style={{ borderColor: C.hair }}>
                         <Search className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} />
                         <input ref={searchInputRef} value={query} onChange={(e) => setQuery(e.target.value)}
                             onFocus={() => query.trim().length >= 2 && setDropdownOpen(true)}
-                            placeholder="Search buyers by shop name, email, or phone…"
+                            placeholder={mode === "restricted"
+                                ? "Search buyers to grant access…"
+                                : "Search a buyer to set a custom price…"}
                             className="w-full min-w-0 bg-transparent text-[12.5px] font-medium tracking-wide outline-none" />
                         {query && <button type="button" onClick={() => { setQuery(""); setDropdownOpen(false); }}><X className="h-3.5 w-3.5" style={{ color: C.muted }} /></button>}
                     </div>
@@ -455,7 +492,7 @@ function DraftBuyerAccessPricing({ product, value, onChange }) {
                         ) : results.length === 0 ? (
                             <p className="px-3 py-2.5 text-[11.5px] font-semibold" style={{ color: C.muted }}>No matching buyers.</p>
                         ) : results.map((b) => (
-                            <button key={b.buyer_id} type="button" onClick={() => addBuyer(b)}
+                            <button key={b.buyer_id} type="button" onClick={() => (mode === "restricted" ? addBuyer(b) : addBuyerForPricing(b))}
                                 className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-black/[0.03]">
                                 <div className="min-w-0">
                                     <p className="truncate text-[12.5px] font-bold" style={{ color: C.ink }}>{b.shop_name || b.name || "Buyer"}</p>
@@ -486,6 +523,7 @@ function DraftBuyerAccessPricing({ product, value, onChange }) {
                             setDraft={(updater) => setDraftFor(buyer.buyerId, updater)}
                             onDelete={() => clearPrice(buyer.buyerId)}
                             onRemoveAccess={() => removeBuyer(buyer.buyerId)}
+                            onDiscard={() => removeBuyer(buyer.buyerId)}
                             deleting={false}
                             removingAccess={false}
                             isPending={false}
@@ -594,6 +632,46 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
         });
     };
 
+    // Public mode: the buyer can already see the listing — "adding" them
+    // here just opens the price editor for them, with no visibility
+    // grant call at all. If they don't already have a row in data.buyers,
+    // synthesize one locally (no API call needed — nothing is granted or
+    // changed on the backend until an actual price is saved).
+    const handleAddBuyerForPricing = (candidate) => {
+        setQuery("");
+        setDropdownOpen(false);
+
+        const existing = data.buyers.find((b) => b.buyerId === candidate.buyer_id);
+        if (existing) {
+            openExisting(candidate.buyer_id, existing);
+            return;
+        }
+
+        const newBuyer = {
+            buyerId: candidate.buyer_id, name: candidate.name, phone: candidate.phone,
+            email: candidate.email, shopName: candidate.shop_name,
+            hasVisibilityGrant: false, grantedAt: null,
+            override: null, effectivePrice: data.submission.defaultPrice,
+            effectiveBreakdown: data.submission.defaultBreakdown,
+            // Marks this row as "explicitly added by the seller to set a
+            // price for" — the only thing keeping it visible in public
+            // mode before an override is actually saved. Without this,
+            // the row's visibility depended on editingId matching, which
+            // disappears the instant the seller collapses the row.
+            pendingPricing: true,
+        };
+
+
+        setData((d) => ({
+            ...d,
+            buyers: [...d.buyers, newBuyer].sort((a, b) => (a.shopName || a.name || "").localeCompare(b.shopName || b.name || "")),
+        }));
+
+        // Pass newBuyer directly — data.buyers won't reflect it until the
+        // next render, so looking it up from `data` here would find nothing.
+        openExisting(candidate.buyer_id, newBuyer);
+    };
+
     // FIX: removing access now does two things in one action — revokes
     // visibility AND clears any custom price the buyer had on this
     // listing. Previously it only ever called removeListingVisibilityBuyer
@@ -625,9 +703,10 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
         });
     };
 
-    const openExisting = (buyerId) => {
+    const openExisting = (buyerId, buyerOverride) => {
         if (editingId === buyerId) { setEditingId(null); return; }
-        const buyer = data.buyers.find((b) => b.buyerId === buyerId);
+        const buyer = buyerOverride || data.buyers.find((b) => b.buyerId === buyerId);
+        if (!buyer) return; // safety net — should never happen now, but never crash if it does
         setDrafts((d) => ({ ...d, [buyerId]: d[buyerId] || (buyer.override ? draftFromOverride(buyer, data.submission) : emptyDraft()) }));
         setEditingId(buyerId);
     };
@@ -648,6 +727,16 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
             if (res?.success) load({ silent: true });
             else setData(prev);
         });
+    };
+
+    // Discards a buyer that was added purely to set a price for, before
+    // any price was actually saved. Nothing exists on the backend for
+    // this buyer/listing pair yet (no visibility grant, no override), so
+    // this is pure local cleanup — no API calls needed or made.
+    const handleDiscardPendingBuyer = (buyerId) => {
+        setData((d) => ({ ...d, buyers: d.buyers.filter((b) => b.buyerId !== buyerId) }));
+        setEditingId((id) => (id === buyerId ? null : id));
+        setDrafts((d) => { const next = { ...d }; delete next[buyerId]; return next; });
     };
 
     // Replaces the per-row Save. Called by SellerListingForm's own submit
@@ -695,7 +784,9 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
 
     const mode = data.submission.visibilityMode;
     const grantedBuyers = data.buyers.filter((b) => b.hasVisibilityGrant);
-    const visibleList = mode === "restricted" ? data.buyers : data.buyers.filter((b) => b.override);
+    const visibleList = mode === "restricted"
+        ? data.buyers
+        : data.buyers.filter((b) => b.override || b.pendingPricing);
 
     return (
         <div className="flex flex-col gap-3">
@@ -737,7 +828,7 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
                 </div>
             )}
 
-            {mode === "restricted" && (
+            {(
                 <div className="relative">
                     <div className="flex items-center gap-2 rounded-full border px-3 py-1.5" style={{ borderColor: C.hair }}>
                         <Search className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} />
@@ -746,7 +837,10 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             onFocus={() => query.trim().length >= 2 && setDropdownOpen(true)}
-                            placeholder="Search buyers by shop name, email, or phone…"
+                            placeholder={mode === "restricted"
+                                ? "Search buyers to grant access…"
+                                : "Search a buyer to set a custom price…"}
+
                             className="w-full min-w-0 bg-transparent text-[12.5px] font-medium tracking-wide outline-none"
                         />
                         {query && (
@@ -768,7 +862,7 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
                                 <button
                                     key={b.buyer_id}
                                     type="button"
-                                    onClick={() => handleAddBuyer(b)}
+                                    onClick={() => (mode === "restricted" ? handleAddBuyer(b) : handleAddBuyerForPricing(b))}
                                     className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors duration-150 hover:bg-black/[0.03]"
                                 >
                                     <div className="min-w-0">
@@ -803,6 +897,7 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
                             setDraft={(updater) => setDraftFor(buyer.buyerId, updater)}
                             onDelete={() => handleClearPrice(buyer.buyerId)}
                             onRemoveAccess={() => handleRemoveAccess(buyer.buyerId)}
+                            onDiscard={() => handleDiscardPendingBuyer(buyer.buyerId)}
                             deleting={deletingBuyerId === buyer.buyerId}
                             removingAccess={removingAccessId === buyer.buyerId}
                             isPending={!!(drafts[buyer.buyerId]?.canonicalPrice != null && drafts[buyer.buyerId].canonicalPrice !== buyer.effectivePrice)}
