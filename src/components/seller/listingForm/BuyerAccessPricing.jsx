@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { createPortal } from "react-dom";
 import {
-    Search, Trash2, Loader2, ChevronDown, ChevronUp, AlertTriangle, TrendingDown, TrendingUp, X, Percent, IndianRupee, UserPlus, ShieldCheck,
+    Search, Trash2, Loader2, ChevronDown, Info, ChevronUp, AlertTriangle, TrendingDown, TrendingUp, X, Percent, IndianRupee, UserPlus, ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import {
@@ -264,9 +264,12 @@ function BuyerRow({ buyer, product, mode, isEditing, onToggleEdit, draft, setDra
                     </p>
                     <p className="truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                         {buyer.phone || buyer.email || "—"}
+
+                    </p>
+                    <p className="truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                         {buyer.override && (
-                            <span className="ml-1" style={{ color: pct >= 0 ? "#059669" : "#a16207" }}>
-                                · ₹{inr(buyer.effectiveBreakdown?.perPack)}/pack ({pct >= 0 ? `${Math.round(pct)}% off` : `${Math.abs(Math.round(pct))}% up`})
+                            <span style={{ color: pct >= 0 ? "#059669" : "#a16207" }}>
+                                ₹{inr(buyer.effectiveBreakdown?.perPack)}/pack ({pct >= 0 ? `${Math.round(pct)}% off` : `${Math.abs(Math.round(pct))}% up`})
                             </span>
                         )}
                     </p>
@@ -294,9 +297,6 @@ function BuyerRow({ buyer, product, mode, isEditing, onToggleEdit, draft, setDra
                             {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Remove price
                         </button>
                     )}
-                    <p className="text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                        Saved when you press "Save" / "Update" at the bottom of the form.
-                    </p>
                 </div>
             )}
         </div>
@@ -335,7 +335,172 @@ function SearchDropdown({ anchorRef, open, children }) {
     );
 }
 
-const BuyerAccessPricing = forwardRef(function BuyerAccessPricing({ submissionId }, ref) {
+function DraftBuyerAccessPricing({ product, value, onChange }) {
+    const { token } = useAuth();
+    const [editingId, setEditingId] = useState(null);
+    const [drafts, setDrafts] = useState({}); // per-buyer BuyerPriceEditor working state
+
+    const [query, setQuery] = useState("");
+    const [results, setResults] = useState([]);
+    const [searching, setSearching] = useState(false);
+    const [dropdownOpen, setDropdownOpen] = useState(false);
+    const searchInputRef = useRef(null);
+    const debounceRef = useRef(null);
+
+    const mode = value.mode;
+    const buyers = value.buyers || [];
+
+    const setMode = (m) => onChange({ ...value, mode: m });
+
+    useEffect(() => {
+        clearTimeout(debounceRef.current);
+        if (query.trim().length < 2) { setResults([]); setDropdownOpen(false); return; }
+        setSearching(true);
+        setDropdownOpen(true);
+        debounceRef.current = setTimeout(async () => {
+            // No submissionId to exclude-by yet — pass null; dedupe
+            // against already-added buyers on the client instead.
+            const res = await searchEligibleBuyers(token, query.trim(), null);
+            const already = new Set(buyers.map((b) => b.buyerId));
+            setResults(res?.success ? res.buyers.filter((b) => !already.has(b.buyer_id)) : []);
+            setSearching(false);
+        }, 300);
+        return () => clearTimeout(debounceRef.current);
+    }, [query, token, buyers]);
+
+    const addBuyer = (candidate) => {
+        setQuery(""); setDropdownOpen(false);
+        onChange({
+            ...value,
+            buyers: [
+                ...buyers,
+                {
+                    buyerId: candidate.buyer_id, name: candidate.name, phone: candidate.phone,
+                    email: candidate.email, shopName: candidate.shop_name, override: null,
+                },
+            ].sort((a, b) => (a.shopName || a.name || "").localeCompare(b.shopName || b.name || "")),
+        });
+    };
+
+    const removeBuyer = (buyerId) => {
+        onChange({ ...value, buyers: buyers.filter((b) => b.buyerId !== buyerId) });
+        setEditingId((id) => (id === buyerId ? null : id));
+        setDrafts((d) => { const next = { ...d }; delete next[buyerId]; return next; });
+    };
+
+    const openExisting = (buyerId) => {
+        if (editingId === buyerId) { setEditingId(null); return; }
+        const buyer = buyers.find((b) => b.buyerId === buyerId);
+        setDrafts((d) => ({ ...d, [buyerId]: d[buyerId] || (buyer.override ? { ...emptyDraft(), ...buyer.override } : emptyDraft()) }));
+        setEditingId(buyerId);
+    };
+
+    // Every price edit commits STRAIGHT into `value.buyers[].override` —
+    // there's no server round trip in draft mode, so there's nothing to
+    // "flush" later. The final Submit just reads this straight off form state.
+    const setDraftFor = (buyerId, updater) => {
+        setDrafts((prev) => {
+            const nextDraft = updater(prev[buyerId] || emptyDraft());
+            onChange({
+                ...value,
+                buyers: buyers.map((b) => (b.buyerId === buyerId ? { ...b, override: nextDraft.canonicalPrice != null ? nextDraft : null } : b)),
+            });
+            return { ...prev, [buyerId]: nextDraft };
+        });
+    };
+
+    const clearPrice = (buyerId) => {
+        onChange({ ...value, buyers: buyers.map((b) => (b.buyerId === buyerId ? { ...b, override: null } : b)) });
+        setDrafts((d) => { const next = { ...d }; delete next[buyerId]; return next; });
+    };
+
+    const visibleList = mode === "restricted" ? buyers : buyers.filter((b) => b.override);
+
+    return (
+        <div className="flex flex-col gap-3">
+            <div className="text-[11.5px] text-justify font-semibold leading-snug tracking-wide" style={{ color: C.ink }}>
+                Choose who can see this listing, and set a different price for specific buyers. Everyone else pays the price above.
+            </div>
+
+            <div className="flex gap-1 rounded-full p-0.5 w-fit" style={{ background: C.hairSoft }}>
+                {[{ value: "public", label: "All buyers" }, { value: "restricted", label: "Only selected buyers" }].map((opt) => (
+                    <button key={opt.value} type="button" onClick={() => setMode(opt.value)}
+                        className="rounded-full px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
+                        style={mode === opt.value ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>
+                        {opt.label}
+                    </button>
+                ))}
+            </div>
+
+            {mode === "restricted" && buyers.length === 0 && (
+                <div className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px] font-semibold tracking-wide" style={{ background: "rgba(199,31,17,0.06)", color: "#b91c1c" }}>
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    No buyers added yet — this listing will be invisible to everyone until you add at least one below.
+                </div>
+            )}
+
+            {mode === "restricted" && (
+                <div className="relative">
+                    <div className="flex items-center gap-2 rounded-full border px-3 py-1.5" style={{ borderColor: C.hair }}>
+                        <Search className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} />
+                        <input ref={searchInputRef} value={query} onChange={(e) => setQuery(e.target.value)}
+                            onFocus={() => query.trim().length >= 2 && setDropdownOpen(true)}
+                            placeholder="Search buyers by shop name, email, or phone…"
+                            className="w-full min-w-0 bg-transparent text-[12.5px] font-medium tracking-wide outline-none" />
+                        {query && <button type="button" onClick={() => { setQuery(""); setDropdownOpen(false); }}><X className="h-3.5 w-3.5" style={{ color: C.muted }} /></button>}
+                    </div>
+                    <SearchDropdown anchorRef={searchInputRef} open={dropdownOpen}>
+                        {searching ? (
+                            <p className="flex items-center gap-2 px-3 py-2.5 text-[11.5px] font-semibold" style={{ color: C.muted }}><Loader2 className="h-3 w-3 animate-spin" /> Searching…</p>
+                        ) : results.length === 0 ? (
+                            <p className="px-3 py-2.5 text-[11.5px] font-semibold" style={{ color: C.muted }}>No matching buyers.</p>
+                        ) : results.map((b) => (
+                            <button key={b.buyer_id} type="button" onClick={() => addBuyer(b)}
+                                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-black/[0.03]">
+                                <div className="min-w-0">
+                                    <p className="truncate text-[12.5px] font-bold" style={{ color: C.ink }}>{b.shop_name || b.name || "Buyer"}</p>
+                                    <p className="truncate text-[10.5px] font-medium" style={{ color: C.muted }}>{[b.phone, b.email].filter(Boolean).join(" · ") || "—"}</p>
+                                </div>
+                                <UserPlus className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                            </button>
+                        ))}
+                    </SearchDropdown>
+                </div>
+            )}
+
+            {visibleList.length === 0 ? (
+                <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
+                    {mode === "restricted" ? "Add a buyer above to grant access." : "No custom prices set for any buyer yet."}
+                </p>
+            ) : (
+                <div className="flex flex-col gap-2">
+                    {visibleList.map((buyer) => (
+                        <BuyerRow
+                            key={buyer.buyerId}
+                            buyer={{ ...buyer, effectivePrice: buyer.override?.canonicalPrice ?? product.defaultPrice, effectiveBreakdown: buyer.override ? derivePriceBreakdown(buyer.override.canonicalPrice, product.packSize, product.masterPackSize) : product.defaultBreakdown }}
+                            product={product}
+                            mode={mode}
+                            isEditing={editingId === buyer.buyerId}
+                            onToggleEdit={() => openExisting(buyer.buyerId)}
+                            draft={drafts[buyer.buyerId] || emptyDraft()}
+                            setDraft={(updater) => setDraftFor(buyer.buyerId, updater)}
+                            onDelete={() => clearPrice(buyer.buyerId)}
+                            onRemoveAccess={() => removeBuyer(buyer.buyerId)}
+                            deleting={false}
+                            removingAccess={false}
+                            isPending={false}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
+    { submissionId, draftMode = false, product, value, onChange },
+    ref
+) {
     const { token } = useAuth();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null); // { submission, buyers }
@@ -377,6 +542,19 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing({ submissionId
         }, 300);
         return () => clearTimeout(debounceRef.current);
     }, [query, token, submissionId]);
+
+    // ── DRAFT MODE: no submissionId exists yet — everything lives in
+    // `value` (lifted into SellerListingForm's form state) and every
+    // mutation goes through onChange instead of an API call.
+    if (draftMode) {
+        return (
+            <DraftBuyerAccessPricing
+                product={product}
+                value={value || { mode: "public", buyers: [] }}
+                onChange={onChange}
+            />
+        );
+    }
 
     const handleModeChange = (mode) => {
         const prev = data;
@@ -521,9 +699,16 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing({ submissionId
 
     return (
         <div className="flex flex-col gap-3">
-            <p className="text-[11.5px] font-semibold leading-snug tracking-wide" style={{ color: C.ink }}>
+            <div className="text-[11.5px] text-justify font-semibold leading-snug tracking-wide" style={{ color: C.ink }}>
                 Choose who can see this listing, and set a different price for specific buyers. Everyone else pays the price above.
-            </p>
+                <p className="flex items-start mt-2 gap-1.5 text-[11px] font-semibold leading-snug tracking-wide" style={{ color: "#b45309" }}>
+                    <Info className="mt-0 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                        Setting a custom price for this buyer switches off any quantity discounts or price slabs on this product for them — they'll pay exactly this price, however much they order.
+                    </span>
+                </p>
+
+            </div>
 
             <div className="flex gap-1 rounded-full p-0.5 w-fit" style={{ background: C.hairSoft }}>
                 {[{ value: "public", label: "All buyers" }, { value: "restricted", label: "Only selected buyers" }].map((opt) => (

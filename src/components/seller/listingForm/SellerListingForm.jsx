@@ -140,6 +140,8 @@ export const DEFAULT_LISTING_FORM = {
 
     returnPolicyKey: "", warrantyKey: "",
 
+    buyerAccessDraft: { mode: "public", buyers: [] },
+
 };
 
 // Maps each section to the field keys computeMissing() can flag for it —
@@ -1183,6 +1185,7 @@ export default function SellerListingForm({
             sampleQuantity: form.sampleAvailable ? String(sampleQuantityBaseUnits) : form.sampleQuantity,
             stockQuantity: form.stockType === "ready_stock" ? String(stockQuantitySaleUnits) : form.stockQuantity,
             dispatchingLocations,
+            buyerAccessDraft: form.buyerAccessDraft,
         });
     };
 
@@ -1202,6 +1205,19 @@ export default function SellerListingForm({
             e.preventDefault();
         }
     };
+
+    const buyerAccessProduct = useMemo(() => ({
+        defaultPrice: pricePreview.finalPricePerSaleUnit,
+        defaultBreakdown: {
+            perBaseUnit: pricePreview.basePricePerSaleUnit / (form.hasOuterPack ? Number(form.packSize) * Number(form.masterPackSize) : Number(form.packSize) || 1),
+            perPack: pricePreview.basePricePerSaleUnit,
+            perMasterPack: form.hasOuterPack ? pricePreview.basePricePerSaleUnit * Number(form.masterPackSize) : null,
+        },
+        gstPercent: Number(form.gstPercent) || 0,
+        packSize: Number(form.packSize) || 1,
+        masterPackSize: Number(form.masterPackSize) || 1,
+        unit: form.unit,
+    }), [pricePreview, form.hasOuterPack, form.packSize, form.masterPackSize, form.gstPercent, form.unit]);
 
     // Single-section mode: only this section id renders at all. Every
     // SectionCard block below is gated with `showSection("...")` so the
@@ -1829,12 +1845,21 @@ export default function SellerListingForm({
             )}
 
             {/* ---------------- Custom pricing ---------------- */}
-            {showSection("customPricing") && mode === "edit" && submissionId && (
+            {showSection("customPricing") && (
                 <SectionCard id="section-customPricing" icon={Tag} title="Buyer access & pricing"
                     open={resolvedOnlySection ? true : openSection === "customPricing"} onOpenChange={(v) => handleSectionToggle("customPricing", v)}
                     missingCount={0} totalCount={0}
                     readOnly={readOnly}>
-                    <BuyerAccessPricing submissionId={submissionId} />
+                    {submissionId ? (
+                        <BuyerAccessPricing submissionId={submissionId} />
+                    ) : (
+                        <BuyerAccessPricing
+                            draftMode
+                            product={buyerAccessProduct}
+                            value={form.buyerAccessDraft}
+                            onChange={(v) => setField("buyerAccessDraft", v)}
+                        />
+                    )}
                 </SectionCard>
             )}
 
