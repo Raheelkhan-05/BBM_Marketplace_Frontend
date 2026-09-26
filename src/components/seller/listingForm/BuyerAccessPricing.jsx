@@ -458,7 +458,7 @@ function DraftBuyerAccessPricing({ product, value, onChange }) {
             </div>
 
             <div className="flex gap-1 rounded-full p-0.5 w-fit" style={{ background: C.hairSoft }}>
-                {[{ value: "public", label: "All buyers" }, { value: "restricted", label: "Only selected buyers" }].map((opt) => (
+                {[{ value: "public", label: "Full Visibility" }, { value: "restricted", label: "Selected buyers only" }].map((opt) => (
                     <button key={opt.value} type="button" onClick={() => setMode(opt.value)}
                         className="rounded-full px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
                         style={mode === opt.value ? { background: C.secondary, color: "#fff" } : { color: C.muted }}>
