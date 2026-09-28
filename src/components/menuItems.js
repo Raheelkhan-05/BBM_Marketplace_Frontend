@@ -14,6 +14,7 @@ export const MENU_ROUTES = {
     listProduct: "/seller/sell",
     manageProducts: "/seller/products",   // TODO confirm
     myStore: "/seller/store",
+    myStoreApproved: "/seller/onboarding", // verified sellers land here instead of /seller/store
     // Sales + Purchase orders are the SAME page (/orders); the tab is chosen by ?tab=
     salesOrders: "/orders?tab=sales",
     creditRequest: "/seller/credit",      // TODO confirm
@@ -49,7 +50,8 @@ export function buildMenuItems({
         ? [
             item("list-product", "List a product", PackagePlus, MENU_ROUTES.listProduct, 0),
             item("manage-products", "Manage products", Boxes, MENU_ROUTES.manageProducts, 0, productsBadge),
-            item("my-store", "My store", Store, MENU_ROUTES.myStore, 0),
+            item("my-store", "My store", Store, MENU_ROUTES.myStoreApproved, 0, 0,
+                (p) => startsWithRoute(MENU_ROUTES.myStoreApproved)(p) || startsWithRoute(MENU_ROUTES.myStore)(p)),
             item("sales-orders", "Sales orders", FileText, MENU_ROUTES.salesOrders, 0, salesUnread, matchSalesOrders),
         ]
         : [item("my-store", "My store", Store, MENU_ROUTES.myStore, 0)];
