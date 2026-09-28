@@ -131,9 +131,9 @@ export default function SellPublishProductPage() {
     useEffect(() => {
         if (!isEdit || !access || access.canPublish) return;
         if (access.reason === "SELLER_NOT_ONBOARDED") {
-            navigate("/seller/listings", { replace: true, state: { toast: "Please set up your store first." } });
+            navigate("/seller/products", { replace: true, state: { toast: "Please set up your store first." } });
         } else if (access.reason === "SELLER_NOT_APPROVED") {
-            navigate("/seller/listings", { replace: true });
+            navigate("/seller/products", { replace: true });
         }
         // NOT_AUTHENTICATED / anything else falls through to <AccessGate />
         // rendered below.
@@ -170,7 +170,7 @@ export default function SellPublishProductPage() {
                     // then send them to set up their shop. The listings page picks up
                     // the toast from router state.
                     const saved = !isEdit ? savePendingProductSubmission(form) : false;
-                    navigate("/seller/listings", {
+                    navigate("/seller/products", {
                         replace: true,
                         state: {
                             toast: saved
@@ -286,8 +286,8 @@ function AccessGate({ access, navigate }) {
             icon: Lock,
             title: "Listing not found",
             body: "This listing doesn't exist or isn't yours.",
-            cta: "Go to my listings",
-            action: () => navigate("/seller/listings"),
+            cta: "Go to my products",
+            action: () => navigate("/seller/products"),
         },
     }[access.reason] || { icon: Lock, title: "Can't do this right now", body: "Please try again in a moment.", cta: "Go back", action: () => navigate(-1) };
     const Icon = content.icon;
@@ -307,8 +307,8 @@ function SubmittedScreen({ shopSlug, isEdit }) {
             <span className="flex h-14 w-14 items-center justify-center rounded-full text-white" style={{ background: "linear-gradient(135deg,#047084,#7fb3bd)" }}><CheckCircle2 className="h-7 w-7" /></span>
             <h2 className="mt-4 text-[20px] font-extrabold text-slate-900">{isEdit ? "Changes saved" : "Submitted for review"}</h2>
             <p className="mt-2 text-[13.5px] font-medium text-slate-500">{isEdit ? "Your listing has been updated." : "We'll notify you once our team approves it — or let you know what to fix if it's rejected."}</p>
-            <Link to="/seller/listings" className="mt-6 rounded-xl border border-slate-200 px-5 py-2.5 text-[13.5px] font-bold text-slate-700">
-                {shopSlug ? "Go to my shop" : "Go to my listings"}
+            <Link to="/seller/products" className="mt-6 rounded-xl border border-slate-200 px-5 py-2.5 text-[13.5px] font-bold text-slate-700">
+                {shopSlug ? "Go to my shop" : "Go to my products"}
             </Link>
         </div>
     );

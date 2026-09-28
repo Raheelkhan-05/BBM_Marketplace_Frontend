@@ -116,7 +116,7 @@ export function SellerOnboardingForm({ onSubmitted }) {
   useEffect(() => {
     if (liveSeller?.status === "approved") {
       onSubmitted?.(liveSeller);
-      navigate("/seller/listings", { replace: true });
+      navigate("/seller/products", { replace: true });
     }
   }, [liveSeller?.status, liveSeller, onSubmitted, navigate]);
 
@@ -187,7 +187,7 @@ export function SellerOnboardingForm({ onSubmitted }) {
 
       // Seller is approved immediately now — no review screen, go
       // straight to the live seller dashboard.
-      navigate("/seller/listings", { replace: true });
+      navigate("/seller/products", { replace: true });
     } finally {
       setSubmitting(false);
     }

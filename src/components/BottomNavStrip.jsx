@@ -1,108 +1,31 @@
 // components/BottomNavStrip.jsx
 //
-// Mobile-only. Same nav items as Header's desktop row.
+// Mobile-only. Menu items come from the shared ./menuItems.js (same list the
+// desktop Header uses), so routes, badges, grouping and active matching live
+// in one place. Approved sellers' "My store" goes to /seller/onboarding.
 //
-// CHANGED: tapping "Menu" now opens a FULL-SCREEN menu page (back arrow,
-// shop-name title, icon-tile rows, dividers between groups, Helpline and
-// Sign out as rows) instead of a half-height bottom sheet. The bottom bar
-// stays visible underneath so "Menu" remains tappable (it toggles the page).
+// Tapping the floating Menu button opens a FULL-SCREEN menu page (shop-name
+// title, icon-tile rows, dividers between groups, Helpline and Sign out).
+// The button stays visible on top and toggles the page.
 import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-    Menu, X, ArrowLeft, LogOut, ArrowUpRight, Home,
-    PackagePlus, Boxes, Store, FileText, HandCoins, Truck, ShoppingCart, MessageCircle,
-} from "lucide-react";
+import { Menu, X, LogOut, ArrowUpRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import { useCart } from "../context/CartContext.jsx";
 import { useChatContext } from "../context/ChatContext.jsx";
 import { useListings } from "../context/ListingsContext.jsx";
 import HelpBulb from "./HelpBulb.jsx";
+import { buildMenuItems } from "./menuItems.js";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)", tile: "rgba(20,27,34,0.06)" };
 
-// Height of the fixed bottom bar (content) — the full-screen page reserves
-// this much room at the bottom so nothing hides behind it.
 // Bottom clearance so the last menu row never hides behind the FAB.
 const FAB_CLEARANCE = 88;
 // On /home the search bar is pinned to the bottom, so the FAB sits above it.
 const FAB_BOTTOM_DEFAULT = 16;
 const FAB_BOTTOM_HOME = 84;
-
-// Routes used by the mobile menu.
-// TODO: confirm the two marked routes against your router — the rest are verified.
-const MENU_ROUTES = {
-    home: "/home",
-    listProduct: "/seller/sell",
-    manageProducts: "/seller/products",   // TODO confirm
-    myStore: "/seller/store",
-    // Sales + Purchase orders are the SAME page (/orders); the tab is chosen
-    // by ?tab= so the menu lands directly on the right one.
-    salesOrders: "/orders?tab=sales",
-    creditRequest: "/seller/credit",      // TODO confirm
-    transport: "/transport-library",
-    cart: "/cart",
-    purchaseOrders: "/orders?tab=purchases",
-    chats: "/chat",
-};
-
-const badgeLabel = (n) => (n > 0 ? (n > 9 ? "9+" : n) : null);
-const startsWithRoute = (route) => (p) => p === route || p.startsWith(route + "/");
-const tabOf = (search) => new URLSearchParams(search || "").get("tab");
-// Sales orders: /orders?tab=sales, or a sales order detail page.
-const matchSalesOrders = (p, search) =>
-    (p === "/orders" && tabOf(search) === "sales") || p.startsWith("/seller/orders");
-// Purchase orders: /orders (any tab but sales) or a purchase order detail page.
-const matchPurchaseOrders = (p, search) =>
-    p.startsWith("/orders") && !(p === "/orders" && tabOf(search) === "sales");
-
-// The mobile menu has its own item list (seller tools, buying, chats) —
-// it is NOT NAV_ITEMS, which only has Home / My Store / Chat / Cart /
-// My Orders / Transport Library for the desktop header.
-function buildMenuItems({ isApprovedSeller, navigate, cartCount, chatUnread, purchaseUnread, salesUnread, productsBadge }) {
-    const go = (to) => () => navigate(to);
-    const item = (id, label, icon, to, rawBadge = 0, match = startsWithRoute(to)) => ({
-        id, label, icon, to,
-        badge: badgeLabel(rawBadge), rawBadge,
-        onClick: go(to),
-        match,
-    });
-
-    const sellerItems = isApprovedSeller
-        ? [
-            item("list-product", "List a product", PackagePlus, MENU_ROUTES.listProduct),
-            item("manage-products", "Manage products", Boxes, MENU_ROUTES.manageProducts, productsBadge),
-            item("my-store", "My store", Store, MENU_ROUTES.myStore),
-            item("sales-orders", "Sales orders", FileText, MENU_ROUTES.salesOrders, salesUnread, matchSalesOrders),
-        ]
-        // Not an approved seller yet: My store is the entry point (it shows onboarding).
-        : [item("my-store", "My store", Store, MENU_ROUTES.myStore)];
-
-    return [
-        item("home", "Home", Home, MENU_ROUTES.home, 0, (p) => p === "/home"),
-        ...sellerItems,
-        item("cart", "Cart", ShoppingCart, MENU_ROUTES.cart, cartCount),
-        item("purchase-orders", "Purchase orders", FileText, MENU_ROUTES.purchaseOrders, purchaseUnread, matchPurchaseOrders),
-        item("credit-request", "Credit request", HandCoins, MENU_ROUTES.creditRequest),
-        item("chats", "Chats", MessageCircle, MENU_ROUTES.chats, chatUnread),
-        item("transport", "Transport", Truck, MENU_ROUTES.transport),
-    ];
-}
-
-// Divider grouping, matched by lowercase label (NAV_ITEMS' ids aren't known
-// here). A divider is drawn whenever the group changes between two
-// consecutive items. Anything not listed falls into group 2.
-//   group 0: seller tools   group 1: buying   group 2: everything else
-const SELLER_LABELS = ["list a product", "manage products", "my store", "sales orders"];
-const BUYER_LABELS = ["cart", "purchase orders"];
-function groupOf(item) {
-    const label = String(item.label || "").trim().toLowerCase();
-    if (label === "home") return -1;
-    if (SELLER_LABELS.includes(label)) return 0;
-    if (BUYER_LABELS.includes(label)) return 1;
-    return 2;
-}
 
 function formatShopName(slug) {
     if (!slug) return "";
@@ -197,10 +120,8 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     return (
         <>
-            {/* Bottom bar — z-40, sits ABOVE the full-screen page (z-[39]) so
-                the Menu button stays visible and works as a toggle. */}
             {/* Floating menu button — z-40 sits ABOVE the full-screen page (z-[39]),
-    so it stays visible and toggles the menu (Menu icon ↔ X). */}
+                so it stays visible and toggles the menu (Menu icon ↔ X). */}
             <div
                 className="fixed right-4 z-40 md:hidden"
                 style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
@@ -261,14 +182,14 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 }}
                 aria-hidden={!pageOpen}
             >
-                {/* Back arrow + title */}
+                {/* Title */}
                 <div className="shrink-0 px-5 pt-3">
                     <h1 className="mt-2 truncate text-[20px] font-extrabold leading-tight tracking-tight" style={{ color: C.ink }}>
                         {profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
                     </h1>
                 </div>
 
-                {/* Scrollable list — bottom padding clears the fixed bottom bar */}
+                {/* Scrollable list — bottom padding clears the floating button */}
                 <div
                     className="flex-1 overflow-y-auto px-5 pt-3"
                     style={{
@@ -282,7 +203,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 >
                     <div className="flex flex-col gap-1">
                         {items.map((it, i) => {
-                            const showDivider = i > 0 && groupOf(items[i - 1]) !== groupOf(it);
+                            const showDivider = i > 0 && items[i - 1].group !== it.group;
                             return (
                                 <div key={it.id}>
                                     {showDivider && <Divider />}
@@ -302,7 +223,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
                         {isLoggedIn && (
                             <>
-                                {items.length > 0 && groupOf(items[items.length - 1]) !== 2 && <Divider />}
+                                {items.length > 0 && items[items.length - 1].group !== 2 && <Divider />}
 
                                 {/* Helpline — HelpBulb keeps its own tap behaviour */}
                                 <div className="flex w-full items-center gap-3 px-1 py-1.5">
