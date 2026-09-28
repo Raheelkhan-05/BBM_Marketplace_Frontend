@@ -119,7 +119,7 @@ function FileDrop({ label, hint, file, onChange, accept = DEFAULT_ACCEPT }) {
             ) : file ? (
                 <span className="truncate text-[11.5px] font-semibold" style={{ color: C.secondary }}>{file.name}</span>
             ) : (
-                <span className="text-[11px] font-medium" style={{ color: C.muted }}>{hint} — or drag & drop it here</span>
+                null
             )}
             <input type="file" accept={accept} className="hidden" onChange={(e) => takeFile(e.target.files)} />
         </label>

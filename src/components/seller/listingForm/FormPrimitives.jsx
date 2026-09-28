@@ -1353,7 +1353,7 @@ export function CertificateUploadField({ label, hint, rows, onChange, token, add
                     <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>
                         {pending.length > 0
                             ? `Just confirm the name${pending.length === 1 ? "" : "s"} above to add ${pending.length === 1 ? "it" : "them"} — then you can upload more.`
-                            : "Or drag & drop files anywhere in this box."}
+                            : ""}
                     </p>
                 )}
             </div>

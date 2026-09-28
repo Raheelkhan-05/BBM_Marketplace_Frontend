@@ -75,8 +75,6 @@ function buildMenuItems({ isApprovedSeller, navigate, cartCount, chatUnread, pur
             item("manage-products", "Manage products", Boxes, MENU_ROUTES.manageProducts),
             item("my-store", "My store", Store, MENU_ROUTES.myStore, productsBadge),
             item("sales-orders", "Sales orders", FileText, MENU_ROUTES.salesOrders, salesUnread, matchSalesOrders),
-            item("credit-request", "Credit request", HandCoins, MENU_ROUTES.creditRequest),
-            item("transport", "Transport", Truck, MENU_ROUTES.transport),
         ]
         // Not an approved seller yet: My store is the entry point (it shows onboarding).
         : [item("my-store", "My store", Store, MENU_ROUTES.myStore)];
@@ -86,7 +84,9 @@ function buildMenuItems({ isApprovedSeller, navigate, cartCount, chatUnread, pur
         ...sellerItems,
         item("cart", "Cart", ShoppingCart, MENU_ROUTES.cart, cartCount),
         item("purchase-orders", "Purchase orders", FileText, MENU_ROUTES.purchaseOrders, purchaseUnread, matchPurchaseOrders),
+        item("credit-request", "Credit request", HandCoins, MENU_ROUTES.creditRequest),
         item("chats", "Chats", MessageCircle, MENU_ROUTES.chats, chatUnread),
+        item("transport", "Transport", Truck, MENU_ROUTES.transport),
     ];
 }
 

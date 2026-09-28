@@ -1290,11 +1290,7 @@ export default function SellerListingForm({
                                             <input type="file" accept="image/*" multiple onChange={handleImageFiles} className="hidden" disabled={uploadingImage} />
                                         </label>
                                     </div>
-                                    {!imageDragActive && (
-                                        <p className="text-[10.5px] font-medium" style={{ color: C.muted }}>
-                                            Or drag & drop image files anywhere in this box.
-                                        </p>
-                                    )}
+
                                 </div>
                             </FieldAnchor>
 
