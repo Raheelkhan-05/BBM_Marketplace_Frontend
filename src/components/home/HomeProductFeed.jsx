@@ -65,7 +65,7 @@
 //   silently in the background — so nothing reshuffles under someone
 //   while they're reading the list.
 //
-// MOBILE FULL-WIDTH LAYOUT (this revision):
+// MOBILE FULL-WIDTH LAYOUT:
 // - The feed's outer wrapper used to always render as a "card":
 //   `rounded-2xl border bg-white`, regardless of viewport. On phones that
 //   reads as a boxed-in product list with visible margins on both sides.
@@ -76,6 +76,22 @@
 //   (`border-y`). The rounded "card" look (`sm:rounded-2xl sm:border`)
 //   only kicks back in at the `sm:` breakpoint and up, where there's
 //   room for it. Nothing about the row/column logic itself changed.
+//
+// SWIPE TO BUY (this revision):
+// - On screens below the `md` breakpoint (< 768px), each seller row in the
+//   dropdown is split into two columns: seller info on the left, price
+//   block + a compact "Swipe to buy" slider on the right (the slider
+//   spans the full width of that right column). The old "Buy now" button
+//   only renders from `md` up.
+// - Because the slider is the purchase gesture on mobile, tapping the
+//   seller row itself no longer starts a purchase there (it would defeat
+//   the point of swiping). On md+ the whole row is still clickable.
+// - The slider is marked `data-swipe-buy` so useLenisPreventToggle's
+//   capture-phase touch listeners leave its horizontal drag alone (same
+//   idea as `data-price-editor`).
+// - The dropdown closes as soon as a purchase starts (handleBuySeller →
+//   closeDropdown), which unmounts the slider — so it never needs a
+//   manual reset after confirming.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -390,7 +406,7 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
                 onMouseDown={() => setPressed(true)}
                 onMouseUp={() => setPressed(false)}
                 onMouseLeave={() => setPressed(false)}
-                className="group flex flex-col items-end gap-1 rounded-xl border px-2.5 py-2 text-left transition-all duration-150"
+                className="group relative z-10 flex flex-col items-end gap-1 rounded-xl border px-2.5 py-2 text-left transition-all duration-150"
                 style={{
                     borderColor: C.hair,
                     background: pressed ? C.hairSoft : "#fff",
@@ -1312,18 +1328,18 @@ function useLenisPreventToggle() {
         const el = ref.current;
         if (!el) return;
 
-        // Anything inside a price editor handles its own drag/scroll — the
-        // list's own capture-phase listener must never intercept those
-        // events, since capture fires before the price cell's own handlers
-        // ever get a chance to call stopPropagation.
-        const isInsidePriceEditor = (e) => !!e.target?.closest?.("[data-price-editor]");
+        // Anything inside a price editor or the swipe-to-buy slider handles
+        // its own drag/scroll — the list's own capture-phase listener must
+        // never intercept those events, since capture fires before those
+        // controls' own handlers ever get a chance to run.
+        const isInsideOwnGesture = (e) => !!e.target?.closest?.("[data-price-editor],[data-swipe-buy]");
 
         const onTouchStart = (e) => {
-            if (isInsidePriceEditor(e)) return;
+            if (isInsideOwnGesture(e)) return;
             touchStartYRef.current = e.touches[0].clientY;
         };
         const onTouchMove = (e) => {
-            if (isInsidePriceEditor(e)) return;
+            if (isInsideOwnGesture(e)) return;
             const currentY = e.touches[0].clientY;
             const deltaY = touchStartYRef.current - currentY;
             touchStartYRef.current = currentY;
@@ -1342,60 +1358,63 @@ function useLenisPreventToggle() {
     return { ref, handleWheel };
 }
 
-const SLIDE_KNOB = 40;   // knob diameter (px)
-const SLIDE_PAD = 4;     // gap between knob and track edge (px) -> 40 + 4*2 = 48 = h-12
+const SLIDE_KNOB = 40;
+const SLIDE_KNOB_COMPACT = 32;
+const SLIDE_PAD = 4;
 
-function SlideToConfirm({ label, onConfirm, busy, resetKey, disabled = false }) {
+function SlideToConfirm({
+    label, onConfirm, busy, resetKey, disabled = false,
+    compact = false, busyLabel = "Updating…", doneLabel = "Updated",
+}) {
+    const knob = compact ? SLIDE_KNOB_COMPACT : SLIDE_KNOB;
     const trackRef = useRef(null);
     const x = useMotionValue(0);
     const [maxX, setMaxX] = useState(0);
     const [confirmed, setConfirmed] = useState(false);
 
-    // Track width -> how far the knob can travel (with equal padding both ends).
+    // ResizeObserver instead of a one-time measure: when the track is
+    // inside a Tailwind `md:hidden` block, it measures 0 while hidden and
+    // gets its real width the moment the breakpoint flips.
     useEffect(() => {
-        const measure = () =>
-            setMaxX(Math.max(0, (trackRef.current?.offsetWidth || 0) - SLIDE_KNOB - SLIDE_PAD * 2));
+        const el = trackRef.current;
+        if (!el) return;
+        const measure = () => setMaxX(Math.max(0, el.offsetWidth - knob - SLIDE_PAD * 2));
         measure();
-        window.addEventListener("resize", measure);
-        return () => window.removeEventListener("resize", measure);
-    }, []);
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [knob]);
 
-    // Reset whenever the inputs above change (same role the old `key` remount had).
     useEffect(() => {
         setConfirmed(false);
         animate(x, 0, { duration: 0.2 });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [resetKey]);
 
-    const fillWidth = useTransform(x, (v) => v + SLIDE_KNOB + SLIDE_PAD * 2);
+    const fillWidth = useTransform(x, (v) => v + knob + SLIDE_PAD * 2);
     const labelOpacity = useTransform(x, [0, Math.max(maxX * 0.6, 1)], [1, 0]);
 
     return (
         <div
             ref={trackRef}
-            className="relative h-12 w-full overflow-hidden rounded-full select-none"
+            className={`relative ${compact ? "h-10" : "h-12"} w-full overflow-hidden rounded-full select-none`}
             style={{ background: C.hairSoft, opacity: disabled ? 0.5 : 1 }}
         >
-            {/* Progress fill that follows the knob */}
             <motion.div
                 className="pointer-events-none absolute inset-y-0 left-0 rounded-full"
                 style={{ width: fillWidth, background: `${C.primary}14` }}
             />
-
-            {/* Label — centred within the space not covered by the knob */}
             <motion.p
-                className="pointer-events-none absolute inset-0 flex items-center justify-center text-center text-[11px] font-bold tracking-wide"
+                className={`pointer-events-none absolute inset-0 flex items-center justify-center text-center ${compact ? "text-[10px] whitespace-nowrap" : "text-[11px]"} font-bold tracking-wide`}
                 style={{
                     color: C.muted,
-                    paddingLeft: SLIDE_KNOB + SLIDE_PAD * 2,
-                    paddingRight: SLIDE_KNOB + SLIDE_PAD * 2,
+                    paddingLeft: knob + SLIDE_PAD * 2,
+                    paddingRight: compact ? SLIDE_PAD * 2 : knob + SLIDE_PAD * 2,
                     opacity: busy || confirmed ? 1 : labelOpacity,
                 }}
             >
-                {busy ? "Updating…" : confirmed ? "Updated" : label}
+                {busy ? busyLabel : confirmed ? doneLabel : label}
             </motion.p>
-
-            {/* Knob — vertically centred, equal inset on all sides */}
             <motion.div
                 drag={busy || confirmed || disabled ? false : "x"}
                 dragConstraints={{ left: 0, right: maxX }}
@@ -1415,8 +1434,8 @@ function SlideToConfirm({ label, onConfirm, busy, resetKey, disabled = false }) 
                     x,
                     top: SLIDE_PAD,
                     left: SLIDE_PAD,
-                    width: SLIDE_KNOB,
-                    height: SLIDE_KNOB,
+                    width: knob,
+                    height: knob,
                     background: C.primary,
                     cursor: disabled ? "not-allowed" : "grab",
                     touchAction: "pan-y",
@@ -1478,6 +1497,9 @@ function SellerDropdown({
     token, onOwnListingPriceApplied, onOwnListingSaved, onEditOwnListing,
 }) {
     const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
+
+    // Below md, the "Buy now" button becomes a swipe-to-buy slider.
+    // const isMobile = useIsBelowMd();
 
     // const { ref: listRef, handleWheel, handleTouchStart, handleTouchMove } = useLenisPreventToggle();
     const { ref: listRef, handleWheel } = useLenisPreventToggle();
@@ -1600,6 +1622,10 @@ function SellerDropdown({
                                 const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
                                 // const outOfStock = isSellerOutOfStock(s);
 
+                                // On mobile the slider is the purchase gesture, so the
+                                // row itself must not start a purchase when tapped.
+                                // const rowBuyable = !outOfStock && !isOwn && !isMobile;
+
                                 return (
                                     <Fragment key={s.submission_id}>
                                         {s.submission_id === firstOutOfStockId && (
@@ -1618,11 +1644,13 @@ function SellerDropdown({
                                                 if ((e.key === "Enter" || e.key === " ") && !outOfStock && !isOwn) { e.preventDefault(); onBuySeller(s); }
                                             }}
                                             aria-disabled={outOfStock || isOwn}
+                                            className="relative flex items-start gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9] max-md:cursor-default"
 
-                                            className="relative flex items-start gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9]"
                                             style={outOfStock ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
                                         >
-
+                                            {/* Mobile only: swallow row taps so the slider is the only way to buy */}
+                                            <div className="absolute inset-0 md:hidden" onClick={(e) => e.stopPropagation()} />
+                                            {/* LEFT COL — seller info */}
                                             <div className="min-w-0 flex-1">
                                                 <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
                                                     {s.display_name}{isOwn ? " (You)" : ""}
@@ -1647,7 +1675,7 @@ function SellerDropdown({
                                                     <button
                                                         type="button"
                                                         onClick={(e) => { e.stopPropagation(); onEditOwnListing(s.submission_id); }}
-                                                        className="mt-2.5 rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white"
+                                                        className="relative z-10 mt-2.5 rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white"
                                                         style={{ background: C.primary }}
                                                     >
                                                         Edit listing
@@ -1656,6 +1684,7 @@ function SellerDropdown({
 
                                             </div>
 
+                                            {/* RIGHT COL — price + buy action */}
                                             <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5 text-right">
                                                 {outOfStock ? (
                                                     <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
@@ -1673,10 +1702,28 @@ function SellerDropdown({
 
                                                 ) : (
                                                     <>
-                                                        <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                                        <span className="rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white" style={{ background: C.primary }}>
-                                                            Buy now
-                                                        </span>
+                                                        {/* Mobile: price + swipe to buy, full width of the right column */}
+                                                        <div className="relative z-10 flex w-[9.5rem] flex-col items-end gap-1.5 md:hidden">
+                                                            <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                                            <div data-swipe-buy="" className="w-full" onClick={(e) => e.stopPropagation()}>
+                                                                <SlideToConfirm
+                                                                    compact
+                                                                    label="Swipe to buy"
+                                                                    busyLabel="Opening…"
+                                                                    doneLabel="Opening…"
+                                                                    resetKey={s.submission_id}
+                                                                    onConfirm={() => onBuySeller(s)}
+                                                                />
+                                                            </div>
+                                                        </div>
+
+                                                        {/* md and up: price + Buy now button */}
+                                                        <div className="hidden flex-col items-end gap-1.5 md:flex">
+                                                            <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                                            <span className="rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white" style={{ background: C.primary }}>
+                                                                Buy now
+                                                            </span>
+                                                        </div>
                                                     </>
                                                 )}
                                             </div>
