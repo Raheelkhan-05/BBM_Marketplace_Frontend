@@ -30,6 +30,7 @@ const KEY_STEP = 0.25;
 const KEY_STEP_BIG = 5;
 const THUMB = 18;           // px
 const THUMB_HIT = 20;       // px radius counted as "grabbed the thumb"
+const TYPING_COMMIT_MS = 350;
 
 function clamp(n, min, max) {
     if (Number.isNaN(n)) return min;
@@ -222,6 +223,8 @@ function CommissionSlider({ value, onChange, C, isErr, hideHint = false }) {
     const trackRef = useRef(null);
     const onChangeRef = useRef(onChange);
     onChangeRef.current = onChange;
+    const typingTimerRef = useRef(null);
+    const commitRef = useRef(null);
 
     // Keep the text field in sync when value changes from outside
     // (e.g. a chip toggle sets the same form field), but don't fight
@@ -235,21 +238,26 @@ function CommissionSlider({ value, onChange, C, isErr, hideHint = false }) {
 
     const commit = useCallback(
         (raw) => {
+            clearTimeout(typingTimerRef.current);
             const n = clamp(parseFloat(raw), MIN, MAX);
             const rounded = Math.round(n * 100) / 100; // keep up to 2 decimals
-            onChange(rounded);
+            onChangeRef.current(rounded);
             setText(String(rounded));
             syncedValueRef.current = rounded;
         },
-        [onChange]
+        []
     );
+    commitRef.current = commit;
 
-    // Single place the slider pushes a value into form state + text box.
     const setFromSlider = useCallback((n) => {
+        clearTimeout(typingTimerRef.current);
         onChangeRef.current(n);
         setText(String(n));
         syncedValueRef.current = n;
     }, []);
+
+    // don't leave a timer running after unmount
+    useEffect(() => () => clearTimeout(typingTimerRef.current), []);
 
     const handleTextChange = (e) => {
         const raw = e.target.value;
@@ -260,6 +268,12 @@ function CommissionSlider({ value, onChange, C, isErr, hideHint = false }) {
             if (!Number.isNaN(n) && n >= MIN && n <= MAX) {
                 onChange(n);
                 syncedValueRef.current = n;
+            }
+
+            // Commit automatically once the user pauses typing.
+            clearTimeout(typingTimerRef.current);
+            if (raw !== "" && !Number.isNaN(n)) {
+                typingTimerRef.current = setTimeout(() => commitRef.current(raw), TYPING_COMMIT_MS);
             }
         }
     };
