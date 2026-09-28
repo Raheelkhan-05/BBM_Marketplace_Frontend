@@ -125,6 +125,32 @@ function inr(n) {
     return val.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
+const UNIT_SHORT = {
+    pieces: "Pc",
+    piece: "Pc",
+    kg: "Kg",
+    grams: "G",
+    gram: "G",
+    litres: "L",
+    litre: "L",
+    millilitres: "ml",
+    millilitre: "ml",
+    dozen: "doz",
+    tons: "T",
+    ton: "T",
+};
+
+// "Litres" -> "L", "Pieces" -> "pc", ... Unknown units are returned unchanged.
+function shortUnit(unit) {
+    if (!unit) return "";
+    return UNIT_SHORT[String(unit).trim().toLowerCase()] || String(unit);
+}
+
+// 10 -> "10", 1000 -> "1,000", 0.5 -> "0.5" (max 3 decimals, no trailing zeros)
+function fmtQty(n) {
+    return Number(n).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+}
+
 // Same slab/discount resolution logic as BuyNowModal.js — kept in sync
 // on purpose so "how much you'll actually pay" never disagrees between
 // the feed dropdown and the checkout modal.
@@ -751,12 +777,24 @@ function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
 // same but slightly denser).
 function PriceBreakdown({ breakdown, unit, size = "row" }) {
     if (!breakdown) return null;
-    const { unitPrice, packPrice, masterPackPrice, hasMasterPack } = breakdown;
+    const { unitPrice, packPrice, masterPackPrice, hasMasterPack, packQty, masterQty } = breakdown;
+
+    const short = shortUnit(unit);
+
+    // With a unit: label every price by how many base units it covers
+    // ("/pc", "/10 pc", "/50 pc"). Without one, fall back to Pack / M Pack.
+    // A pack of exactly 1 unit would just repeat the unit row ("/pc" and
+    // "/1 pc" at the same price), so that row is skipped in that case.
+    const packDuplicatesUnit = !!unit && Number(packQty) === 1;
 
     const rows = [
-        unitPrice != null && unit ? { label: unit, value: unitPrice } : null,
-        packPrice != null ? { label: "Pack", value: packPrice } : null,
-        hasMasterPack && masterPackPrice != null ? { label: "M Pack", value: masterPackPrice } : null,
+        unitPrice != null && unit ? { label: short, value: unitPrice } : null,
+        packPrice != null && !packDuplicatesUnit
+            ? { label: unit ? `${fmtQty(packQty)} ${short}` : "Pack", value: packPrice }
+            : null,
+        hasMasterPack && masterPackPrice != null
+            ? { label: unit ? `${fmtQty(masterQty)} ${short}` : "M Pack", value: masterPackPrice }
+            : null,
     ].filter(Boolean);
 
     if (!rows.length) return null;
@@ -1124,10 +1162,16 @@ function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, in
     const gst = Number(gstPercent) || 0;
     const priceExGst = includeGst ? sourcePrice : sourcePrice / (1 + gst / 100);
     const { perBaseUnit, perPack, perMasterPack } = deriveDisplayPrices(priceExGst, packSize, masterPackSize);
+
+    const outer = hasOuterPack(masterPackSize);
+    const packQty = Number(packSize) > 0 ? Number(packSize) : 1;               // base units in 1 pack
+    const masterQty = outer ? packQty * Number(masterPackSize) : null;         // base units in 1 master pack
+
     return {
         unitPrice: perBaseUnit, packPrice: perPack, masterPackPrice: perMasterPack,
-        hasMasterPack: hasOuterPack(masterPackSize), basis: getSaleUnit(masterPackSize),
+        hasMasterPack: outer, basis: getSaleUnit(masterPackSize),
         isCustomPriced: !!isCustomPriced,
+        packQty, masterQty,
     };
 }
 
