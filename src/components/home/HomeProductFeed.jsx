@@ -1401,10 +1401,8 @@ function SellerDropdown({
             className="overflow-hidden"
         >
             <div className="border-b px-3 py-2.5 sm:px-4" style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}>
-                <div className="flex flex-nowrap items-center justify-between gap-2 pb-2 overflow-x-auto">
-                    <span className="whitespace-nowrap text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
-                        {showSkeleton ? "Loading sellers…" : total > 0 ? `${total} seller${total === 1 ? "" : "s"} listing this` : "No sellers yet"}
-                    </span>
+                <div className="flex flex-nowrap items-center justify-end gap-2 pb-2 overflow-x-auto">
+
 
                     {/* Pills stay mounted through a sort switch — never gated on loading */}
                     {items.length > 1 && (
