@@ -1,23 +1,28 @@
 // components/FloatingSellButton.jsx
 //
-// Fixed floating action button, bottom-right, navigates to /seller/sell.
-// Deliberately uses a DIFFERENT motion language than MarketplaceSearchBar's
-// comet-spin border: here the signature move is a slow "heartbeat" ripple —
-// soft rings that bloom outward from the button on a loop, like a pin
-// pulsing on a map, plus the plus-icon rotating open on hover. Same brand
-// colors as the rest of the app (#D2462B / #006F83), new gesture.
+// Desktop (md+): the original floating "Sell" button with its hover label.
+// Mobile (<md): a floating MENU button. Tapping it morphs the icon into an X,
+// dims the screen, and fans the menu items upward one by one.
+// Sell is the first (highlighted) item, so nothing is lost on mobile.
 
-import { useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
-
-const RUST = "#D2462B";
-const TEAL = "#006F83";
+import { useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { Plus, Menu, X, Home, LayoutGrid } from "lucide-react";
 
 const RIPPLE_COUNT = 3;
 const RIPPLE_CYCLE_MS = 2600;
 const RIPPLE_STAGGER_MS = RIPPLE_CYCLE_MS / RIPPLE_COUNT;
 
-export default function FloatingSellButton({ to = "/seller/sell", label = "Sell" }) {
+// TODO: replace/extend with the same items BottomNavStrip used to show.
+const DEFAULT_MENU_ITEMS = [
+    { key: "home", label: "Home", icon: Home, to: "/home" },
+    { key: "browse", label: "Browse", icon: LayoutGrid, to: "/browse" },
+];
+
+/* ───────────────────────── Desktop (unchanged) ───────────────────────── */
+
+function DesktopSellButton({ to, label }) {
     const navigate = useNavigate();
 
     return (
@@ -74,7 +79,7 @@ export default function FloatingSellButton({ to = "/seller/sell", label = "Sell"
                 }
             `}</style>
 
-            <div className="fixed bottom-16 right-4 z-[38] md:bottom-8 md:right-8 fsb-wrap">
+            <div className="fixed bottom-8 right-8 z-[38] fsb-wrap">
                 <div className="relative">
                     {Array.from({ length: RIPPLE_COUNT }).map((_, i) => (
                         <span
@@ -88,12 +93,12 @@ export default function FloatingSellButton({ to = "/seller/sell", label = "Sell"
                         type="button"
                         onClick={() => navigate(to)}
                         aria-label={`${label} — start listing an item`}
-                        className="fsb-group fsb-btn relative flex h-14 w-14 items-center justify-center rounded-full text-white sm:h-16 sm:w-16 sm:w-auto sm:px-5"
-                        style={{ background: '#000000' }}
+                        className="fsb-group fsb-btn relative flex h-16 w-auto items-center justify-center rounded-full px-5 text-white"
+                        style={{ background: "#000000" }}
                     >
                         <span className="relative flex items-center">
                             <Plus size={24} strokeWidth={2.5} className="fsb-icon shrink-0" />
-                            <span className="fsb-label hidden text-[13px] font-bold tracking-wide sm:inline">
+                            <span className="fsb-label text-[13px] font-bold tracking-wide">
                                 {label}
                             </span>
                         </span>
@@ -101,5 +106,131 @@ export default function FloatingSellButton({ to = "/seller/sell", label = "Sell"
                 </div>
             </div>
         </>
+    );
+}
+
+/* ───────────────────────── Mobile menu button ───────────────────────── */
+
+function MobileMenuFab({ sellTo, sellLabel, menuItems }) {
+    const navigate = useNavigate();
+    const { pathname } = useLocation();
+    const [open, setOpen] = useState(false);
+
+    // Sell first + highlighted, then the rest
+    const items = [
+        { key: "sell", label: sellLabel, icon: Plus, to: sellTo, primary: true },
+        ...menuItems,
+    ];
+
+    useEffect(() => { setOpen(false); }, [pathname]);
+
+    useEffect(() => {
+        if (!open) return;
+        const onKey = (e) => e.key === "Escape" && setOpen(false);
+        document.addEventListener("keydown", onKey);
+        return () => document.removeEventListener("keydown", onKey);
+    }, [open]);
+
+    const handleItem = (item) => {
+        setOpen(false);
+        if (item.onClick) item.onClick();
+        else if (item.to) navigate(item.to);
+    };
+
+    return (
+        <div className="md:hidden">
+            {/* dim backdrop */}
+            <AnimatePresence>
+                {open && (
+                    <motion.div
+                        key="fab-backdrop"
+                        className="fixed inset-0 z-[44] bg-black/35 backdrop-blur-[2px]"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        onClick={() => setOpen(false)}
+                    />
+                )}
+            </AnimatePresence>
+
+            {/* sits just above the bottom search bar */}
+            <div
+                className="fixed right-4 z-[46] flex flex-col items-end"
+                style={{ bottom: "calc(84px + env(safe-area-inset-bottom, 0px))" }}
+            >
+                <AnimatePresence>
+                    {open && (
+                        <div className="mb-3 flex flex-col items-end gap-2.5">
+                            {items.map((item, i) => {
+                                const Icon = item.icon;
+                                // reverse stagger: items nearest the button appear first
+                                const delay = (items.length - 1 - i) * 0.05;
+                                return (
+                                    <motion.button
+                                        key={item.key}
+                                        type="button"
+                                        onClick={() => handleItem(item)}
+                                        initial={{ opacity: 0, y: 16, scale: 0.85 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: 10, scale: 0.9, transition: { duration: 0.12 } }}
+                                        transition={{ type: "spring", stiffness: 420, damping: 26, delay }}
+                                        className="flex items-center gap-2.5"
+                                    >
+                                        <span
+                                            className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-bold tracking-wide shadow-lg ${item.primary ? "bg-black text-white" : "bg-white text-slate-800"
+                                                }`}
+                                        >
+                                            {item.label}
+                                        </span>
+                                        <span
+                                            className={`flex h-11 w-11 items-center justify-center rounded-full shadow-lg ${item.primary ? "bg-black text-white" : "bg-white text-slate-800"
+                                                }`}
+                                        >
+                                            <Icon size={20} strokeWidth={2.2} />
+                                        </span>
+                                    </motion.button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                <motion.button
+                    type="button"
+                    onClick={() => setOpen((v) => !v)}
+                    aria-label={open ? "Close menu" : "Open menu"}
+                    aria-expanded={open}
+                    initial={{ opacity: 0, y: 14, scale: 0.85 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ type: "spring", stiffness: 380, damping: 22, delay: 0.15 }}
+                    whileTap={{ scale: 0.92 }}
+                    className="relative flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-[0_8px_22px_-6px_rgba(0,0,0,0.5)]"
+                >
+                    <AnimatePresence mode="wait" initial={false}>
+                        <motion.span
+                            key={open ? "x" : "menu"}
+                            initial={{ rotate: open ? -90 : 90, opacity: 0, scale: 0.6 }}
+                            animate={{ rotate: 0, opacity: 1, scale: 1 }}
+                            exit={{ rotate: open ? 90 : -90, opacity: 0, scale: 0.6 }}
+                            transition={{ duration: 0.18 }}
+                            className="flex"
+                        >
+                            {open ? <X size={24} strokeWidth={2.5} /> : <Menu size={24} strokeWidth={2.5} />}
+                        </motion.span>
+                    </AnimatePresence>
+                </motion.button>
+            </div>
+        </div>
+    );
+}
+
+/* ───────────────────────── Public component ───────────────────────── */
+
+export default function FloatingSellButton({ to = "/seller/sell", label = "Sell" }) {
+    return (
+        <div className="hidden md:block">
+            <DesktopSellButton to={to} label={label} />
+        </div>
     );
 }

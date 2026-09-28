@@ -1968,10 +1968,21 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     // Logs EVERY event the socket receives, to check the event name
     useEffect(() => {
-        if (!socket || typeof socket.onAny !== "function") return;
-        const handler = (name, ...args) => rtLog("socket event:", name, args);
-        socket.onAny(handler);
-        return () => socket.offAny(handler);
+        if (!socket) return;
+        const onConnect = () => rtLog("CONNECT", { id: socket.id, transport: socket.io?.engine?.transport?.name });
+        const onDisconnect = (reason) => rtLog("DISCONNECT", reason);
+        const onError = (err) => rtLog("CONNECT_ERROR", err?.message || err);
+        const onReconnectAttempt = (n) => rtLog("RECONNECT_ATTEMPT", n);
+        socket.on("connect", onConnect);
+        socket.on("disconnect", onDisconnect);
+        socket.on("connect_error", onError);
+        socket.io?.on?.("reconnect_attempt", onReconnectAttempt);
+        return () => {
+            socket.off("connect", onConnect);
+            socket.off("disconnect", onDisconnect);
+            socket.off("connect_error", onError);
+            socket.io?.off?.("reconnect_attempt", onReconnectAttempt);
+        };
     }, [socket]);
     const itemsRef = useRef([]);
     const sellerStateRef = useRef({});
@@ -2072,17 +2083,21 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     // After a dropped connection we may have missed events — resync quietly.
     const sawDisconnectRef = useRef(false);
+    // Safety net: if the socket is down, poll the open product; and resync when the tab becomes visible again.
     useEffect(() => {
-        if (!connected) { sawDisconnectRef.current = true; return; }
-        if (!sawDisconnectRef.current) return;
-        sawDisconnectRef.current = false;
-        // If the server restarted, its timestamps may have reset below what
-        // we remember — which would make us drop every new event as "old".
-        lastTsRef.current.clear();
-        if (openItemIdRef.current) loadSellersForRef.current?.(openItemIdRef.current, { silent: true });
-        itemsRef.current.forEach((it) => refreshLowest(it.id));
+        const resync = () => {
+            rtLog("resync (safety net)");
+            if (openItemIdRef.current) loadSellersForRef.current?.(openItemIdRef.current, { silent: true });
+            itemsRef.current.forEach((it) => refreshLowest(it.id));
+        };
+        const onVisible = () => { if (document.visibilityState === "visible") resync(); };
+        document.addEventListener("visibilitychange", onVisible);
+        const poll = !connected ? setInterval(resync, 15000) : null;
+        return () => {
+            document.removeEventListener("visibilitychange", onVisible);
+            if (poll) clearInterval(poll);
+        };
     }, [connected, refreshLowest]);
-
     useEffect(() => () => {
         Object.values(lowestTimersRef.current).forEach(clearTimeout);
         clearTimeout(reconcileTimerRef.current);

@@ -366,13 +366,7 @@ export default function CartPage() {
     const { socket } = useSocket();
     const { token } = useAuth();
     const { registerActive, unregisterActive } = useOrderResume();
-    useEffect(() => {
-        const keys = Object.entries(pendingTransportProposals)
-            .filter(([, p]) => p?.routeOptionId)
-            .map(([, p]) => p.routeOptionId);
-        keys.forEach(registerActive);
-        return () => keys.forEach(unregisterActive);
-    }, [pendingTransportProposals, registerActive, unregisterActive]);
+
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [viewingItem, setViewingItem] = useState(null);
@@ -392,56 +386,7 @@ export default function CartPage() {
     const goToShipping = () => { setError(null); setPhase("shipping"); };
     const goBackToReview = () => { setError(null); setPhase("review"); };
 
-    // Resume-from-approved-transport-proposal for the cart flow. The
-    // per-seller preference-fetch effect below (keyed off effectiveAddress)
-    // will pick up the now-approved preference on its own once an address
-    // is set — this just needs to get the buyer straight to "shipping" and
-    // make sure an address is already selected so that effect actually runs.
-    const cartResumeAppliedRef = useRef(false);
-    useEffect(() => {
-        if (cartResumeAppliedRef.current) return;
-        const intents = getAllPendingIntents().filter((i) => i.source === "cart" && (i.status === "approved" || i.status === "pending"));
-        if (!intents.length) return;
-        cartResumeAppliedRef.current = true;
-        setPhase("shipping");
-        // The per-seller preference-poll effect further down already
-        // re-checks every pendingTransportProposals[sellerId] against the
-        // server — it will pick up the approved status on its own once
-        // effectiveAddress is set, no extra wiring needed here.
-    }, []); // run once on mount
 
-    // Instant reflect: when OrderResumeContext resolves an approval/rejection
-    // for a proposal THIS cart page is actively tracking, mirror it into
-    // local state immediately instead of waiting for cartClockTick.
-    useEffect(() => {
-        if (!socket) return; // socket already imported via useSocket() if not — add: const { socket } = useSocket();
-        const onNotif = async (payload) => {
-            const routeOptionId = payload?.routeOptionId;
-            if (!routeOptionId) return;
-            const sellerId = Object.entries(pendingTransportProposals).find(([, p]) => p?.routeOptionId === routeOptionId)?.[0];
-            if (!sellerId) return;
-            const proposal = pendingTransportProposals[sellerId];
-
-            if (payload.type === "transport_proposal_approved") {
-                const res = await fetchBuyerTransportPreference(sellerId, effectiveAddress?.state, effectiveAddress?.city, token, routeOptionId);
-                if (res?.checkedProposalStatus === "approved" && res?.preference) {
-                    setTransportPreferences((prev) => ({ ...prev, [sellerId]: res.preference }));
-                    setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
-                    reportApproved(routeOptionId, res.preference);
-                }
-            } else if (payload.type === "transport_proposal_rejected") {
-                setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
-                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
-                setTransportRemovedNotices((prev) => ({
-                    ...prev,
-                    [sellerId]: `Your proposed transport option (${proposal.summary}) wasn't accepted by this seller.` + (payload.reason ? ` Reason: ${payload.reason}` : ""),
-                }));
-                reportRejected(routeOptionId, payload.reason || null);
-            }
-        };
-        socket.on("notification:new", onNotif);
-        return () => socket.off("notification:new", onNotif);
-    }, [socket, pendingTransportProposals, effectiveAddress?.state, effectiveAddress?.city, token]);
 
     // ---- Shipping address — same shared component & behavior as
     // BuyNowModal (see components/shipping/AddressBook.jsx). Picking or
@@ -558,6 +503,65 @@ export default function CartPage() {
     const [transportRemovedNotices, setTransportRemovedNotices] = useState({});
     const [activeTransportSellerId, setActiveTransportSellerId] = useState(null);
     const lastCheckedRouteBySellerRef = useRef({});
+
+    // Resume-from-approved-transport-proposal for the cart flow. The
+    // per-seller preference-fetch effect below (keyed off effectiveAddress)
+    // will pick up the now-approved preference on its own once an address
+    // is set — this just needs to get the buyer straight to "shipping" and
+    // make sure an address is already selected so that effect actually runs.
+    const cartResumeAppliedRef = useRef(false);
+    useEffect(() => {
+        if (cartResumeAppliedRef.current) return;
+        const intents = getAllPendingIntents().filter((i) => i.source === "cart" && (i.status === "approved" || i.status === "pending"));
+        if (!intents.length) return;
+        cartResumeAppliedRef.current = true;
+        setPhase("shipping");
+        // The per-seller preference-poll effect further down already
+        // re-checks every pendingTransportProposals[sellerId] against the
+        // server — it will pick up the approved status on its own once
+        // effectiveAddress is set, no extra wiring needed here.
+    }, []); // run once on mount
+
+    // Instant reflect: when OrderResumeContext resolves an approval/rejection
+    // for a proposal THIS cart page is actively tracking, mirror it into
+    // local state immediately instead of waiting for cartClockTick.
+    useEffect(() => {
+        if (!socket) return; // socket already imported via useSocket() if not — add: const { socket } = useSocket();
+        const onNotif = async (payload) => {
+            const routeOptionId = payload?.routeOptionId;
+            if (!routeOptionId) return;
+            const sellerId = Object.entries(pendingTransportProposals).find(([, p]) => p?.routeOptionId === routeOptionId)?.[0];
+            if (!sellerId) return;
+            const proposal = pendingTransportProposals[sellerId];
+
+            if (payload.type === "transport_proposal_approved") {
+                const res = await fetchBuyerTransportPreference(sellerId, effectiveAddress?.state, effectiveAddress?.city, token, routeOptionId);
+                if (res?.checkedProposalStatus === "approved" && res?.preference) {
+                    setTransportPreferences((prev) => ({ ...prev, [sellerId]: res.preference }));
+                    setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
+                    reportApproved(routeOptionId, res.preference);
+                }
+            } else if (payload.type === "transport_proposal_rejected") {
+                setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
+                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
+                setTransportRemovedNotices((prev) => ({
+                    ...prev,
+                    [sellerId]: `Your proposed transport option (${proposal.summary}) wasn't accepted by this seller.` + (payload.reason ? ` Reason: ${payload.reason}` : ""),
+                }));
+                reportRejected(routeOptionId, payload.reason || null);
+            }
+        };
+        socket.on("notification:new", onNotif);
+        return () => socket.off("notification:new", onNotif);
+    }, [socket, pendingTransportProposals, effectiveAddress?.state, effectiveAddress?.city, token]);
+
+    useEffect(() => {
+        const keys = Object.entries(pendingTransportProposals)
+            .filter(([, p]) => p?.routeOptionId)
+            .map(([, p]) => p.routeOptionId);
+        keys.forEach(registerActive);
+        return () => keys.forEach(unregisterActive);
+    }, [pendingTransportProposals, registerActive, unregisterActive]);
 
     useEffect(() => {
         const city = effectiveAddress?.city;

@@ -36,6 +36,8 @@ export default function Layout() {
   const isChatDetailPage = /^\/chat\/[^/]+/.test(pathname);
   const isOrdersPage = pathname.startsWith("/orders/");
   const isSalesOrdersPage = pathname.startsWith("/seller/orders/");
+  const isHomePage = pathname === "/home";
+
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [rfqOpen, setRfqOpen] = useState(false);
 
