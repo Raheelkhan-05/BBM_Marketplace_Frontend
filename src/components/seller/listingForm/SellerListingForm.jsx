@@ -1432,6 +1432,74 @@ export default function SellerListingForm({
                 </SectionCard>
             )}
 
+            {/* ---------------- Fulfilment ---------------- */}
+            {showSection("fulfilment") && (
+                <SectionCard id="section-fulfilment" icon={Truck} title="Fulfilment"
+                    open={resolvedOnlySection ? true : openSection === "fulfilment"} onOpenChange={(v) => handleSectionToggle("fulfilment", v)}
+                    missingCount={missingCountBySection.fulfilment} totalCount={totalCountBySection.fulfilment}
+                    readOnly={readOnly}>
+                    <FieldAnchor fieldKey="stockType">
+                        <ChipToggleGroup label="Fulfilment" value={form.stockType}
+                            onChange={(v) => { setField("stockType", v); touch("stockType"); }}
+                            error={isErr("stockType")}
+                            options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]}
+                            onEnterKey={(dir) => handleFieldAdvance("stockType", dir)} />
+
+                    </FieldAnchor>
+                    {form.stockType === "ready_stock" ? (
+                        <FieldAnchor fieldKey="stockQuantity">
+                            <TextFieldWithUnitSelect
+                                required dense
+                                label="Available stock"
+                                value={form.stockQuantity}
+                                onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))}
+                                onBlur={() => touch("stockQuantity")}
+                                error={isErr("stockQuantity")}
+                                inputMode="decimal"
+                                unitValue={form.stockQuantityBasis}
+                                unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
+                                onUnitChange={changeStockBasis}
+                                onEnterKey={(dir) => handleFieldAdvance("stockQuantity", dir)}
+                            />
+                        </FieldAnchor>
+                    ) : (
+                        <FieldAnchor fieldKey="productionLeadTimeDays">
+                            <TextField required dense label="Lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" onEnterKey={(dir) => handleFieldAdvance("productionLeadTimeDays", dir)} />
+                        </FieldAnchor>
+                    )}
+                </SectionCard>
+            )}
+
+            {/* ---------------- Terms ---------------- */}
+            {showSection("terms") && (
+                <SectionCard id="section-terms" icon={FileText} title="Terms"
+                    open={resolvedOnlySection ? true : openSection === "terms"} onOpenChange={(v) => handleSectionToggle("terms", v)}
+                    missingCount={missingCountBySection.terms} totalCount={totalCountBySection.terms}
+                    readOnly={readOnly}>
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        <FieldAnchor fieldKey="returnPolicyKey">
+                            <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => { setField("returnPolicyKey", v); handleFieldAdvance("returnPolicyKey", "forward"); }} error={isErr("returnPolicyKey")} />
+                        </FieldAnchor>
+                        <FieldAnchor fieldKey="warrantyKey">
+                            <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => { setField("warrantyKey", v); handleFieldAdvance("warrantyKey", "forward"); }} error={isErr("warrantyKey")} />
+                        </FieldAnchor>
+                    </div>
+                </SectionCard>
+            )}
+
+            {/* ---------------- Delivery ---------------- */}
+            {showSection("delivery") && (
+                <SectionCard id="section-delivery" icon={Truck} title="Delivery"
+                    open={resolvedOnlySection ? true : openSection === "delivery"} onOpenChange={(v) => handleSectionToggle("delivery", v)}
+                    missingCount={missingCountBySection.delivery} totalCount={totalCountBySection.delivery}
+                    readOnly={readOnly}>
+                    <FieldAnchor fieldKey="dispatchingLocations">
+                        <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
+                    </FieldAnchor>
+                </SectionCard>
+            )}
+
+
             {/* ---------------- Pricing ---------------- */}
             {showSection("pricing") && (
                 <SectionCard id="section-pricing" icon={IndianRupee} title="Tax & Pricing"
@@ -1774,73 +1842,6 @@ export default function SellerListingForm({
                             }}
                         />
                     )}
-                </SectionCard>
-            )}
-
-            {/* ---------------- Fulfilment ---------------- */}
-            {showSection("fulfilment") && (
-                <SectionCard id="section-fulfilment" icon={Truck} title="Fulfilment"
-                    open={resolvedOnlySection ? true : openSection === "fulfilment"} onOpenChange={(v) => handleSectionToggle("fulfilment", v)}
-                    missingCount={missingCountBySection.fulfilment} totalCount={totalCountBySection.fulfilment}
-                    readOnly={readOnly}>
-                    <FieldAnchor fieldKey="stockType">
-                        <ChipToggleGroup label="Fulfilment" value={form.stockType}
-                            onChange={(v) => { setField("stockType", v); touch("stockType"); }}
-                            error={isErr("stockType")}
-                            options={[{ value: "ready_stock", label: "Ready stock" }, { value: "made_to_order", label: "Made-to-order" }]}
-                            onEnterKey={(dir) => handleFieldAdvance("stockType", dir)} />
-
-                    </FieldAnchor>
-                    {form.stockType === "ready_stock" ? (
-                        <FieldAnchor fieldKey="stockQuantity">
-                            <TextFieldWithUnitSelect
-                                required dense
-                                label="Available stock"
-                                value={form.stockQuantity}
-                                onChange={(v) => setField("stockQuantity", v.replace(/[^\d.]/g, ""))}
-                                onBlur={() => touch("stockQuantity")}
-                                error={isErr("stockQuantity")}
-                                inputMode="decimal"
-                                unitValue={form.stockQuantityBasis}
-                                unitOptions={getUnitBasisOptions(form.hasOuterPack, form.unit)}
-                                onUnitChange={changeStockBasis}
-                                onEnterKey={(dir) => handleFieldAdvance("stockQuantity", dir)}
-                            />
-                        </FieldAnchor>
-                    ) : (
-                        <FieldAnchor fieldKey="productionLeadTimeDays">
-                            <TextField required dense label="Lead time (days)" value={form.productionLeadTimeDays} onChange={(v) => setField("productionLeadTimeDays", v.replace(/[^\d]/g, ""))} onBlur={() => touch("productionLeadTimeDays")} error={isErr("productionLeadTimeDays")} inputMode="numeric" onEnterKey={(dir) => handleFieldAdvance("productionLeadTimeDays", dir)} />
-                        </FieldAnchor>
-                    )}
-                </SectionCard>
-            )}
-
-            {/* ---------------- Terms ---------------- */}
-            {showSection("terms") && (
-                <SectionCard id="section-terms" icon={FileText} title="Terms"
-                    open={resolvedOnlySection ? true : openSection === "terms"} onOpenChange={(v) => handleSectionToggle("terms", v)}
-                    missingCount={missingCountBySection.terms} totalCount={totalCountBySection.terms}
-                    readOnly={readOnly}>
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                        <FieldAnchor fieldKey="returnPolicyKey">
-                            <PolicySelect kind="return_policy" label="Return / replacement policy" required value={form.returnPolicyKey} onChange={(v) => { setField("returnPolicyKey", v); handleFieldAdvance("returnPolicyKey", "forward"); }} error={isErr("returnPolicyKey")} />
-                        </FieldAnchor>
-                        <FieldAnchor fieldKey="warrantyKey">
-                            <PolicySelect kind="warranty" label="Warranty" required value={form.warrantyKey} onChange={(v) => { setField("warrantyKey", v); handleFieldAdvance("warrantyKey", "forward"); }} error={isErr("warrantyKey")} />
-                        </FieldAnchor>
-                    </div>
-                </SectionCard>
-            )}
-
-            {/* ---------------- Delivery ---------------- */}
-            {showSection("delivery") && (
-                <SectionCard id="section-delivery" icon={Truck} title="Delivery"
-                    open={resolvedOnlySection ? true : openSection === "delivery"} onOpenChange={(v) => handleSectionToggle("delivery", v)}
-                    missingCount={missingCountBySection.delivery} totalCount={totalCountBySection.delivery}
-                    readOnly={readOnly}>
-                    <FieldAnchor fieldKey="dispatchingLocations">
-                        <DispatchingLocationsPicker value={form.dispatchingLocations} onChange={(v) => setField("dispatchingLocations", v)} />
-                    </FieldAnchor>
                 </SectionCard>
             )}
 
