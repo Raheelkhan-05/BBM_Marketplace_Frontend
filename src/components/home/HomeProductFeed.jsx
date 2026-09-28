@@ -151,6 +151,9 @@ const RECONCILE_DELAY_MS = 800;
 const DEBOUNCE_MS = 250;
 // See "DUPLICATE-FETCH GUARD" note above.
 const DUPLICATE_GUARD_MS = 300;
+// Set to false to silence realtime debug logs.
+const DEBUG_RT = true;
+const rtLog = (...args) => { if (DEBUG_RT) console.log("[RT]", ...args); };
 
 // Deterministic-but-fake price per item, so it doesn't jump around on
 // re-render — never derived from the real price, purely cosmetic.
@@ -1959,6 +1962,17 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     // ── REAL-TIME PRICE UPDATES ─────────────────────────────────────────
     const { socket, connected } = useSocket() || {};
+    useEffect(() => {
+        rtLog("socket state:", { hasSocket: !!socket, connected, id: socket?.id });
+    }, [socket, connected]);
+
+    // Logs EVERY event the socket receives, to check the event name
+    useEffect(() => {
+        if (!socket || typeof socket.onAny !== "function") return;
+        const handler = (name, ...args) => rtLog("socket event:", name, args);
+        socket.onAny(handler);
+        return () => socket.offAny(handler);
+    }, [socket]);
     const itemsRef = useRef([]);
     const sellerStateRef = useRef({});
     const openItemIdRef = useRef(null);
@@ -1994,6 +2008,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                 if (seq !== lowestSeqRef.current[itemId]) return;
                 if (!res?.success) return;
                 const best = computeListingLowestFromSellers(res.items || []);
+                rtLog("refreshLowest result:", { itemId, probed: (res.items || []).length, bestPrice: best?.price, bestSeller: best?.display_name });
                 setItems((prev) => prev.map((it) => (String(it.id) === String(itemId) ? applyLowestToItem(it, best) : it)));
             } catch { /* next event will retry */ }
         }, 120);
@@ -2014,17 +2029,27 @@ export default function HomeProductFeed({ category, q = "" }) {
     useEffect(() => {
         if (!socket) return;
         const onUpdate = (evt) => {
+            rtLog("listing:update received:", evt);
             const { brandItemId, submissionId, patch, available, ts } = evt || {};
-            if (!brandItemId || !submissionId) return;
-            if ((lastTsRef.current.get(submissionId) || 0) > (ts || 0)) return;
+            if (!brandItemId || !submissionId) {
+                rtLog("DROP missing ids", { brandItemId, submissionId });
+                return;
+            }
+            if ((lastTsRef.current.get(submissionId) || 0) > (ts || 0)) {
+                rtLog("DROP out-of-order", { submissionId, ts, last: lastTsRef.current.get(submissionId) });
+                return;
+            }
             lastTsRef.current.set(submissionId, ts || 0);
-            if (!itemsRef.current.some((it) => String(it.id) === String(brandItemId))) return;
+            if (!itemsRef.current.some((it) => String(it.id) === String(brandItemId))) {
+                rtLog("DROP product not in feed", { brandItemId, feedIds: itemsRef.current.map((i) => i.id) });
+                return;
+            }
 
             const entry = sellerStateRef.current[brandItemId];
             const known = entry?.items?.some((r) => r.submission_id === submissionId);
+            rtLog("row known in dropdown?", known, "available?", available, "patch keys:", patch && Object.keys(patch));
 
             if (known) {
-                // Instant: patch the row in place (or drop it if no longer available).
                 setSellerState((prev) => {
                     const cur = prev[brandItemId];
                     if (!cur?.items) return prev;
@@ -2036,7 +2061,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                 });
                 if (String(openItemIdRef.current) === String(brandItemId)) scheduleReconcile(brandItemId);
             } else if (available && String(openItemIdRef.current) === String(brandItemId)) {
-                // A row we don't have yet (new listing / newly visible) — silent reload.
+                rtLog("unknown row, silent reload");
                 loadSellersForRef.current?.(brandItemId, { silent: true });
             }
             refreshLowest(brandItemId);
