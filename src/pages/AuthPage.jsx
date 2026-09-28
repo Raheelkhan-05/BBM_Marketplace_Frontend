@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowRight, Loader2, Mail, Phone, CheckCircle2, Pencil,
-  Building2, Handshake, ArrowLeft, User,
+  Building2, Handshake, ArrowLeft, User, RotateCw,
 } from "lucide-react";
 
 import SmartLink from "../components/SmartLink.jsx";
@@ -228,13 +228,9 @@ export default function AuthPage() {
       }
     });
 
-  // FIX: this used to be "fire and forget" — requestOtp(identifier) with no
-  // await, no loading state, and no error surfaced. If the resend call
-  // failed (rate limit, network blip, provider hiccup), the OtpPanel timer
-  // still restarted as if it worked, so the user just saw a silently
-  // "broken" resend button with no code ever arriving. Now it goes through
-  // withLoading (so serverError renders in OtpPanel) and returns whether it
-  // actually succeeded so the panel only resets its countdown on success.
+  // Goes through withLoading (so serverError renders in OtpPanel) and
+  // returns whether it actually succeeded so the panel only resets its
+  // countdown on success.
   const handleResend = () =>
     withLoading(async () => {
       const res = await requestOtp(identifier);
@@ -496,11 +492,22 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
 // ---------------------------------------------------------------------------
 // Step 2: OTP entry
 // ---------------------------------------------------------------------------
-function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled }) {
+// `resetKey` — bump it (e.g. after a successful resend) to wipe the boxes.
+// The boxes also clear themselves whenever `error` appears, so a wrong /
+// expired code never leaves stale digits behind that the user has to erase
+// one by one before they can retry.
+function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled, resetKey = 0 }) {
   const [digits, setDigits] = useState(Array(length).fill(""));
   const inputsRef = useRef([]);
 
   useEffect(() => { inputsRef.current[0]?.focus(); }, []);
+
+  useEffect(() => {
+    if (!error && !resetKey) return;
+    setDigits(Array(length).fill(""));
+    inputsRef.current[0]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error, resetKey, length]);
 
   const handleChange = (i, val) => {
     const digit = val.replace(/\D/g, "").slice(-1);
@@ -523,16 +530,6 @@ function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled }) {
     inputsRef.current[Math.min(pasted.length, length) - 1]?.focus();
     if (pasted.length === length) onComplete(pasted);
   };
-
-  // Clear the boxes whenever a new code is requested (e.g. after Resend),
-  // so stale digits from a failed attempt don't linger on screen.
-  useEffect(() => {
-    if (!disabled) {
-      setDigits(Array(length).fill(""));
-      inputsRef.current[0]?.focus();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [length]);
 
   return (
     <div>
@@ -574,6 +571,7 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
   const [resending, setResending] = useState(false);
   const [justResent, setJustResent] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
   const channel = detectChannel(identifier);
 
   useEffect(() => {
@@ -582,12 +580,9 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
     return () => clearTimeout(id);
   }, [secondsLeft]);
 
-  // FIX: previously this just called onResend() and reset the 30s timer
-  // unconditionally — even if the resend request actually failed, the
-  // button would disappear behind the countdown as if a new code had gone
-  // out. Now the countdown only restarts on a confirmed success, and the
-  // button is disabled + shows a spinner while the request is in flight so
-  // it can't be double-tapped.
+  // The countdown only restarts on a confirmed success, and the button is
+  // disabled + shows a spinner while the request is in flight so it can't
+  // be double-tapped.
   const handleResend = async () => {
     if (secondsLeft > 0 || resending) return;
     setResending(true);
@@ -597,6 +592,7 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
       if (ok !== false) {
         setSecondsLeft(RESEND_SECONDS);
         setJustResent(true);
+        setResetKey((k) => k + 1);
       }
     } finally {
       setResending(false);
@@ -614,7 +610,9 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
           title="Enter the code"
           subtitle={
             <>
-              <span className="break-all">Sent to {channel === "email" ? identifier : `+91 ${identifier}`}.</span>{" "}
+              <span className="break-all">
+                {channel === "email" ? `Sent to ${identifier}.` : `We called +91 ${identifier} with your code.`}
+              </span>{" "}
               <button type="button" onClick={onEditNumber} className="inline-flex items-center gap-1 font-bold tracking-wide" style={{ color: BRAND }}>
                 <Pencil className="h-3 w-3" />Edit
               </button>
@@ -623,20 +621,22 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
         />
 
         <div className="mt-7 sm:mt-8">
-          <OtpBoxes onComplete={(code) => !loading && onVerify(code)} error={serverError} disabled={loading} />
+          <OtpBoxes onComplete={(code) => !loading && onVerify(code)} error={serverError} disabled={loading} resetKey={resetKey} />
         </div>
 
         <div className="mt-4 flex flex-col items-center gap-1.5 text-center sm:mt-5">
           <p className="text-[12.5px] font-medium tracking-wide text-slate-400">
             {secondsLeft > 0 ? (
-              <>Resend code in {secondsLeft}s</>
+              <>{channel === "phone" ? "Missed the call? Try again" : "Didn't get it? Resend"} in {secondsLeft}s</>
             ) : (
               <button
-                type="button" onClick={handleResend} disabled={resending}
+                type="button" onClick={handleResend} disabled={resending || loading}
                 className="inline-flex items-center gap-1.5 font-bold tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ color: BRAND }}
               >
-                {resending ? (<><Loader2 className="h-3 w-3 animate-spin" />Resending…</>) : "Resend code"}
+                {resending
+                  ? (<><Loader2 className="h-3 w-3 animate-spin" />{channel === "phone" ? "Calling…" : "Resending…"}</>)
+                  : (<><RotateCw className="h-3 w-3" />{channel === "phone" ? "Call me again" : "Resend code"}</>)}
               </button>
             )}
           </p>
@@ -647,6 +647,15 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
             >
               <Phone className="h-3 w-3" />
               We're calling +91 {identifier} again now.
+            </motion.p>
+          )}
+          {channel === "email" && justResent && secondsLeft === RESEND_SECONDS && (
+            <motion.p
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="flex items-center gap-1.5 text-[11.5px] font-bold tracking-wide" style={{ color: BRAND }}
+            >
+              <Mail className="h-3 w-3" />
+              A new code is on its way to {identifier}.
             </motion.p>
           )}
         </div>
@@ -660,8 +669,14 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
 // ---------------------------------------------------------------------------
 function AltContactVerify({ token, field, label, placeholder, inputMode, formatValue, validate, required, prefillVerifiedValue, onVerified, showRequiredError }) {
   const [value, setValue] = useState(prefillVerifiedValue || "");
+  // idle | confirm | sending | otp | verified
   const [stage, setStage] = useState(prefillVerifiedValue ? "verified" : "idle");
   const [error, setError] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [resetKey, setResetKey] = useState(0);
 
   useEffect(() => {
     if (prefillVerifiedValue) {
@@ -672,18 +687,41 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillVerifiedValue]);
 
+  // Resend countdown — only ticks while the OTP boxes are on screen.
+  useEffect(() => {
+    if (stage !== "otp" || secondsLeft <= 0) return;
+    const id = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [stage, secondsLeft]);
+
   const valid = validate(value);
   const isPhoneField = field === "phone";
 
+  // Label that replaces "Mobile number" / "Email" while the code is being
+  // entered, so it's obvious which contact the OTP belongs to.
+  const otpLabel = isPhoneField
+    ? `Enter the OTP for +91 ${value}`
+    : `Enter the OTP sent to ${value}`;
+  const otpHint = isPhoneField
+    ? "You'll get a call with a 6-digit code."
+    : "Check your inbox (and spam folder) for a 6-digit code.";
+
   const actuallySendCode = async () => {
     setError(null);
+    setNotice(null);
     setStage("sending");
-    const res = await requestContactOtp(token, field, value);
-    if (!res.success) {
-      setError(res.message || "Couldn't send the code.");
+    let res;
+    try {
+      res = await requestContactOtp(token, field, value);
+    } catch {
+      res = { success: false };
+    }
+    if (!res?.success) {
+      setError(res?.message || "Couldn't send the code.");
       setStage("idle");
       return;
     }
+    setSecondsLeft(RESEND_SECONDS);
     setStage("otp");
   };
 
@@ -698,14 +736,55 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
     await actuallySendCode();
   };
 
-  const confirmCode = async (otp) => {
+  // Missed the call / email never arrived — request a fresh code without
+  // leaving the OTP step. The countdown restarts only if the request worked.
+  const resendCode = async () => {
+    if (secondsLeft > 0 || resending || verifying) return;
     setError(null);
-    const res = await verifyContactOtp(token, field, value, otp);
-    if (!res.success) {
-      setError(res.message || "That code didn't match.");
-      setStage("otp");
+    setNotice(null);
+    setResending(true);
+    let res;
+    try {
+      res = await requestContactOtp(token, field, value);
+    } catch {
+      res = { success: false };
+    }
+    setResending(false);
+    if (!res?.success) {
+      setError(res?.message || "Couldn't resend the code. Try again.");
       return;
     }
+    setSecondsLeft(RESEND_SECONDS);
+    setResetKey((k) => k + 1);
+    setNotice(isPhoneField ? `We're calling +91 ${value} again now.` : `A new code is on its way to ${value}.`);
+  };
+
+  // Wrong number / email typo — go back to the input with the value intact.
+  const editValue = () => {
+    setError(null);
+    setNotice(null);
+    setSecondsLeft(0);
+    setStage("idle");
+  };
+
+  const confirmCode = async (otp) => {
+    if (verifying) return;
+    setError(null);
+    setNotice(null);
+    setVerifying(true);
+    let res;
+    try {
+      res = await verifyContactOtp(token, field, value, otp);
+    } catch {
+      res = { success: false };
+    }
+    if (!res?.success) {
+      setError(res?.message || "That code didn't match. Check and try again.");
+      setStage("otp");
+      setVerifying(false);
+      return;
+    }
+    setVerifying(false);
     setStage("verified");
     onVerified?.(true, value);
   };
@@ -727,7 +806,20 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
 
   return (
     <div className="flex flex-col">
-      <label className="text-[12.5px] font-bold tracking-tight text-slate-700">{label}</label>
+      {stage === "otp" ? (
+        <div className="flex items-start justify-between gap-3">
+          <label className="min-w-0 break-all text-[12.5px] font-bold tracking-tight text-slate-700">{otpLabel}</label>
+          <button
+            type="button" onClick={editValue} disabled={verifying}
+            className="inline-flex shrink-0 items-center gap-1 text-[12px] font-bold tracking-wide disabled:opacity-50"
+            style={{ color: BRAND }}
+          >
+            <Pencil className="h-3 w-3" />Edit
+          </button>
+        </div>
+      ) : (
+        <label className="text-[12.5px] font-bold tracking-tight text-slate-700">{label}</label>
+      )}
 
       {stage !== "otp" ? (
         <>
@@ -762,8 +854,39 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
           </AnimatePresence>
         </>
       ) : (
-        <div className="mt-2.5 max-w-[280px]">
-          <OtpBoxes length={6} onComplete={confirmCode} error={error} />
+        <div className="mt-2 flex flex-col gap-2.5">
+          <p className="text-[12px] font-medium tracking-wide text-slate-500">{otpHint}</p>
+
+          <div className="max-w-[280px]">
+            <OtpBoxes length={6} onComplete={confirmCode} error={error} disabled={verifying} resetKey={resetKey} />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            {secondsLeft > 0 ? (
+              <p className="text-[12px] font-medium tracking-wide text-slate-400">
+                {isPhoneField ? "Missed the call? Try again" : "Didn't get it? Resend"} in {secondsLeft}s
+              </p>
+            ) : (
+              <button
+                type="button" onClick={resendCode} disabled={resending || verifying}
+                className="inline-flex items-center gap-1.5 self-start text-[12.5px] font-bold tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
+                style={{ color: BRAND }}
+              >
+                {resending
+                  ? (<><Loader2 className="h-3 w-3 animate-spin" />{isPhoneField ? "Calling…" : "Resending…"}</>)
+                  : (<><RotateCw className="h-3 w-3" />{isPhoneField ? "Call me again" : "Resend code"}</>)}
+              </button>
+            )}
+            {notice && (
+              <motion.p
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="flex items-center gap-1.5 text-[11.5px] font-bold tracking-wide" style={{ color: BRAND }}
+              >
+                {isPhoneField ? <Phone className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
+                {notice}
+              </motion.p>
+            )}
+          </div>
         </div>
       )}
       {error && stage !== "otp" && <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">{error}</p>}
