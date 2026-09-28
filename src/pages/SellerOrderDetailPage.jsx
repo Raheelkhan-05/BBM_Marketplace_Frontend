@@ -27,7 +27,7 @@ import { ArrowLeft, Package, User, ShieldCheck, Loader2, MapPin, IndianRupee, Ra
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
-import { fetchSellerOrderById, confirmSellerOrder, confirmSellerOrderWithTransport, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder, fetchSellerOwnTransportOptions } from "../utils/api.js";
+import { fetchSellerOrderById, confirmSellerOrder, confirmSellerOrderWithTransport, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder, fetchSellerOwnTransportOptions, fetchSellerOwnGstin } from "../utils/api.js";
 import { shipSellerOrderWithTransport } from "../utils/api.transport.js";
 import ConfirmOrderModal from "../components/orders/ConfirmOrderModal.jsx";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
@@ -122,10 +122,22 @@ export default function SellerOrderDetailPage() {
     const [shipModalOpen, setShipModalOpen] = useState(false);
 
     const [sellerTransportOptions, setSellerTransportOptions] = useState([]);
+    const [sellerGstin, setSellerGstin] = useState(null);
 
     useEffect(() => {
         fetchSellerOwnTransportOptions(token).then((res) => {
             if (res?.success) setSellerTransportOptions(res.transportOptions || []);
+        });
+    }, [token]);
+
+    // Seller's own GSTIN, for the PO document's Vendor block — mirrors
+    // checkoutStatus()'s business_profiles.gstin lookup on the buyer side
+    // (orders.controller.js). profile (AuthContext) doesn't carry this
+    // field, so it's fetched once here, same pattern as
+    // sellerTransportOptions above.
+    useEffect(() => {
+        fetchSellerOwnGstin(token).then((res) => {
+            if (res?.success) setSellerGstin(res.gstin || null);
         });
     }, [token]);
 
@@ -135,6 +147,7 @@ export default function SellerOrderDetailPage() {
         display_name: profile?.display_name || profile?.shop_name || profile?.business_name || null,
         city: profile?.city || null,
         state: profile?.state || null,
+        gstin: sellerGstin,
     };
 
     const fetcher = useCallback((orderId) => fetchSellerOrderById(token, orderId), [token]);

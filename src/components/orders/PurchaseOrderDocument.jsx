@@ -59,9 +59,33 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
 
     const isDelivered = order.status === "delivered";
 
-    const vendor = order.seller || vendorOverride || null;
+    // order.seller (buyer view, via getMyOrder's join) and vendorOverride
+    // (seller view, from the seller's own profile) can each carry fields
+    // the other lacks — e.g. order.seller has city/state but no gstin,
+    // while vendorOverride has gstin but no shop location. Merge them
+    // (vendorOverride's fields win when both are present) instead of
+    // picking one wholesale, or whichever fields only exist on the
+    // unused object silently disappear.
+    // order.seller (buyer view, via getMyOrder's join) and vendorOverride
+    // (seller view — passed in with only a FEW fields actually known,
+    // e.g. gstin; its city/state/display_name are often null because
+    // AuthContext's profile doesn't carry a seller's shop info) can each
+    // carry data the other lacks. A plain object spread would let
+    // vendorOverride's null fields stomp order.seller's real values, so
+    // merge field-by-field and only take a vendorOverride value when it's
+    // actually present (not null/undefined).
+    function mergeVendor(base, override) {
+        if (!base && !override) return null;
+        const merged = { ...(base || {}) };
+        for (const [key, value] of Object.entries(override || {})) {
+            if (value != null) merged[key] = value;
+        }
+        return merged;
+    }
+    const vendor = mergeVendor(order.seller, vendorOverride);
     const vendorName = vendor?.display_name || "—";
     const vendorLocation = [vendor?.city, vendor?.state].filter(Boolean).join(", ");
+    const vendorGstin = vendor?.business?.gstin || vendor?.gstin || null;
     const deliverToName = addr.contact_name || order.buyer_contact_name || "";
 
     const sellerState = vendor?.state || null;
@@ -121,6 +145,7 @@ export default function PurchaseOrderDocument({ order, variant = "buyer", vendor
                 <div className="mt-4 grid grid-cols-1 gap-4 border-b pb-4 sm:grid-cols-2" style={{ borderColor: C.hair }}>
                     <PartyBlock label="Vendor (Seller)" name={vendorName}>
                         {vendorLocation && <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>{vendorLocation}</p>}
+                        {vendorGstin && <p className="mt-0.5 text-[12px] font-bold tracking-wide" style={{ color: C.ink }}>GSTIN: {vendorGstin}</p>}
                     </PartyBlock>
                     <PartyBlock
                         label="Deliver To"

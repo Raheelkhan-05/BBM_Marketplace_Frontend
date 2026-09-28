@@ -188,6 +188,14 @@ export async function fetchSellerOwnTransportOptions(token) {
   return res.json();
 }
 
+export async function fetchSellerOwnGstin(token) {
+  const res = await fetch(`${API_BASE}/seller/gstin`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
+  });
+  try { return await res.json(); } catch { return { success: false }; }
+}
+
 export async function fetchSellerBankDetails(token) {
   const res = await fetch(`${API_BASE}/seller/bank-details`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();

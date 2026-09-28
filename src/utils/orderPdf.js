@@ -264,9 +264,24 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
 
     const { rows: breakdownRows, totals, gstPercent } = computeOrderBreakdown(order);
 
-    const vendorInfo = order.seller || vendor || null;
+    // Same merge as PurchaseOrderDocument.jsx — order.seller and the
+    // `vendor` param (passed in as vendorOverride from the seller-view
+    // page) can each carry fields the other lacks.
+    // Same field-by-field merge as PurchaseOrderDocument.jsx — a plain
+    // spread would let `vendor`'s null fields (e.g. seller-view's often-
+    // null city/state) overwrite order.seller's real values.
+    function mergeVendor(base, override) {
+        if (!base && !override) return null;
+        const merged = { ...(base || {}) };
+        for (const [key, value] of Object.entries(override || {})) {
+            if (value != null) merged[key] = value;
+        }
+        return merged;
+    }
+    const vendorInfo = mergeVendor(order.seller, vendor);
     const vendorName = vendorInfo?.display_name || "—";
     const vendorLocation = [vendorInfo?.city, vendorInfo?.state].filter(Boolean).join(", ");
+    const vendorGstin = vendorInfo?.business?.gstin || vendorInfo?.gstin || null;
 
     const buyerShopName = order.buyer_business_name || order.buyer_contact_name || "—";
     const buyerGstin = order.buyer_gstin || "—";
@@ -317,7 +332,7 @@ export async function generateOrderPdf(order, { vendor, logoBase64 } = {}) {
         [
             { label: "Shop Name (Buyer)", value: buyerShopName },
             { label: "Buyer GSTIN", value: buyerGstin },
-            { label: "Buyer Phone", value: order.buyer_contact_phone },
+            { label: "Seller GSTIN", value: vendorGstin || "—" },
         ],
         [
             { label: "Order No.", value: order.order_number },

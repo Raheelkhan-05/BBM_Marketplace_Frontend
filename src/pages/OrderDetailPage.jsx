@@ -125,6 +125,8 @@ export default function OrderDetailPage() {
 
     const fetcher = useCallback((orderId) => fetchOrderById(token, orderId), [token]);
     const { order, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
+    // console.log(order);
+
     // console.log("order.stock_shortfall:", order?.stock_shortfall, "| lead_time_snapshot:", order?.items?.[0]?.lead_time_snapshot);
 
     // Steps down the My Orders badge + Purchase Orders tab count for this
@@ -181,6 +183,9 @@ export default function OrderDetailPage() {
                         <p className="truncate text-[14px] font-extrabold tracking-wider" style={{ color: C.ink }}>{order.seller.display_name}</p>
                         {(order.seller.city || order.seller.state) && (
                             <p className="text-[12.5px] font-semibold tracking-wider" style={{ color: C.muted }}>{[order.seller.city, order.seller.state].filter(Boolean).join(", ")}</p>
+                        )}
+                        {order.seller.business?.gstin && (
+                            <p className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>GSTIN: {order.seller.business.gstin}</p>
                         )}
                     </div>
                     {order.seller.shop_slug && (
