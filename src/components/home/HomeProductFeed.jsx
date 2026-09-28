@@ -77,7 +77,7 @@
 //   only kicks back in at the `sm:` breakpoint and up, where there's
 //   room for it. Nothing about the row/column logic itself changed.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1158,6 +1158,12 @@ function moqInSaleUnits(seller) {
     return Math.max(1, Number(seller.moq) || 1);
 }
 
+// Single definition of "out of stock", used by the list order, the row
+// styling and the badge, so they can never disagree.
+function isSellerOutOfStock(s) {
+    return s.stock_type === "ready_stock" && Number(s.stock_quantity) < moqInSaleUnits(s);
+}
+
 // "Best price" tab only: search every real breakpoint (MOQ + every
 // slab/discount minQty at or above it) and surface whichever gives the
 // lowest actual price. This is the piece deliberately NOT moved into SQL
@@ -1340,13 +1346,18 @@ function applyLowestToItem(it, best) {
 }
 
 function computeListingLowestFromSellers(sellers) {
-    let best = null;
+    let bestIn = null;
+    let bestOut = null;
     for (const s of sellers) {
         const price = Number(s.price);
         if (!(price > 0)) continue;
-        if (!best || price < Number(best.price)) best = s;
+        if (isSellerOutOfStock(s)) {
+            if (!bestOut || price < Number(bestOut.price)) bestOut = s;
+        } else if (!bestIn || price < Number(bestIn.price)) {
+            bestIn = s;
+        }
     }
-    return best;
+    return bestIn || bestOut;
 }
 
 // Inline seller accordion. `state` is { loading, items, error, total,
@@ -1377,16 +1388,33 @@ function SellerDropdown({
 
     const sortedItems = useMemo(() => {
         if (!items.length) return items;
-        if (sortMode !== "best_price") return items;
-        const withMeta = items.map((s) => ({ s, pricing: bestAchievablePricing(s, includeGst) }));
-        withMeta.sort((a, b) => (a.pricing?.pack?.final ?? Infinity) - (b.pricing?.pack?.final ?? Infinity));
-        return withMeta.map((x) => x.s);
+
+        let list = items;
+        if (sortMode === "best_price") {
+            const withMeta = items.map((s) => ({ s, pricing: bestAchievablePricing(s, includeGst) }));
+            withMeta.sort((a, b) => (a.pricing?.pack?.final ?? Infinity) - (b.pricing?.pack?.final ?? Infinity));
+            list = withMeta.map((x) => x.s);
+        }
+
+        // Stable split: in-stock sellers keep their sorted order on top,
+        // out-of-stock sellers keep theirs at the bottom.
+        const inStock = [];
+        const outOfStock = [];
+        list.forEach((s) => (isSellerOutOfStock(s) ? outOfStock : inStock).push(s));
+        return outOfStock.length ? [...inStock, ...outOfStock] : list;
     }, [items, sortMode, includeGst]);
 
+    // "Fastest" badge must never land on an out-of-stock seller.
     const fastestSubmissionId = useMemo(() => {
-        if (sortMode !== "fastest_delivery" || !hasKnownDestination || !sortedItems.length) return null;
-        return sortedItems[0]?.submission_id ?? null;
+        if (sortMode !== "fastest_delivery" || !hasKnownDestination) return null;
+        return sortedItems.find((s) => !isSellerOutOfStock(s))?.submission_id ?? null;
     }, [sortMode, hasKnownDestination, sortedItems]);
+
+    // First out-of-stock row, used to place the small section label.
+    const firstOutOfStockId = useMemo(
+        () => sortedItems.find(isSellerOutOfStock)?.submission_id ?? null,
+        [sortedItems]
+    );
 
     const alreadySelling = item?.has_own_listing === true;
 
@@ -1464,83 +1492,90 @@ function SellerDropdown({
                                 const isOwn = isOwnSellerRow(s, currentUserId);
                                 const totalDeliveryDays = s.total_delivery_days;
                                 const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
-
+                                // const outOfStock = isSellerOutOfStock(s);
 
                                 return (
-                                    <motion.div
-                                        key={s.submission_id}
-                                        layout
-                                        transition={{ layout: { duration: 0.35, ease: EASE } }}
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => !outOfStock && !isOwn && onBuySeller(s)}
-                                        onKeyDown={(e) => {
-                                            if ((e.key === "Enter" || e.key === " ") && !outOfStock && !isOwn) { e.preventDefault(); onBuySeller(s); }
-                                        }}
-                                        aria-disabled={outOfStock || isOwn}
-
-                                        className="relative flex items-start gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9]"
-                                        style={outOfStock ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
-                                    >
-
-                                        <div className="min-w-0 flex-1">
-                                            <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                {s.display_name}{isOwn ? " (You)" : ""}
+                                    <Fragment key={s.submission_id}>
+                                        {s.submission_id === firstOutOfStockId && (
+                                            <p className="pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
+                                                Out of stock
                                             </p>
-                                            {(s.city || s.state) && (
-                                                <p className="mt-0.5 flex items-center gap-1 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                                    <MapPin className="h-3 w-3 shrink-0" /> {[s.city, s.state].filter(Boolean).join(", ")}
+                                        )}
+                                        <motion.div
+                                            key={s.submission_id}
+                                            layout
+                                            transition={{ layout: { duration: 0.35, ease: EASE } }}
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => !outOfStock && !isOwn && onBuySeller(s)}
+                                            onKeyDown={(e) => {
+                                                if ((e.key === "Enter" || e.key === " ") && !outOfStock && !isOwn) { e.preventDefault(); onBuySeller(s); }
+                                            }}
+                                            aria-disabled={outOfStock || isOwn}
+
+                                            className="relative flex items-start gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9]"
+                                            style={outOfStock ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
+                                        >
+
+                                            <div className="min-w-0 flex-1">
+                                                <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                    {s.display_name}{isOwn ? " (You)" : ""}
                                                 </p>
-                                            )}
-                                            <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
-                                                {totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
-                                                {!s.is_custom_priced && pricing?.discountPercent > 0
-                                                    ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
-                                                    : ""}
-                                            </p>
-                                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                                <FreightPill included={s.freight_included} />
-                                                {isFastest && <FastestBadge />}
+                                                {(s.city || s.state) && (
+                                                    <p className="mt-0.5 flex items-center gap-1 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                                        <MapPin className="h-3 w-3 shrink-0" /> {[s.city, s.state].filter(Boolean).join(", ")}
+                                                    </p>
+                                                )}
+                                                <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                    {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
+                                                    {totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
+                                                    {!s.is_custom_priced && pricing?.discountPercent > 0
+                                                        ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
+                                                        : ""}
+                                                </p>
+                                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                                    <FreightPill included={s.freight_included} />
+                                                    {isFastest && <FastestBadge />}
+                                                </div>
+                                                {isOwn && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); onEditOwnListing(s.submission_id); }}
+                                                        className="mt-2.5 rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white"
+                                                        style={{ background: C.primary }}
+                                                    >
+                                                        Edit listing
+                                                    </button>
+                                                )}
+
                                             </div>
-                                            {isOwn && (
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => { e.stopPropagation(); onEditOwnListing(s.submission_id); }}
-                                                    className="mt-2.5 rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white"
-                                                    style={{ background: C.primary }}
-                                                >
-                                                    Edit listing
-                                                </button>
-                                            )}
 
-                                        </div>
-
-                                        <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5 text-right">
-                                            {outOfStock ? (
-                                                <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
-                                                    OUT OF STOCK
-                                                </span>
-                                            ) : !isLoggedIn ? (
-                                                <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
-                                            ) : isOwn ? (
-                                                <OwnListingPriceCell
-                                                    seller={s}
-                                                    includeGst={includeGst}
-                                                    submitting={savingOwnPriceId === s.submission_id}
-                                                    onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)}
-                                                />
-
-                                            ) : (
-                                                <>
-                                                    <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                                    <span className="rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white" style={{ background: C.primary }}>
-                                                        Buy now
+                                            <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5 text-right">
+                                                {outOfStock ? (
+                                                    <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
+                                                        OUT OF STOCK
                                                     </span>
-                                                </>
-                                            )}
-                                        </div>
-                                    </motion.div>
+                                                ) : !isLoggedIn ? (
+                                                    <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
+                                                ) : isOwn ? (
+                                                    <OwnListingPriceCell
+                                                        seller={s}
+                                                        includeGst={includeGst}
+                                                        submitting={savingOwnPriceId === s.submission_id}
+                                                        onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)}
+                                                    />
+
+                                                ) : (
+                                                    <>
+                                                        <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                                        <span className="rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white" style={{ background: C.primary }}>
+                                                            Buy now
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </motion.div>
+                                    </Fragment>
                                 );
                             })}
                             {hasMore && (
@@ -1549,7 +1584,8 @@ function SellerDropdown({
                                 </p>
                             )}
                         </div>
-                    )}
+                    )
+                    }
                 </div>
 
                 {!showSkeleton && !alreadySelling && (
@@ -1819,7 +1855,13 @@ export default function HomeProductFeed({ category, q = "" }) {
                 let changed = false;
                 const next = prev.map((it) => {
                     if (String(it.id) !== String(itemId)) return it;
-                    if (it.lowest_price === best.price && it.lowest_price_pack_size === best.pack_size) return it;
+                    if (
+                        it.lowest_price === best.price &&
+                        it.lowest_price_pack_size === best.pack_size &&
+                        it.lowest_price_stock_type === best.stock_type &&
+                        it.lowest_price_available_stock === best.stock_quantity &&
+                        it.lowest_price_moq === best.moq
+                    ) return it;
                     changed = true;
                     return applyLowestToItem(it, best);
                 });
