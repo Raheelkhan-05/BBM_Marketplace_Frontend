@@ -75,7 +75,7 @@ export default function MarketplaceSearchBar({
     const navigate = useNavigate();
     const glowRings = useMemo(() => buildGlowRings(glowSpread), [glowSpread]);
 
-    const [suggestionsOn, setSuggestionsOn] = useState(true);
+    const [suggestionsOn, setSuggestionsOn] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
