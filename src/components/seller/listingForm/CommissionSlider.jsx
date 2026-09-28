@@ -5,9 +5,45 @@ import { Info, X } from "lucide-react";
 const MIN = 0.25;
 const MAX = 100;
 
+// ---------------------------------------------------------------------------
+// Velocity-sensitive ("pressure-like") scrubbing
+//
+// The slider is relative, not absolute: the thumb moves by
+//     Δvalue = Δpx / trackWidth * (MAX - MIN) * gain(speed)
+// where `speed` is the smoothed pointer speed in px/ms.
+//   - slow drag  -> tiny gain  -> fine, precise changes
+//   - fast drag  -> large gain -> big jumps across the range
+// gain interpolates *exponentially* (geometric) between GAIN_MIN and GAIN_MAX,
+// so there is no threshold or step: every speed in between feels continuous,
+// and one continuous touch can go slow -> fast -> slow without a hiccup.
+// ---------------------------------------------------------------------------
+const GAIN_MIN = 0.13;      // slowest drag: ~0.06% per px on a 250px track
+const GAIN_MAX = 5;         // fastest flick: ~2% per px on a 250px track
+const SPEED_LOW = 0.12;     // px/ms (~120 px/s) and below = fully "fine"
+const SPEED_HIGH = 1.2;     // px/ms (~1600 px/s) and above = fully "fast"
+const SPEED_TAU_MS = 50;    // smoothing time-constant of the speed estimate
+const SAMPLE_MIN_MS = 8;    // merge pointer events closer than this (coalesced events)
+const REVERSE_DAMP = 0.4;   // on direction reversal, cut speed so you can settle precisely
+const DRAG_STEP = 0.05;     // output resolution while dragging
+const TAP_STEP = 0.25;      // output resolution when tapping the track
+const KEY_STEP = 0.25;
+const KEY_STEP_BIG = 5;
+const THUMB = 18;           // px
+const THUMB_HIT = 20;       // px radius counted as "grabbed the thumb"
+
 function clamp(n, min, max) {
     if (Number.isNaN(n)) return min;
     return Math.min(max, Math.max(min, n));
+}
+
+function gainForSpeed(speed) {
+    const t = clamp((speed - SPEED_LOW) / (SPEED_HIGH - SPEED_LOW), 0, 1);
+    return GAIN_MIN * Math.pow(GAIN_MAX / GAIN_MIN, t);
+}
+
+function roundTo(n, step) {
+    // step is 0.05 / 0.25 — round then trim float noise
+    return Math.round(Math.round(n / step) * step * 100) / 100;
 }
 
 // Portaled to document.body and positioned with `fixed` coordinates
@@ -180,6 +216,13 @@ function CommissionSlider({ value, onChange, C, isErr, hideHint = false }) {
     const [dragging, setDragging] = useState(false);
     const syncedValueRef = useRef(value);
 
+    // Slider drag session (null when idle). Lives in a ref so pointermove
+    // never depends on stale closures or triggers re-renders by itself.
+    const dragRef = useRef(null);
+    const trackRef = useRef(null);
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
+
     // Keep the text field in sync when value changes from outside
     // (e.g. a chip toggle sets the same form field), but don't fight
     // the user while they're actively typing.
@@ -201,12 +244,12 @@ function CommissionSlider({ value, onChange, C, isErr, hideHint = false }) {
         [onChange]
     );
 
-    const handleSliderChange = (e) => {
-        const n = parseFloat(e.target.value);
-        onChange(n);
+    // Single place the slider pushes a value into form state + text box.
+    const setFromSlider = useCallback((n) => {
+        onChangeRef.current(n);
         setText(String(n));
         syncedValueRef.current = n;
-    };
+    }, []);
 
     const handleTextChange = (e) => {
         const raw = e.target.value;
@@ -231,6 +274,128 @@ function CommissionSlider({ value, onChange, C, isErr, hideHint = false }) {
 
     const sliderValue = value === "" ? MIN : clamp(Number(value), MIN, MAX);
     const pct = ((sliderValue - MIN) / (MAX - MIN)) * 100;
+
+    // ---- pointer (mouse / touch / pen) handling --------------------------
+    const endDrag = useCallback((el, pointerId) => {
+        dragRef.current = null;
+        setDragging(false);
+        try { el?.releasePointerCapture?.(pointerId); } catch { /* already released */ }
+    }, []);
+
+    const handlePointerDown = (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        if (dragRef.current) return; // ignore a second finger mid-drag
+        const track = trackRef.current;
+        if (!track) return;
+
+        const rect = track.getBoundingClientRect();
+        if (rect.width <= 0) return;
+
+        const startPct = (sliderValue - MIN) / (MAX - MIN);
+        dragRef.current = {
+            id: e.pointerId,
+            startX: e.clientX,
+            lastX: e.clientX,
+            lastT: e.timeStamp,
+            accDx: 0,           // |px| accumulated since last speed sample
+            accDt: 0,           // ms accumulated since last speed sample
+            speed: 0,           // smoothed px/ms
+            hasSpeed: false,
+            dir: 0,
+            value: sliderValue, // un-quantised value we integrate on
+            lastEmitted: sliderValue,
+            left: rect.left,
+            width: rect.width,
+            onThumb: Math.abs(e.clientX - (rect.left + startPct * rect.width)) <= THUMB_HIT,
+        };
+
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+        setDragging(true);
+    };
+
+    const handlePointerMove = (e) => {
+        const d = dragRef.current;
+        if (!d || e.pointerId !== d.id) return;
+
+        const dx = e.clientX - d.lastX;
+        const dt = Math.max(0, e.timeStamp - d.lastT);
+        d.lastX = e.clientX;
+        d.lastT = e.timeStamp;
+
+        // --- speed estimate: merge very close events, then EMA whose weight
+        // depends on elapsed time. After a pause (dt large) the estimate
+        // collapses to ~0, so resuming from a standstill is always precise.
+        d.accDx += Math.abs(dx);
+        d.accDt += dt;
+        if (d.accDt >= SAMPLE_MIN_MS) {
+            const inst = d.accDx / d.accDt;
+            if (!d.hasSpeed) {
+                d.speed = inst; // seed with the first real sample so a fast flick responds immediately
+                d.hasSpeed = true;
+            } else {
+                const alpha = 1 - Math.exp(-d.accDt / SPEED_TAU_MS);
+                d.speed += (inst - d.speed) * alpha;
+            }
+            d.accDx = 0;
+            d.accDt = 0;
+        }
+
+        if (dx === 0) return;
+
+        // Reversing direction usually means "I overshot, let me fine-tune".
+        const dir = dx > 0 ? 1 : -1;
+        if (d.dir !== 0 && dir !== d.dir) d.speed *= REVERSE_DAMP;
+        d.dir = dir;
+
+        const gain = gainForSpeed(d.speed);
+        d.value = clamp(d.value + (dx / d.width) * (MAX - MIN) * gain, MIN, MAX);
+
+        const q = clamp(roundTo(d.value, DRAG_STEP), MIN, MAX);
+        if (q !== d.lastEmitted) {
+            d.lastEmitted = q;
+            setFromSlider(q);
+        }
+    };
+
+    const handlePointerUp = (e) => {
+        const d = dragRef.current;
+        if (!d || e.pointerId !== d.id) return;
+
+        // A short tap on the empty track (not on the thumb) jumps there;
+        // the user can then scrub from that point with fine control.
+        if (Math.abs(e.clientX - d.startX) < 4 && !d.onThumb) {
+            const frac = clamp((e.clientX - d.left) / d.width, 0, 1);
+            const n = clamp(roundTo(MIN + frac * (MAX - MIN), TAP_STEP), MIN, MAX);
+            setFromSlider(n);
+        }
+        endDrag(e.currentTarget, e.pointerId);
+    };
+
+    const handlePointerCancel = (e) => {
+        const d = dragRef.current;
+        if (!d || e.pointerId !== d.id) return;
+        endDrag(e.currentTarget, e.pointerId);
+    };
+
+    const handleKeyDown = (e) => {
+        let next = null;
+        const big = e.shiftKey;
+        switch (e.key) {
+            case "ArrowRight":
+            case "ArrowUp":
+                next = sliderValue + (big ? KEY_STEP_BIG : KEY_STEP); break;
+            case "ArrowLeft":
+            case "ArrowDown":
+                next = sliderValue - (big ? KEY_STEP_BIG : KEY_STEP); break;
+            case "PageUp": next = sliderValue + KEY_STEP_BIG; break;
+            case "PageDown": next = sliderValue - KEY_STEP_BIG; break;
+            case "Home": next = MIN; break;
+            case "End": next = MAX; break;
+            default: return;
+        }
+        e.preventDefault();
+        setFromSlider(clamp(roundTo(next, KEY_STEP), MIN, MAX));
+    };
 
     return (
         <div
@@ -278,55 +443,56 @@ function CommissionSlider({ value, onChange, C, isErr, hideHint = false }) {
                 <span className="w-8 shrink-0 text-[10px] font-bold tabular-nums" style={{ color: C.muted }}>
                     {MIN}%
                 </span>
-                <div className="relative flex h-6 flex-1 items-center">
-                    <div className="absolute inset-x-0 h-1.5 rounded-full" style={{ background: `${C.secondary}18` }} />
-                    <div
-                        className="absolute h-1.5 rounded-full"
-                        style={{ width: `${pct}%`, background: C.secondary }}
-                    />
-                    <input
-                        type="range"
-                        min={MIN}
-                        max={MAX}
-                        step={0.25}
-                        value={sliderValue}
-                        onChange={handleSliderChange}
-                        onMouseDown={() => setDragging(true)}
-                        onMouseUp={() => setDragging(false)}
-                        onTouchStart={() => setDragging(true)}
-                        onTouchEnd={() => setDragging(false)}
-                        className="relative z-10 h-6 w-full cursor-pointer appearance-none bg-transparent"
-                        style={{
-                            WebkitAppearance: "none",
-                        }}
-                    />
-                    <style>{`
-                        input[type="range"]::-webkit-slider-thumb {
-                            -webkit-appearance: none;
-                            width: 18px;
-                            height: 18px;
-                            border-radius: 9999px;
-                            background: ${C.secondary};
-                            border: 2px solid white;
-                            box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-                            cursor: pointer;
-                            transition: transform 120ms ease;
-                            transform: scale(${dragging ? 1.15 : 1});
-                        }
-                        input[type="range"]::-moz-range-thumb {
-                            width: 18px;
-                            height: 18px;
-                            border-radius: 9999px;
-                            background: ${C.secondary};
-                            border: 2px solid white;
-                            box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-                            cursor: pointer;
-                        }
-                        input[type="range"]::-moz-range-track {
-                            background: transparent;
-                        }
-                    `}</style>
+
+                {/* Hit area: tall for easy grabbing. touch-action: pan-y lets the
+                    page still scroll vertically, while horizontal drags are ours. */}
+                <div
+                    role="slider"
+                    tabIndex={0}
+                    aria-label="Promotion and visibility budget percentage"
+                    aria-valuemin={MIN}
+                    aria-valuemax={MAX}
+                    aria-valuenow={sliderValue}
+                    aria-valuetext={`${sliderValue}%`}
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onPointerCancel={handlePointerCancel}
+                    onLostPointerCapture={handlePointerCancel}
+                    onKeyDown={handleKeyDown}
+                    className="group relative h-10 flex-1 cursor-grab select-none outline-none active:cursor-grabbing"
+                    style={{ touchAction: "pan-y", WebkitTapHighlightColor: "transparent" }}
+                >
+                    {/* Inner track is inset by half a thumb so the thumb never overflows the ends */}
+                    <div ref={trackRef} className="absolute inset-y-0" style={{ left: THUMB / 2, right: THUMB / 2 }}>
+                        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full" style={{ background: `${C.secondary}18` }} />
+                        <div
+                            className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full"
+                            style={{ width: `${pct}%`, background: C.secondary }}
+                        />
+                        <div
+                            className="pointer-events-none absolute top-1/2"
+                            style={{ left: `${pct}%`, transform: "translate(-50%, -50%)" }}
+                        >
+                            <span
+                                className="absolute rounded-full opacity-0 transition-opacity duration-150 group-focus-visible:opacity-100"
+                                style={{ inset: -5, background: `${C.secondary}30` }}
+                            />
+                            <div
+                                className="relative rounded-full border-2 border-white"
+                                style={{
+                                    width: THUMB,
+                                    height: THUMB,
+                                    background: C.secondary,
+                                    boxShadow: "0 1px 4px rgba(0,0,0,0.25)",
+                                    transform: `scale(${dragging ? 1.2 : 1})`,
+                                    transition: "transform 120ms ease",
+                                }}
+                            />
+                        </div>
+                    </div>
                 </div>
+
                 <span className="w-8 shrink-0 text-right text-[10px] font-bold tabular-nums" style={{ color: C.muted }}>
                     {MAX}%
                 </span>
