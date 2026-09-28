@@ -105,7 +105,6 @@ function GstSection({ business }) {
             icon={ShieldCheck}
             title="GST registration"
             subtitle="Taken from your GST record"
-            defaultOpen
             headerRight={<Pill>Read only</Pill>}
         >
             {rows.length ? rows.map(([l, v]) => <ReadRow key={l} label={l} value={v} />)
@@ -134,7 +133,7 @@ function ContactSection({ seller, email, token, onSaved }) {
     };
 
     return (
-        <SectionCard icon={User} title="Contact" subtitle="Who buyers and our team reach out to" defaultOpen>
+        <SectionCard icon={User} title="Contact" subtitle="Who buyers and our team reach out to">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <TextField label="Contact person" value={person} onChange={(v) => { setPerson(v); setSaved(false); }} />
                 <TextField
@@ -192,7 +191,7 @@ function OperationsSection({ seller, token, onSaved }) {
     const timeStyle = { color: C.ink, borderColor: C.hair, ["--tw-ring-color"]: `${C.secondary}22` };
 
     return (
-        <SectionCard icon={Truck} title="Operations" subtitle="Working days, transport and dispatch" defaultOpen>
+        <SectionCard icon={Truck} title="Operations" subtitle="Working days, transport and dispatch">
             <MultiChips
                 label="Working days"
                 value={f.working_days}
@@ -271,7 +270,7 @@ function BankSection({ token }) {
     };
 
     return (
-        <SectionCard icon={Landmark} title="Bank details" subtitle="Where your order payouts are sent" defaultOpen>
+        <SectionCard icon={Landmark} title="Bank details" subtitle="Where your order payouts are sent">
             {!loaded ? (
                 <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin" style={{ color: C.muted }} /></div>
             ) : (
@@ -318,9 +317,6 @@ export default function SellerStorePage() {
                     <h1 className="text-[22px] font-extrabold tracking-wide" style={{ color: C.ink }}>
                         {seller.display_name || "Your store"}
                     </h1>
-                    <p className="text-[14px] font-medium" style={{ color: C.muted }}>
-                        The company details you gave us at sign-up. Edit any section and save.
-                    </p>
                 </header>
 
                 <GstSection business={business} />
