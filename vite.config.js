@@ -12,7 +12,7 @@ export default defineConfig({
         name: "BBM Marketplace",
         short_name: "BBM Marketplace",
         description: "BBM Marketplace",
-        theme_color: "#2563eb",
+        theme_color: "#000000",
         background_color: "#ffffff",
         display: "standalone",
         orientation: "portrait",

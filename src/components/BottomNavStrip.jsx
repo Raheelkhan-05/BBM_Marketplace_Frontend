@@ -94,7 +94,7 @@ function buildMenuItems({ isApprovedSeller, navigate, cartCount, chatUnread, pur
 // here). A divider is drawn whenever the group changes between two
 // consecutive items. Anything not listed falls into group 2.
 //   group 0: seller tools   group 1: buying   group 2: everything else
-const SELLER_LABELS = ["list a product", "manage products", "my store", "sales orders", "credit request", "transport"];
+const SELLER_LABELS = ["list a product", "manage products", "my store", "sales orders"];
 const BUYER_LABELS = ["cart", "purchase orders"];
 function groupOf(item) {
     const label = String(item.label || "").trim().toLowerCase();
