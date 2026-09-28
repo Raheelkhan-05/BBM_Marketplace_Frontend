@@ -225,7 +225,7 @@ function getSectionDisplay(it, activeSection, saleUnit) {
                 rightSecondary: it.stock_type === "made_to_order" ? "" : `MOQ ${it.moq ?? "—"} ${saleUnit}`,
                 rightSecondaryColor: C.muted,
             };
-        case "dispatch":
+        case "delivery":
             return {
                 subtitle: [it.dispatch_district, it.dispatch_state].filter(Boolean).join(", ") || "Tap to set dispatch location",
                 rightPrimary: "",
@@ -1233,9 +1233,9 @@ const SECTION_FILTERS = [
     // { key: "identity", label: "Identity" },
     { key: "packaging", label: "Packaging" },
     { key: "pricing", label: "Tax & Pricing" },
-    { key: "customPricing", label: "Custom Pricing" },
+    { key: "customPricing", label: "Buyer Access & Pricing" },
     { key: "fulfilment", label: "Fulfilment" },
-    { key: "dispatch", label: "Dispatch" },
+    { key: "delivery", label: "Delivery" },
     { key: "policies", label: "Policies" },
 ];
 
