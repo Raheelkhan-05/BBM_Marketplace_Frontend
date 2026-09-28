@@ -17,7 +17,7 @@
 //    by a "Chat with buyer" button (/chat/:id).
 //  - Removed a leftover console.log(profile) from PurchaseOrdersView.
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Package, Loader2, ShoppingBag, Store } from "lucide-react";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -271,7 +271,9 @@ function PurchaseOrdersView() {
 
     return (
         <>
+            <h2 className="mt-2 text-2xl font-extrabold md:hidden tracking-wide">Purchase Orders</h2>
             <div className="mt-4 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+
                 {TYPE_TABS.map((t) => (
                     <button key={t.key} onClick={() => setActiveType(t.key)} className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
                         style={{ borderColor: activeType === t.key ? "#0B7285" : C.hair, background: activeType === t.key ? "#0B7285" : "#fff", color: activeType === t.key ? "#ffffff" : C.muted }}>
@@ -499,7 +501,9 @@ function SalesOrdersView() {
 
     return (
         <>
+            <h2 className="mt-2 text-2xl font-extrabold md:hidden tracking-wide">Sales Orders</h2>
             <div className="mt-4 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+
                 {TYPE_TABS.map((t) => (
                     <button key={t.key} onClick={() => setActiveType(t.key)} className="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
                         style={{ borderColor: activeType === t.key ? "#0B7285" : C.hair, background: activeType === t.key ? "#0B7285" : "#fff", color: activeType === t.key ? "#ffffff" : C.muted }}>
@@ -535,20 +539,21 @@ function SalesOrdersView() {
 // ---------- Merged page ----------
 export default function OrdersPage() {
     const navigate = useNavigate();
+
     const { profile } = useAuth();
     const { purchaseUnreadCount, salesUnreadCount } = useNotifications();
 
-    // TODO: confirm this matches your AuthContext's actual field for seller
-    // approval status (e.g. profile?.seller?.status === "approved", or a
-    // boolean flag). Adjust the condition below to match.
     const isApprovedSeller = profile?.seller_status === "approved";
 
-    const [activeTab, setActiveTab] = useState("purchases"); // "purchases" | "sales"
+    const [searchParams, setSearchParams] = useSearchParams();
+    const activeTab =
+        isApprovedSeller && searchParams.get("tab") === "sales" ? "sales" : "purchases";
+    const setActiveTab = (tab) => setSearchParams({ tab }, { replace: true });
 
     return (
         <div className="mx-auto min-h-screen max-w-7xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
             {isApprovedSeller && (
-                <div className="mt-0 grid grid-cols-2 gap-1 rounded-xl border p-1" style={{ borderColor: C.hair, background: "#fafbfb" }}>
+                <div className="mt-0 hidden md:grid grid-cols-2 gap-1 rounded-xl border p-1" style={{ borderColor: C.hair, background: "#fafbfb" }}>
                     <button onClick={() => setActiveTab("purchases")}
                         className="relative rounded-md px-4 py-1.5 text-[13px] font-bold tracking-wide transition-colors"
                         style={{ background: activeTab === "purchases" ? C.primary : "transparent", color: activeTab === "purchases" ? "#fff" : C.muted, boxShadow: activeTab === "purchases" ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
