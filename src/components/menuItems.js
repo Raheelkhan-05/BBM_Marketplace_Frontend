@@ -13,9 +13,8 @@ export const MENU_ROUTES = {
     home: "/home",
     listProduct: "/seller/sell",
     manageProducts: "/seller/products",   // TODO confirm
-    myStore: "/seller/store",
-    myStoreApproved: "/seller/onboarding", // verified sellers land here instead of /seller/store
-    // Sales + Purchase orders are the SAME page (/orders); the tab is chosen by ?tab=
+    myStore: "/seller/store",             // approved sellers
+    myStoreOnboarding: "/seller/onboarding", // anyone not yet approved
     salesOrders: "/orders?tab=sales",
     creditRequest: "/seller/credit",      // TODO confirm
     transport: "/transport-library",
@@ -23,6 +22,12 @@ export const MENU_ROUTES = {
     purchaseOrders: "/orders?tab=purchases",
     chats: "/chat",
 };
+
+// Highlight "My store" on either route, so it stays active if an approved
+// seller opens onboarding (e.g. to edit details) or vice versa.
+const matchMyStore = (p) =>
+    startsWithRoute(MENU_ROUTES.myStore)(p) ||
+    startsWithRoute(MENU_ROUTES.myStoreOnboarding)(p);
 
 const badgeLabel = (n) => (n > 0 ? (n > 9 ? "9+" : n) : null);
 const startsWithRoute = (route) => (p) => p === route || p.startsWith(route + "/");
@@ -50,11 +55,10 @@ export function buildMenuItems({
         ? [
             item("list-product", "List a product", PackagePlus, MENU_ROUTES.listProduct, 0),
             item("manage-products", "Manage products", Boxes, MENU_ROUTES.manageProducts, 0, productsBadge),
-            item("my-store", "My store", Store, MENU_ROUTES.myStoreApproved, 0, 0,
-                (p) => startsWithRoute(MENU_ROUTES.myStoreApproved)(p) || startsWithRoute(MENU_ROUTES.myStore)(p)),
+            item("my-store", "My store", Store, MENU_ROUTES.myStore, 0, 0, matchMyStore),
             item("sales-orders", "Sales orders", FileText, MENU_ROUTES.salesOrders, 0, salesUnread, matchSalesOrders),
         ]
-        : [item("my-store", "My store", Store, MENU_ROUTES.myStore, 0)];
+        : [item("my-store", "My store", Store, MENU_ROUTES.myStoreOnboarding, 0, 0, matchMyStore)];
 
     return [
         item("home", "Home", Home, MENU_ROUTES.home, -1, 0, (p) => p === "/home"),
