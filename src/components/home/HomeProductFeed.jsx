@@ -63,7 +63,7 @@
 // - Refetching sellers ONLY happens when the buyer switches tabs, or when
 //   their address becomes known after a dropdown was already open — never
 //   silently in the background — so nothing reshuffles under someone
-//   while they're reading the list.
+//   while they're reading the list. (Exception: realtime updates, below.)
 //
 // MOBILE FULL-WIDTH LAYOUT:
 // - The feed's outer wrapper used to always render as a "card":
@@ -77,7 +77,7 @@
 //   only kicks back in at the `sm:` breakpoint and up, where there's
 //   room for it. Nothing about the row/column logic itself changed.
 //
-// SWIPE TO BUY (this revision):
+// SWIPE TO BUY:
 // - On screens below the `md` breakpoint (< 768px), each seller row in the
 //   dropdown is split into two columns: seller info on the left, price
 //   block + a compact "Swipe to buy" slider on the right (the slider
@@ -92,6 +92,25 @@
 // - The dropdown closes as soon as a purchase starts (handleBuySeller →
 //   closeDropdown), which unmounts the slider — so it never needs a
 //   manual reset after confirming.
+//
+// SELLER ROW PRICE LABELS + REALTIME RELIABILITY (this revision):
+// - SellerPriceBlock / OwnListingPriceCell now label prices exactly like
+//   the product header's PriceBreakdown ("/Pc", "/10 Pc", "/50 Pc"; the
+//   pack row is skipped when a pack is 1 unit). computeEffectivePricing
+//   returns packQty/masterQty for this.
+// - Realtime fixes:
+//   1) The header-price-from-sellerState effect only trusts the OPEN
+//      product's FULLY loaded list. Before, it ran over every cached
+//      product (including stale closed ones) and over partial pages, and
+//      could overwrite a correct header price with an old/wrong one.
+//   2) refreshLowest probes LOWEST_PROBE_SIZE sellers (not 1) so an
+//      out-of-stock cheapest seller can't make the header look sold out,
+//      and drops stale out-of-order responses with a sequence guard.
+//   3) After an in-place socket patch, the open dropdown silently
+//      reconciles with the server shortly after (patches may not carry
+//      slabs/discounts).
+//   4) The out-of-order timestamp map is cleared on reconnect so a server
+//      restart (timestamps resetting) can't make us drop every event.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -123,6 +142,12 @@ const EASE = [0.16, 1, 0.3, 1];
 // tops the list up as the user scrolls.
 const PAGE_SIZE = 12;
 const SELLER_PAGE_SIZE = 30;
+// How many sellers the header-price refresh looks at (price_asc). More than
+// 1 so an out-of-stock cheapest seller doesn't hide an in-stock one.
+const LOWEST_PROBE_SIZE = 10;
+// After a realtime in-place patch, wait this long then silently re-sync the
+// open dropdown with the server (picks up slabs/discounts the patch lacked).
+const RECONCILE_DELAY_MS = 800;
 const DEBOUNCE_MS = 250;
 // See "DUPLICATE-FETCH GUARD" note above.
 const DUPLICATE_GUARD_MS = 300;
@@ -366,8 +391,6 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
 
 // Compact trigger shown inline in the seller row — shows price breakdown
 // AND the current commission %. Clicking either opens OwnListingPriceModal.
-// Compact trigger shown inline in the seller row — shows price breakdown
-// AND the current commission %. Clicking either opens OwnListingPriceModal.
 //
 // VISUAL REDESIGN: replaced blue dotted-underline "fake link" text (which
 // read as a broken hyperlink, not an editable control) with a contained
@@ -378,6 +401,9 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
 // — this mirrors how editable price/quantity fields read in most
 // checkout/marketplace UIs (e.g. Amazon's own "Change" chips): the data
 // is bold, the action to change it is a small, separate, low-emphasis tag.
+//
+// Price labels follow the same rules as the product header's PriceBreakdown
+// ("/Pc", "/10 Pc", "/50 Pc"; pack row skipped when a pack is 1 unit).
 function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
     const [open, setOpen] = useState(false);
     const [pressed, setPressed] = useState(false);
@@ -391,10 +417,18 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
     const derived = deriveDisplayPrices(canonicalDisplayed, packSize, masterPackSize);
     const commissionPercent = Number(seller.marketing_commission_percent) || 0.25;
 
+    const short = shortUnit(seller.unit);
+    const masterQty = hasOuter ? packSize * masterPackSize : null;
+    const packDuplicatesUnit = !!seller.unit && packSize === 1;
+
     const priceRows = [
-        seller.unit ? { label: seller.unit, value: `₹${inr(derived.perBaseUnit)}` } : null,
-        { label: "Pack", value: `₹${inr(derived.perPack)}` },
-        hasOuter ? { label: "M Pack", value: `₹${inr(derived.perMasterPack)}` } : null,
+        seller.unit ? { label: short, value: `₹${inr(derived.perBaseUnit)}` } : null,
+        !packDuplicatesUnit
+            ? { label: seller.unit ? `${fmtQty(packSize)} ${short}` : "Pack", value: `₹${inr(derived.perPack)}` }
+            : null,
+        hasOuter
+            ? { label: seller.unit ? `${fmtQty(masterQty)} ${short}` : "M Pack", value: `₹${inr(derived.perMasterPack)}` }
+            : null,
     ].filter(Boolean);
 
     return (
@@ -490,8 +524,6 @@ function SellerSortToggle({ value, onChange, options = SELLER_SORT_OPTIONS }) {
     );
 }
 
-// Add near the top of the file, with the other small hooks/helpers:
-
 // Tracks how many columns are active at the current breakpoint, matching
 // the sm/lg breakpoints used elsewhere (1 col mobile, 2 col tablet, 3 col
 // desktop). Needed because manual column-bucketing (below) can't respond
@@ -555,16 +587,30 @@ function FastestBadge() {
     );
 }
 
+// Seller-row price block. Uses the SAME labelling rules as the product
+// header's PriceBreakdown: with a unit, every price is labelled by how many
+// base units it covers ("/Pc", "/10 Pc", "/50 Pc"); without one it falls
+// back to Pack / M Pack. A pack of exactly 1 unit would repeat the unit row,
+// so that row is skipped.
 function SellerPriceBlock({ pricing, unit }) {
     if (!pricing) return null;
-    const { discountPercent, hasMasterPack, unit: u, pack, masterPack } = pricing;
+    const { discountPercent, hasMasterPack, unit: u, pack, masterPack, packQty, masterQty } = pricing;
     const hasDiscount = discountPercent > 0;
 
+    const short = shortUnit(unit);
+    const packDuplicatesUnit = !!unit && Number(packQty) === 1;
+
     const rows = [
-        unit ? { label: unit, ...u } : null,
-        { label: "Pack", ...pack },
-        hasMasterPack && masterPack ? { label: "M Pack", ...masterPack } : null,
+        unit ? { label: short, ...u } : null,
+        !packDuplicatesUnit
+            ? { label: unit ? `${fmtQty(packQty)} ${short}` : "Pack", ...pack }
+            : null,
+        hasMasterPack && masterPack
+            ? { label: unit ? `${fmtQty(masterQty)} ${short}` : "M Pack", ...masterPack }
+            : null,
     ].filter(Boolean);
+
+    if (!rows.length) return null;
 
     return (
         <div className="grid shrink-0 items-baseline gap-x-1.5 gap-y-0.5" style={{ gridTemplateColumns: "auto auto auto" }}>
@@ -1026,10 +1072,6 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             .toLowerCase()
             .replace(/\b\w/g, (c) => c.toUpperCase());
 
-    // const isOutOfStock = item.lowest_price_stock_type === "ready_stock"
-    //     && item.lowest_price_available_stock != null
-    //     && Number(item.lowest_price_available_stock) <= 0;
-
     const isOutOfStock = item.lowest_price_stock_type === "ready_stock"
         && item.lowest_price_available_stock != null
         && item.lowest_price_moq != null
@@ -1193,6 +1235,8 @@ function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, in
 
 // Single source of truth for "what does this seller actually charge at qty X",
 // used by BOTH tabs so there's never a second, diverging implementation.
+// Also returns packQty/masterQty (base units per pack / master pack) so the
+// seller row can label prices exactly like the product header does.
 function computeEffectivePricing(seller, saleQty, includeGst) {
     const gst = Number(seller.gst_percent) || 0;
     const pricePerSaleUnit = includeGst ? Number(seller.price) : Number(seller.price) / (1 + gst / 100);
@@ -1206,8 +1250,12 @@ function computeEffectivePricing(seller, saleQty, includeGst) {
     const fin = deriveDisplayPrices(finalPricePerSaleUnit, seller.pack_size, seller.units_per_master_pack);
     const outer = hasOuterPack(seller.units_per_master_pack);
 
+    const packQty = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
+    const masterQty = outer ? packQty * Number(seller.units_per_master_pack) : null;
+
     return {
         saleUnit: getSaleUnit(seller.units_per_master_pack), saleQty, discountPercent, hasMasterPack: outer,
+        packQty, masterQty,
         unit: { original: orig.perBaseUnit, final: fin.perBaseUnit },
         pack: { original: orig.perPack, final: fin.perPack },
         masterPack: outer ? { original: orig.perMasterPack, final: fin.perMasterPack } : null,
@@ -1498,10 +1546,6 @@ function SellerDropdown({
 }) {
     const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
 
-    // Below md, the "Buy now" button becomes a swipe-to-buy slider.
-    // const isMobile = useIsBelowMd();
-
-    // const { ref: listRef, handleWheel, handleTouchStart, handleTouchMove } = useLenisPreventToggle();
     const { ref: listRef, handleWheel } = useLenisPreventToggle();
 
     // Only the very first fetch (nothing on screen yet) shows the skeleton.
@@ -1615,16 +1659,10 @@ function SellerDropdown({
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft, opacity: isRefreshing ? 0.7 : 1, transition: "opacity 0.15s ease" }}>
                             {sortedItems.map((s) => {
                                 const pricing = sellerPricingForMode(s, sortMode, includeGst);
-                                // const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) <= 0;
                                 const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) < moqInSaleUnits(s);
                                 const isOwn = isOwnSellerRow(s, currentUserId);
                                 const totalDeliveryDays = s.total_delivery_days;
                                 const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
-                                // const outOfStock = isSellerOutOfStock(s);
-
-                                // On mobile the slider is the purchase gesture, so the
-                                // row itself must not start a purchase when tapped.
-                                // const rowBuyable = !outOfStock && !isOwn && !isMobile;
 
                                 return (
                                     <Fragment key={s.submission_id}>
@@ -1934,24 +1972,44 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     const lastTsRef = useRef(new Map());        // drops out-of-order events
     const lowestTimersRef = useRef({});         // coalesces bursts per product
+    const lowestSeqRef = useRef({});            // drops stale out-of-order refreshLowest responses
+    const reconcileTimerRef = useRef(null);     // silent re-sync of the open dropdown after a patch
 
     // Product header = lowest price the SERVER says this buyer can see.
-    // limit:1 price_asc is tiny; server-side means visibility/wallet rules hold.
+    // We probe a handful of sellers (not just 1): the raw-cheapest seller
+    // may be out of stock, and computeListingLowestFromSellers needs at
+    // least one in-stock candidate to prefer. Server-side means
+    // visibility/wallet rules hold.
     const refreshLowest = useCallback((itemId) => {
         clearTimeout(lowestTimersRef.current[itemId]);
         lowestTimersRef.current[itemId] = setTimeout(async () => {
+            const seq = (lowestSeqRef.current[itemId] = (lowestSeqRef.current[itemId] || 0) + 1);
             try {
                 const addr = buyerAddressRef.current;
                 const res = await fetchBrandItemSellers(itemId, {
-                    sort: "price_asc", limit: 1, offset: 0, token,
+                    sort: "price_asc", limit: LOWEST_PROBE_SIZE, offset: 0, token,
                     destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
                 });
+                // A newer refresh started while this one was in flight — ignore this stale answer.
+                if (seq !== lowestSeqRef.current[itemId]) return;
                 if (!res?.success) return;
                 const best = computeListingLowestFromSellers(res.items || []);
                 setItems((prev) => prev.map((it) => (String(it.id) === String(itemId) ? applyLowestToItem(it, best) : it)));
             } catch { /* next event will retry */ }
         }, 120);
     }, [token]);
+
+    // Patches from the socket may not carry every derived field (price
+    // slabs, discounts…), so shortly after an in-place patch we quietly
+    // re-sync the open dropdown with the server's version.
+    const scheduleReconcile = useCallback((itemId) => {
+        clearTimeout(reconcileTimerRef.current);
+        reconcileTimerRef.current = setTimeout(() => {
+            if (String(openItemIdRef.current) === String(itemId)) {
+                loadSellersForRef.current?.(itemId, { silent: true });
+            }
+        }, RECONCILE_DELAY_MS);
+    }, []);
 
     useEffect(() => {
         if (!socket) return;
@@ -1976,6 +2034,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                     const removed = cur.items.length - nextItems.length;
                     return { ...prev, [brandItemId]: { ...cur, items: nextItems, total: Math.max(0, (cur.total ?? cur.items.length) - removed) } };
                 });
+                if (String(openItemIdRef.current) === String(brandItemId)) scheduleReconcile(brandItemId);
             } else if (available && String(openItemIdRef.current) === String(brandItemId)) {
                 // A row we don't have yet (new listing / newly visible) — silent reload.
                 loadSellersForRef.current?.(brandItemId, { silent: true });
@@ -1984,7 +2043,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         };
         socket.on("listing:update", onUpdate);
         return () => socket.off("listing:update", onUpdate);
-    }, [socket, refreshLowest]);
+    }, [socket, refreshLowest, scheduleReconcile]);
 
     // After a dropped connection we may have missed events — resync quietly.
     const sawDisconnectRef = useRef(false);
@@ -1992,42 +2051,55 @@ export default function HomeProductFeed({ category, q = "" }) {
         if (!connected) { sawDisconnectRef.current = true; return; }
         if (!sawDisconnectRef.current) return;
         sawDisconnectRef.current = false;
+        // If the server restarted, its timestamps may have reset below what
+        // we remember — which would make us drop every new event as "old".
+        lastTsRef.current.clear();
         if (openItemIdRef.current) loadSellersForRef.current?.(openItemIdRef.current, { silent: true });
         itemsRef.current.forEach((it) => refreshLowest(it.id));
     }, [connected, refreshLowest]);
 
-    useEffect(() => () => Object.values(lowestTimersRef.current).forEach(clearTimeout), []);
+    useEffect(() => () => {
+        Object.values(lowestTimersRef.current).forEach(clearTimeout);
+        clearTimeout(reconcileTimerRef.current);
+    }, []);
 
-    // inside HomeProductFeed
+    // Keep the product header price in step with the OPEN dropdown's list.
+    // Only trusts a FULLY loaded list of the open product: closed products'
+    // cached lists can be stale, and a partial page (hasMore) may not
+    // contain the true cheapest seller — both used to overwrite a correct
+    // header price. refreshLowest covers those cases from the server.
     useEffect(() => {
-        Object.entries(sellerState).forEach(([itemId, entry]) => {
-            if (!entry?.items?.length) return;
-            const best = computeListingLowestFromSellers(entry.items);
-            if (!best) return;
-            setItems((prev) => {
-                let changed = false;
-                const next = prev.map((it) => {
-                    if (String(it.id) !== String(itemId)) return it;
-                    if (
-                        it.lowest_price === best.price &&
-                        it.lowest_price_pack_size === best.pack_size &&
-                        it.lowest_price_stock_type === best.stock_type &&
-                        it.lowest_price_available_stock === best.stock_quantity &&
-                        it.lowest_price_moq === best.moq
-                    ) return it;
-                    changed = true;
-                    return applyLowestToItem(it, best);
-                });
-                return changed ? next : prev;
+        if (!openItemId) return;
+        const entry = sellerState[openItemId];
+        if (!entry?.items?.length || entry.hasMore || entry.loading || entry.isRefreshing) return;
+        const best = computeListingLowestFromSellers(entry.items);
+        if (!best) return;
+        setItems((prev) => {
+            let changed = false;
+            const next = prev.map((it) => {
+                if (String(it.id) !== String(openItemId)) return it;
+                if (
+                    it.lowest_price === best.price &&
+                    it.lowest_price_pack_size === best.pack_size &&
+                    it.lowest_price_master_pack_size === best.units_per_master_pack &&
+                    it.lowest_price_unit === best.unit &&
+                    it.lowest_price_gst_percent === best.gst_percent &&
+                    it.lowest_price_stock_type === best.stock_type &&
+                    it.lowest_price_available_stock === best.stock_quantity &&
+                    it.lowest_price_moq === best.moq
+                ) return it;
+                changed = true;
+                return applyLowestToItem(it, best);
             });
+            return changed ? next : prev;
         });
-    }, [sellerState]);
+    }, [sellerState, openItemId]);
 
     // Refetch — with the new sort applied server-side — whenever the
     // buyer switches tabs on an already-open dropdown, or when their
-    // address becomes known partway through. This is the ONLY thing that
-    // re-fetches sellers after the initial open; nothing shifts silently
-    // in the background.
+    // address becomes known partway through. Apart from realtime
+    // reconciliation, this is the ONLY thing that re-fetches sellers after
+    // the initial open; nothing shifts silently in the background.
     useEffect(() => {
         if (!openItemId) return;
         loadSellersFor(openItemId, { silent: true });
