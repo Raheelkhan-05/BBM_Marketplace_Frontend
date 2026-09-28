@@ -196,14 +196,16 @@ function BrowseTab({ canAdd, token }) {
     return (
         <div>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                <input
-                    placeholder="From city"
-                    value={originCity}
-                    onKeyDown={handleKeyDown}
-                    onChange={(e) => setOriginCity(e.target.value)}
-                    className="h-10 min-w-0 flex-1 rounded-lg border px-3 text-[13px] tracking-wide outline-none"
-                    style={{ borderColor: C.hair }}
-                />
+                <div className="flex min-w-0 flex-1 gap-2">
+                    <input
+                        placeholder="From city"
+                        value={originCity}
+                        onKeyDown={handleKeyDown}
+                        onChange={(e) => setOriginCity(e.target.value)}
+                        className="h-10 min-w-0 flex-1 rounded-lg border px-3 text-[13px] tracking-wide outline-none"
+                        style={{ borderColor: C.hair }}
+                    />
+                </div>
 
                 <div className="flex min-w-0 flex-1 gap-2">
                     <input
