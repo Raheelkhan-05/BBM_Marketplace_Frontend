@@ -53,7 +53,7 @@ const GenericProductSellersPage = lazy(() => import("./pages/GenericProductSelle
 const CategoryProductsPage = lazy(() => import("./pages/CategoryProductsPage.jsx"));
 const GenericProductBrandsPage = lazy(() => import("./pages/GenericProductBrandsPage.jsx"));
 const BrandItemSellersPage = lazy(() => import("./pages/BrandItemSellersPage.jsx"));
-const SellerManageListingsPage = lazy(routeImports["/seller/store"]);
+const SellerManageListingsPage = lazy(routeImports["/seller/products"]);
 const ChatPage = lazy(routeImports["/chat"]);
 const PaymentVerificationPage = lazy(() => import('./pages/admin/PaymentVerificationPage.jsx'));
 const AdminFullCatalogUploadPage = lazy(() => import('./pages/admin/AdminFullCatalogUploadPage.jsx'));
@@ -147,7 +147,7 @@ function App() {
                 <Route path="/seller/orders" element={<SalesOrdersPage />} />
                 <Route path="/orders/:id" element={<OrderDetailPage />} />
                 <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
-                <Route path="/seller/store" element={<SellerManageListingsPage />} />
+                <Route path="/seller/products" element={<SellerManageListingsPage />} />
 
                 <Route path="/admin/payments" element={<PaymentVerificationPage />} />
 

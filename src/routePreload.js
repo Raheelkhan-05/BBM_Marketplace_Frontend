@@ -11,7 +11,7 @@
 
 export const routeImports = {
     "/home": () => import("./pages/HomePage.jsx"),
-    "/seller/store": () => import("./pages/SellerManageListingsPage.jsx"),
+    "/seller/products": () => import("./pages/SellerManageListingsPage.jsx"),
     "/seller/sell": () => import("./pages/SellPublishProductPage.jsx"),
     "/chat": () => import("./pages/ChatPage.jsx"),
     "/cart": () => import("./pages/CartPage.jsx"),
