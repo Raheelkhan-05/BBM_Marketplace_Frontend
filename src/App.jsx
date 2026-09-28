@@ -68,6 +68,8 @@ const AdminHelpRequestsPage = lazy(() => import("./pages/admin/AdminHelpRequests
 const SharedProductPage = lazy(() => import("./pages/SharedProductPage.jsx"));
 const TermsPage = lazy(() => import("./pages/TermsPage.jsx"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage.jsx"));
+const SellerStorePage = lazy(() => import("./pages/SellerStorePage.jsx"));
+
 
 function CatalogLevelPageWithKey({ configKey }) {
   const { idOrSlug } = useParams();
@@ -156,6 +158,7 @@ function App() {
 
                 <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
                 <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
+                <Route path="/seller/store" element={<RequireAuth><SellerStorePage /></RequireAuth>} />
 
                 <Route path="/seller/sell" element={<SellPublishProductPage />} />
                 <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />
