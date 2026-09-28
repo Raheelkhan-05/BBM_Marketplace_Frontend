@@ -72,8 +72,8 @@ function buildMenuItems({ isApprovedSeller, navigate, cartCount, chatUnread, pur
     const sellerItems = isApprovedSeller
         ? [
             item("list-product", "List a product", PackagePlus, MENU_ROUTES.listProduct),
-            item("manage-products", "Manage products", Boxes, MENU_ROUTES.manageProducts),
-            item("my-store", "My store", Store, MENU_ROUTES.myStore, productsBadge),
+            item("manage-products", "Manage products", Boxes, MENU_ROUTES.manageProducts, productsBadge),
+            item("my-store", "My store", Store, MENU_ROUTES.myStore),
             item("sales-orders", "Sales orders", FileText, MENU_ROUTES.salesOrders, salesUnread, matchSalesOrders),
         ]
         // Not an approved seller yet: My store is the entry point (it shows onboarding).
