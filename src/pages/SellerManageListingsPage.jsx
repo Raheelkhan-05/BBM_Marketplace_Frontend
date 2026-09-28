@@ -678,11 +678,22 @@ function RowIconButton({ icon: Icon, label, onClick, tone = C.ink, hoverBg = "rg
 
 function ListingRow({
     it, idx, isHighlighted, isConfirmingDeactivate, togglingId,
-    activeSection,
+    activeSection, isEditing, editor,
     onOpenDetail, onEdit,
     onAskDeactivate, onCancelDeactivate, onConfirmDeactivate, onActivate,
     onOpenImage, onShare,
 }) {
+    const rowRef = useRef(null);
+
+    // Bring the opened editor into view after the expand animation starts.
+    useEffect(() => {
+        if (!isEditing) return;
+        const t = setTimeout(() => {
+            rowRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }, 220);
+        return () => clearTimeout(t);
+    }, [isEditing]);
+
     const name = it.brand?.name || it.product_name || "Product";
     const brandName = it.brand?.brand_name || it.brand_name;
     const image = it.image || it.brand?.image;
@@ -737,6 +748,7 @@ function ListingRow({
 
     return (
         <motion.div
+            ref={rowRef}
             initial={{ opacity: 0, y: 3 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{
@@ -989,6 +1001,27 @@ function ListingRow({
                         )}
                     </AnimatePresence>
                 </div>
+
+                <AnimatePresence initial={false}>
+                    {isEditing && (
+                        <motion.div
+                            key="inline-editor"
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1, transitionEnd: { overflow: "visible" } }}
+                            exit={{ height: 0, opacity: 0, overflow: "hidden" }}
+                            transition={{ duration: 0.22, ease: EASE }}
+                            style={{ overflow: "hidden" }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div
+                                className="border-t px-3 pb-4 pt-3 sm:px-4"
+                                style={{ borderColor: C.hairSoft, background: "rgba(11,17,22,0.02)" }}
+                            >
+                                {editor}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Row separator */}
                 <div
@@ -1403,9 +1436,18 @@ export default function SellerManageListingsPage() {
     // pencil icon and by the (read-only) detail modal's own Edit action,
     // so both paths always land on the editable form, never a
     // read-only stop first.
-    function openEditModal(id) {
+    // One editor open at a time. Tapping the same row again collapses it.
+    function toggleEdit(id) {
         setViewingId(null);
-        setEditingId(id);
+        setConfirmDeactivateId(null);
+        setEditingId((prev) => (prev === id ? null : id));
+    }
+
+    function handleEditSaved(id, submission, message) {
+        patchItem(id, submission);
+        setEditingId(null);
+        setToastMsg(message);
+        reload({ silent: true }); // reconcile joined fields, as before
     }
 
     if (!isApprovedSeller) {
@@ -1453,7 +1495,7 @@ export default function SellerManageListingsPage() {
             {/* No local <SmoothScrollProvider> here anymore — see import
                 comment above. This page just renders under the single
                 global instance main.jsx already provides. */}
-            <main className="mx-auto max-w-7xl px-2.5 pb-24 pt-5 sm:px-4 lg:px-6">
+            <main className="mx-auto max-w-7xl px-2.5 pb-12 pt-5 sm:px-4 lg:px-6">
 
                 <div className="grid grid-cols-2 items-end gap-3 sm:gap-6 ps-2">
                     {/* Left */}
@@ -1507,7 +1549,7 @@ export default function SellerManageListingsPage() {
                                 key={f.key}
                                 label={f.label}
                                 active={activeSection === f.key}
-                                onClick={() => setActiveSection(f.key)}
+                                onClick={() => { setActiveSection(f.key); setEditingId(null); }}
                             />
                         ))}
                         <span className="mx-1 h-4 w-px shrink-0" style={{ background: C.hair }} />
@@ -1560,8 +1602,21 @@ export default function SellerManageListingsPage() {
                                 isHighlighted={highlightedIds.has(it.id)}
                                 isConfirmingDeactivate={confirmDeactivateId === it.id}
                                 togglingId={togglingId}
-                                onOpenDetail={(item) => openEditModal(item.id)}
-                                onEdit={openEditModal}
+                                isEditing={editingId === it.id}
+                                editor={
+                                    editingId === it.id ? (
+                                        <EditListingModal
+                                            inline
+                                            token={token}
+                                            submissionId={it.id}
+                                            focusSection={activeSection === "all" ? null : activeSection}
+                                            onClose={() => setEditingId(null)}
+                                            onSaved={handleEditSaved}
+                                        />
+                                    ) : null
+                                }
+                                onOpenDetail={(item) => toggleEdit(item.id)}
+                                onEdit={toggleEdit}
                                 onAskDeactivate={(id) => setConfirmDeactivateId(id)}
                                 onCancelDeactivate={() => setConfirmDeactivateId(null)}
                                 onConfirmDeactivate={confirmDeactivate}
@@ -1576,38 +1631,6 @@ export default function SellerManageListingsPage() {
 
             {lightboxImage && createPortal(
                 <ImageLightbox images={lightboxImage.images} initialIndex={lightboxImage.index} alt={lightboxImage.alt} onClose={() => setLightboxImage(null)} />,
-                document.body
-            )}
-
-            {editingId && createPortal(
-                <EditListingModal
-                    token={token}
-                    submissionId={editingId}
-                    focusSection={activeSection === "all" ? null : activeSection}
-                    onClose={() => setEditingId(null)}
-                    onSaved={(id, submission, message) => {
-                        // Optimistic: reflect the change instantly using whatever
-                        // fields the update response gave us.
-                        patchItem(id, submission);
-                        setEditingId(null);
-                        setToastMsg(message);
-
-                        // Reconcile: updateSellerProductSubmission's response may not
-                        // carry every joined/computed field ListingRow actually renders
-                        // (brand.name, brand.image, images[], units_per_master_pack,
-                        // the computed sale-unit "price", etc. — fields that only
-                        // fetchMySellerSubmissions populates). If any of those are
-                        // missing or shaped differently on the update response, the
-                        // shallow patchItem() merge can leave the row showing stale or
-                        // blank values even though the save itself succeeded — which
-                        // is exactly the "have to manually refresh" symptom you're
-                        // seeing. So right after the optimistic patch, quietly refetch
-                        // the full list in the background and let it overwrite the row
-                        // with the real, authoritative shape. No spinner, no full-page
-                        // reload — reload({ silent: true }) already exists for this.
-                        reload({ silent: true });
-                    }}
-                />,
                 document.body
             )}
 

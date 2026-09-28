@@ -11,9 +11,16 @@ const C = {
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)",
 };
 
+// Includes the keys SellerManageListingsPage's chips use
+// ("customPricing", "delivery") alongside the form's own keys.
+// NOTE: the page uses "delivery"; this file previously used "dispatch".
+// Make sure SellerListingForm's `onlySection` understands whichever
+// key the page actually sends.
 const SECTION_LABELS = {
     identity: "Identity", packaging: "Packaging", pricing: "Tax & Pricing",
-    fulfilment: "Fulfilment", dispatch: "Dispatch", policies: "Policies",
+    customPricing: "Buyer Access & Pricing",
+    fulfilment: "Fulfilment", dispatch: "Delivery", delivery: "Delivery",
+    policies: "Policies",
 };
 function getSectionLabel(key) { return SECTION_LABELS[key] || ""; }
 
@@ -71,9 +78,12 @@ function submissionToInitialValues(s) {
     };
 }
 
-function useLenisScrollLock() {
+// `enabled` lets inline mode opt out without breaking the rules of hooks
+// (the hook is still called every render; the effect just does nothing).
+function useLenisScrollLock(enabled = true) {
     const lenis = useLenis();
     useEffect(() => {
+        if (!enabled) return undefined;
         if (lenis) lenis.stop();
         const isAllowed = (e) => !!e.target?.closest?.("[data-lenis-prevent], [data-scroll-lock-allow]");
         const blockScroll = (e) => { if (!isAllowed(e)) e.preventDefault(); };
@@ -84,7 +94,7 @@ function useLenisScrollLock() {
             window.removeEventListener("wheel", blockScroll, { capture: true });
             window.removeEventListener("touchmove", blockScroll, { capture: true });
         };
-    }, [lenis]);
+    }, [lenis, enabled]);
 }
 
 function EditListingModalSkeleton() {
@@ -100,8 +110,11 @@ function EditListingModalSkeleton() {
     );
 }
 
-export default function EditListingModal({ token, submissionId, focusSection, onClose, onSaved }) {
-    useLenisScrollLock();
+export default function EditListingModal({ token, submissionId, focusSection, onClose, onSaved, inline = false }) {
+    // Inline mode lives inside the page's normal scroll flow, so the
+    // modal-style scroll lock must NOT run.
+    useLenisScrollLock(!inline);
+
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [initialValues, setInitialValues] = useState(null);
@@ -136,6 +149,64 @@ export default function EditListingModal({ token, submissionId, focusSection, on
         onSaved(submissionId, res.submission, res.message || "Changes submitted for review.");
     };
 
+    // Shared by modal and inline modes.
+    const content = (
+        <AnimatePresence mode="wait" initial={false}>
+            {loading ? (
+                <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
+                    <EditListingModalSkeleton />
+                </motion.div>
+            ) : error ? (
+                <motion.p key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="py-8 text-center text-[13px] font-semibold" style={{ color: "#c71f11" }}>
+                    {error}
+                </motion.p>
+            ) : initialValues ? (
+                <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
+                    {submitError && (
+                        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{submitError}</p>
+                    )}
+                    <SellerListingForm
+                        mode="edit"
+                        identityReadOnly
+                        brandDisplay={brandDisplay}
+                        initialValues={initialValues}
+                        onSubmit={handleSubmit}
+                        submitting={submitting}
+                        submitLabel="Update"
+                        stickyBottomClassName={inline ? "bottom-0" : "-bottom-4"}
+                        onlySection={focusSection || null}
+                        submissionId={submissionId}
+                    />
+                </motion.div>
+            ) : null}
+        </AnimatePresence>
+    );
+
+    /* ---------------- inline (dropdown under the row) ---------------- */
+    if (inline) {
+        return (
+            <div className="w-full">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="min-w-0 truncate text-[12px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>
+                        {focusSection ? `Editing ${getSectionLabel(focusSection)}` : "Edit listing"}
+                    </p>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label="Close editor"
+                        className="shrink-0 rounded-full p-1.5 transition-colors duration-150 hover:bg-black/[0.05]"
+                        style={{ color: C.muted }}
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+                {content}
+            </div>
+        );
+    }
+
+    /* ---------------- modal (unchanged) ---------------- */
     return (
         <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/40 p-2.5 sm:p-4" onClick={onClose}>
             <div onClick={(e) => e.stopPropagation()} className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white" style={{ height: "92vh" }}>
@@ -159,36 +230,7 @@ export default function EditListingModal({ token, submissionId, focusSection, on
                     data-scroll-lock-allow=""
                     data-lenis-prevent=""
                 >
-                    <AnimatePresence mode="wait" initial={false}>
-                        {loading ? (
-                            <motion.div key="skeleton" exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
-                                <EditListingModalSkeleton />
-                            </motion.div>
-                        ) : error ? (
-                            <motion.p key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                                className="py-8 text-center text-[13px] font-semibold" style={{ color: "#c71f11" }}>
-                                {error}
-                            </motion.p>
-                        ) : initialValues ? (
-                            <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.18 }}>
-                                {submitError && (
-                                    <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-[12.5px] font-semibold text-red-700">{submitError}</p>
-                                )}
-                                <SellerListingForm
-                                    mode="edit"
-                                    identityReadOnly
-                                    brandDisplay={brandDisplay}
-                                    initialValues={initialValues}
-                                    onSubmit={handleSubmit}
-                                    submitting={submitting}
-                                    submitLabel="Update"
-                                    stickyBottomClassName="-bottom-4"
-                                    onlySection={focusSection || null}
-                                    submissionId={submissionId}
-                                />
-                            </motion.div>
-                        ) : null}
-                    </AnimatePresence>
+                    {content}
                 </div>
             </div>
         </div>
