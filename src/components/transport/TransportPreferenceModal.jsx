@@ -356,8 +356,16 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
 
     const [expandedTransportGroup, setExpandedTransportGroup] = useState(null);
 
-    const [loadingOptions, setLoadingOptions] = useState(false);
     const [approvedOptions, setApprovedOptions] = useState([]);
+    // Which route (seller + origin + destination) `approvedOptions` were
+    // fetched for. `null` = "not known yet". The UI only shows the options
+    // list / empty state / setup button once this matches the current
+    // route, so nothing ever renders from stale or not-yet-loaded data —
+    // which is what used to make the layout jump around.
+    const [loadedRouteKey, setLoadedRouteKey] = useState(null);
+    // The route we've already auto-opened the setup section for, so
+    // pressing Cancel afterwards doesn't immediately re-open it.
+    const autoOpenedRouteKeyRef = useRef(null);
 
     // ---- Propose flow: collapsed -> modes -> suggestions -> form ----
     const [proposeStage, setProposeStage] = useState("collapsed");
@@ -375,6 +383,16 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
     const [confirming, setConfirming] = useState(false);
     const [autoSubmitting, setAutoSubmitting] = useState(false);
 
+    // When the modal closes, drop everything route-related so the next
+    // open starts clean (instead of flashing last time's options for a
+    // frame before the new fetch finishes).
+    useEffect(() => {
+        if (open) return;
+        setLoadedRouteKey(null);
+        setProposeStage("collapsed");
+        autoOpenedRouteKeyRef.current = null;
+    }, [open]);
+
     useEffect(() => {
         if (!open) return;
         setProposeStage("collapsed");
@@ -387,24 +405,48 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
         setError(null);
         setConfirmTarget(null);
         setAutoSubmitting(false);
+        setLoadedRouteKey(null);
+        autoOpenedRouteKeyRef.current = null;
     }, [open, destCity, destState, seller?.sellerId]);
 
     const canQueryRoute = !!(destCity && destState && origin.city && origin.state);
+    const routeKey = `${seller?.sellerId}|${origin.state}|${origin.city}|${destState}|${destCity}`;
+    // True once the options for the *current* route are in.
+    const optionsReady = canQueryRoute && loadedRouteKey === routeKey;
     const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
 
     useEffect(() => {
         if (!open || !canQueryRoute) return;
-        setLoadingOptions(true);
+        let cancelled = false;
+        setLoadedRouteKey(null);
+
+        // Applies the result and — if the seller has nothing approved for
+        // this route — opens the setup section in the SAME state batch, so
+        // there is never an intermediate frame showing the empty state or
+        // the "Set up delivery" button before the picker appears.
+        const applyOptions = (opts) => {
+            setApprovedOptions(opts);
+            setLoadedRouteKey(routeKey);
+            if (opts.length === 0 && autoOpenedRouteKeyRef.current !== routeKey) {
+                autoOpenedRouteKeyRef.current = routeKey;
+                setProposeStage((stage) => (stage === "collapsed" ? "modes" : stage));
+            }
+        };
+
         fetchSellerRouteOptions({
             sellerId: seller.sellerId,
             originState: origin.state, originCity: origin.city,
             destState, destCity,
         }).then((res) => {
-            const opts = res?.options || [];
-            setApprovedOptions(opts);
-            setLoadingOptions(false);
+            if (cancelled) return;
+            applyOptions(res?.options || []);
+        }).catch(() => {
+            if (cancelled) return;
+            applyOptions([]);
         });
-    }, [open, canQueryRoute, seller?.sellerId, origin.state, origin.city, destState, destCity]);
+
+        return () => { cancelled = true; };
+    }, [open, canQueryRoute, seller?.sellerId, origin.state, origin.city, destState, destCity, routeKey]);
 
     useEffect(() => {
         if (proposeStage !== "suggestions" || !selectedMode) return;
@@ -705,12 +747,17 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                     </p>
                                 )}
 
-                                {proposeStage === "collapsed" && canQueryRoute && (
-                                    loadingOptions ? (
-                                        <div className="flex items-center justify-center py-10">
-                                            <Loader2 className="h-5 w-5 animate-spin" style={{ color: C.muted }} />
-                                        </div>
-                                    ) : groupedApproved.length > 0 ? (
+                                {/* While the route's options are still loading, show ONE
+                                    stable spinner — never the empty state or the setup
+                                    button, which is what used to flash before the picker. */}
+                                {proposeStage === "collapsed" && canQueryRoute && !optionsReady && (
+                                    <div className="flex items-center justify-center py-10">
+                                        <Loader2 className="h-5 w-5 animate-spin" style={{ color: C.muted }} />
+                                    </div>
+                                )}
+
+                                {proposeStage === "collapsed" && optionsReady && (
+                                    groupedApproved.length > 0 ? (
                                         <div className="flex flex-col gap-2">
                                             <p className="text-[11.5px] font-bold tracking-wide" style={{ color: C.ink }}>
                                                 Available on this route
@@ -853,7 +900,7 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                 )}
 
                                 <AnimatePresence mode="wait" initial={false}>
-                                    {proposeStage === "collapsed" && canQueryRoute && (
+                                    {proposeStage === "collapsed" && optionsReady && (
                                         <motion.button
                                             key="collapsed"
                                             initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
