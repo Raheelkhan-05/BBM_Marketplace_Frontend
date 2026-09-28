@@ -89,6 +89,7 @@ import CommissionSlider from "../seller/listingForm/CommissionSlider.jsx";
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
 import SellThisItemModal from "../catalog/SellThisItemModal";
 import BuyNowModal from "../BuyNowModal";
+import { useSocket } from "../../context/SocketContext.jsx";
 import { resizedImageUrl } from "../../utils/imageUrl";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { round2 } from "../../shared/packUnits.js";
@@ -856,6 +857,7 @@ function toBuyerSellerPayload(s) {
 // since this list is wallet-filtered and can omit the signed-in seller's
 // own row entirely.
 function isOwnSellerRow(sellerRow, currentUserId) {
+    if (sellerRow?.is_own === true) return true;
     if (!currentUserId) return false;
     const ownerId = sellerRow?.shop_slug ?? null;
     return ownerId != null && String(ownerId) === String(currentUserId);
@@ -1322,6 +1324,20 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
     return bestAchievablePricing(seller, includeGst); // "best_price" and "fastest_delivery" both show effective-at-MOQ-style pricing here
 }
 
+function applyLowestToItem(it, best) {
+    return {
+        ...it,
+        lowest_price: best?.price ?? null,
+        lowest_price_pack_size: best?.pack_size ?? null,
+        lowest_price_master_pack_size: best?.units_per_master_pack ?? null,
+        lowest_price_unit: best?.unit ?? null,
+        lowest_price_gst_percent: best?.gst_percent ?? null,
+        lowest_price_is_custom: best?.is_custom_priced ?? false,
+        lowest_price_stock_type: best?.stock_type ?? null,
+        lowest_price_available_stock: best?.stock_quantity ?? null,
+        lowest_price_moq: best?.moq ?? null,
+    };
+}
 
 function computeListingLowestFromSellers(sellers) {
     let best = null;
@@ -1713,6 +1729,86 @@ export default function HomeProductFeed({ category, q = "" }) {
         loadSellersFor(item.id);
     }, [openItemId, closeDropdown, loadSellersFor]);
 
+
+    // ── REAL-TIME PRICE UPDATES ─────────────────────────────────────────
+    const { socket, connected } = useSocket() || {};
+    const itemsRef = useRef([]);
+    const sellerStateRef = useRef({});
+    const openItemIdRef = useRef(null);
+    const loadSellersForRef = useRef(null);
+    const buyerAddressRef = useRef(null);
+    itemsRef.current = items;
+    sellerStateRef.current = sellerState;
+    openItemIdRef.current = openItemId;
+    loadSellersForRef.current = loadSellersFor;
+    buyerAddressRef.current = buyerAddress;
+
+    const lastTsRef = useRef(new Map());        // drops out-of-order events
+    const lowestTimersRef = useRef({});         // coalesces bursts per product
+
+    // Product header = lowest price the SERVER says this buyer can see.
+    // limit:1 price_asc is tiny; server-side means visibility/wallet rules hold.
+    const refreshLowest = useCallback((itemId) => {
+        clearTimeout(lowestTimersRef.current[itemId]);
+        lowestTimersRef.current[itemId] = setTimeout(async () => {
+            try {
+                const addr = buyerAddressRef.current;
+                const res = await fetchBrandItemSellers(itemId, {
+                    sort: "price_asc", limit: 1, offset: 0, token,
+                    destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
+                });
+                if (!res?.success) return;
+                const best = computeListingLowestFromSellers(res.items || []);
+                setItems((prev) => prev.map((it) => (String(it.id) === String(itemId) ? applyLowestToItem(it, best) : it)));
+            } catch { /* next event will retry */ }
+        }, 120);
+    }, [token]);
+
+    useEffect(() => {
+        if (!socket) return;
+        const onUpdate = (evt) => {
+            const { brandItemId, submissionId, patch, available, ts } = evt || {};
+            if (!brandItemId || !submissionId) return;
+            if ((lastTsRef.current.get(submissionId) || 0) > (ts || 0)) return;
+            lastTsRef.current.set(submissionId, ts || 0);
+            if (!itemsRef.current.some((it) => String(it.id) === String(brandItemId))) return;
+
+            const entry = sellerStateRef.current[brandItemId];
+            const known = entry?.items?.some((r) => r.submission_id === submissionId);
+
+            if (known) {
+                // Instant: patch the row in place (or drop it if no longer available).
+                setSellerState((prev) => {
+                    const cur = prev[brandItemId];
+                    if (!cur?.items) return prev;
+                    const nextItems = available
+                        ? cur.items.map((r) => (r.submission_id === submissionId ? { ...r, ...patch } : r))
+                        : cur.items.filter((r) => r.submission_id !== submissionId);
+                    const removed = cur.items.length - nextItems.length;
+                    return { ...prev, [brandItemId]: { ...cur, items: nextItems, total: Math.max(0, (cur.total ?? cur.items.length) - removed) } };
+                });
+            } else if (available && String(openItemIdRef.current) === String(brandItemId)) {
+                // A row we don't have yet (new listing / newly visible) — silent reload.
+                loadSellersForRef.current?.(brandItemId, { silent: true });
+            }
+            refreshLowest(brandItemId);
+        };
+        socket.on("listing:update", onUpdate);
+        return () => socket.off("listing:update", onUpdate);
+    }, [socket, refreshLowest]);
+
+    // After a dropped connection we may have missed events — resync quietly.
+    const sawDisconnectRef = useRef(false);
+    useEffect(() => {
+        if (!connected) { sawDisconnectRef.current = true; return; }
+        if (!sawDisconnectRef.current) return;
+        sawDisconnectRef.current = false;
+        if (openItemIdRef.current) loadSellersForRef.current?.(openItemIdRef.current, { silent: true });
+        itemsRef.current.forEach((it) => refreshLowest(it.id));
+    }, [connected, refreshLowest]);
+
+    useEffect(() => () => Object.values(lowestTimersRef.current).forEach(clearTimeout), []);
+
     // inside HomeProductFeed
     useEffect(() => {
         Object.entries(sellerState).forEach(([itemId, entry]) => {
@@ -1725,18 +1821,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                     if (String(it.id) !== String(itemId)) return it;
                     if (it.lowest_price === best.price && it.lowest_price_pack_size === best.pack_size) return it;
                     changed = true;
-                    return {
-                        ...it,
-                        lowest_price: best.price,
-                        lowest_price_pack_size: best.pack_size,
-                        lowest_price_master_pack_size: best.units_per_master_pack,
-                        lowest_price_unit: best.unit,
-                        lowest_price_gst_percent: best.gst_percent,
-                        lowest_price_is_custom: best.is_custom_priced,
-                        lowest_price_stock_type: best.stock_type,
-                        lowest_price_available_stock: best.stock_quantity,
-                        lowest_price_moq: best.moq,
-                    };
+                    return applyLowestToItem(it, best);
                 });
                 return changed ? next : prev;
             });
