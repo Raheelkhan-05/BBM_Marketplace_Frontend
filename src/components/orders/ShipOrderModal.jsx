@@ -11,9 +11,9 @@
 // The transport COMPANY (mode + fields) was already agreed before
 // purchase via the Transport Library — this modal only shows that as
 // read-only context and collects the per-shipment LR number + files.
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { X, Loader2, Upload, AlertTriangle, FileText, Receipt, Truck } from "lucide-react";
+import { X, Loader2, Upload, UploadCloud, AlertTriangle, FileText, Receipt, Truck } from "lucide-react";
 import { routeOptionSummary, routeTransportModeLabel } from "../../../shared/routeTransportFields.js";
 
 const C = {
@@ -41,19 +41,87 @@ const DEFAULT_ACCEPT = [
     ".pdf", ".txt", ".doc", ".docx", ".xls", ".xlsx",
 ].join(",");
 
+// Drag-and-drop, scoped strictly to this field's own wrapper — same
+// pattern as SellerListingForm's image dropzone and FormPrimitives'
+// CertificateUploadField: every drag event calls stopPropagation() so a
+// drop on the LR field can never be picked up by the adjacent bill field
+// (or vice versa) when both are rendered side by side in this modal, and
+// a window-level `dragend` listener force-resets the highlight in case a
+// drag is abandoned in a way that never fires a clean dragleave here
+// (Esc mid-drag, dropping over browser chrome, a mid-drag re-render).
 function FileDrop({ label, hint, file, onChange, accept = DEFAULT_ACCEPT }) {
+    const [dragActive, setDragActive] = useState(false);
+    const dragCounter = useRef(0);
+
+    const takeFile = (fileList) => {
+        const picked = fileList?.[0];
+        if (picked) onChange(picked);
+    };
+
+    const handleDragEnter = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!e.dataTransfer?.types?.includes("Files")) return;
+        dragCounter.current += 1;
+        setDragActive(true);
+    };
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current = Math.max(0, dragCounter.current - 1);
+        if (dragCounter.current === 0) setDragActive(false);
+    };
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dragCounter.current = 0;
+        setDragActive(false);
+        takeFile(e.dataTransfer?.files);
+    };
+
+    useEffect(() => {
+        const resetDragState = () => {
+            dragCounter.current = 0;
+            setDragActive(false);
+        };
+        window.addEventListener("dragend", resetDragState);
+        return () => window.removeEventListener("dragend", resetDragState);
+    }, []);
+
     return (
-        <label className="flex cursor-pointer flex-col gap-1.5 rounded-xl border border-dashed p-3.5" style={{ borderColor: file ? C.secondary : C.hair, background: file ? `${C.secondary}08` : "#fff" }}>
+        <label
+            className="flex cursor-pointer flex-col gap-1.5 rounded-xl border border-dashed p-3.5 transition-colors duration-150"
+            style={
+                dragActive
+                    ? { borderColor: C.secondary, background: `${C.secondary}0a` }
+                    : { borderColor: file ? C.secondary : C.hair, background: file ? `${C.secondary}08` : "#fff" }
+            }
+            onDragEnter={handleDragEnter}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+        >
             <span className="flex items-center gap-2">
-                <Upload className="h-4 w-4" style={{ color: file ? C.secondary : C.muted }} />
+                {dragActive ? (
+                    <UploadCloud className="h-4 w-4" style={{ color: C.secondary }} />
+                ) : (
+                    <Upload className="h-4 w-4" style={{ color: file ? C.secondary : C.muted }} />
+                )}
                 <span className="text-[13px] font-bold" style={{ color: C.ink }}>{label}</span>
             </span>
-            {file ? (
+            {dragActive ? (
+                <span className="text-[11.5px] font-semibold" style={{ color: C.secondary }}>Drop to add</span>
+            ) : file ? (
                 <span className="truncate text-[11.5px] font-semibold" style={{ color: C.secondary }}>{file.name}</span>
             ) : (
-                <span className="text-[11px] font-medium" style={{ color: C.muted }}>{hint}</span>
+                <span className="text-[11px] font-medium" style={{ color: C.muted }}>{hint} — or drag & drop it here</span>
             )}
-            <input type="file" accept={accept} className="hidden" onChange={(e) => onChange(e.target.files?.[0] || null)} />
+            <input type="file" accept={accept} className="hidden" onChange={(e) => takeFile(e.target.files)} />
         </label>
     );
 }
