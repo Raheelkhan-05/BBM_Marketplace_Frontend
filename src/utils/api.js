@@ -1298,3 +1298,12 @@ export async function deleteCustomPricing(token, buyerId, submissionId) {
 export async function bulkClearCustomPricing(token, buyerId, submissionIds) {
   return apiPost(`/seller/custom-pricing/${buyerId}/bulk-clear`, token, { submissionIds: submissionIds || [] });
 }
+
+export async function fetchOfferForResume(submissionId, token) {
+  const qs = new URLSearchParams({ submissionId });
+  const res = await fetch(`${API_BASE}/orders/offer-for-resume?${qs.toString()}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    credentials: "include",
+  });
+  try { return await res.json(); } catch { return { success: false, message: "Couldn't reach the server." }; }
+}

@@ -745,6 +745,15 @@ export default function BrandItemSellersPage() {
                         removedNotice={transportFlow.removedNotice}
                         onClose={() => setTransportFlow(null)}
                         onResolved={handleTransportResolved}
+                        onIntentSource="buynow"
+                        onCaptureIntent={() => ({
+                            offerId: seller.offerId,
+                            productId: product?.id,
+                            productName: product?.name,
+                            quantity, basis, orderMode,
+                            notes, addressId: selectedAddressId,
+                        })}
+
                     />
                 )}
             </AnimatePresence>

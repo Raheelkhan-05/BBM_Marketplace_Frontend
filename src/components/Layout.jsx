@@ -14,6 +14,9 @@ import { CartProvider } from "../context/CartContext.jsx";
 import { ChatProvider } from "../context/ChatContext.jsx";
 import { ListingsProvider } from "../context/ListingsContext.jsx";
 import { HelpRequestProvider } from "../context/HelpRequestContext.jsx";
+import { OrderResumeProvider } from "../context/OrderResumeContext.jsx";
+import TransportResolutionBanner from "./TransportResolutionBanner.jsx";
+import GlobalBuyNowLauncher from "./GlobalBuyNowLauncher.jsx";
 import HelpBulb from "./HelpBulb.jsx";
 
 const LightboxVisibilityContext = createContext(null);
@@ -49,46 +52,52 @@ export default function Layout() {
   return (
     <NotificationsProvider>
       <TransportLibraryProvider>
-        <CartProvider>
-          <ChatProvider>
-            <ListingsProvider>
-              <HelpRequestProvider>
+        <OrderResumeProvider>
 
-                <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>
-                  <div className="relative min-h-screen bg-[#FFFFFF] overflow-x-clip">
-                    <div className="relative z-1">
-                      <Header onOpenRfq={() => setRfqOpen(true)} />
+          <CartProvider>
+            <ChatProvider>
+              <ListingsProvider>
+                <HelpRequestProvider>
 
-                      <main className={showBottomNav ? "pb-10 md:pb-0" : ""}>
-                        <Outlet />
-                      </main>
+                  <LightboxVisibilityContext.Provider value={{ lightboxOpen, setLightboxOpen }}>
+                    <div className="relative min-h-screen bg-[#FFFFFF] overflow-x-clip">
+                      <div className="relative z-1">
+                        <Header onOpenRfq={() => setRfqOpen(true)} />
 
-                      <div className="hidden md:block">
-                        <Footer />
+
+                        <main className={showBottomNav ? "pb-10 md:pb-0" : ""}>
+                          <Outlet />
+                        </main>
+
+                        <div className="hidden md:block">
+                          <Footer />
+                        </div>
+
+                        {showBottomNav && <BottomNavStrip onOpenRfq={() => setRfqOpen(true)} />}
                       </div>
 
-                      {showBottomNav && <BottomNavStrip onOpenRfq={() => setRfqOpen(true)} />}
-                    </div>
-
-                    {/* Center-screen popup for order (purchase + sales) notifications.
+                      {/* Center-screen popup for order (purchase + sales) notifications.
                 Portals to document.body, so placement in the tree doesn't
                 matter — it just needs to be inside NotificationsProvider and
                 inside the Router (it uses useNavigate). */}
-                    {/* Desktop only now — mobile's copy is rendered inline as the
+                      {/* Desktop only now — mobile's copy is rendered inline as the
                         last item inside BottomNavStrip's own row, so it scrolls
                         with the rest of the nav instead of floating separately. */}
-                    <div className="hidden md:block">
-                      <HelpBulb />
+                      <div className="hidden md:block">
+                        <HelpBulb />
+                      </div>
+                      <OrderNotificationToast />
+                      <ChatNotificationToast />
+                      <TransportResolutionBanner />
+                      <GlobalBuyNowLauncher />
                     </div>
-                    <OrderNotificationToast />
-                    <ChatNotificationToast />
-                  </div>
-                </LightboxVisibilityContext.Provider>
-              </HelpRequestProvider>
-            </ListingsProvider>
+                  </LightboxVisibilityContext.Provider>
+                </HelpRequestProvider>
+              </ListingsProvider>
 
-          </ChatProvider>
-        </CartProvider>
+            </ChatProvider>
+          </CartProvider>
+        </OrderResumeProvider>
       </TransportLibraryProvider>
     </NotificationsProvider>
   );

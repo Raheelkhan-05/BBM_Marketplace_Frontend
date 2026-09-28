@@ -18,13 +18,16 @@
 // Everything else (pricing, stock, MOQ, order-window / location
 // constraints, debounced quantity writes) is unchanged.
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, Trash2, Loader2, Store, ShoppingCart, MapPin, Minus, Plus, Clock, Truck, AlertCircle, ChevronLeft, CheckCircle2 } from "lucide-react";
 import { ReceiptText, Package, FileText, X, ChevronDown } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
 import { fetchOrderConstraints } from "../utils/api.js";
 import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
+import { useOrderResume } from "../context/OrderResumeContext.jsx";
+import { useSocket } from "../context/SocketContext.jsx";
+import { getAllPendingIntents } from "../utils/orderIntentStore.js";
 import { C } from "../components/catalog/tokens";
 import GroupPaymentQRModal from "../components/GroupPaymentQRModal.jsx";
 import AddressBook from "../components/shipping/AddressBook.jsx";
@@ -359,7 +362,17 @@ function PhaseSteps({ phase }) {
 
 export default function CartPage() {
     const navigate = useNavigate();
+    const location = useLocation();
+    const { socket } = useSocket();
     const { token } = useAuth();
+    const { registerActive, unregisterActive } = useOrderResume();
+    useEffect(() => {
+        const keys = Object.entries(pendingTransportProposals)
+            .filter(([, p]) => p?.routeOptionId)
+            .map(([, p]) => p.routeOptionId);
+        keys.forEach(registerActive);
+        return () => keys.forEach(unregisterActive);
+    }, [pendingTransportProposals, registerActive, unregisterActive]);
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [viewingItem, setViewingItem] = useState(null);
@@ -378,6 +391,57 @@ export default function CartPage() {
     const [phase, setPhase] = useState("review");
     const goToShipping = () => { setError(null); setPhase("shipping"); };
     const goBackToReview = () => { setError(null); setPhase("review"); };
+
+    // Resume-from-approved-transport-proposal for the cart flow. The
+    // per-seller preference-fetch effect below (keyed off effectiveAddress)
+    // will pick up the now-approved preference on its own once an address
+    // is set — this just needs to get the buyer straight to "shipping" and
+    // make sure an address is already selected so that effect actually runs.
+    const cartResumeAppliedRef = useRef(false);
+    useEffect(() => {
+        if (cartResumeAppliedRef.current) return;
+        const intents = getAllPendingIntents().filter((i) => i.source === "cart" && (i.status === "approved" || i.status === "pending"));
+        if (!intents.length) return;
+        cartResumeAppliedRef.current = true;
+        setPhase("shipping");
+        // The per-seller preference-poll effect further down already
+        // re-checks every pendingTransportProposals[sellerId] against the
+        // server — it will pick up the approved status on its own once
+        // effectiveAddress is set, no extra wiring needed here.
+    }, []); // run once on mount
+
+    // Instant reflect: when OrderResumeContext resolves an approval/rejection
+    // for a proposal THIS cart page is actively tracking, mirror it into
+    // local state immediately instead of waiting for cartClockTick.
+    useEffect(() => {
+        if (!socket) return; // socket already imported via useSocket() if not — add: const { socket } = useSocket();
+        const onNotif = async (payload) => {
+            const routeOptionId = payload?.routeOptionId;
+            if (!routeOptionId) return;
+            const sellerId = Object.entries(pendingTransportProposals).find(([, p]) => p?.routeOptionId === routeOptionId)?.[0];
+            if (!sellerId) return;
+            const proposal = pendingTransportProposals[sellerId];
+
+            if (payload.type === "transport_proposal_approved") {
+                const res = await fetchBuyerTransportPreference(sellerId, effectiveAddress?.state, effectiveAddress?.city, token, routeOptionId);
+                if (res?.checkedProposalStatus === "approved" && res?.preference) {
+                    setTransportPreferences((prev) => ({ ...prev, [sellerId]: res.preference }));
+                    setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
+                    reportApproved(routeOptionId, res.preference);
+                }
+            } else if (payload.type === "transport_proposal_rejected") {
+                setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
+                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
+                setTransportRemovedNotices((prev) => ({
+                    ...prev,
+                    [sellerId]: `Your proposed transport option (${proposal.summary}) wasn't accepted by this seller.` + (payload.reason ? ` Reason: ${payload.reason}` : ""),
+                }));
+                reportRejected(routeOptionId, payload.reason || null);
+            }
+        };
+        socket.on("notification:new", onNotif);
+        return () => socket.off("notification:new", onNotif);
+    }, [socket, pendingTransportProposals, effectiveAddress?.state, effectiveAddress?.city, token]);
 
     // ---- Shipping address — same shared component & behavior as
     // BuyNowModal (see components/shipping/AddressBook.jsx). Picking or
@@ -518,8 +582,13 @@ export default function CartPage() {
                 setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
                 setTransportRemovedNotices((prev) => ({
                     ...prev,
-                    [sellerId]: `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by this seller.`,
+                    [sellerId]:
+                        `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by this seller.` +
+                        (res.rejectedNotice.reason ? ` Reason: ${res.rejectedNotice.reason}` : ""),
                 }));
+                if (res.rejectedNotice.routeOptionId) {
+                    reportRejected(res.rejectedNotice.routeOptionId, res.rejectedNotice.reason || null);
+                }
                 return;
             }
 
@@ -539,6 +608,50 @@ export default function CartPage() {
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [effectiveAddress?.city, effectiveAddress?.state, token, Object.keys(grouped).join(",")]);
+
+    // Cart has no per-seller clockTick today — add one so a pending
+    // proposal's approval is actually detected instead of only rejection.
+    const [cartClockTick, setCartClockTick] = useState(0);
+    useEffect(() => {
+        const id = setInterval(() => setCartClockTick((t) => t + 1), 30000);
+        return () => clearInterval(id);
+    }, []);
+
+    useEffect(() => {
+        const city = effectiveAddress?.city;
+        const state = effectiveAddress?.state;
+        if (!city || !state) return;
+
+        Object.entries(pendingTransportProposals).forEach(async ([sellerId, proposal]) => {
+            if (!proposal?.routeOptionId) return;
+            const res = await fetchBuyerTransportPreference(sellerId, state, city, token, proposal.routeOptionId);
+            if (!res?.success) return;
+
+            if (res.checkedProposalStatus === "approved") {
+                const resolved = {
+                    routeOptionId: proposal.routeOptionId,
+                    mode: proposal.mode,
+                    fields: proposal.fields,
+                    summary: proposal.summary,
+                    destCity: city, destState: state,
+                };
+                setTransportPreferences((prev) => ({ ...prev, [sellerId]: resolved }));
+                setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
+                reportApproved(proposal.routeOptionId, resolved);
+            } else if (res.checkedProposalStatus === "rejected") {
+                setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
+                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
+                setTransportRemovedNotices((prev) => ({
+                    ...prev,
+                    [sellerId]:
+                        `Your proposed transport option (${proposal.summary}) wasn't accepted by this seller.` +
+                        (res.rejectedReason ? ` Reason: ${res.rejectedReason}` : ""),
+                }));
+                reportRejected(proposal.routeOptionId, res.rejectedReason || null);
+            }
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [cartClockTick, effectiveAddress?.city, effectiveAddress?.state, token]);
 
     const handleTransportResolved = (sellerId, result) => {
         if (result?.pending) {
@@ -902,6 +1015,8 @@ export default function CartPage() {
                     seller={sellerObjFor(grouped[activeTransportSellerId])}
                     destAddressId={selectedAddressId}
                     removedNotice={transportRemovedNotices[activeTransportSellerId]}
+                    onIntentSource="cart"
+                    onCaptureIntent={() => ({ cartSellerId: activeTransportSellerId })}
                     onClose={() => setActiveTransportSellerId(null)}
                     onAddressChange={setDesiredAddressId}
                     onResolved={(result) => handleTransportResolved(activeTransportSellerId, result)}

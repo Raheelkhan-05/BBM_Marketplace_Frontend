@@ -25,6 +25,7 @@ import {
     fetchSellerRouteOptions, fetchRouteSuggestions, proposeRouteOption,
 } from "../../utils/api.transport.js";
 import { saveBuyerTransportPreference } from "../../utils/api.transport.js";
+import { savePendingIntent } from "../../utils/orderIntentStore.js";
 import {
     ROUTE_TRANSPORT_GROUPS, getRouteTransportFields, routeTransportModeLabel, routeOptionSummary,
 } from "../../../shared/routeTransportFields.js";
@@ -307,7 +308,7 @@ function CustomDropdown({ value, onChange, options, placeholder = "Select…", l
 // address, and it self-resolves (default address, or seeded from the
 // business profile) the same way BuyNowModal's does. destAddressId, if
 // given, is used as the initial hint for which saved address to select.
-export default function TransportPreferenceModal({ open, seller, destAddressId, removedNotice, onClose, onResolved, onAddressChange }) {
+export default function TransportPreferenceModal({ open, seller, destAddressId, removedNotice, onClose, onResolved, onAddressChange, onIntentSource, onCaptureIntent }) {
     const { token } = useAuth();
     const origin = useMemo(() => parseDispatchOrigin(seller), [seller]);
     const allowedGroups = useMemo(
@@ -560,6 +561,21 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                 onResolved(resolved);
                 return;
             }
+
+            // Not auto-approved — the seller still has to act on it. Persist
+            // enough of the in-progress order that OrderResumeContext can put
+            // the buyer right back where they were once that happens.
+            if (onIntentSource) {
+                savePendingIntent({
+                    proposalRouteOptionId: res.option.id,
+                    sellerId: seller.sellerId,
+                    sellerName: seller.display_name,
+                    destCity, destState,
+                    source: onIntentSource,
+                    ...(onCaptureIntent ? onCaptureIntent() : {}),
+                });
+            }
+
             setPendingResult(res);
         } finally {
             setSubmitting(false);
@@ -730,7 +746,7 @@ export default function TransportPreferenceModal({ open, seller, destAddressId, 
                                     <div className="flex items-start gap-2 rounded-xl px-3.5 py-3" style={{ background: "#FEF6E7" }}>
                                         <Truck className="mt-[1px] h-4 w-4 shrink-0" style={{ color: "#92600A" }} />
                                         <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: "#92600A" }}>
-                                            {removedNotice} Please pick another option below, or propose a new one.
+                                            {removedNotice}. Please pick another option below, or propose a new one.
                                         </p>
                                     </div>
                                 )}

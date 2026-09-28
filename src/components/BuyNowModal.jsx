@@ -59,6 +59,8 @@ import { Share2 } from "lucide-react";
 import { shareProductLink } from "../utils/share.js";
 import { routeTransportModeLabel, getRouteTransportFields } from "../../shared/routeTransportFields.js";
 import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
+import { useOrderResume } from "../context/OrderResumeContext.jsx";
+import { useSocket } from "../context/SocketContext.jsx";
 
 /* ============================================================
    All logic below (constants, pure functions, computeLocalQuote,
@@ -314,11 +316,13 @@ function Panel({ icon: Icon, title, subtitle, children }) {
    Main component
    ============================================================ */
 
-export default function BuyNowModal({ seller, product, onClose }) {
+export default function BuyNowModal({ seller, product, onClose, resumeIntent: resumeIntentProp }) {
 
     const { token, profile } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+    const { reportApproved, reportRejected } = useOrderResume();
+    const { socket } = useSocket();
 
     // Optimistic: the parent (HomeProductFeed) already confirmed the buyer
     // is logged in before this modal was ever opened, so in the overwhelming
@@ -667,7 +671,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
 
             if (res?.rejectedNotice) {
                 setTransportPreference(null);
-                setTransportRemovedNotice(`Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`);
+                setTransportRemovedNotice(
+                    `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.` +
+                    (res.rejectedNotice.reason ? ` Reason: ${res.rejectedNotice.reason}` : "")
+                );
+                if (res.rejectedNotice.routeOptionId) {
+                    reportRejected(res.rejectedNotice.routeOptionId, res.rejectedNotice.reason || null);
+                }
                 requestShowTransportModal();
                 return;
             }
@@ -695,7 +705,13 @@ export default function BuyNowModal({ seller, product, onClose }) {
             const res = await fetchBuyerTransportPreference(seller.sellerId, effectiveState, effectiveCity, token);
             if (res?.rejectedNotice) {
                 setTransportPreference(null);
-                setTransportRemovedNotice(`Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.`);
+                setTransportRemovedNotice(
+                    `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.` +
+                    (res.rejectedNotice.reason ? ` Reason: ${res.rejectedNotice.reason}` : "")
+                );
+                if (res.rejectedNotice.routeOptionId) {
+                    reportRejected(res.rejectedNotice.routeOptionId, res.rejectedNotice.reason || null);
+                }
                 requestShowTransportModal();
                 return;
             }
@@ -802,6 +818,44 @@ export default function BuyNowModal({ seller, product, onClose }) {
         }
     }, []);
 
+    // Resume-from-approved-transport-proposal: OrderResumeContext navigates
+    // here with location.state.resumeIntent once the buyer taps "Resume" on
+    // TransportResolutionBanner. Only apply it if it actually belongs to
+    // THIS seller/offer being viewed (the buyer could navigate to a
+    // different product while an unrelated intent is still pending).
+    const resumeAppliedRef = useRef(false);
+    useEffect(() => {
+        const ri = resumeIntentProp || location.state?.resumeIntent;
+        if (!ri || resumeAppliedRef.current) return;
+        if (ri.source !== "buynow" || ri.offerId !== seller?.offerId) return;
+        resumeAppliedRef.current = true;
+
+        setQuantity(ri.quantity);
+        userPickedBasis.current = true;
+        setBasis(ri.basis);
+        setOrderMode(ri.orderMode || "standard");
+        setNotes(ri.notes || "");
+        setDesiredAddressId(ri.addressId || null);
+        setPendingOrderType(ri.orderMode === "credit" ? "credit" : null);
+
+        if (ri.resolvedMode) {
+            setTransportPreference({
+                routeOptionId: ri.resolvedRouteOptionId,
+                mode: ri.resolvedMode,
+                fields: ri.resolvedFields,
+                destCity: ri.destCity,
+                destState: ri.destState,
+            });
+            setPendingTransportProposal(null);
+        }
+
+        setPhase("shipping");
+
+        // Clear it from history state so a later re-render / back-nav
+        // doesn't re-apply it a second time.
+        navigate(location.pathname + location.search, { replace: true, state: {} });
+    }, [location.state, seller?.offerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const handleCloseToEdit = () => {
         const session = loadOrderFormSession(awaitingPaymentOrderId);
         restoreFromSession(session);
@@ -857,16 +911,76 @@ export default function BuyNowModal({ seller, product, onClose }) {
                 setTransportPreference(resolved);
                 setPendingTransportProposal(null);
                 setTransportRemovedNotice(null);
+                reportApproved(pendingTransportProposal.routeOptionId, resolved);
             } else if (res.checkedProposalStatus === "rejected") {
                 setPendingTransportProposal(null);
                 setTransportPreference(null);
-                setTransportRemovedNotice(`Your proposed transport option (${pendingTransportProposal.summary}) wasn't accepted by the seller.`);
+                setTransportRemovedNotice(
+                    `Your proposed transport option (${pendingTransportProposal.summary}) wasn't accepted by the seller.` +
+                    (res.rejectedReason ? ` Reason: ${res.rejectedReason}` : "")
+                );
+                reportRejected(pendingTransportProposal.routeOptionId, res.rejectedReason || null);
                 requestShowTransportModal();
             }
         })();
 
         return () => { cancelled = true; };
     }, [clockTick, pendingTransportProposal?.routeOptionId, seller?.sellerId, effectiveCity, effectiveState, token]);
+
+    // INSTANT path — mirrors the clockTick effect above, but reacts to the
+    // socket event directly instead of waiting up to 30s for the next poll
+    // tick. This is what makes an OPEN modal update the moment the seller
+    // acts, instead of only the global resume banner updating instantly
+    // (OrderResumeContext) while this modal's own on-screen state lags.
+    useEffect(() => {
+        if (!socket) return;
+
+        const onNotif = async (payload) => {
+            const routeOptionId = payload?.routeOptionId;
+            if (!routeOptionId) return;
+            if (!pendingTransportProposal || pendingTransportProposal.routeOptionId !== routeOptionId) return;
+
+            if (payload.type === "transport_proposal_approved") {
+                const res = await fetchBuyerTransportPreference(seller.sellerId, effectiveState, effectiveCity, token, routeOptionId);
+                if (res?.checkedProposalStatus === "approved" && res?.preference) {
+                    const resolved = {
+                        routeOptionId: pendingTransportProposal.routeOptionId,
+                        mode: pendingTransportProposal.mode,
+                        fields: pendingTransportProposal.fields,
+                        summary: pendingTransportProposal.summary,
+                        destCity: effectiveCity, destState: effectiveState,
+                    };
+                    setTransportPreference(resolved);
+                    setPendingTransportProposal(null);
+                    setTransportRemovedNotice(null);
+                    reportApproved(routeOptionId, resolved);
+                }
+            } else if (payload.type === "transport_proposal_rejected") {
+                setPendingTransportProposal(null);
+                setTransportPreference(null);
+                setTransportRemovedNotice(
+                    `Your proposed transport option (${pendingTransportProposal.summary}) wasn't accepted by the seller.` +
+                    (payload.reason ? ` Reason: ${payload.reason}` : "")
+                );
+                reportRejected(routeOptionId, payload.reason || null);
+                requestShowTransportModal();
+            }
+        };
+
+        socket.on("notification:new", onNotif);
+        return () => socket.off("notification:new", onNotif);
+    }, [socket, pendingTransportProposal, seller?.sellerId, effectiveCity, effectiveState, token]);
+
+    const { registerActive, unregisterActive } = useOrderResume();
+    useEffect(() => {
+        // Whatever proposal this modal is currently tracking (pending OR
+        // just-resolved-via-resume) must be excluded from the global
+        // resumable/rejected prompts while this modal is open on screen.
+        const key = pendingTransportProposal?.routeOptionId || resumeIntentProp?.proposalRouteOptionId || null;
+        if (!key) return;
+        registerActive(key);
+        return () => unregisterActive(key);
+    }, [pendingTransportProposal?.routeOptionId, resumeIntentProp?.proposalRouteOptionId, registerActive, unregisterActive]);
 
     const handleBackToEdit = async () => {
         if (awaitingPaymentOrderId) {
@@ -1535,6 +1649,15 @@ export default function BuyNowModal({ seller, product, onClose }) {
                         setTransportRemovedNotice(null);
                         setShowTransportModal(false);
                     }}
+                    onIntentSource="buynow"
+                    onCaptureIntent={() => ({
+                        offerId: seller.offerId,
+                        productId: product?.id,
+                        productName: product?.name,
+                        quantity, basis, orderMode,
+                        notes, addressId: selectedAddressId,
+                    })}
+
                 />
             )}
         </motion.div>
