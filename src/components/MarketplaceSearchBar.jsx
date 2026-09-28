@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect, useMemo } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Loader2, Layers, Tag, Package, BadgeCheck, Lightbulb } from "lucide-react";
+import { Search, Loader2, Layers, Tag, Package, BadgeCheck, X, Lightbulb } from "lucide-react";
 import { fetchAutocomplete } from "../utils/api";
 
 const AUTOCOMPLETE_MIN_CHARS = 2;
@@ -83,6 +83,7 @@ export default function MarketplaceSearchBar({
     const debounceRef = useRef(null);
     const abortRef = useRef(null);
     const containerRef = useRef(null);
+    const inputRef = useRef(null);
 
     // Set right before a suggestion selection changes `value` from the
     // outside. The very next run of the value-watching effect below
@@ -220,6 +221,14 @@ export default function MarketplaceSearchBar({
         }
     };
 
+    const handleClear = () => {
+        onChange("");
+        setSuggestions([]);
+        setShowSuggestions(false);
+        setHighlightIndex(-1);
+        inputRef.current?.focus();
+    };
+
     return (
         <div className="w-full relative mt-3 sm:mt-1" ref={containerRef}>
             <style>{`
@@ -331,6 +340,7 @@ export default function MarketplaceSearchBar({
                             <Search size={16} className="mr-2 lg:mr-3 shrink-0 text-slate-400 lg:!w-4 lg:!h-4" />
                         )}
                         <input
+                            ref={inputRef}
                             value={value}
                             onChange={(e) => onChange(e.target.value)}
                             onKeyDown={handleKeyDown}
@@ -339,6 +349,17 @@ export default function MarketplaceSearchBar({
                             autoComplete="off"
                             className="w-full min-w-0 bg-transparent text-[12px] lg:text-[14px] text-slate-700 placeholder:text-slate-400 outline-none tracking-wide"
                         />
+                        {value.length > 0 && (
+                            <button
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={handleClear}
+                                aria-label="Clear search"
+                                className="mx-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-800"
+                            >
+                                <X size={12} strokeWidth={2.5} />
+                            </button>
+                        )}
                     </div>
 
                     {allowSuggestionsToggle && (
