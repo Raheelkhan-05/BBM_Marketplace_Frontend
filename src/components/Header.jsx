@@ -18,7 +18,8 @@ import { useCart } from "../context/CartContext.jsx";
 import { preloadRoute } from "../routePreload.js";
 import { useChatContext } from "../context/ChatContext.jsx";
 import { useListings } from "../context/ListingsContext.jsx";
-
+import { buildMenuItems } from "./menuItems.js";
+import DesktopNav from "./DesktopNav.jsx";
 
 const C = {
   ink: "#141B22",
@@ -215,13 +216,15 @@ export default function Header({ onOpenRfq }) {
   const { pendingProposalsCount } = useTransportLibrary();
 
   const navigate = useNavigate();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
 
   const headerRef = useRef(null);
   const rowRef = useRef(null);
   const logoRef = useRef(null);
   const rightRef = useRef(null);
   const accountRef = useRef(null);
+
+  const { purchaseUnreadCount, salesUnreadCount } = useNotifications(); // replaces orderUnreadCount
 
 
   useEffect(() => {
@@ -310,17 +313,17 @@ export default function Header({ onOpenRfq }) {
   const isAdmin = effectiveLoggedIn && profile?.role === "admin";
   const isApprovedSeller = effectiveLoggedIn && profile?.seller_status === "approved";
 
-  const navItems = NAV_ITEMS({
-    isLoggedIn: effectiveLoggedIn, isApprovedSeller, onOpenRfq, navigate,
-    ordersBadgeCount: orderUnreadCount,
-    cartBadgeCount: cartCount,
-    chatBadgeCount: chatUnreadTotal,
-    productsBadgeCount: productsBadgeCount,
-    // Only ever meaningful for an approved seller — a buyer-only account
-    // has nothing pending to action here, so the badge stays hidden for
-    // everyone else regardless of what the context happens to hold.
-    transportBadgeCount: isApprovedSeller ? pendingProposalsCount : 0,
-  });
+  const navItems = effectiveLoggedIn
+    ? buildMenuItems({
+      isApprovedSeller, navigate,
+      cartCount,
+      chatUnread: chatUnreadTotal,
+      purchaseUnread: purchaseUnreadCount,
+      salesUnread: salesUnreadCount,
+      productsBadge: productsBadgeCount,
+    })
+    : [];
+
 
 
   return (
@@ -346,7 +349,8 @@ export default function Header({ onOpenRfq }) {
             </SmartLink>
           </div>
 
-          <ScrollableNav navItems={navItems} pathname={pathname} navMaxWidth={navMaxWidth} />
+          {/* <ScrollableNav navItems={navItems} pathname={pathname} navMaxWidth={navMaxWidth} /> */}
+          <DesktopNav items={navItems} pathname={pathname} search={search} maxWidth={navMaxWidth} />
 
           <div ref={rightRef} className="flex shrink-0 items-center gap-3">
             {effectiveLoggedIn ? (
