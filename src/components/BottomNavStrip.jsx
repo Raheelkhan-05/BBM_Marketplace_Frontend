@@ -9,7 +9,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-    Menu, ArrowLeft, LogOut, ArrowUpRight,
+    Menu, ArrowLeft, LogOut, ArrowUpRight, Home,
     PackagePlus, Boxes, Store, FileText, HandCoins, Truck, ShoppingCart, MessageCircle,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -28,6 +28,7 @@ const BOTTOM_BAR_HEIGHT = 56;
 // Routes used by the mobile menu.
 // TODO: confirm the two marked routes against your router — the rest are verified.
 const MENU_ROUTES = {
+    home: "/home",
     listProduct: "/seller/sell",
     manageProducts: "/seller/products",   // TODO confirm
     myStore: "/seller/store",
@@ -76,6 +77,7 @@ function buildMenuItems({ isApprovedSeller, navigate, cartCount, chatUnread, pur
         : [item("my-store", "My store", Store, MENU_ROUTES.myStore)];
 
     return [
+        item("home", "Home", Home, MENU_ROUTES.home, 0, (p) => p === "/home"),
         ...sellerItems,
         item("cart", "Cart", ShoppingCart, MENU_ROUTES.cart, cartCount),
         item("purchase-orders", "Purchase orders", FileText, MENU_ROUTES.purchaseOrders, purchaseUnread, matchPurchaseOrders),
@@ -91,6 +93,7 @@ const SELLER_LABELS = ["list a product", "manage products", "my store", "sales o
 const BUYER_LABELS = ["cart", "purchase orders"];
 function groupOf(item) {
     const label = String(item.label || "").trim().toLowerCase();
+    if (label === "home") return -1;
     if (SELLER_LABELS.includes(label)) return 0;
     if (BUYER_LABELS.includes(label)) return 1;
     return 2;
@@ -243,6 +246,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     >
                         <ArrowLeft className="h-5 w-5" />
                     </button>
+
                     <h1 className="mt-2 truncate text-[20px] font-extrabold leading-tight tracking-tight" style={{ color: C.ink }}>
                         {profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
                     </h1>
