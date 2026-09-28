@@ -38,6 +38,7 @@ import { useLenis } from "../../../providers/SmoothScrollProvider.jsx";
 import { X, Minus, Plus, Check } from "lucide-react";
 import { C, EASE } from "./FormPrimitives.jsx";
 
+const LIVE_COMMIT_DEBOUNCE_MS = 350;
 export const ITEM_HEIGHT = 44;
 const VISIBLE_ROWS = 5;
 export const WHEEL_HEIGHT = ITEM_HEIGHT * VISIBLE_ROWS;
@@ -264,40 +265,29 @@ export function InlineWheelField({ seed, step, filterFn, formatValue, prefix, su
 
     const lastCommitAt = useRef(0);
     const lastSeed = useRef(seed);
-    // gridAnchor/step are derived from an async value (e.g. the catalog's
-    // lowest price) that's often not ready on first mount — useWheelColumn
-    // then falls back to a placeholder anchor/step, building a tiny value
-    // window nowhere near the real seed. `seed` itself (the actual price)
-    // doesn't change once that async value later arrives, so watching only
-    // `seed` never notices gridAnchor going from "placeholder" to "real",
-    // and the wheel stays stuck on whatever edge of that first tiny window
-    // it originally snapped to.
     const lastGridAnchor = useRef(gridAnchor);
     const commitTimer = useRef(null);
 
-    // Scroll/nudge settling → commit up to the parent, and stamp the time
-    // we did it. Debounced so we commit once the value has actually
-    // settled, not on every intermediate frame while still moving.
-    useEffect(() => {
-        // Only ever commit up to the parent when the seller ACTUALLY scrolled
-        // this field. A mount (source "init") or a programmatic resync
-        // (source "programmatic" — from jumpToExact, e.g. the gridAnchor
-        // resync when the reference price finishes loading, or a sibling
-        // field's edit recomputing this field's derived seed) must never be
-        // mistaken for "the seller picked this field's basis" — that's what
-        // was letting the three price fields silently stomp on each other's
-        // basePrice/priceBasis a moment after the form opened.
-        if (wheel.changeSource.current !== "scroll") return;
+    // --- live-typing bookkeeping ---
+    const liveTimer = useRef(null);       // debounce timer for typed input
+    const editStartValue = useRef(null);  // value when this edit session began (for Esc revert)
+    const lastLiveValue = useRef(null);   // last typed value already pushed to the parent
 
+    useEffect(() => () => clearTimeout(liveTimer.current), []);
+
+    // Scroll settling -> commit (unchanged)
+    useEffect(() => {
+        if (wheel.changeSource.current !== "scroll") return;
         clearTimeout(commitTimer.current);
         commitTimer.current = setTimeout(() => {
             lastCommitAt.current = Date.now();
             onCommit(wheel.selected);
-        }, 200); // was 90 — gives scrollend's correction time to land first
+        }, 200);
         return () => clearTimeout(commitTimer.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [wheel.selected]);
 
+    // External seed / anchor resync (unchanged)
     useEffect(() => {
         const seedChanged = seed !== lastSeed.current;
         const anchorChanged = gridAnchor !== lastGridAnchor.current;
@@ -306,53 +296,111 @@ export function InlineWheelField({ seed, step, filterFn, formatValue, prefix, su
         lastGridAnchor.current = gridAnchor;
 
         const isLikelyOwnEcho = Date.now() - lastCommitAt.current < RESYNC_GRACE_MS;
-        if (isLikelyOwnEcho) return; // ignore — this is our own last commit settling back down
+        if (isLikelyOwnEcho) return;
 
+        // While typing, never yank the wheel/draft out from under the seller.
         if (!editing) {
             wheel.jumpToExact(seed, step);
-            lastCommitAt.current = Date.now(); // treat as a fresh baseline; don't let it re-trigger
+            lastCommitAt.current = Date.now();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [seed, step, gridAnchor]);
 
-    const parseDraft = () => {
-        if (draft.trim() === "" || draft === ".") return null;
-        const n = Number(draft);
+    const parseValue = (str) => {
+        if (str == null || str.trim() === "" || str === ".") return null;
+        const n = Number(str);
         if (!Number.isFinite(n)) return null;
         const v = Math.round(n * 100) / 100;
         return filterFn(v) ? v : null;
     };
-    const startEdit = () => { setDraft(String(wheel.selected)); setDraftError(""); setEditing(true); };
-    const cancelEdit = () => { setEditing(false); setDraftError(""); };
+    const parseDraft = () => parseValue(draft);
+
+    const startEdit = () => {
+        clearTimeout(commitTimer.current); // drop any pending scroll-commit
+        editStartValue.current = wheel.selected;
+        lastLiveValue.current = null;
+        setDraft(String(wheel.selected));
+        setDraftError("");
+        setEditing(true);
+    };
+
+    // revert = true (Esc): undo any live commits made during this edit session.
+    const cancelEdit = (revert = false) => {
+        clearTimeout(liveTimer.current);
+        if (revert && lastLiveValue.current != null && editStartValue.current != null) {
+            const original = editStartValue.current;
+            wheel.jumpToExact(original, step);
+            lastCommitAt.current = Date.now();
+            onCommit(original);
+        }
+        lastLiveValue.current = null;
+        setEditing(false);
+        setDraftError("");
+    };
+
+    // Final commit (Enter / blur with a valid value): also re-centres the wheel.
     const commitDraft = () => {
         const v = parseDraft();
         if (v == null) return null;
+        clearTimeout(liveTimer.current);
         clearTimeout(commitTimer.current);
-        // Re-base the step to 2% of the value the seller just typed — but
-        // only for currency (₹) fields. Percent fields (suffix === "%",
-        // e.g. the Increase/Decrease dial in CustomPricingModal) keep
-        // their fixed 1-point step regardless of what was typed.
         const isCurrencyField = suffix == null && prefix != null;
         const rebasedStep = isCurrencyField
             ? (Math.round(v * 0.02 * 100) / 100 || step)
             : step;
         wheel.jumpToExact(v, rebasedStep);
         lastCommitAt.current = Date.now();
-        onCommit(v);
+        if (v !== lastLiveValue.current) onCommit(v); // skip if already pushed live
+        lastLiveValue.current = null;
         setEditing(false);
         setDraftError("");
         return v;
     };
-    const handleDraftChange = (next) => { setDraft(next.replace(/[^\d.]/g, "").slice(0, 10)); if (draftError) setDraftError(""); };
-    const handleInputBlur = () => { if (!editing) return; if (parseDraft() == null) cancelEdit(); else commitDraft(); };
-    const handleEnter = () => { const v = commitDraft(); if (v == null) setDraftError(rangeMessage); };
+
+    // LIVE: every keystroke restarts a short timer; once the seller pauses,
+    // the typed value is pushed up WITHOUT leaving edit mode or waiting for
+    // blur/Enter. Invalid / empty / partial values (e.g. "", ".", "0") are
+    // simply not committed until they become valid.
+    const handleDraftChange = (next) => {
+        const cleaned = String(next).replace(/[^\d.]/g, "").slice(0, 10);
+        setDraft(cleaned);
+        if (draftError) setDraftError("");
+
+        clearTimeout(liveTimer.current);
+        const v = parseValue(cleaned);
+        if (v == null) return;
+
+        liveTimer.current = setTimeout(() => {
+            if (v === lastLiveValue.current) return;
+            lastLiveValue.current = v;
+            lastCommitAt.current = Date.now(); // protects against our own echo
+            onCommit(v);
+        }, LIVE_COMMIT_DEBOUNCE_MS);
+    };
+
+    const handleInputBlur = () => {
+        if (!editing) return;
+        if (parseDraft() == null) {
+            // Invalid draft on blur: keep whatever was last pushed live
+            // (if anything) instead of throwing it away.
+            clearTimeout(liveTimer.current);
+            if (lastLiveValue.current != null) wheel.jumpToExact(lastLiveValue.current, step);
+            cancelEdit(false);
+        } else {
+            commitDraft();
+        }
+    };
+    const handleEnter = () => {
+        const v = commitDraft();
+        if (v == null) setDraftError(rangeMessage);
+    };
 
     return (
         <div className="flex flex-col gap-1">
             <div className="w-full">
                 <WheelColumn wheel={wheel} formatValue={formatValue} editing={editing} draft={draft} hasError={!!draftError}
                     prefix={prefix} suffix={suffix} onDraftChange={handleDraftChange} onStartEdit={startEdit}
-                    onInputBlur={handleInputBlur} onEnter={handleEnter} onCancelEdit={cancelEdit} />
+                    onInputBlur={handleInputBlur} onEnter={handleEnter} onCancelEdit={() => cancelEdit(true)} />
             </div>
             <p className="text-center text-[10px] font-semibold leading-snug tracking-wide" style={{ color: draftError ? ERROR_RED : C.muted }}>
                 {draftError || "Tap to type, or slide to scroll."}
@@ -619,15 +667,10 @@ export default function PriceWheelPicker({
     const commitDraft = () => {
         const v = parseDraft();
         if (v == null) return null;
-        clearTimeout(commitTimer.current);
-        // Re-base the step to 2% of the value the seller just typed — not
-        // the original step (2% of the old default/reference price). So
-        // typing 437 means every scroll tick afterwards moves by 2% of
-        // 437, not 2% of whatever the field started at.
-        const rebasedStep = Math.round(v * 0.02 * 100) / 100 || step;
+        const rebasedStep = isPercent
+            ? wheel.step
+            : (Math.round(v * 0.02 * 100) / 100 || wheel.step);
         wheel.jumpToExact(v, rebasedStep);
-        lastCommitAt.current = Date.now();
-        onCommit(v);
         setEditing(false);
         setDraftError("");
         return v;

@@ -80,7 +80,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
 import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, Loader2, Pencil, Truck, Lock, Zap, MapPin } from "lucide-react";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses, updateSellerProductSubmission } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
@@ -1298,26 +1298,88 @@ function useLenisPreventToggle() {
     return { ref, handleWheel };
 }
 
+const SLIDE_KNOB = 40;   // knob diameter (px)
+const SLIDE_PAD = 4;     // gap between knob and track edge (px) -> 40 + 4*2 = 48 = h-12
+
 function SlideToConfirm({ label, onConfirm, busy, resetKey, disabled = false }) {
     const trackRef = useRef(null);
+    const x = useMotionValue(0);
+    const [maxX, setMaxX] = useState(0);
     const [confirmed, setConfirmed] = useState(false);
+
+    // Track width -> how far the knob can travel (with equal padding both ends).
+    useEffect(() => {
+        const measure = () =>
+            setMaxX(Math.max(0, (trackRef.current?.offsetWidth || 0) - SLIDE_KNOB - SLIDE_PAD * 2));
+        measure();
+        window.addEventListener("resize", measure);
+        return () => window.removeEventListener("resize", measure);
+    }, []);
+
+    // Reset whenever the inputs above change (same role the old `key` remount had).
+    useEffect(() => {
+        setConfirmed(false);
+        animate(x, 0, { duration: 0.2 });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [resetKey]);
+
+    const fillWidth = useTransform(x, (v) => v + SLIDE_KNOB + SLIDE_PAD * 2);
+    const labelOpacity = useTransform(x, [0, Math.max(maxX * 0.6, 1)], [1, 0]);
+
     return (
-        <div ref={trackRef} className="relative h-12 w-full overflow-hidden rounded-full" style={{ background: C.hairSoft, opacity: disabled ? 0.5 : 1 }}>
-            <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-2 text-center text-[9.5px] font-bold tracking-wide ps-8" style={{ color: C.muted }}>
-                {busy ? "Updating…" : confirmed ? "Updated" : label}
-            </p>
+        <div
+            ref={trackRef}
+            className="relative h-12 w-full overflow-hidden rounded-full select-none"
+            style={{ background: C.hairSoft, opacity: disabled ? 0.5 : 1 }}
+        >
+            {/* Progress fill that follows the knob */}
             <motion.div
-                key={resetKey}
-                drag={busy || confirmed || disabled ? false : "x"}
-                dragConstraints={trackRef} dragElastic={0} dragMomentum={false}
-                onDragEnd={(_, info) => {
-                    const maxX = (trackRef.current?.offsetWidth || 32) - 32;
-                    if (info.offset.x >= maxX * 0.85) { setConfirmed(true); onConfirm(); }
+                className="pointer-events-none absolute inset-y-0 left-0 rounded-full"
+                style={{ width: fillWidth, background: `${C.primary}14` }}
+            />
+
+            {/* Label — centred within the space not covered by the knob */}
+            <motion.p
+                className="pointer-events-none absolute inset-0 flex items-center justify-center text-center text-[11px] font-bold tracking-wide"
+                style={{
+                    color: C.muted,
+                    paddingLeft: SLIDE_KNOB + SLIDE_PAD * 2,
+                    paddingRight: SLIDE_KNOB + SLIDE_PAD * 2,
+                    opacity: busy || confirmed ? 1 : labelOpacity,
                 }}
-                className="absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full text-white"
-                style={{ background: C.primary, cursor: disabled ? "not-allowed" : "grab" }}
             >
-                {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                {busy ? "Updating…" : confirmed ? "Updated" : label}
+            </motion.p>
+
+            {/* Knob — vertically centred, equal inset on all sides */}
+            <motion.div
+                drag={busy || confirmed || disabled ? false : "x"}
+                dragConstraints={{ left: 0, right: maxX }}
+                dragElastic={0}
+                dragMomentum={false}
+                onDragEnd={() => {
+                    if (maxX > 0 && x.get() >= maxX * 0.85) {
+                        animate(x, maxX, { duration: 0.12 });
+                        setConfirmed(true);
+                        onConfirm();
+                    } else {
+                        animate(x, 0, { type: "spring", stiffness: 500, damping: 40 });
+                    }
+                }}
+                className="absolute flex items-center justify-center rounded-full text-white"
+                style={{
+                    x,
+                    top: SLIDE_PAD,
+                    left: SLIDE_PAD,
+                    width: SLIDE_KNOB,
+                    height: SLIDE_KNOB,
+                    background: C.primary,
+                    cursor: disabled ? "not-allowed" : "grab",
+                    touchAction: "pan-y",
+                }}
+                whileTap={disabled ? undefined : { cursor: "grabbing" }}
+            >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronRight className="h-4 w-4" />}
             </motion.div>
         </div>
     );
