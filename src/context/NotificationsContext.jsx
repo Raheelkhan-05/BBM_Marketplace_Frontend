@@ -28,6 +28,7 @@ import {
     isListingApprovedNotification, isListingRejectedNotification,
     isWalletTopupNotification, isWalletLowBalanceNotification,
     extractHighlightId, orderIdFromLink, isTransportProposalNotification,
+    isCreditNotification,
 } from "../utils/notificationTypes.js";
 
 
@@ -68,6 +69,11 @@ export function NotificationsProvider({ children }) {
         if (!socket) return;
         const onNotif = (payload) => {
             if (!payload?.id) return;
+            if (isCreditNotification(payload)) {
+                setNotifications((prev) => (prev.some((n) => n.id === payload.id) ? prev : [payload, ...prev]));
+                playNotificationSound();
+                return;
+            }
             if (isChatNotification(payload)) {
                 chatListenersRef.current.forEach((cb) => cb(payload));
                 return;
@@ -133,7 +139,7 @@ export function NotificationsProvider({ children }) {
     // "message" notifications are already sitting in the DB from before this change
     // bellNotifications — exclude listings/wallet the same way chat/orders are excluded
     const bellNotifications = useMemo(
-        () => notifications.filter((n) => !isOrderNotification(n) && !isChatNotification(n) && !isListingsSectionNotification(n)),
+        () => notifications.filter((n) => !isOrderNotification(n) && !isChatNotification(n) && !isCreditNotification(n) && !isListingsSectionNotification(n)),
         [notifications]
     );
 
@@ -170,6 +176,18 @@ export function NotificationsProvider({ children }) {
 
     const markWalletTopupViewed = useCallback(async () => {
         const toMark = notifications.filter((n) => !n.read && isWalletTopupNotification(n));
+        if (!toMark.length) return;
+        setNotifications((prev) => prev.map((n) => (toMark.includes(n) ? { ...n, read: true } : n)));
+        await Promise.all(toMark.map((n) => apiMarkRead(token, n.id)));
+    }, [notifications, token]);
+
+    const creditUnreadCount = useMemo(
+        () => notifications.filter((n) => isCreditNotification(n) && !n.read).length,
+        [notifications]
+    );
+
+    const markCreditViewed = useCallback(async () => {
+        const toMark = notifications.filter((n) => !n.read && isCreditNotification(n));
         if (!toMark.length) return;
         setNotifications((prev) => prev.map((n) => (toMark.includes(n) ? { ...n, read: true } : n)));
         await Promise.all(toMark.map((n) => apiMarkRead(token, n.id)));
@@ -219,6 +237,7 @@ export function NotificationsProvider({ children }) {
         purchaseUnreadCount, salesUnreadCount, orderUnreadCount,
         purchaseOrderUnreadCounts, salesOrderUnreadCounts,
         markRead, markAllRead, markOrderRead,
+        creditUnreadCount, markCreditViewed,
         subscribeNonOrder, subscribeOrder, subscribeChat,
         listingApprovalUnreadCount, listingRejectionUnreadCount,
         walletTopupUnreadCount, unreadWalletLowBalanceNotifications,

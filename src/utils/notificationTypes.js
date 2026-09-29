@@ -16,6 +16,8 @@ const SALES_LINK_RE = /^\/seller\/orders\/[^/?#]+/;
 const CHAT_LINK_RE = /^\/chat\/[^/?#]+/;
 const LISTINGS_LINK_RE = /^\/seller\/listings/;
 const WALLET_LINK_RE = /^\/seller\/wallet/;
+const CREDIT_LINK_RE = /^\/credit(?:[/?#]|$)/;
+const CREDIT_TYPES = new Set(["credit_request", "credit_decision", "credit_toggled", "credit_limit_request"]);
 
 
 
@@ -39,6 +41,10 @@ export function orderIdFromLink(link) {
 
 export function isChatNotification(n) {
     return typeof n?.link === "string" && CHAT_LINK_RE.test(n.link);
+}
+
+export function isCreditNotification(n) {
+    return CREDIT_TYPES.has(n?.type) || (typeof n?.link === "string" && CREDIT_LINK_RE.test(n.link));
 }
 
 // Manual admin decisions only — NOT the auto-approve-on-create path.

@@ -224,7 +224,7 @@ export default function Header({ onOpenRfq }) {
   const rightRef = useRef(null);
   const accountRef = useRef(null);
 
-  const { purchaseUnreadCount, salesUnreadCount } = useNotifications(); // replaces orderUnreadCount
+  const { purchaseUnreadCount, salesUnreadCount, creditUnreadCount } = useNotifications(); // replaces orderUnreadCount
 
 
   useEffect(() => {
@@ -321,6 +321,7 @@ export default function Header({ onOpenRfq }) {
       purchaseUnread: purchaseUnreadCount,
       salesUnread: salesUnreadCount,
       productsBadge: productsBadgeCount,
+      creditUnread: creditUnreadCount,
     })
     : [];
 

@@ -3,16 +3,13 @@
 // The whole message-thread experience — header, banner, bubbles,
 // composer — lives in this one file.
 //
-// Credit flow: CreditApprovalDialog -> handleConfirmApproval -> decide()
-// passes the limit through on approval; CreditLimitDialog lets a seller
-// respond to a buyer's "request more credit" ask via useCredit().updateLimit.
-//
 // MOBILE: the composer keeps the keyboard open after sending, uses 16px
 // text on touch devices (prevents iOS focus-zoom), has no spinner on the
 // send button, and scrolling only ever touches the message list (never the
 // window), so the input never jumps.
 import { useEffect, useLayoutEffect, useRef, useState, useCallback, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Link } from "react-router-dom";
 import { ArrowLeft, ArrowDown, CreditCard, Loader2, Tag, Check, CheckCheck, Clock3, AlertCircle, MoreVertical, Ban, Send, MessageCircle, X, ShieldOff } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import useChatMessages, { usePresence, useCredit } from "../../hooks/useChat.js";
@@ -41,26 +38,6 @@ const prefersReducedMotion =
 
 function initials(name) {
     return (name || "?").trim().split(" ").slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
-}
-
-function PendingCreditBanner({ buyerLabel, onClick }) {
-    return (
-        <button
-            onClick={onClick}
-            className="flex w-full items-center gap-2 border-b px-3.5 py-2 text-left transition-colors hover:brightness-95"
-            style={{ borderColor: C.hair, background: C.warnBg }}
-        >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full" style={{ background: "#fff" }}>
-                <CreditCard className="h-3.5 w-3.5" style={{ color: C.warn }} />
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[11.5px] font-bold tracking-wide" style={{ color: C.warn }}>
-                Credit request from {buyerLabel} needs your decision
-            </span>
-            <span className="shrink-0 text-[10.5px] font-bold tracking-wide underline underline-offset-2" style={{ color: C.warn }}>
-                Review
-            </span>
-        </button>
-    );
 }
 
 function dayLabel(iso) {
@@ -101,123 +78,6 @@ function TypingDots({ color = C.secondary, size = "h-1.5 w-1.5" }) {
                 />
             ))}
         </span>
-    );
-}
-
-function StatusStrip({
-    credit, viewerRole, otherName,
-    onRequestCredit, onToggleCredit, requestingCredit,
-    onRequestIncrease, requestingIncrease,
-    disabled,
-}) {
-    const [togglingCredit, setTogglingCredit] = useState(false);
-
-    const handleToggleCredit = async (enabled) => {
-        setTogglingCredit(true);
-        await onToggleCredit(enabled);
-        setTogglingCredit(false);
-    };
-
-    const fmt = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
-
-    let creditCell = null;
-    if (viewerRole === "buyer") {
-        const cooldownActive = credit?.status === "rejected" && credit.cooldown_until && new Date(credit.cooldown_until) > new Date();
-        if (!credit || credit.status === "revoked" || (credit.status === "rejected" && !cooldownActive)) {
-            creditCell = (
-                <button onClick={onRequestCredit} disabled={requestingCredit || disabled}
-                    className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-60"
-                    style={{ background: `${C.secondary}10`, color: C.secondary }}>
-                    {requestingCredit ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
-                    {requestingCredit ? "Requesting…" : "Buy on credit"}
-                </button>
-            );
-        } else if (credit.status === "pending") {
-            creditCell = (
-                <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: C.warnBg, color: C.warn }} title={`Waiting for ${otherName}'s approval`}>
-                    <Clock3 className="h-3 w-3" /> Credit pending
-                </span>
-            );
-        } else if (credit.status === "approved") {
-            const limitAmt = Number(credit.credit_limit || 0);
-            const used = Number(credit.credit_used || 0);
-            const remaining = Math.max(limitAmt - used, 0);
-            const isOut = limitAmt > 0 && remaining <= 0;
-            const limitPending = !!credit.limit_increase_request_message_id;
-            const limitCooldownActive = credit.limit_increase_cooldown_until && new Date(credit.limit_increase_cooldown_until) > new Date();
-
-            creditCell = (
-                <>
-                    <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: C.okBg, color: C.ok }}
-                        title={`Approved by ${otherName}`}>
-                        <Check className="h-3 w-3" /> {fmt(remaining)} left of {fmt(limitAmt)}
-                    </span>
-
-                    {isOut && !limitPending && !limitCooldownActive && (
-                        <button onClick={() => onRequestIncrease(credit.id)} disabled={requestingIncrease || disabled}
-                            className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors disabled:opacity-60"
-                            style={{ background: `${C.secondary}10`, color: C.secondary }}>
-                            {requestingIncrease ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
-                            {requestingIncrease ? "Requesting…" : "Ask for higher limit"}
-                        </button>
-                    )}
-                    {isOut && limitPending && (
-                        <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: C.warnBg, color: C.warn }}>
-                            <Clock3 className="h-3 w-3" /> Increase requested
-                        </span>
-                    )}
-                    {isOut && limitCooldownActive && (
-                        <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: C.hairSoft, color: C.muted }}
-                            title="Seller declined your last request">
-                            Declined · retry {new Date(credit.limit_increase_cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                        </span>
-                    )}
-                </>
-            );
-        } else if (cooldownActive) {
-            const retryDate = new Date(credit.cooldown_until);
-            creditCell = (
-                <span className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: C.hairSoft, color: C.muted }}
-                    title={`Declined — you can request again after ${retryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`}>
-                    Credit declined · retry {retryDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                </span>
-            );
-        }
-    } else if (viewerRole === "seller" && credit && (credit.status === "approved" || credit.status === "revoked")) {
-        const on = credit.status === "approved";
-        const limitAmt = Number(credit.credit_limit || 0);
-        const used = Number(credit.credit_used || 0);
-        const remaining = Math.max(limitAmt - used, 0);
-        creditCell = (
-            <>
-                <button onClick={() => handleToggleCredit(!on)} disabled={togglingCredit || disabled}
-                    className="flex items-center gap-2 rounded-full py-1.5 pl-3 pr-1.5 text-[11px] font-bold tracking-wide transition-colors disabled:opacity-60"
-                    style={{ background: on ? C.okBg : C.hairSoft, color: on ? C.ok : C.muted, border: `1px solid ${on ? "transparent" : C.hair}` }}
-                    title={on ? `Credit enabled for ${otherName}` : `Credit off for ${otherName}`}>
-                    <CreditCard className="h-3 w-3" /> Credit {on ? "enabled" : "off"}
-                    {togglingCredit ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                        <span className="relative ml-0.5 h-4 w-7 rounded-full transition-colors" style={{ background: on ? C.ok : "#CBD2D6" }}>
-                            <span className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-sm transition-all" style={{ left: on ? "14px" : "2px" }} />
-                        </span>
-                    )}
-                </button>
-                {on && limitAmt > 0 && (
-                    <span className="text-[11px] font-semibold" style={{ color: C.muted }}>
-                        {fmt(remaining)} of {fmt(limitAmt)} left
-                    </span>
-                )}
-            </>
-        );
-    }
-
-    if (!creditCell) return null;
-
-    return (
-        <div className="flex flex-wrap items-center gap-1.5 border-b px-3 py-1.5" style={{ borderColor: C.hair, background: C.surface }}>
-            {creditCell}
-        </div>
     );
 }
 
@@ -344,172 +204,6 @@ function DeletedSellerNotice({ shopName }) {
     );
 }
 
-// onConfirm passes the numeric limit up; the button is disabled until a
-// positive limit is entered.
-function CreditApprovalDialog({ open, onClose, onConfirm, buyerLabel, confirming }) {
-    const [limit, setLimit] = useState("");
-    const numericLimit = Number(limit);
-    const canConfirm = numericLimit > 0;
-
-    // reset the input each time the dialog is opened for a new request
-    useEffect(() => {
-        if (open) setLimit("");
-    }, [open]);
-
-    return (
-        <AnimatePresence>
-            {open && (
-                <motion.div
-                    className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 sm:items-center"
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
-                    onClick={onClose}
-                >
-                    <motion.div
-                        className="w-full rounded-t-2xl bg-white p-5 sm:max-w-[420px] sm:rounded-2xl"
-                        initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.2, ease: EASE }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-start gap-3">
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: C.okBg, color: C.ok }}>
-                                <CreditCard className="h-5 w-5" />
-                            </span>
-                            <div className="min-w-0 flex-1 pt-0.5">
-                                <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>Approve credit for {buyerLabel}?</p>
-                                <p className="mt-0.5 text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
-                                    They'll be able to place orders with you on credit terms you arrange directly.
-                                </p>
-                            </div>
-                            <button onClick={onClose} className="shrink-0 rounded-full p-1 transition-colors hover:bg-black/5" aria-label="Close">
-                                <X className="h-4 w-4" style={{ color: C.muted }} />
-                            </button>
-                        </div>
-
-                        <div className="mt-3">
-                            <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
-                                Monthly credit limit for {buyerLabel}
-                            </label>
-                            <div className="mt-1 flex items-center gap-1.5 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
-                                <span className="text-[13px] font-bold" style={{ color: C.muted }}>₹</span>
-                                <input
-                                    type="number" inputMode="decimal" value={limit}
-                                    onChange={(e) => setLimit(e.target.value)}
-                                    placeholder="e.g. 30000"
-                                    className="w-full bg-transparent text-[16px] font-bold tabular-nums outline-none sm:text-[14px]"
-                                />
-                            </div>
-                            <p className="mt-1 text-[11px] font-medium tracking-wider" style={{ color: C.muted }}>
-                                {buyerLabel} can order up to this much on credit per calendar month, across any number of orders. Resets automatically each month.
-                            </p>
-                        </div>
-
-                        <div className="mt-4 rounded-xl px-3.5 py-3" style={{ background: C.canvas, border: `1px solid ${C.hair}` }}>
-                            <p className="text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Before you approve</p>
-                            <p className="mt-1.5 text-[12px] font-medium leading-relaxed tracking-wide" style={{ color: C.ink }}>
-                                Credit terms, repayment, and any dispute arising from a credit sale are strictly between you and the buyer.
-                                BBM Marketplace does not process, hold, or guarantee any payment made under a credit arrangement, and is not
-                                a party to it. BBM Marketplace shall not be liable for any loss, non-payment, delay, or dispute connected with
-                                credit extended under this feature. Approving this request is your independent business decision.
-                            </p>
-                        </div>
-
-                        <div className="mt-4 flex gap-2.5">
-                            <button onClick={onClose} disabled={confirming}
-                                className="flex flex-1 items-center justify-center rounded-xl border py-2.5 text-[12.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] disabled:opacity-60"
-                                style={{ borderColor: C.hair, color: C.muted }}>
-                                Cancel
-                            </button>
-                            <button onClick={() => onConfirm(numericLimit)} disabled={confirming || !canConfirm}
-                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97] disabled:opacity-60"
-                                style={{ background: C.ok }}>
-                                {confirming && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                I understand, approve
-                            </button>
-                        </div>
-                    </motion.div>
-                </motion.div>
-            )}
-        </AnimatePresence>
-    );
-}
-
-// Seller-side "respond to a limit-increase request" dialog. Same shape as
-// CreditApprovalDialog but no legal disclaimer (terms were already accepted
-// at initial approval) and it prefills the current limit.
-function CreditLimitDialog({ open, onClose, onConfirm, buyerLabel, currentLimit, confirming }) {
-    const [limit, setLimit] = useState("");
-    const numericLimit = Number(limit);
-    const canConfirm = numericLimit > 0;
-
-    useEffect(() => {
-        if (open) setLimit(currentLimit != null ? String(currentLimit) : "");
-    }, [open, currentLimit]);
-
-    return (
-        <AnimatePresence>
-            {open && (
-                <motion.div
-                    className="fixed inset-0 z-[999] flex items-end justify-center bg-black/40 sm:items-center"
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
-                    onClick={onClose}
-                >
-                    <motion.div
-                        className="w-full rounded-t-2xl bg-white p-5 sm:max-w-[420px] sm:rounded-2xl"
-                        initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} transition={{ duration: 0.2, ease: EASE }}
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <div className="flex items-start gap-3">
-                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}12`, color: C.secondary }}>
-                                <CreditCard className="h-5 w-5" />
-                            </span>
-                            <div className="min-w-0 flex-1 pt-0.5">
-                                <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>Update credit limit for {buyerLabel}?</p>
-                                <p className="mt-0.5 text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
-                                    {buyerLabel} asked you to reconsider their monthly credit limit.
-                                </p>
-                            </div>
-                            <button onClick={onClose} className="shrink-0 rounded-full p-1 transition-colors hover:bg-black/5" aria-label="Close">
-                                <X className="h-4 w-4" style={{ color: C.muted }} />
-                            </button>
-                        </div>
-
-                        <div className="mt-3">
-                            <label className="text-[11px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>
-                                New monthly credit limit for {buyerLabel}
-                            </label>
-                            <div className="mt-1 flex items-center gap-1.5 rounded-xl border px-3 py-2.5" style={{ borderColor: C.hair }}>
-                                <span className="text-[13px] font-bold" style={{ color: C.muted }}>₹</span>
-                                <input
-                                    type="number" inputMode="decimal" value={limit}
-                                    onChange={(e) => setLimit(e.target.value)}
-                                    placeholder="e.g. 50000"
-                                    className="w-full bg-transparent text-[16px] font-bold tabular-nums outline-none sm:text-[14px]"
-                                />
-                            </div>
-                            <p className="mt-1 text-[11px] font-medium" style={{ color: C.muted }}>
-                                Current limit: {currentLimit != null ? `₹${currentLimit}` : "not set"}. Updating resets this month's usage to zero.
-                            </p>
-                        </div>
-
-                        <div className="mt-4 flex gap-2.5">
-                            <button onClick={onClose} disabled={confirming}
-                                className="flex flex-1 items-center justify-center rounded-xl border py-2.5 text-[12.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] disabled:opacity-60"
-                                style={{ borderColor: C.hair, color: C.muted }}>
-                                Cancel
-                            </button>
-                            <button onClick={() => onConfirm(numericLimit)} disabled={confirming || !canConfirm}
-                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97] disabled:opacity-60"
-                                style={{ background: C.secondary }}>
-                                {confirming && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                Update limit
-                            </button>
-                        </div>
-                    </motion.div>
-                </motion.div>
-            )}
-        </AnimatePresence>
-    );
-}
-
 // ---- message bubble -----------------------------------------------------
 
 function TickIcon({ status, onRetry }) {
@@ -524,198 +218,23 @@ function TickIcon({ status, onRetry }) {
     return <Check className="h-3.5 w-3.5" style={{ color: "rgba(255,255,255,0.7)" }} />;
 }
 
-const MessageBubble = memo(function MessageBubble({
-    message, isMine, groupPos, onDelete, onRetry,
-    credit, buyerInfo, onDecideCredit, onRequestApproval,
-    onRequestLimitUpdate, onDeclineLimitIncrease,
-    disabled,
-}) {
+const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, onDelete, onRetry }) {
     const [menuOpen, setMenuOpen] = useState(false);
-    const [decliningIncrease, setDecliningIncrease] = useState(false);
-    const [decidingCredit, setDecidingCredit] = useState(null); // 'approved' | 'rejected' | null, local to this bubble
     const menuRef = useRef(null);
 
     if (message.message_type === "credit_request" || message.message_type === "credit_limit_request") {
-        const isLimitRequest = message.message_type === "credit_limit_request";
-
-        const isLiveRequest = isLimitRequest
-            ? credit?.limit_increase_request_message_id === message.id
-            : credit?.request_message_id === message.id;
-
-        const frozenStatus = message.metadata?.finalStatus;
-        // a limit-increase message doesn't have its own status field on `credit` —
-        // it's "live" for as long as limit_increase_request_message_id still
-        // points at it; once handled it just stops being the live pointer.
-        const status = frozenStatus || (isLiveRequest ? (isLimitRequest ? "pending" : credit?.status) : null);
-
-        const statusStyle = {
-            pending: { color: C.warn, bg: C.warnBg, label: isLimitRequest ? "Awaiting response" : "Pending" },
-            approved: { color: C.ok, bg: C.okBg, label: "Approved" },
-            rejected: { color: C.danger, bg: C.dangerBg, label: "Declined by seller" },
-            revoked: { color: C.muted, bg: C.hairSoft, label: "Turned off by seller" },
-        }[status] || { color: C.muted, bg: C.hairSoft, label: "Requested" };
-
-        const time = new Date(message.created_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
-
-        // Superseded by a newer cycle — collapses to a slim reference line.
-        if (!isLiveRequest) {
-            return (
-                <div className={`mb-2 flex ${isMine ? "justify-end" : "justify-start"}`}>
-                    <div className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-wide" style={{ background: C.hairSoft, color: C.muted }}>
-                        <CreditCard className="h-3 w-3 shrink-0" style={{ color: statusStyle.color, opacity: 0.7 }} />
-                        <span>{isLimitRequest ? "Credit limit increase" : "Credit request"}</span>
-                        <span aria-hidden style={{ opacity: 0.35 }}>•</span>
-                        <span style={{ color: statusStyle.color, fontWeight: 700 }}>{statusStyle.label}</span>
-                        <span aria-hidden style={{ opacity: 0.35 }}>•</span>
-                        <span style={{ fontVariantNumeric: "tabular-nums" }}>{time}</span>
-                    </div>
-                </div>
-            );
-        }
-
-        const handleDeclineIncrease = async () => {
-            setDecliningIncrease(true);
-            await onDeclineLimitIncrease(credit.id);
-            setDecliningIncrease(false);
-        };
-
-        const buyerLabel = buyerInfo?.businessName || buyerInfo?.name;
-        const needsDecision = !isMine && isLiveRequest && status === "pending" && !disabled;
-
-        const handleDecline = async () => {
-            setDecidingCredit("rejected");
-            await onDecideCredit(credit.id, "rejected");
-            setDecidingCredit(null);
-        };
-
+        const label = message.message_type === "credit_limit_request" ? "Credit limit increase" : "Credit request";
+        const creditTime = new Date(message.created_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
         return (
-            <div className={`mb-3 flex ${isMine ? "justify-end" : "justify-start"}`}>
-                <div
-                    className="w-full max-w-[320px] overflow-hidden rounded-2xl border"
-                    style={{ borderColor: needsDecision ? `${C.warn}35` : C.hair, background: C.surface, boxShadow: "0 1px 3px rgba(11,17,22,0.06)" }}
-                >
-                    {/* header row */}
-                    <div className="flex items-center gap-2.5 px-3.5 pb-2.5 pt-3.5">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}12`, color: C.secondary }}>
-                            <CreditCard className="h-4 w-4" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                            <p className="text-[12.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
-                                {isLimitRequest ? "Credit limit increase" : "Credit request"}
-                            </p>
-                            <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: C.muted }}>
-                                {isMine ? "You requested" : "Requested to you"}
-                            </p>
-                        </div>
-                        <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ background: statusStyle.bg, color: statusStyle.color }}>
-                            {statusStyle.label}
-                        </span>
-                    </div>
-
-                    {/* buyer identity — only shown to the seller, only while this card is the one that matters */}
-                    {!isMine && buyerLabel && (
-                        <div className="mx-3.5 mb-3 rounded-xl px-3 py-2.5" style={{ background: C.canvas, border: `1px solid ${C.hair}` }}>
-                            <div className="flex items-center gap-2.5">
-                                <span className="relative h-8 w-8 shrink-0">
-                                    {buyerInfo?.logoUrl ? (
-                                        <img
-                                            src={buyerInfo.logoUrl}
-                                            alt={buyerLabel || "Buyer"}
-                                            className="h-8 w-8 rounded-full object-cover"
-                                            style={{ border: `1px solid ${C.hair}` }}
-                                            onError={(e) => { e.currentTarget.style.display = "none"; e.currentTarget.nextSibling.style.display = "flex"; }}
-                                        />
-                                    ) : null}
-                                    <span
-                                        className="flex h-8 w-8 items-center justify-center rounded-full text-[10.5px] font-extrabold tracking-wide text-white"
-                                        style={{ display: buyerInfo?.logoUrl ? "none" : "flex", background: "linear-gradient(135deg, #006F83 0%, #4FA3B0 100%)" }}
-                                    >
-                                        {initials(buyerLabel)}
-                                    </span>
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate text-[12px] font-bold tracking-wide" style={{ color: C.ink }}>{buyerLabel}</p>
-                                    {buyerInfo?.name && buyerInfo.businessName && (
-                                        <p className="truncate text-[10.5px] font-medium tracking-wider" style={{ color: C.muted }}>{buyerInfo.name}</p>
-                                    )}
-                                </div>
-                            </div>
-                            {(buyerInfo?.phone || buyerInfo?.email || buyerInfo?.location || buyerInfo?.gstin || buyerInfo?.memberSince) && (
-                                <div className="mt-2.5 grid grid-cols-1 gap-1.5 border-t pt-2.5" style={{ borderColor: C.hair }}>
-                                    {buyerInfo.phone && (
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>Phone</span>
-                                            <span className="text-[11px] font-semibold tracking-wide" style={{ color: C.ink, fontVariantNumeric: "tabular-nums" }}>{buyerInfo.phone}</span>
-                                        </div>
-                                    )}
-                                    {buyerInfo.email && (
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>Email</span>
-                                            <span className="truncate text-[11px] font-semibold tracking-wide" style={{ color: C.ink }}>{buyerInfo.email}</span>
-                                        </div>
-                                    )}
-                                    {buyerInfo.location && (
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>Location</span>
-                                            <span className="truncate text-[11px] font-semibold tracking-wide" style={{ color: C.ink }}>{buyerInfo.location}</span>
-                                        </div>
-                                    )}
-                                    {buyerInfo.gstin && (
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>GSTIN</span>
-                                            <span className="text-[11px] font-semibold tracking-wide" style={{ color: C.ink, fontVariantNumeric: "tabular-nums" }}>{buyerInfo.gstin}</span>
-                                        </div>
-                                    )}
-                                    {buyerInfo.memberSince && (
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="text-[9.5px] font-bold uppercase tracking-wider" style={{ color: C.muted }}>On BBM since</span>
-                                            <span className="text-[11px] font-semibold tracking-wide" style={{ color: C.ink }}>
-                                                {new Date(buyerInfo.memberSince).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* decision — Update limit / Decline for a limit-increase ask, Approve / Decline for a fresh request */}
-                    {needsDecision && (
-                        isLimitRequest ? (
-                            <div className="flex gap-2 px-3.5 pb-3.5">
-                                <button onClick={() => onRequestLimitUpdate(credit.id, buyerLabel || "this buyer", credit.credit_limit)}
-                                    disabled={decliningIncrease}
-                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97] disabled:opacity-60"
-                                    style={{ background: C.secondary }}>
-                                    <CreditCard className="h-3.5 w-3.5" /> Update limit
-                                </button>
-                                <button onClick={handleDeclineIncrease} disabled={decliningIncrease}
-                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] disabled:opacity-60"
-                                    style={{ borderColor: C.hair, color: C.muted }}>
-                                    {decliningIncrease && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                    Decline
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="flex gap-2 px-3.5 pb-3.5">
-                                <button onClick={() => onRequestApproval(credit.id, buyerLabel || "this buyer")} disabled={!!decidingCredit}
-                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[11.5px] font-bold tracking-wide text-white transition-transform active:scale-[0.97] disabled:opacity-60"
-                                    style={{ background: C.ok }}>
-                                    <Check className="h-3.5 w-3.5" /> Approve
-                                </button>
-                                <button onClick={handleDecline} disabled={!!decidingCredit}
-                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] disabled:opacity-60"
-                                    style={{ borderColor: C.hair, color: C.muted }}>
-                                    {decidingCredit === "rejected" && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                    Decline
-                                </button>
-                            </div>
-                        )
-                    )}
-                    <div className="flex items-center justify-end px-3.5 pb-3">
-                        <span className="text-[10px] font-semibold" style={{ color: C.muted, fontVariantNumeric: "tabular-nums" }}>{time}</span>
-                    </div>
-                </div>
+            <div className={`mb-2 flex ${isMine ? "justify-end" : "justify-start"}`}>
+                <Link to="/credit" className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-wide transition-colors hover:brightness-95" style={{ background: C.hairSoft, color: C.muted }}>
+                    <CreditCard className="h-3 w-3 shrink-0" style={{ color: C.secondary }} />
+                    <span>{label}</span>
+                    <span aria-hidden style={{ opacity: 0.35 }}>•</span>
+                    <span style={{ color: C.secondary, fontWeight: 700 }}>View in Credit</span>
+                    <span aria-hidden style={{ opacity: 0.35 }}>•</span>
+                    <span style={{ fontVariantNumeric: "tabular-nums" }}>{creditTime}</span>
+                </Link>
             </div>
         );
     }
@@ -785,14 +304,7 @@ const MessageBubble = memo(function MessageBubble({
 }, (prev, next) => (
     prev.message === next.message &&
     prev.isMine === next.isMine &&
-    prev.groupPos === next.groupPos &&
-    prev.credit === next.credit &&
-    prev.buyerInfo === next.buyerInfo &&
-    prev.onDecideCredit === next.onDecideCredit &&
-    prev.onRequestApproval === next.onRequestApproval &&
-    prev.onRequestLimitUpdate === next.onRequestLimitUpdate &&
-    prev.onDeclineLimitIncrease === next.onDeclineLimitIncrease &&
-    prev.disabled === next.disabled
+    prev.groupPos === next.groupPos
 ));
 
 // ---- composer -----------------------------------------------------------
@@ -894,61 +406,7 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
     const bottomRef = useRef(null);
     const presence = usePresence(meta?.otherUserId ? [meta.otherUserId] : []);
     const otherPresence = meta?.otherUserId ? presence[meta.otherUserId] : null;
-
-    const { credit, viewerRole, buyerInfo, request, decide, toggle, updateLimit, requestIncrease, declineIncrease } = useCredit(meta?.otherUserId);
-
-    // ---- credit approval dialog ----
-    const [approvalDialog, setApprovalDialog] = useState(null); // { creditId, buyerLabel } | null
-    const [confirmingApproval, setConfirmingApproval] = useState(false);
-
-    const handleRequestApproval = useCallback((creditId, buyerLabel) => {
-        setApprovalDialog({ creditId, buyerLabel });
-    }, []);
-
-    // accepts and forwards the numeric limit typed into the dialog
-    const handleConfirmApproval = async (limit) => {
-        if (!approvalDialog) return;
-        setConfirmingApproval(true);
-        await decide(approvalDialog.creditId, "approved", limit);
-        setConfirmingApproval(false);
-        setApprovalDialog(null);
-    };
-
-    // ---- credit limit-update dialog (seller responding to a buyer's ask) ----
-    const [limitDialog, setLimitDialog] = useState(null); // { creditId, buyerLabel, currentLimit } | null
-    const [confirmingLimit, setConfirmingLimit] = useState(false);
-
-    const handleRequestLimitUpdate = useCallback((creditId, buyerLabel, currentLimit) => {
-        setLimitDialog({ creditId, buyerLabel, currentLimit });
-    }, []);
-
-    const handleConfirmLimitUpdate = async (newLimit) => {
-        if (!limitDialog) return;
-        setConfirmingLimit(true);
-        await updateLimit(limitDialog.creditId, newLimit);
-        setConfirmingLimit(false);
-        setLimitDialog(null);
-    };
-
-    const [requestingCredit, setRequestingCredit] = useState(false);
-    const [requestingIncrease, setRequestingIncrease] = useState(false);
-
-    const handleRequestIncrease = useCallback(async () => {
-        if (!credit?.id) return;
-        setRequestingIncrease(true);
-        await requestIncrease(credit.id);
-        setRequestingIncrease(false);
-    }, [credit?.id, requestIncrease]);
-
-    const handleDeclineLimitIncrease = useCallback(async (creditId) => {
-        await declineIncrease(creditId);
-    }, [declineIncrease]);
-
-    const handleRequestCredit = async () => {
-        setRequestingCredit(true);
-        await request();
-        setRequestingCredit(false);
-    };
+    const { viewerRole, buyerInfo } = useCredit(meta?.otherUserId);
 
     const {
         messages, loading, loadingOlder, hasMore, loadOlder,
@@ -1110,21 +568,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 onOpenCustomPricing={() => setCustomPricingOpen(true)}
             />
 
-            {viewerRole === "seller" && credit?.status === "pending" && credit?.request_message_id && (
-                <PendingCreditBanner
-                    buyerLabel={buyerInfo?.businessName || buyerInfo?.name || "a buyer"}
-                    onClick={() => scrollToMessage(credit.request_message_id)}
-                />
-            )}
-
-            <StatusStrip
-                credit={credit} viewerRole={viewerRole} otherName={meta?.otherShopName || meta?.title || "them"}
-                onToggleCredit={toggle}
-                onRequestCredit={handleRequestCredit} requestingCredit={requestingCredit}
-                onRequestIncrease={handleRequestIncrease} requestingIncrease={requestingIncrease}
-                disabled={isLockedOut}
-            />
-
             <div className="relative min-h-0 flex-1">
                 <div
                     ref={scrollRef}
@@ -1184,13 +627,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                                             groupPos={groupPos}
                                             onDelete={deleteMessage}
                                             onRetry={retry}
-                                            credit={credit}
-                                            buyerInfo={buyerInfo}
-                                            onDecideCredit={decide}
-                                            onRequestApproval={handleRequestApproval}
-                                            onRequestLimitUpdate={handleRequestLimitUpdate}
-                                            onDeclineLimitIncrease={handleDeclineLimitIncrease}
-                                            disabled={isLockedOut}
                                         />
                                     </div>
                                 );
@@ -1229,23 +665,6 @@ export default function ChatWindow({ conversationId, meta, onBack }) {
                 onSend={send}
                 onTypingChange={notifyTyping}
                 disabled={isLockedOut}
-            />
-
-            <CreditApprovalDialog
-                open={!!approvalDialog}
-                onClose={() => setApprovalDialog(null)}
-                onConfirm={handleConfirmApproval}
-                buyerLabel={approvalDialog?.buyerLabel}
-                confirming={confirmingApproval}
-            />
-
-            <CreditLimitDialog
-                open={!!limitDialog}
-                onClose={() => setLimitDialog(null)}
-                onConfirm={handleConfirmLimitUpdate}
-                buyerLabel={limitDialog?.buyerLabel}
-                currentLimit={limitDialog?.currentLimit}
-                confirming={confirmingLimit}
             />
 
             <CustomPricingModal

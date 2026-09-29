@@ -1071,6 +1071,27 @@ export async function toggleCredit(token, buyerId, enabled) {
   return res.json();
 }
 
+// APPEND these three functions to utils/api.js (next to the other credit calls).
+
+export async function fetchCreditSellers(token) {
+  const res = await fetch(`${API_BASE}/credit/sellers`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+
+export async function fetchCreditIncoming(token) {
+  const res = await fetch(`${API_BASE}/credit/incoming`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+
+export async function fetchCreditHistory(token, { as, before, limit } = {}) {
+  const p = new URLSearchParams();
+  if (as) p.set("as", as);
+  if (before) p.set("before", before);
+  if (limit) p.set("limit", String(limit));
+  const res = await fetch(`${API_BASE}/credit/history?${p.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+  return res.json();
+}
+
 export async function fetchOrderById(token, id) {
   const res = await fetch(`${API_BASE}/orders/${id}`, { headers: { Authorization: `Bearer ${token}` } });
   return res.json();

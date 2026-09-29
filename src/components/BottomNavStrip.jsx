@@ -91,7 +91,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const navigate = useNavigate();
     const { pathname, search } = useLocation();
     const { isLoggedIn, profile, signOut } = useAuth();
-    const { purchaseUnreadCount, salesUnreadCount } = useNotifications();
+    const { purchaseUnreadCount, salesUnreadCount, creditUnreadCount } = useNotifications();
     const { cartCount } = useCart();
     const { unreadTotal: chatUnreadTotal } = useChatContext();
     const { totalBadgeCount: productsBadgeCount } = useListings();
@@ -106,6 +106,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
         purchaseUnread: purchaseUnreadCount,
         salesUnread: salesUnreadCount,
         productsBadge: productsBadgeCount,
+        creditUnread: creditUnreadCount,
     });
 
     // Home lives in the quick-access FAB now, so it's dropped from the list

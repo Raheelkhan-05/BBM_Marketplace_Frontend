@@ -21,6 +21,44 @@ const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
 const STEPS = ["identifier", "otp", "onboarding", "done"];
 
+// Where to send the person after login/onboarding. Whoever sends someone to
+// /login passes `state: { from }` (a string like "/home/?shop=abc", or a
+// react-router location object). It's also mirrored into sessionStorage so a
+// page refresh mid-OTP / an abandoned-then-resumed onboarding still returns
+// them to the exact URL (path + query string) they started from.
+const REDIRECT_KEY = "bbm_post_login_redirect";
+
+function toInternalPath(raw) {
+  let path = null;
+  if (typeof raw === "string") path = raw;
+  else if (raw && typeof raw === "object" && raw.pathname) {
+    path = `${raw.pathname}${raw.search || ""}${raw.hash || ""}`;
+  }
+  if (!path) return null;
+  // Internal paths only (blocks "//evil.com" and "https://..." open redirects),
+  // and never bounce back onto the login page itself.
+  if (!path.startsWith("/") || path.startsWith("//")) return null;
+  if (path === "/login" || path.startsWith("/login?") || path.startsWith("/login/")) return null;
+  return path;
+}
+
+function resolveRedirect(locationState) {
+  const fromState = toInternalPath(locationState?.from);
+  if (fromState) {
+    try { sessionStorage.setItem(REDIRECT_KEY, fromState); } catch { /* private mode */ }
+    return fromState;
+  }
+  try {
+    const stored = toInternalPath(sessionStorage.getItem(REDIRECT_KEY));
+    if (stored) return stored;
+  } catch { /* private mode */ }
+  return "/home";
+}
+
+function clearStoredRedirect() {
+  try { sessionStorage.removeItem(REDIRECT_KEY); } catch { /* private mode */ }
+}
+
 function detectChannel(raw) {
   if (!raw) return null;
   if (PHONE_RE.test(raw)) return "phone";
@@ -153,7 +191,15 @@ export default function AuthPage() {
   const location = useLocation();
   const [isNewUser, setIsNewUser] = useState(null);
 
-  const redirectTo = location.state?.from || "/home";
+  // Resolved once on mount (see resolveRedirect above): the full URL the
+  // person came from — e.g. "/home/?shop=shiv-shakti-auto-center" — not just
+  // "/home". Falls back to /home only when nothing was passed.
+  const [redirectTo] = useState(() => resolveRedirect(location.state));
+
+  const finishAndRedirect = useCallback(() => {
+    clearStoredRedirect();
+    navigate(redirectTo, { replace: true });
+  }, [navigate, redirectTo]);
 
   // If someone already has a valid session but never finished onboarding
   // (verified OTP, then backed out before submitting GSTIN/company info),
@@ -224,7 +270,7 @@ export default function AuthPage() {
       if (res.isNewUser) {
         setStep("onboarding");
       } else {
-        navigate(redirectTo);
+        finishAndRedirect();
       }
     });
 
@@ -247,7 +293,7 @@ export default function AuthPage() {
       if (!res.success) return setError(res.message || "Couldn't save your details. Try again.");
       await refreshProfile?.();
       // setStep("done");
-      navigate(redirectTo);
+      finishAndRedirect();
     });
 
   return (

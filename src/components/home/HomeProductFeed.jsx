@@ -111,9 +111,18 @@
 //      slabs/discounts).
 //   4) The out-of-order timestamp map is cleared on reconnect so a server
 //      restart (timestamps resetting) can't make us drop every event.
+//
+// LOGIN RETURN URL (this revision):
+// - When a logged-out visitor opens a shared store link such as
+//   /home/?shop=shiv-shakti-auto-center and taps something that needs
+//   login, confirmLogin now sends them to /login with
+//   `state: { from: "<pathname><search>" }` — the FULL current URL,
+//   including the ?shop= query string. AuthPage reads that and returns
+//   them to exactly this page after login/onboarding, instead of a bare
+//   /home.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
 import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, Lock, Zap, MapPin, Pin, Clock } from "lucide-react";
@@ -2071,6 +2080,7 @@ function RowSkeleton() {
 // same unfiltered behavior as before. Passing it wires up live search.
 export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
     const navigate = useNavigate();
+    const location = useLocation();
     const lenis = useLenis();
     const { profile, token, effectiveLoggedIn, needsOnboarding } = useAuth();
     const currentUserId = profile?.shop_slug ?? null;
@@ -2244,7 +2254,16 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
         }),
         [needsOnboarding]
     );
-    const confirmLogin = useCallback(() => { setLoginPrompt(null); navigate("/login"); }, [navigate]);
+
+    // Send the FULL current URL (path + query, e.g. "/home/?shop=shiv-shakti-auto-center")
+    // to /login so AuthPage can bring the person back to exactly this store page
+    // after login/onboarding, instead of a bare /home.
+    const confirmLogin = useCallback(() => {
+        setLoginPrompt(null);
+        navigate("/login", {
+            state: { from: `${location.pathname}${location.search}${location.hash || ""}` },
+        });
+    }, [navigate, location.pathname, location.search, location.hash]);
     const cancelLogin = useCallback(() => setLoginPrompt(null), []);
 
 

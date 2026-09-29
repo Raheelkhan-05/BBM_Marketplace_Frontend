@@ -16,7 +16,7 @@ export const MENU_ROUTES = {
     myStore: "/seller/store",             // approved sellers
     myStoreOnboarding: "/seller/onboarding", // anyone not yet approved
     salesOrders: "/orders?tab=sales",
-    creditRequest: "/seller/credit",      // TODO confirm
+    creditRequest: "/credit",      // TODO confirm
     transport: "/transport-library",
     cart: "/cart",
     purchaseOrders: "/orders?tab=purchases",
@@ -42,7 +42,7 @@ const matchPurchaseOrders = (p, search) =>
 //   -1 home   0 seller tools   1 buying   2 everything else
 export function buildMenuItems({
     isApprovedSeller, navigate,
-    cartCount = 0, chatUnread = 0, purchaseUnread = 0, salesUnread = 0, productsBadge = 0,
+    cartCount = 0, chatUnread = 0, purchaseUnread = 0, creditUnread = 0, salesUnread = 0, productsBadge = 0,
 }) {
     const item = (id, label, icon, to, group, rawBadge = 0, match = startsWithRoute(to)) => ({
         id, label, icon, to, group,
@@ -73,7 +73,7 @@ export function buildMenuItems({
         ...sellerItems,
         item("cart", "Cart", ShoppingCart, MENU_ROUTES.cart, 1, cartCount),
         item("purchase-orders", "Purchase orders", FileText, MENU_ROUTES.purchaseOrders, 1, purchaseUnread, matchPurchaseOrders),
-        item("credit-request", "Credit request", HandCoins, MENU_ROUTES.creditRequest, 2),
+        item("credit-request", "Credit", HandCoins, MENU_ROUTES.creditRequest, 2, creditUnread),
         item("chats", "Chats", MessageCircle, MENU_ROUTES.chats, 2, chatUnread),
         item("transport", "Transport", Truck, MENU_ROUTES.transport, 2),
     ];
