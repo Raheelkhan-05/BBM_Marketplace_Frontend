@@ -13,6 +13,7 @@
 // LAYOUT: the page is at least one viewport tall (min-h-screen) and the list card
 // stretches to fill it; the page itself scrolls when there are many rows.
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     History, ArrowLeft, CreditCard, Search, Loader2, Clock3, Check, X,
@@ -89,7 +90,7 @@ function PillTabs({ options, value, onChange, layoutId, fill }) {
                     <button
                         key={o.value} type="button" role="tab" aria-selected={active}
                         onClick={() => onChange(o.value)}
-                        className={`relative rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-wider transition-colors duration-150 ${fill ? "flex-1 sm:flex-none" : ""}`}
+                        className={`relative rounded-full px-3.5 py-1.5 text-[12px] font-bold tracking-wide transition-colors duration-150 ${fill ? "flex-1 sm:flex-none" : ""}`}
                         style={{ color: active ? "#fff" : C.muted }}
                     >
                         {active && (
@@ -250,7 +251,7 @@ function SearchField({ value, onChange, placeholder, className = "" }) {
             <Search className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} />
             <input
                 value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-                className="w-full min-w-0 bg-transparent text-[13px] font-medium tracking-wide outline-none placeholder:text-slate-400 sm:text-[13px]"
+                className="w-full min-w-0 bg-transparent text-[16px] font-medium tracking-wide outline-none placeholder:text-slate-400 sm:text-[13px]"
                 style={{ color: C.ink }}
             />
             {value && (
@@ -340,7 +341,7 @@ const canRequest = (k) => k === "none" || k === "retry" || k === "revoked";
 function CompactSellerRow({ seller, st, busyRequest, onRequest }) {
     const cap = CAPTIONS[st.kind];
     return (
-        <article className="flex items-center gap-3 bg-white px-3 py-2.5 sm:px-4">
+        <article id={seller.credit?.id ? `credit-${seller.credit.id}` : undefined} className="flex items-center gap-3 bg-white px-3 py-2.5 sm:px-4">
             <Tile name={seller.shopName} logo={seller.logoUrl} size={36} />
             <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-bold leading-tight tracking-wide" style={{ color: C.ink }}>{seller.shopName || "Seller"}</p>
@@ -366,7 +367,7 @@ function CompactSellerRow({ seller, st, busyRequest, onRequest }) {
 // Detailed row (Approved tab): remaining balance, usage bar, ask-for-higher-limit.
 function ApprovedRow({ seller, st, busyIncrease, onAskIncrease }) {
     return (
-        <article className="bg-white px-3 py-3 sm:px-4">
+        <article id={seller.credit?.id ? `credit-${seller.credit.id}` : undefined} className="bg-white px-3 py-3 sm:px-4">
             <div className="flex items-center gap-3">
                 <Tile name={seller.shopName} logo={seller.logoUrl} />
                 <div className="min-w-0 flex-1">
@@ -482,7 +483,7 @@ function RequestRow({ item, busy, onApprove, onDecline, onUpdateLimit, onDecline
     if (attention) {
         const facts = [person, buyerInfo?.location, buyerInfo?.memberSince && `On BBM since ${fmtDate(buyerInfo.memberSince)}`].filter(Boolean);
         return (
-            <article className="relative bg-white px-3 py-3.5 pl-4 sm:px-4 sm:pl-5">
+            <article id={`credit-${credit.id}`} className="relative bg-white px-3 py-3.5 pl-4 sm:px-4 sm:pl-5">
                 <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: limitAsk ? C.warn : C.badge }} />
                 <div className="flex flex-col gap-3">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -530,7 +531,7 @@ function RequestRow({ item, busy, onApprove, onDecline, onUpdateLimit, onDecline
     // ── 2 · active credit ──
     if (approved) {
         return (
-            <article className="bg-white px-3 py-3.5 sm:px-4">
+            <article id={`credit-${credit.id}`} className="bg-white px-3 py-3.5 sm:px-4">
                 <div className="flex items-center gap-3">
                     <Tile name={name} logo={buyerInfo?.logoUrl} size={40} />
                     <div className="min-w-0 flex-1">
@@ -575,7 +576,7 @@ function RequestRow({ item, busy, onApprove, onDecline, onUpdateLimit, onDecline
     // ── 3 · declined / turned off (nothing to decide → quiet, dimmed) ──
     const off = credit.status === "revoked";
     return (
-        <article className="flex items-center gap-3 bg-white px-3 py-3 sm:px-4">
+        <article id={`credit-${credit.id}`} className="flex items-center gap-3 bg-white px-3 py-3 sm:px-4">
             <div className="opacity-60"><Tile name={name} logo={buyerInfo?.logoUrl} size={36} /></div>
             <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-bold leading-tight tracking-wide" style={{ color: C.muted }}>{name}</p>
@@ -724,6 +725,49 @@ export default function CreditPage() {
     const tab = tabState === "requests" && !isSeller ? "approved" : tabState ?? (isSeller ? "requests" : "approved");
 
     const c = useCreditCenter({ isSeller, historyOpen, historyRole });
+
+    // ── notification deep link: /credit?tab=requests|approved|sellers&highlight=<creditId> ──
+    const [searchParams, setSearchParams] = useSearchParams();
+    const [pendingHighlight, setPendingHighlight] = useState(null);
+
+    useEffect(() => {
+        const t = searchParams.get("tab");
+        const hl = searchParams.get("highlight");
+        if (!t && !hl) return;
+        if (!profile) return; // wait for the profile so we know if "requests" is allowed
+        if (t === "approved" || t === "sellers" || (t === "requests" && isSeller)) setTabState(t);
+        setFilter("all");
+        setQuery("");
+        setHistoryOpen(false);
+        if (hl) setPendingHighlight(hl);
+        setSearchParams({}, { replace: true }); // so tapping the same notification again works
+    }, [searchParams, profile, isSeller, setSearchParams]);
+
+    // Scroll to the record and flash it. Retries automatically until the row exists
+    // (data may still be loading / refetching after the realtime ping), then gives up after 5s.
+    useEffect(() => {
+        if (!pendingHighlight || historyOpen) return;
+        const loaded = tab === "requests" ? c.incomingLoaded : c.sellersLoaded;
+        if (!loaded) return;
+        const el = document.getElementById(`credit-${pendingHighlight}`);
+        if (!el) return;
+        setPendingHighlight(null);
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.animate(
+            [
+                { boxShadow: `0 0 0 3px ${C.accent}`, backgroundColor: "#E6F1F3" },
+                { boxShadow: `0 0 0 3px ${C.accent}`, backgroundColor: "#E6F1F3", offset: 0.75 },
+                { boxShadow: "0 0 0 3px rgba(0,111,131,0)", backgroundColor: "#FFFFFF" },
+            ],
+            { duration: 3600, easing: "ease-out" }
+        );
+    }, [pendingHighlight, tab, historyOpen, c.incomingLoaded, c.sellersLoaded, c.incoming, c.sellers]);
+
+    useEffect(() => {
+        if (!pendingHighlight) return;
+        const t = setTimeout(() => setPendingHighlight(null), 5000);
+        return () => clearTimeout(t);
+    }, [pendingHighlight]);
 
     useEffect(() => {
         const mark = () => { if (document.visibilityState === "visible") markCreditViewed(); };
@@ -878,8 +922,8 @@ export default function CreditPage() {
 
             <header className="flex items-center justify-between gap-3 pb-3">
                 <div className="min-w-0">
-                    <h1 className="text-[24px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>Credit</h1>
-                    <p className="mt-0.5 truncate text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                    <h1 className="text-[20px] font-extrabold leading-tight tracking-tight" style={{ color: C.ink }}>Credit</h1>
+                    <p className="mt-0.5 truncate text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>
                         {isSeller ? "Manage buyer requests and your credit with sellers." : "Request credit from sellers and track your limits."}
                     </p>
                 </div>

@@ -10,6 +10,7 @@ import { NotificationsProvider } from "../context/NotificationsContext.jsx";
 import { TransportLibraryProvider } from "../context/TransportLibraryContext.jsx";
 import OrderNotificationToast from "./OrderNotificationToast.jsx";
 import ChatNotificationToast from "./ChatNotificationToast.jsx";
+import CreditNotificationToast from "./CreditNotificationToast.jsx";
 import { CartProvider } from "../context/CartContext.jsx";
 import { ChatProvider } from "../context/ChatContext.jsx";
 import { ListingsProvider } from "../context/ListingsContext.jsx";
@@ -88,6 +89,7 @@ export default function Layout() {
                       <div className="hidden md:block">
                         <HelpBulb />
                       </div>
+                      <CreditNotificationToast />
                       <OrderNotificationToast />
                       <ChatNotificationToast />
                       <TransportResolutionBanner />

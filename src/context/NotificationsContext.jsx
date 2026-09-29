@@ -54,14 +54,35 @@ export function NotificationsProvider({ children }) {
     const nonOrderListenersRef = useRef(new Set());
     const orderListenersRef = useRef(new Set());
     const chatListenersRef = useRef(new Set());
+    const creditListenersRef = useRef(new Set());
+
+    const announcedRef = useRef(new Set());   // ids already toasted / sounded
+    const firstLoadDoneRef = useRef(false);
+
+    const announceCredit = useCallback((n) => {
+        if (!n?.id || announcedRef.current.has(n.id)) return;
+        announcedRef.current.add(n.id);
+        playNotificationSound();
+        orderListenersRef.current.forEach((cb) => cb(n)); // OrderNotificationToast
+    }, []);
 
     const load = useCallback(async () => {
-        if (!token) { setNotifications([]); setLoading(false); return; }
+        if (!token) { setNotifications([]); setLoading(false); firstLoadDoneRef.current = false; return; }
         setLoading(true);
         const res = await fetchNotifications(token);
-        if (res?.success) setNotifications(res.notifications || []);
+        if (res?.success) {
+            const list = res.notifications || [];
+            if (!firstLoadDoneRef.current) {
+                // first load = history, never announce it
+                list.forEach((n) => announcedRef.current.add(n.id));
+                firstLoadDoneRef.current = true;
+            } else {
+                list.filter((n) => isCreditNotification(n) && !n.read).forEach(announceCredit);
+            }
+            setNotifications(list);
+        }
         setLoading(false);
-    }, [token]);
+    }, [token, announceCredit]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -71,7 +92,7 @@ export function NotificationsProvider({ children }) {
             if (!payload?.id) return;
             if (isCreditNotification(payload)) {
                 setNotifications((prev) => (prev.some((n) => n.id === payload.id) ? prev : [payload, ...prev]));
-                playNotificationSound();
+                announceCredit(payload);
                 return;
             }
             if (isChatNotification(payload)) {
@@ -96,7 +117,7 @@ export function NotificationsProvider({ children }) {
         };
         socket.on("notification:new", onNotif);
         return () => socket.off("notification:new", onNotif);
-    }, [socket, isAdmin]);
+    }, [socket, isAdmin, announceCredit]);
 
     const subscribeChat = useCallback((cb) => {
         chatListenersRef.current.add(cb);
@@ -111,6 +132,12 @@ export function NotificationsProvider({ children }) {
         orderListenersRef.current.add(cb);
         return () => orderListenersRef.current.delete(cb);
     }, []);
+
+    const subscribeCredit = useCallback((cb) => {
+        creditListenersRef.current.add(cb);
+        return () => creditListenersRef.current.delete(cb);
+    }, []);
+
 
     const markRead = useCallback(async (id) => {
         setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
@@ -238,7 +265,7 @@ export function NotificationsProvider({ children }) {
         purchaseOrderUnreadCounts, salesOrderUnreadCounts,
         markRead, markAllRead, markOrderRead,
         creditUnreadCount, markCreditViewed,
-        subscribeNonOrder, subscribeOrder, subscribeChat,
+        subscribeNonOrder, subscribeOrder, subscribeChat, subscribeCredit,
         listingApprovalUnreadCount, listingRejectionUnreadCount,
         walletTopupUnreadCount, unreadWalletLowBalanceNotifications,
         markListingsViewed, markWalletTopupViewed, transportProposalNotification
