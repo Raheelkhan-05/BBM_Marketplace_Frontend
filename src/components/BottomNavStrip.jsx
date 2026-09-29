@@ -182,7 +182,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         transition={{ type: "spring", stiffness: 380, damping: 22, delay: 0.15 }}
                         whileTap={{ scale: 0.92 }}
-                        className="relative flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-[0_8px_22px_-6px_rgba(0,0,0,0.5)]"
+                        className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-[0_8px_22px_-6px_rgba(0,0,0,0.5)]"
                     >
                         <AnimatePresence mode="wait" initial={false}>
                             <motion.span

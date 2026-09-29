@@ -7,7 +7,7 @@
 //   4. Bank details
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
-import { Loader2, ShieldCheck, User, Truck, Landmark, Check } from "lucide-react";
+import { Loader2, ShieldCheck, User, Truck, Landmark, Check, Link2, Copy, Share2, ExternalLink } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
     fetchSellerDashboard, updateSellerProfile,
@@ -20,6 +20,57 @@ import { SectionCard, TextField, Label, Pill, C } from "../components/seller/lis
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 /* ---------- shared bits ---------- */
+
+async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch { /* fall through */ }
+    try {
+        const ta = document.createElement("textarea");
+        ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+    } catch { return false; }
+}
+
+function ShareStoreButton({ seller }) {
+    const [copied, setCopied] = useState(false);
+    const slug = seller.shop_slug;
+    if (!slug) return null;
+
+    const link = `${window.location.origin}/home/?shop=${encodeURIComponent(slug)}`;
+
+    const onClick = async () => {
+        // Start the copy and the share in the same tick. Some browsers (Safari especially)
+        // only allow the share sheet right after a tap, so we must not await the copy first.
+        const copyPromise = copyText(link);
+
+        if (typeof navigator !== "undefined" && navigator.share) {
+            try {
+                await navigator.share({ title: seller.display_name || "Our store", text: "Browse our products", url: link });
+            } catch { /* share sheet dismissed */ }
+        }
+
+        if (await copyPromise) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-label="Copy and share store link"
+            title="Copy and share store link"
+            className="flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-bold tracking-wide text-white transition-transform active:scale-95"
+            style={{ background: "#000" }}
+        >
+            {copied ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <Share2 className="h-3.5 w-3.5" />}
+            {copied ? "Copied" : "Share"}
+        </button>
+    );
+}
 
 function SaveBar({ dirty, saving, saved, error, onSave, label = "Save changes" }) {
     return (
@@ -313,12 +364,13 @@ export default function SellerStorePage() {
     return (
         <div className="min-h-screen">
             <div className="mx-auto flex max-w-4xl flex-col gap-3 px-3 py-6 sm:px-4 sm:py-10">
-                <header className="mb-2 px-1">
-                    <h1 className="text-[22px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                <header className="mb-2 flex items-center justify-between gap-3 px-1">
+                    <h1 className="min-w-0 truncate text-[22px] font-extrabold tracking-wide" style={{ color: C.ink }}>
                         {seller.display_name || "Your store"}
                     </h1>
+                    <ShareStoreButton seller={seller} />
                 </header>
-
+                {/* <ShareStoreSection seller={seller} /> */}
                 <GstSection business={business} />
                 <ContactSection seller={seller} email={email} token={token} onSaved={load} />
                 <OperationsSection seller={seller} token={token} onSaved={load} />

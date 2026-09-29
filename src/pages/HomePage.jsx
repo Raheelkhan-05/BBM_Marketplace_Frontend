@@ -1,6 +1,7 @@
 // src/pages/HomePage.jsx
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import ShopBanner from "../components/home/ShopBanner.jsx";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import CategoryStrip from "../components/home/CategoryStrip.jsx";
 import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
@@ -31,6 +32,17 @@ export default function HomePage() {
     const navigate = useNavigate();
     const isMobile = useIsMobile();
 
+    const [searchParams, setSearchParams] = useSearchParams();
+    const shopSlug = searchParams.get("shop")?.trim() || null;
+    const clearShop = () => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("shop");
+        setSearchParams(next, { replace: true });
+    };
+
+    const [shopName, setShopName] = useState(null);
+    useEffect(() => { if (!shopSlug) setShopName(null); }, [shopSlug]);
+
     const handleSuggestionSelect = (s) => {
         if (s.level === "brandFamily") {
             navigate(`/brand-family/${encodeURIComponent(s.name)}`);
@@ -49,6 +61,8 @@ export default function HomePage() {
                 {/* extra bottom padding on mobile so the last feed items clear the fixed search bar */}
                 <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20 pt-3 space-y-2">
 
+                    {shopSlug && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
+
                     {/* Mobile: pinned to the bottom of the screen. Desktop: normal flow, as before. */}
                     <div
                         className="fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-white via-white/90 to-transparent px-2.5 pb-3 pt-6 md:static md:z-auto md:bg-none md:p-0"
@@ -61,16 +75,15 @@ export default function HomePage() {
                             onImageResolved={handleImageResolved}
                             showMediaButtons={false}
                             onSuggestionSelect={handleSuggestionSelect}
+                            placeholder={shopName ? `Search in ${shopName}…` : undefined}
                             clearOnSubmit={false}
                             suggestionsDirection={isMobile ? "up" : "down"}
                         />
                     </div>
-                    <div className="md:pt-4">
-                        <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
 
-                    </div>
+                    <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
 
-                    <HomeProductFeed category={activeCategory} q={query} />
+                    <HomeProductFeed category={activeCategory} q={query} shopSlug={shopSlug} />
                 </main>
             </SmoothScrollProvider>
 

@@ -116,9 +116,9 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
-import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, Loader2, Pencil, Truck, Lock, Zap, MapPin, Pin } from "lucide-react";
+import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, Lock, Zap, MapPin, Pin, Clock } from "lucide-react";
 import useFollowedItems from "../../hooks/useFollowedItems";
-import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses, updateSellerProductSubmission } from "../../utils/api";
+import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses, updateSellerProductSubmission, fetchBrandItemSellerOffer } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
 import CommissionSlider from "../seller/listingForm/CommissionSlider.jsx";
@@ -153,6 +153,9 @@ const DEBOUNCE_MS = 250;
 // See "DUPLICATE-FETCH GUARD" note above.
 const DUPLICATE_GUARD_MS = 300;
 // Set to false to silence realtime debug logs.
+
+const OFFER_CACHE_MS = 15000;
+const SHOP_REFRESH_DELAY_MS = 400;
 
 const FOLLOW_TIP_KEY = "bbm_follow_tip_dismissed_v1";
 
@@ -1059,10 +1062,10 @@ function GstToggle({ includeGst, onChange }) {
 
 // Header tab switch: "All products | Following (n)".
 // Tabs read as "two views of the same list", which is the mental model we want.
-function FeedViewTabs({ followedOnly, followCount, onChange }) {
+function FeedViewTabs({ followedOnly, onChange }) {
     const tabs = [
-        { followed: false, label: "All products" },
-        { followed: true, label: "Following" },
+        { followed: false, aria: "All products", Icon: LayoutGrid },
+        { followed: true, aria: "Following", Icon: Pin },
     ];
     return (
         <div
@@ -1071,16 +1074,18 @@ function FeedViewTabs({ followedOnly, followCount, onChange }) {
             className="relative inline-flex rounded-full p-0.5"
             style={{ background: C.hairSoft }}
         >
-            {tabs.map((t) => {
-                const active = followedOnly === t.followed;
+            {tabs.map(({ followed, aria, Icon }) => {
+                const active = followedOnly === followed;
                 return (
                     <button
-                        key={String(t.followed)}
+                        key={String(followed)}
                         type="button"
                         role="tab"
                         aria-selected={active}
-                        onClick={() => onChange(t.followed)}
-                        className="relative rounded-full px-3 py-1.5 text-[12px] font-extrabold tracking-wide transition-colors duration-150"
+                        aria-label={aria}
+                        title={aria}
+                        onClick={() => onChange(followed)}
+                        className="relative rounded-full px-4 py-1.5 transition-colors duration-150"
                         style={{ color: active ? "#fff" : C.muted }}
                     >
                         {active && (
@@ -1091,21 +1096,12 @@ function FeedViewTabs({ followedOnly, followCount, onChange }) {
                                 transition={{ type: "spring", stiffness: 500, damping: 38 }}
                             />
                         )}
-                        <span className="relative flex items-center gap-1.5">
-                            {t.followed && <Pin className="h-3 w-3" strokeWidth={2.4} fill={active ? "currentColor" : "none"} />}
-                            {t.label}
-                            {t.followed && followCount > 0 && (
-                                <motion.span
-                                    key={followCount} /* re-mounts on change = little "bump" so users see where it went */
-                                    initial={{ scale: 1.5 }}
-                                    animate={{ scale: 1 }}
-                                    transition={{ type: "spring", stiffness: 500, damping: 18 }}
-                                    className="flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9.5px] font-extrabold leading-none"
-                                    style={active ? { background: "#fff", color: C.ink } : { background: C.ink, color: "#fff" }}
-                                >
-                                    {followCount > 99 ? "99+" : followCount}
-                                </motion.span>
-                            )}
+                        <span className="relative flex items-center justify-center">
+                            <Icon
+                                className="h-3.5 w-3.5"
+                                strokeWidth={2.4}
+                                fill={followed && active ? "currentColor" : "none"}
+                            />
                         </span>
                     </button>
                 );
@@ -1124,16 +1120,56 @@ function FollowButton({ following, onToggle }) {
             title={following ? "Tap to unfollow" : "Follow to find this product later in your Following tab"}
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
             onKeyDown={(e) => e.stopPropagation()}
-            whileTap={{ scale: 0.92 }}
-            className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-[3px] text-[10px] font-extrabold tracking-wide transition-colors duration-150"
-            style={
-                following
-                    ? { background: C.primary, color: "#fff", borderColor: C.primary }
-                    : { background: "#fff", color: C.ink, borderColor: "rgba(11,17,22,0.22)" }
-            }
+            className="relative inline-flex h-7 w-7 items-center justify-center bg-transparent p-0 outline-none"
         >
-            <Pin className="h-2.5 w-2.5" strokeWidth={2.6} fill={following ? "currentColor" : "none"} />
-            {following ? "Following" : "Follow"}
+            {/* Impact ripple where the pin lands (only plays when pinned) */}
+            <AnimatePresence>
+                {following && (
+                    <motion.span
+                        key="ripple"
+                        className="pointer-events-none absolute rounded-full"
+                        style={{ width: 6, height: 6, bottom: 4, background: "#000" }}
+                        initial={{ opacity: 0.35, scale: 0.4 }}
+                        animate={{ opacity: 0, scale: 3.2 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.35, ease: "easeOut", delay: 0.12 }}
+                    />
+                )}
+            </AnimatePresence>
+
+            <motion.span
+                className="flex items-center justify-center"
+                style={{ originX: 0.5, originY: 1 }}
+                initial={false}
+                animate={
+                    following
+                        ? {
+                            // lift, then drive straight down, then settle
+                            rotate: [45, 20, 0, 0, 0],
+                            y: [0, -7, 2.5, 0, 0],
+                            scaleY: [1, 1.08, 0.86, 1.03, 1],
+                            scaleX: [1, 0.96, 1.08, 0.99, 1],
+                        }
+                        : {
+                            rotate: 45,
+                            y: 0,
+                            scaleY: 1,
+                            scaleX: 1,
+                        }
+                }
+                transition={
+                    following
+                        ? { duration: 0.42, times: [0, 0.3, 0.55, 0.78, 1], ease: "easeOut" }
+                        : { type: "spring", stiffness: 500, damping: 30 }
+                }
+            >
+                <Pin
+                    className="h-4 w-4"
+                    strokeWidth={2.4}
+                    style={{ color: following ? "#000000" : C.muted }}
+                    fill={following ? "#000000" : "none"}
+                />
+            </motion.span>
         </motion.button>
     );
 }
@@ -1146,8 +1182,138 @@ function isHiddenLabel(name) {
     return typeof name === "string" && name.trim().toLowerCase() === "pending";
 }
 
-function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow }) {
+function isFeedRowOutOfStock(item) {
+    return item.lowest_price_stock_type === "ready_stock"
+        && item.lowest_price_available_stock != null
+        && item.lowest_price_moq != null
+        && Number(item.lowest_price_available_stock) < Number(item.lowest_price_moq);
+}
 
+// MOQ + delivery + freight, shown on the row header in shop mode.
+// Aligned spec strip + Buy button, shown under each row in shop mode.
+// Aligned spec strip + buy action, shown under each row in shop mode.
+// Mobile: "Swipe to buy" slider (same as the seller dropdown). md+: "Buy now" button.
+function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, breakdown }) {
+    const [slideKey, setSlideKey] = useState(0);
+    if (!offer) return null;
+
+    const moq = Number(offer.moq);
+    const isMaster = Number(masterPackSize) >= 1;
+    const moqValue = isMaster
+        ? `${fmtQty(moq)} M Pack`
+        : `${fmtQty(moq)} Pack${moq === 1 ? "" : "s"}`;
+    const days = offer.total_delivery_days;
+
+    const cells = [
+        offer.moq != null
+            ? { key: "moq", label: "MOQ", Icon: Package, value: moqValue }
+            : null,
+        days != null
+            ? { key: "eta", label: "Delivery", Icon: Clock, value: `~${days} ${Number(days) === 1 ? "day" : "days"}` }
+            : null,
+        { key: "freight", label: "Freight", Icon: Truck, value: offer.freight_included ? "Included" : "Extra", accent: !!offer.freight_included },
+    ].filter(Boolean);
+
+    const handleSlideConfirm = () => {
+        Promise.resolve(onBuy()).finally(() => setSlideKey((k) => k + 1));
+    };
+
+    const specBlock = (
+        <div
+            className="grid min-w-0 overflow-hidden rounded-xl border"
+            style={{
+                gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
+                borderColor: C.hair,
+                background: "#FCFBF9",
+            }}
+        >
+            {cells.map(({ key, label, Icon, value, accent }, i) => (
+                <div
+                    key={key}
+                    className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-2 py-2 text-center tracking-wide"
+                    style={i > 0 ? { borderLeft: `1px solid ${C.hairSoft}` } : undefined}
+                >
+                    <span className="flex items-center gap-1 text-[8.5px] font-bold uppercase leading-none tracking-wider" style={{ color: C.muted }}>
+                        <Icon className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} />
+                        {label}
+                    </span>
+                    <span
+                        className="w-full truncate text-[12px] font-extrabold leading-tight tracking-wide"
+                        style={{ color: accent ? "#006F83" : C.ink }}
+                    >
+                        {value}
+                    </span>
+                </div>
+            ))}
+        </div>
+    );
+
+    return (
+        <div className="px-3 pb-3 sm:px-4">
+            {/* ── MOBILE: specs row, then [breakdown text | slider on the right] ── */}
+            <div className="flex flex-col gap-2 md:hidden">
+                {specBlock}
+
+                <div className="flex items-center gap-2">
+                    <div
+                        className="min-w-0 flex-1 text-[11px] font-semibold leading-tight"
+                        style={{ color: C.muted }}
+                    >
+                        {breakdown}
+                    </div>
+
+                    <div className="w-[48%] max-w-[190px] shrink-0">
+                        {!outOfStock ? (
+                            <div data-swipe-buy="" className="w-full" onClick={(e) => e.stopPropagation()}>
+                                <SlideToConfirm
+                                    compact
+                                    label="Swipe to buy"
+                                    busyLabel="Opening…"
+                                    doneLabel="Opening…"
+                                    resetKey={`${slideKey}`}
+                                    onConfirm={handleSlideConfirm}
+                                />
+                            </div>
+                        ) : (
+                            <div
+                                className="flex h-10 w-full items-center justify-center rounded-full text-[11px] font-extrabold tracking-wide"
+                                style={{ background: "#f1f1f1", color: C.muted }}
+                            >
+                                OUT OF STOCK
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* ── md and up: specs fill the row, smaller Buy now on the right ── */}
+            <div className="hidden items-center gap-2.5 md:flex">
+                <div className="min-w-0 flex-1">{specBlock}</div>
+
+                {!outOfStock ? (
+                    <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onBuy(); }}
+                        className="flex h-9 w-28 shrink-0 items-center justify-center gap-1.5 rounded-lg text-[12px] font-extrabold tracking-wide text-white transition-transform active:scale-95"
+                        style={{ background: C.primary }}
+                    >
+                        {opening && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                        Buy now
+                    </button>
+                ) : (
+                    <div
+                        className="flex h-9 w-28 shrink-0 items-center justify-center rounded-lg text-[11px] font-extrabold tracking-wide"
+                        style={{ background: "#f1f1f1", color: C.muted }}
+                    >
+                        OUT OF STOCK
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow, shopMode = false, isOpening = false, onPrefetch }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
     const categoryLabel = isHiddenLabel(item.category_name) ? null : item.category_name;
     const subcategoryLabel = isHiddenLabel(item.subcategory_name) ? null : item.subcategory_name;
@@ -1158,18 +1324,16 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
         item.lowest_price_unit
     );
 
-    const toTitleCase = (str = "") =>
-        str
-            .toLowerCase()
-            .replace(/\b\w/g, (c) => c.toUpperCase());
+    const toTitleCase = (str = "") => str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 
-    const isOutOfStock = item.lowest_price_stock_type === "ready_stock"
-        && item.lowest_price_available_stock != null
-        && item.lowest_price_moq != null
-        && Number(item.lowest_price_available_stock) < Number(item.lowest_price_moq);
+    const isOutOfStock = isFeedRowOutOfStock(item);
 
-    // Recomputed only when the underlying price fields or the GST toggle
-    // change — cheap pure arithmetic, so this stays effectively instant.
+    // In a store view on phones, the slider is the only way to buy (same as the seller list).
+    const guardedToggle = () => {
+        if (shopMode && typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) return;
+        onToggle();
+    };
+
     const breakdown = useMemo(() => {
         if (item.lowest_price == null) return null;
         return computePriceBreakdown({
@@ -1182,123 +1346,129 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
         });
     }, [item.lowest_price, item.lowest_price_pack_size, item.lowest_price_master_pack_size, item.lowest_price_gst_percent, item.lowest_price_is_custom, includeGst]);
 
+    // Prefetch on real hover intent (120ms), or immediately on press/touch.
+    const prefetchTimer = useRef(null);
+    useEffect(() => () => clearTimeout(prefetchTimer.current), []);
+    const startPrefetch = () => {
+        if (!onPrefetch) return;
+        clearTimeout(prefetchTimer.current);
+        prefetchTimer.current = setTimeout(onPrefetch, 120);
+    };
+    const stopPrefetch = () => clearTimeout(prefetchTimer.current);
+
     return (
         <motion.div
             initial={animateEntrance ? { opacity: 0, y: 6 } : false}
             animate={{ opacity: 1, y: 0 }}
+            onPointerEnter={startPrefetch}
+            onPointerLeave={stopPrefetch}
+            onPointerDown={() => { stopPrefetch(); onPrefetch?.(); }}
             transition={{
                 duration: 0.2,
                 delay: animateEntrance ? Math.min(idx * 0.012, 0.18) : 0,
                 ease: EASE,
             }}
-            className="grid w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 sm:px-4 min-h-[7.5rem]"
-
+            className="w-full"
             style={{
                 background: isOpen ? C.hairSoft : "transparent",
-                opacity: isOutOfStock ? 0.5 : 1,
+                opacity: isOutOfStock ? 0.5 : isOpening ? 0.7 : 1,
             }}
         >
-            {/* COL 1 — IMAGE */}
-            <div className="flex h-full items-center justify-center">
-                <span
-                    className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl"
-                    style={{
-                        borderColor: C.hair,
-                        background: C.imgBg,
-                    }}
-                >
-                    <ProductImage
-                        src={item.image}
-                        alt=""
-                        onOpen={onImageOpen}
-                        priority={idx < 3}
-                    />
-                </span>
-            </div>
-
-            {/* COL 2 — PRODUCT INFO + PACKAGING */}
             <div
-                onClick={onToggle}
-                onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onToggle();
-                    }
-                }}
-                role="button"
-                tabIndex={0}
-                className="min-w-0 cursor-pointer text-left min-h-[5rem] flex flex-col justify-center"
+                className={`grid w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 sm:px-4 ${shopMode ? "pb-2.5" : "pb-3 min-h-[7.5rem]"}`}
             >
-
-                <p
-                    className="min-w-0 text-[14px] font-bold leading-tight tracking-wide sm:line-clamp-3 md:line-clamp-2"
-                    style={{ color: C.ink }}
-                >
-                    {toTitleCase(item.name)}
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onInfo();
-                        }}
-                        aria-label="Product details"
-                        className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 -translate-y-px items-center justify-center rounded-full align-middle transition-colors hover:bg-black/[0.05]"
+                {/* COL 1 — IMAGE */}
+                <div className="flex h-full items-center justify-center">
+                    <span
+                        className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+                        style={{ borderColor: C.hair, background: C.imgBg }}
                     >
-                        <Info className="h-3 w-3" style={{ color: C.muted }} />
-                    </button>
-                </p>
-                <p
-                    className="mt-0.5 flex min-w-0 items-center gap-1 truncate uppercase text-[11.5px] font-bold tracking-wider"
-                    style={{ color: "#006F83" }}
-                >
-                    <BrandBadge name={item.brand_name} image={item.brand_image} />
-                    <span className="truncate">{subLabel}</span>
-                </p>
-
-                <p
-                    className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide"
-                    style={{ color: C.muted }}
-                >
-                    {categoryLabel
-                        ? `${categoryLabel} · `
-                        : ""}
-                    {subcategoryLabel}
-                </p>
-
-                {/* Reserve the packaging line's height even when there's no
-        packaging string, so rows with/without it match. */}
-                <p
-                    className="mt-1 text-[10px] sm:text-[11px] md:text-[11.5px] font-semibold leading-tight tracking-wide min-h-[1.2em]"
-                    style={{ color: C.secondary }}
-                >
-                    {packaging || "\u00A0"}
-                </p>
-            </div>
-
-            {/* COL 3 — PRICE BREAKDOWN (unit / pack / master pack) */}
-            <div
-                role="button"
-                tabIndex={0}
-                onClick={onToggle}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
-                aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
-                className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right cursor-pointer"
-            >
-                <FollowButton following={isFollowed} onToggle={onToggleFollow} />
-                {isOutOfStock ? (
-                    <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
-                        OUT OF STOCK
+                        <ProductImage src={item.image} alt="" onOpen={onImageOpen} priority={idx < 3} />
                     </span>
-                ) : !isLoggedIn ? (
-                    <LockedPriceBlock seed={item.id} unit={item.lowest_price_unit} size="row" onClick={onRequireLogin} />
-                ) : (
-                    <>
-                        {breakdown && (
-                            <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
-                        )}
-                        <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
-                    </>
-                )}
+                </div>
+
+                {/* COL 2 — PRODUCT INFO + PACKAGING */}
+                <div
+                    onClick={guardedToggle}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); guardedToggle(); } }}
+                    role="button"
+                    tabIndex={0}
+                    className="min-w-0 cursor-pointer text-left min-h-[5rem] flex flex-col justify-center"
+                >
+                    <p
+                        className="min-w-0 text-[14px] font-bold leading-tight tracking-wide sm:line-clamp-3 md:line-clamp-2"
+                        style={{ color: C.ink }}
+                    >
+                        {toTitleCase(item.name)}
+                        <button
+                            onClick={(e) => { e.stopPropagation(); onInfo(); }}
+                            aria-label="Product details"
+                            className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 -translate-y-px items-center justify-center rounded-full align-middle transition-colors hover:bg-black/[0.05]"
+                        >
+                            <Info className="h-3 w-3" style={{ color: C.muted }} />
+                        </button>
+                    </p>
+                    <p
+                        className="mt-0.5 flex min-w-0 items-center gap-1 truncate uppercase text-[11.5px] font-bold tracking-wider"
+                        style={{ color: "#006F83" }}
+                    >
+                        <BrandBadge name={item.brand_name} image={item.brand_image} />
+                        <span className="truncate">{subLabel}</span>
+                    </p>
+                    <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                        {categoryLabel ? `${categoryLabel} · ` : ""}
+                        {subcategoryLabel}
+                    </p>
+                    {!shopMode && <p
+                        className="mt-1 text-[10px] sm:text-[11px] md:text-[11.5px] font-semibold leading-tight tracking-wide min-h-[1.2em]"
+                        style={{ color: C.secondary }}
+                    >
+                        {packaging || "\u00A0"}
+                    </p>}
+                    {shopMode && <p
+                        className="mt-1 text-[11px] sm:text-[12px] md:text-[12.5px] font-semibold leading-tight tracking-wide min-h-[1.2em]"
+                        style={{ color: C.secondary }}
+                    >
+                        {packaging || "\u00A0"}
+                    </p>}
+                </div>
+
+                {/* COL 3 — FOLLOW + PRICE */}
+                <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={guardedToggle}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); guardedToggle(); } }}
+                    aria-label={shopMode ? "Buy from this store" : isOpen ? "Collapse sellers" : "Expand sellers"}
+                    className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right cursor-pointer"
+                >
+                    <FollowButton following={isFollowed} onToggle={onToggleFollow} />
+                    {isOutOfStock ? (
+                        <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
+                            OUT OF STOCK
+                        </span>
+                    ) : !isLoggedIn ? (
+                        <LockedPriceBlock seed={item.id} unit={item.lowest_price_unit} size="row" onClick={onRequireLogin} />
+                    ) : (
+                        <>
+                            {breakdown && !shopMode && (
+                                <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
+                            )}
+                            <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
+                        </>
+                    )}
+                </div>
             </div>
+
+            {shopMode && (
+                <ShopOfferStrip
+                    offer={item.shop_offer}
+                    masterPackSize={item.lowest_price_master_pack_size}
+                    outOfStock={isOutOfStock}
+                    opening={isOpening}
+                    onBuy={onToggle}
+                />
+            )}
         </motion.div>
     );
 }
@@ -1899,7 +2069,7 @@ function RowSkeleton() {
 
 // `q` is optional — pages that don't pass it (or pass "") get the exact
 // same unfiltered behavior as before. Passing it wires up live search.
-export default function HomeProductFeed({ category, q = "" }) {
+export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
     const navigate = useNavigate();
     const lenis = useLenis();
     const { profile, token, effectiveLoggedIn, needsOnboarding } = useAuth();
@@ -1960,6 +2130,20 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [followToast, setFollowToast] = useState(null); // { message, actionLabel?, onAction? }
     const [tipDismissed, setTipDismissed] = useState(() => readFlag(FOLLOW_TIP_KEY));
     const runQueryRef = useRef(null);
+    const shopSlugRef = useRef(null);
+    const categoryRef = useRef(null);
+    const qRef = useRef("");
+    shopSlugRef.current = shopSlug;
+    categoryRef.current = category;
+    qRef.current = q;
+
+    const offerCacheRef = useRef(new Map());
+    const shopRefreshTimerRef = useRef(null);
+    const shopRefreshSeqRef = useRef(0);
+    const [openingItemId, setOpeningItemId] = useState(null);
+
+    useEffect(() => { offerCacheRef.current.clear(); }, [shopSlug, token]);
+    useEffect(() => () => clearTimeout(shopRefreshTimerRef.current), []);
     const pendingRevealRef = useRef(null);      // product to scroll to + highlight once the Following list loads
     const [revealTick, setRevealTick] = useState(0);
     const followToastTimerRef = useRef(null);
@@ -1972,6 +2156,49 @@ export default function HomeProductFeed({ category, q = "" }) {
         followToastTimerRef.current = setTimeout(() => setFollowToast(null), ms);
     }, []);
 
+    // Offer for one product from the shop being viewed. Prefetched on hover/touch,
+    // short-lived so a stale price is never used for long.
+    const getOffer = useCallback((itemId) => {
+        const slug = shopSlugRef.current;
+        const key = `${slug}::${itemId}`;
+        const hit = offerCacheRef.current.get(key);
+        if (hit && Date.now() - hit.t < OFFER_CACHE_MS) return hit.promise;
+        const promise = fetchBrandItemSellerOffer(itemId, slug, { token }).catch(() => null);
+        offerCacheRef.current.set(key, { t: Date.now(), promise });
+        promise.then((res) => { if (!res?.success) offerCacheRef.current.delete(key); });
+        return promise;
+    }, [token]);
+
+    // Shop mode: re-run the SAME feed query silently so price/custom price/visibility
+    // always match what the server says this buyer can see.
+    const refreshShopFeed = useCallback(() => {
+        clearTimeout(shopRefreshTimerRef.current);
+        shopRefreshTimerRef.current = setTimeout(async () => {
+            const shop = shopSlugRef.current;
+            if (!shop) return;
+            const seq = ++shopRefreshSeqRef.current;
+            const queryToken = queryTokenRef.current;
+            const addr = buyerAddressRef.current;
+            try {
+                const res = await fetchBrandItemsFeed({
+                    categoryId: categoryRef.current?.id || null,
+                    q: qRef.current.trim(),
+                    limit: Math.min(Math.max(itemsRef.current.length, PAGE_SIZE), 96),
+                    offset: 0, token, shopSlug: shop,
+                    followedOnly: followedOnlyRef.current,
+                    destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
+                });
+                if (seq !== shopRefreshSeqRef.current) return;
+                if (queryToken !== queryTokenRef.current || shopSlugRef.current !== shop) return;
+                if (!res?.success) return;
+                offerCacheRef.current.clear();
+                setItems(res.items || []);
+                setTotal(res.total ?? null);
+                setHasMore(!!res.hasMore);
+            } catch { /* next event retries */ }
+        }, SHOP_REFRESH_DELAY_MS);
+    }, [token]);
+
     const { isFollowed, isFollowedNow, settle, toggle: toggleFollow, count: followCount } = useFollowedItems(isLoggedIn ? token : null, {
         onRevert: () => {
             showToast({ message: "Couldn't update." }, 2200);
@@ -1979,6 +2206,30 @@ export default function HomeProductFeed({ category, q = "" }) {
             if (followedOnlyRef.current) runQueryRef.current?.(0, { append: false });
         },
     });
+
+    const [shopFollowCount, setShopFollowCount] = useState(null);
+    const shopCountSeqRef = useRef(0);
+
+    // Followed products that THIS store sells and this buyer can see (matches the Following tab list).
+    const refreshShopFollowCount = useCallback(async () => {
+        const shop = shopSlugRef.current;
+        if (!shop || !token) { setShopFollowCount(null); return; }
+        const seq = ++shopCountSeqRef.current;
+        try {
+            await settle(); // make sure pending follow/unfollow requests reached the server first
+            const res = await fetchBrandItemsFeed({
+                limit: 1, offset: 0, token, shopSlug: shop, followedOnly: true,
+            });
+            if (seq !== shopCountSeqRef.current || shopSlugRef.current !== shop) return;
+            if (res?.success) setShopFollowCount(res.total ?? 0);
+        } catch { /* keep the previous number */ }
+    }, [token, settle]);
+
+    useEffect(() => {
+        if (!shopSlug || !token) { setShopFollowCount(null); return; }
+        const t = setTimeout(refreshShopFollowCount, 250); // coalesces rapid taps
+        return () => clearTimeout(t);
+    }, [shopSlug, token, followCount, refreshShopFollowCount]);
 
     useEffect(() => { if (!isLoggedIn || !token) setFollowedOnly(false); }, [isLoggedIn, token]);
     useEffect(() => () => clearTimeout(followToastTimerRef.current), []);
@@ -2002,6 +2253,8 @@ export default function HomeProductFeed({ category, q = "" }) {
     const queryTokenRef = useRef(0);
     const isFirstRun = useRef(true);
     const lastRunRef = useRef({ key: null, time: 0 });
+
+    const shopDestKey = shopSlug ? (buyerAddress?.pincode || "") : "";
 
     const [highlightedItemId, setHighlightedItemId] = useState(null);
     const rowRefs = useRef({});
@@ -2125,6 +2378,7 @@ export default function HomeProductFeed({ category, q = "" }) {
     // least one in-stock candidate to prefer. Server-side means
     // visibility/wallet rules hold.
     const refreshLowest = useCallback((itemId) => {
+        if (shopSlugRef.current) { refreshShopFeed(); return; }
         clearTimeout(lowestTimersRef.current[itemId]);
         lowestTimersRef.current[itemId] = setTimeout(async () => {
             const seq = (lowestSeqRef.current[itemId] = (lowestSeqRef.current[itemId] || 0) + 1);
@@ -2142,7 +2396,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                 setItems((prev) => prev.map((it) => (String(it.id) === String(itemId) ? applyLowestToItem(it, best) : it)));
             } catch { /* next event will retry */ }
         }, 120);
-    }, [token]);
+    }, [token, refreshShopFeed]);
 
     // Patches from the socket may not carry every derived field (price
     // slabs, discounts…), so shortly after an in-place patch we quietly
@@ -2346,8 +2600,14 @@ export default function HomeProductFeed({ category, q = "" }) {
         (append ? setLoadingMore : setLoading)(true);
 
         const trimmed = q.trim();
-        const request = followedOnly
-            ? fetchBrandItemsFeed({ categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset, signal: controller.signal, token, followedOnly: true })
+        const useFeedRpc = followedOnly || !!shopSlug;
+        const addr = buyerAddressRef.current;
+        const request = useFeedRpc
+            ? fetchBrandItemsFeed({
+                categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset,
+                signal: controller.signal, token, followedOnly, shopSlug,
+                destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
+            })
             : trimmed
                 ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, categoryId: category?.id || null, signal: controller.signal, token })
                 : fetchBrandItemsFeed({ categoryId: category?.id || null, q: "", limit: PAGE_SIZE, offset, signal: controller.signal, token });
@@ -2374,13 +2634,13 @@ export default function HomeProductFeed({ category, q = "" }) {
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [category?.id, q, token, followedOnly]);
+    }, [category?.id, q, token, followedOnly, shopSlug]);
 
 
     runQueryRef.current = runQuery;
 
     useEffect(() => {
-        const key = `${category?.id || ""}::${q}::${token || ""}::${followedOnly ? 1 : 0}`;
+        const key = `${category?.id || ""}::${q}::${token || ""}::${followedOnly ? 1 : 0}::${shopSlug || ""}::${shopDestKey}`;
         const now = Date.now();
         const isDuplicateInvocation =
             lastRunRef.current.key === key &&
@@ -2411,7 +2671,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         );
         return () => clearTimeout(debounceRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [category?.id, q, token, followedOnly]);
+    }, [category?.id, q, token, followedOnly, shopSlug, shopDestKey]);
 
     useEffect(() => () => sellerAbortRef.current?.abort(), []);
 
@@ -2450,6 +2710,35 @@ export default function HomeProductFeed({ category, q = "" }) {
     const handleSell = (item) => {
         closeDropdown();
         setSellItem(item);
+    };
+
+    const handleShopBuy = async (item) => {
+        if (!effectiveLoggedIn) { requireLogin(); return; }
+        if (!token) { requireLogin("You need to login to place an order with this seller."); return; }
+        if (isFeedRowOutOfStock(item)) { showToast({ message: "Out of stock" }, 2000); return; }
+        if (openingItemId) return;
+
+        const slug = shopSlugRef.current;
+        if (currentUserId && String(slug) === String(currentUserId)) {
+            showToast({ message: "This is your own listing" }, 2200);
+            return;
+        }
+
+        setOpeningItemId(item.id);
+        const res = await getOffer(item.id);
+        setOpeningItemId(null);
+        if (shopSlugRef.current !== slug) return; // user left the shop while loading
+
+        if (!res?.success || !res.offer) {
+            if (res?.code === "LISTING_GONE") {
+                setItems((prev) => prev.filter((it) => String(it.id) !== String(item.id)));
+                showToast({ message: "No longer available" }, 2500);
+            } else {
+                showToast({ message: "Couldn't open. Try again" }, 2200);
+            }
+            return;
+        }
+        setBuyState({ item, seller: res.offer });
     };
 
     const handleFollowedOnlyChange = (next) => {
@@ -2547,7 +2836,10 @@ export default function HomeProductFeed({ category, q = "" }) {
     return (
         <>
             <div className="flex items-center justify-between gap-2 px-1 pb-2">
-                <FeedViewTabs followedOnly={followedOnly} followCount={followCount} onChange={handleFollowedOnlyChange} />
+                <FeedViewTabs
+                    followedOnly={followedOnly}
+                    onChange={handleFollowedOnlyChange}
+                />
                 <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
             </div>
 
@@ -2585,12 +2877,14 @@ export default function HomeProductFeed({ category, q = "" }) {
                             <p className="text-[13px] font-bold" style={{ color: C.ink }}>
                                 {followedOnly
                                     ? (q ? "None of your followed products match" : "You're not following anything yet")
-                                    : (q ? "No products match that search" : "No products here yet")}
+                                    : shopSlug
+                                        ? (q ? "No products from this store match" : "No products from this store are available to you")
+                                        : (q ? "No products match that search" : "No products here yet")}
                             </p>
                             <p className="max-w-[260px] text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>
                                 {followedOnly && !q
                                     ? "Tap Follow on any product you buy often. It will show up here with live seller prices."
-                                    : q ? "Try a different search term." : "Try a different category."}
+                                    : q ? "Try a different search term." : shopSlug ? "Try a different category, or see all products." : "Try a different category."}
                             </p>
                             {followedOnly && (
                                 <button
@@ -2599,7 +2893,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                                     className="mt-2 rounded-full px-4 py-2 text-[12px] font-extrabold tracking-wide text-white"
                                     style={{ background: C.primary }}
                                 >
-                                    Browse all products
+                                    {shopSlug ? "Show store products" : "Browse all products"}.
                                 </button>
                             )}
                         </div>
@@ -2625,13 +2919,17 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                     item={item}
                                                     idx={i}
                                                     isOpen={isOpen}
-                                                    onToggle={() => toggleDropdown(item)}
+                                                    // onToggle={() => toggleDropdown(item)}
                                                     onInfo={() => setInfoItemId(item.id)}
                                                     onImageOpen={setLightboxSrc}
                                                     isFollowed={isFollowed(item.id)}
                                                     onToggleFollow={() => handleToggleFollow(item)}
                                                     includeGst={includeGst}
                                                     isLoggedIn={isLoggedIn}
+                                                    onToggle={() => (shopSlug ? handleShopBuy(item) : toggleDropdown(item))}
+                                                    shopMode={!!shopSlug}
+                                                    isOpening={openingItemId === item.id}
+                                                    onPrefetch={shopSlug ? () => { if (isLoggedIn && token) getOffer(item.id); } : undefined}
                                                     onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
                                                     animateEntrance={newlyAppearedIds.has(item.id)}
                                                 />
