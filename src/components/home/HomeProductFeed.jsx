@@ -152,7 +152,7 @@ const DEBOUNCE_MS = 250;
 // See "DUPLICATE-FETCH GUARD" note above.
 const DUPLICATE_GUARD_MS = 300;
 // Set to false to silence realtime debug logs.
-const DEBUG_RT = true;
+const DEBUG_RT = false;
 const rtLog = (...args) => { if (DEBUG_RT) console.log("[RT]", ...args); };
 
 // Deterministic-but-fake price per item, so it doesn't jump around on

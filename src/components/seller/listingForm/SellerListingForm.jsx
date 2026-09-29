@@ -565,6 +565,9 @@ export default function SellerListingForm({
     const formRef = useRef(form);
     useEffect(() => { formRef.current = form; }, [form]);
 
+    const accessRef = useRef(null);
+    const [savingPrices, setSavingPrices] = useState(false);
+
     const [uploadingImage, setUploadingImage] = useState(false);
     // const [commissionPercent, setCommissionPercent] = useState(2.5);
     const [platformDefaultCommissionPercent, setPlatformDefaultCommissionPercent] = useState(0.25);
@@ -1122,7 +1125,7 @@ export default function SellerListingForm({
         }, 40);
     }
 
-    const handleSubmit = () => {
+    const submitListing = () => {
         // In single-section mode, only that section's own fields block
         // submission — the rest of the form (untouched here) was already
         // valid when the listing was created/last saved, and re-demanding
@@ -1187,6 +1190,26 @@ export default function SellerListingForm({
             dispatchingLocations,
             buyerAccessDraft: form.buyerAccessDraft,
         });
+    };
+
+    const handleSubmit = async () => {
+        const pricingOnly = resolvedOnlySection === "customPricing" && !!submissionId;
+
+        if (submissionId && accessRef.current?.flushPendingChanges) {
+            setSavingPrices(true);
+            try {
+                const r = await accessRef.current.flushPendingChanges();
+                if (!r?.success) return; // BuyerAccessPricing already shows its own error banner
+            } finally {
+                setSavingPrices(false);
+            }
+        }
+
+        // Buyer-pricing-only edit: nothing else on the listing changed, so
+        // don't resubmit the whole form — just close the editor.
+        if (pricingOnly) { onClose?.(); return; }
+
+        submitListing();
     };
 
     // Root-level Enter guard: if Enter is pressed while focus is on
@@ -1848,7 +1871,7 @@ export default function SellerListingForm({
                     missingCount={0} totalCount={0}
                     readOnly={readOnly}>
                     {submissionId ? (
-                        <BuyerAccessPricing submissionId={submissionId} />
+                        <BuyerAccessPricing ref={accessRef} submissionId={submissionId} />
                     ) : (
                         <BuyerAccessPricing
                             draftMode
@@ -1876,12 +1899,23 @@ export default function SellerListingForm({
                     </div>
                 </div>
             ) : (
+                // <div className={`sticky ${stickyBottomClassName} z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4`} style={{ borderColor: C.hair }}>
+                //     <Progress percent={percentComplete} />
+                //     <button type="button" onClick={handleSubmit} disabled={submitting}
+                //         className="mt-2.5 flex w-full items-center tracking-wider justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
+                //         style={{ background: "linear-gradient(135deg, #2e2e2eff 0%, #000000 100%)" }}>
+                //         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} </>}
+                //     </button>
+                // </div>
+
                 <div className={`sticky ${stickyBottomClassName} z-10 -mx-2.5 mt-1 border-t bg-white/95 px-2.5 py-3 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:px-4`} style={{ borderColor: C.hair }}>
-                    <Progress percent={percentComplete} />
-                    <button type="button" onClick={handleSubmit} disabled={submitting}
+                    {!(resolvedOnlySection === "customPricing" && submissionId) && <Progress percent={percentComplete} />}
+                    <button type="button" onClick={handleSubmit} disabled={submitting || savingPrices}
                         className="mt-2.5 flex w-full items-center tracking-wider justify-center gap-1.5 rounded-xl px-5 py-3 text-[13.5px] font-bold text-white transition-opacity duration-150 disabled:opacity-60"
                         style={{ background: "linear-gradient(135deg, #2e2e2eff 0%, #000000 100%)" }}>
-                        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <>{submitLabel} </>}
+                        {(submitting || savingPrices)
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <>{resolvedOnlySection === "customPricing" && submissionId ? "Save buyer prices" : submitLabel}</>}
                     </button>
                 </div>
             )}

@@ -171,6 +171,7 @@ export default function EditListingModal({ token, submissionId, focusSection, on
                         identityReadOnly
                         brandDisplay={brandDisplay}
                         initialValues={initialValues}
+                        onClose={onClose}
                         onSubmit={handleSubmit}
                         submitting={submitting}
                         submitLabel="Update"

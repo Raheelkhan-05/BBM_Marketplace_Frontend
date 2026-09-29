@@ -98,7 +98,8 @@ function GstEntryToggle({ gstMode, onChange }) {
 // number regardless of which surface set it.
 function BuyerPriceEditor({ product, draft, setDraft }) {
     const levels = levelsFor(product);
-    const invalid = draft.canonicalPrice != null && violatesMinUnitPrice(draft.canonicalPrice, product.packSize, product.masterPackSize);
+    // const invalid = draft.canonicalPrice != null && violatesMinUnitPrice(draft.canonicalPrice, product.packSize, product.masterPackSize);
+    const invalid = draft.canonicalPrice != null && !(draft.canonicalPrice > 0);
     const preview = draft.canonicalPrice != null ? derivePriceBreakdown(draft.canonicalPrice, product.packSize, product.masterPackSize) : null;
     const appliedPercent = draft.canonicalPrice != null ? percentFromCustomPrice(product.defaultPrice, draft.canonicalPrice) : null;
 
@@ -754,12 +755,16 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
         let allOk = true;
         for (const buyerId of pendingIds) {
             const draft = drafts[buyerId];
+            // Direction comes from the actual price vs. the listing price, not from a signed string.
+            const isIncrease = Number(draft.canonicalPrice) > Number(data.submission.defaultPrice);
+            const asFixed = draft.mode === "amount" || isIncrease;
             const item = {
                 submissionId,
-                overrideType: draft.mode === "amount" ? "fixed" : "percent",
-                value: draft.mode === "amount" ? draft.canonicalPrice : Number(draft.percentValue),
-                inputMode: draft.mode === "amount" ? "fixed_price" : "percent",
+                overrideType: asFixed ? "fixed" : "percent",
+                value: asFixed ? draft.canonicalPrice : Number(draft.percentValue),
+                inputMode: asFixed ? "fixed_price" : "percent",
             };
+            console.log("FLUSH", { buyerId, mode: draft.mode, dir: draft.percentDirection, percentValue: draft.percentValue, canonical: draft.canonicalPrice, default: data.submission.defaultPrice, item });
             const res = await saveCustomPricingForBuyer(token, buyerId, [item]);
             if (res?.rejected?.length || (!res?.success && !res?.saved)) {
                 allOk = false;
