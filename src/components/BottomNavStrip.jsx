@@ -127,7 +127,10 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     const badgeTotal = items.reduce((sum, it) => sum + (it.rawBadge || 0), 0);
     const badgeDisplay = badgeTotal > 0 ? (badgeTotal > 9 ? "9+" : badgeTotal) : null;
-    const fabBottom = pathname === "/home" ? FAB_BOTTOM_HOME : FAB_BOTTOM_DEFAULT;
+    const fabBottom =
+        pathname === "/home" || pathname === "/home/"
+            ? FAB_BOTTOM_HOME
+            : FAB_BOTTOM_DEFAULT;
 
     const goHome = () => {
         setPageOpen(false);

@@ -61,7 +61,15 @@ export function buildMenuItems({
         : [item("my-store", "My store", Store, MENU_ROUTES.myStoreOnboarding, 0, 0, matchMyStore)];
 
     return [
-        item("home", "Home", Home, MENU_ROUTES.home, -1, 0, (p) => p === "/home"),
+        item(
+            "home",
+            "Home",
+            Home,
+            MENU_ROUTES.home,
+            -1,
+            0,
+            (p) => p === "/home" || p === "/home/"
+        ),
         ...sellerItems,
         item("cart", "Cart", ShoppingCart, MENU_ROUTES.cart, 1, cartCount),
         item("purchase-orders", "Purchase orders", FileText, MENU_ROUTES.purchaseOrders, 1, purchaseUnread, matchPurchaseOrders),
