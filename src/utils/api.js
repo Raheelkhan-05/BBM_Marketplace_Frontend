@@ -852,23 +852,40 @@ export async function fetchLowestPriceForBrandItem(genericProductBrandId, token)
   return res.json();
 }
 
-export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, signal, token } = {}) {
+export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, followedOnly = false, signal, token } = {}) {
   const params = new URLSearchParams({ q, sort, limit, offset });
   if (categoryId) params.set("categoryId", categoryId);
-
-  // console.log(token);
-  // console.log("Params : ", params)
-
+  if (followedOnly) params.set("followed", "1");
 
   const res = await fetch(`${API_BASE}/catalog/brand-items-feed?${params}`, {
     signal,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
+  if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+  return res.json();
+}
 
-  if (!res.ok) {
-    throw new Error(`Request failed with status ${res.status}`);
-  }
+export async function fetchFollowedIds(token, signal) {
+  const res = await fetch(`${API_BASE}/catalog/followed-ids`, {
+    signal,
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
 
+export async function followBrandItem(token, brandItemId) {
+  const res = await fetch(`${API_BASE}/catalog/followed/${brandItemId}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+
+export async function unfollowBrandItem(token, brandItemId) {
+  const res = await fetch(`${API_BASE}/catalog/followed/${brandItemId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
   return res.json();
 }
 

@@ -8,11 +8,10 @@
 // title, icon-tile rows, dividers between groups, Helpline and Sign out).
 // The button stays visible on top and toggles the page.
 //
-// While the menu is open, a labelled Home button springs up directly above
-// the Menu button so it's reachable with the thumb. It always keeps a white
-// background; when you're on /home it gets a bold black outline, black
-// icon/label and a small indicator bar. The "Home" row is therefore left out
-// of the list itself to avoid duplication.
+// While the menu is open, a simple black Home button (icon + small label)
+// springs up directly above the Menu button so it's reachable with the
+// thumb. It has no active state. The "Home" row is left out of the list
+// itself to avoid duplication.
 import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -129,12 +128,11 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const badgeTotal = items.reduce((sum, it) => sum + (it.rawBadge || 0), 0);
     const badgeDisplay = badgeTotal > 0 ? (badgeTotal > 9 ? "9+" : badgeTotal) : null;
     const fabBottom = pathname === "/home" ? FAB_BOTTOM_HOME : FAB_BOTTOM_DEFAULT;
-    const onHome = pathname === "/home";
 
     const goHome = () => {
         setPageOpen(false);
         // Already on Home: just close the menu, no redundant navigation.
-        if (!onHome) navigate(MENU_ROUTES.home);
+        if (pathname !== "/home") navigate(MENU_ROUTES.home);
     };
 
     return (
@@ -154,7 +152,6 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             type="button"
                             onClick={goHome}
                             aria-label="Go to Home"
-                            aria-current={onHome ? "page" : undefined}
                             initial={{ opacity: 0, y: 28, scale: 0.5 }}
                             animate={{
                                 opacity: 1, y: 0, scale: 1,
@@ -165,36 +162,12 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                 transition: { duration: 0.16, ease: "easeIn" },
                             }}
                             whileTap={{ scale: 0.92 }}
-                            className="relative flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-2xl bg-white shadow-[0_8px_22px_-8px_rgba(0,0,0,0.45)] transition-[border-color,color] duration-200"
-                            style={{
-                                // Always white. Active = bold black outline + black content;
-                                // inactive = hairline border + muted content.
-                                border: `2px solid ${onHome ? "#000" : C.hair}`,
-                                color: onHome ? "#000" : C.muted,
-                            }}
+                            className="flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-2xl bg-black text-white shadow-[0_8px_22px_-8px_rgba(0,0,0,0.5)]"
                         >
-                            <Home size={19} strokeWidth={onHome ? 2.6 : 2.2} />
-                            <span
-                                className="text-[9.5px] uppercase leading-none tracking-wider"
-                                style={{ fontWeight: onHome ? 800 : 700 }}
-                            >
+                            <Home size={19} strokeWidth={2.4} />
+                            <span className="text-[9.5px] font-bold uppercase leading-none tracking-wider">
                                 Home
                             </span>
-
-                            {/* Active indicator bar along the bottom edge */}
-                            <AnimatePresence>
-                                {onHome && (
-                                    <motion.span
-                                        key="active-bar"
-                                        aria-hidden="true"
-                                        initial={{ scaleX: 0, opacity: 0 }}
-                                        animate={{ scaleX: 1, opacity: 1 }}
-                                        exit={{ scaleX: 0, opacity: 0 }}
-                                        transition={{ duration: 0.2, ease: "easeOut" }}
-                                        className="absolute bottom-1 h-[3px] w-5 rounded-full bg-black"
-                                    />
-                                )}
-                            </AnimatePresence>
                         </motion.button>
                     )}
                 </AnimatePresence>

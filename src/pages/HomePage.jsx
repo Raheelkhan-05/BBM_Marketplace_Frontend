@@ -47,7 +47,7 @@ export default function HomePage() {
         <div className="min-h-screen bg-[#FFFFFF] text-slate-900 antialiased overflow-x-hidden" style={{ fontFamily: FONT_BODY }}>
             <SmoothScrollProvider>
                 {/* extra bottom padding on mobile so the last feed items clear the fixed search bar */}
-                <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20 pt-3 space-y-4">
+                <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20 pt-3 space-y-2">
 
                     {/* Mobile: pinned to the bottom of the screen. Desktop: normal flow, as before. */}
                     <div
@@ -65,8 +65,10 @@ export default function HomePage() {
                             suggestionsDirection={isMobile ? "up" : "down"}
                         />
                     </div>
+                    <div className="md:pt-4">
+                        <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
 
-                    <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
+                    </div>
 
                     <HomeProductFeed category={activeCategory} q={query} />
                 </main>

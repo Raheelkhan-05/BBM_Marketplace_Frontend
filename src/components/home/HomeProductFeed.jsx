@@ -116,7 +116,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
-import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, Loader2, Pencil, Truck, Lock, Zap, MapPin } from "lucide-react";
+import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, Loader2, Pencil, Truck, Lock, Zap, MapPin, Pin } from "lucide-react";
+import useFollowedItems from "../../hooks/useFollowedItems";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses, updateSellerProductSubmission } from "../../utils/api";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -152,6 +153,12 @@ const DEBOUNCE_MS = 250;
 // See "DUPLICATE-FETCH GUARD" note above.
 const DUPLICATE_GUARD_MS = 300;
 // Set to false to silence realtime debug logs.
+
+const FOLLOW_TIP_KEY = "bbm_follow_tip_dismissed_v1";
+
+function readFlag(k) { try { return localStorage.getItem(k) === "1"; } catch { return false; } }
+function writeFlag(k) { try { localStorage.setItem(k, "1"); } catch { /* private mode */ } }
+
 const DEBUG_RT = false;
 const rtLog = (...args) => { if (DEBUG_RT) console.log("[RT]", ...args); };
 
@@ -1050,6 +1057,87 @@ function GstToggle({ includeGst, onChange }) {
     );
 }
 
+// Header tab switch: "All products | Following (n)".
+// Tabs read as "two views of the same list", which is the mental model we want.
+function FeedViewTabs({ followedOnly, followCount, onChange }) {
+    const tabs = [
+        { followed: false, label: "All products" },
+        { followed: true, label: "Following" },
+    ];
+    return (
+        <div
+            role="tablist"
+            aria-label="Product view"
+            className="relative inline-flex rounded-full p-0.5"
+            style={{ background: C.hairSoft }}
+        >
+            {tabs.map((t) => {
+                const active = followedOnly === t.followed;
+                return (
+                    <button
+                        key={String(t.followed)}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => onChange(t.followed)}
+                        className="relative rounded-full px-3 py-1.5 text-[12px] font-extrabold tracking-wide transition-colors duration-150"
+                        style={{ color: active ? "#fff" : C.muted }}
+                    >
+                        {active && (
+                            <motion.span
+                                layoutId="feed-view-pill"
+                                className="absolute inset-0 rounded-full"
+                                style={{ background: C.primary }}
+                                transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                            />
+                        )}
+                        <span className="relative flex items-center gap-1.5">
+                            {t.followed && <Pin className="h-3 w-3" strokeWidth={2.4} fill={active ? "currentColor" : "none"} />}
+                            {t.label}
+                            {t.followed && followCount > 0 && (
+                                <motion.span
+                                    key={followCount} /* re-mounts on change = little "bump" so users see where it went */
+                                    initial={{ scale: 1.5 }}
+                                    animate={{ scale: 1 }}
+                                    transition={{ type: "spring", stiffness: 500, damping: 18 }}
+                                    className="flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9.5px] font-extrabold leading-none"
+                                    style={active ? { background: "#fff", color: C.ink } : { background: C.ink, color: "#fff" }}
+                                >
+                                    {followCount > 99 ? "99+" : followCount}
+                                </motion.span>
+                            )}
+                        </span>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+// Labeled per-row pill. Words + icon + filled/outlined state = unmistakably a toggle.
+function FollowButton({ following, onToggle }) {
+    return (
+        <motion.button
+            type="button"
+            aria-pressed={following}
+            aria-label={following ? "Following. Tap to unfollow" : "Follow this product"}
+            title={following ? "Tap to unfollow" : "Follow to find this product later in your Following tab"}
+            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            onKeyDown={(e) => e.stopPropagation()}
+            whileTap={{ scale: 0.92 }}
+            className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-[3px] text-[10px] font-extrabold tracking-wide transition-colors duration-150"
+            style={
+                following
+                    ? { background: C.primary, color: "#fff", borderColor: C.primary }
+                    : { background: "#fff", color: C.ink, borderColor: "rgba(11,17,22,0.22)" }
+            }
+        >
+            <Pin className="h-2.5 w-2.5" strokeWidth={2.6} fill={following ? "currentColor" : "none"} />
+            {following ? "Following" : "Follow"}
+        </motion.button>
+    );
+}
+
 // A category/subcategory literally named "Pending" is a placeholder bucket
 // for not-yet-classified items — never meant to be shown to a shopper.
 // Blank it out here rather than displaying it, same treatment as
@@ -1058,7 +1146,7 @@ function isHiddenLabel(name) {
     return typeof name === "string" && name.trim().toLowerCase() === "pending";
 }
 
-function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin }) {
+function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow }) {
 
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
     const categoryLabel = isHiddenLabel(item.category_name) ? null : item.category_name;
@@ -1195,6 +1283,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                 aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
                 className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right cursor-pointer"
             >
+                <FollowButton following={isFollowed} onToggle={onToggleFollow} />
                 {isOutOfStock ? (
                     <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
                         OUT OF STOCK
@@ -1320,23 +1409,23 @@ function LoginPromptModal({ open, message, onConfirm, onCancel }) {
                 >
                     <Lock className="h-5 w-5" style={{ color: C.primary }} strokeWidth={2.5} />
                 </div>
-                <p className="text-center text-[14.5px] font-extrabold" style={{ color: C.ink }}>
+                <p className="text-center text-[14.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
                     Login required
                 </p>
-                <p className="mt-1.5 text-center text-[12.5px] font-medium leading-snug" style={{ color: C.muted }}>
+                <p className="mt-1.5 text-center text-[12.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
                     {message || "You need to login to view seller pricing and place an order."}
                 </p>
                 <div className="mt-5 flex gap-2">
                     <button
                         onClick={onCancel}
-                        className="flex-1 rounded-xl border py-2.5 text-[12.5px] font-bold"
+                        className="flex-1 rounded-xl border py-2.5 text-[12.5px] font-bold tracking-wide"
                         style={{ borderColor: C.hair, color: C.ink }}
                     >
                         Cancel
                     </button>
                     <button
                         onClick={onConfirm}
-                        className="flex-1 rounded-xl py-2.5 text-[12.5px] font-bold text-white"
+                        className="flex-1 rounded-xl py-2.5 text-[12.5px] font-bold text-white tracking-wide"
                         style={{ background: C.primary }}
                     >
                         Login
@@ -1812,6 +1901,7 @@ function RowSkeleton() {
 // same unfiltered behavior as before. Passing it wires up live search.
 export default function HomeProductFeed({ category, q = "" }) {
     const navigate = useNavigate();
+    const lenis = useLenis();
     const { profile, token, effectiveLoggedIn, needsOnboarding } = useAuth();
     const currentUserId = profile?.shop_slug ?? null;
     const [items, setItems] = useState([]);
@@ -1866,11 +1956,40 @@ export default function HomeProductFeed({ category, q = "" }) {
     const [loginPrompt, setLoginPrompt] = useState(null);
     const isLoggedIn = effectiveLoggedIn;
 
+    const [followedOnly, setFollowedOnly] = useState(false);
+    const [followToast, setFollowToast] = useState(null); // { message, actionLabel?, onAction? }
+    const [tipDismissed, setTipDismissed] = useState(() => readFlag(FOLLOW_TIP_KEY));
+    const runQueryRef = useRef(null);
+    const pendingRevealRef = useRef(null);      // product to scroll to + highlight once the Following list loads
+    const [revealTick, setRevealTick] = useState(0);
+    const followToastTimerRef = useRef(null);
+    const followedOnlyRef = useRef(false);
+    followedOnlyRef.current = followedOnly;
+
+    const showToast = useCallback((toast, ms = 3000) => {
+        clearTimeout(followToastTimerRef.current);
+        setFollowToast(toast);
+        followToastTimerRef.current = setTimeout(() => setFollowToast(null), ms);
+    }, []);
+
+    const { isFollowed, isFollowedNow, settle, toggle: toggleFollow, count: followCount } = useFollowedItems(isLoggedIn ? token : null, {
+        onRevert: () => {
+            showToast({ message: "Couldn't update." }, 2200);
+            // Keep the Following list truthful after a failed unfollow.
+            if (followedOnlyRef.current) runQueryRef.current?.(0, { append: false });
+        },
+    });
+
+    useEffect(() => { if (!isLoggedIn || !token) setFollowedOnly(false); }, [isLoggedIn, token]);
+    useEffect(() => () => clearTimeout(followToastTimerRef.current), []);
+
+    const dismissTip = () => { setTipDismissed(true); writeFlag(FOLLOW_TIP_KEY); };
+
     const requireLogin = useCallback(
-        () => setLoginPrompt({
-            message: needsOnboarding
+        (message) => setLoginPrompt({
+            message: message || (needsOnboarding
                 ? "Finish setting up your account to view seller pricing and place orders."
-                : "You need to login to view seller pricing and place an order.",
+                : "You need to login to view seller pricing and place an order."),
         }),
         [needsOnboarding]
     );
@@ -2166,6 +2285,57 @@ export default function HomeProductFeed({ category, q = "" }) {
 
     useEffect(() => () => clearTimeout(highlightTimeoutRef.current), []);
 
+    // Scrolls only if the row isn't already comfortably on screen.
+    // The bottom inset keeps it clear of the fixed mobile search bar.
+    // Scrolls only if the row isn't already comfortably on screen.
+    // Uses Lenis when present (native smooth scroll fights it).
+    const revealRow = useCallback((id) => {
+        const el = rowRefs.current[id];
+        if (!el || !el.isConnected) return false;
+        const r = el.getBoundingClientRect();
+        const bottomInset = window.innerWidth < 768 ? 96 : 16;
+        const inView = r.top >= 8 && r.bottom <= window.innerHeight - bottomInset;
+        if (!inView) {
+            if (lenis && typeof lenis.scrollTo === "function") {
+                const offset = -Math.max(24, (window.innerHeight - r.height) / 2 - 40);
+                lenis.scrollTo(el, { offset, duration: 0.7 });
+            } else {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        }
+        return true;
+    }, [lenis]);
+
+    // Runs only once the Following list has FINISHED loading (loading === false),
+    // then retries for a few frames until the row is actually mounted.
+    useEffect(() => {
+        const id = pendingRevealRef.current;
+        if (!id || loading || revealTick === 0) return;
+
+        let cancelled = false;
+        let tries = 0;
+        let raf = 0;
+
+        const attempt = () => {
+            if (cancelled) return;
+            if (!revealRow(id)) {
+                if (++tries < 20) { raf = requestAnimationFrame(attempt); return; }
+                pendingRevealRef.current = null; // not on the first page: give up quietly
+                return;
+            }
+            pendingRevealRef.current = null;
+            clearTimeout(highlightTimeoutRef.current);
+            setHighlightedItemId(id);
+            highlightTimeoutRef.current = setTimeout(() => {
+                setHighlightedItemId((cur) => (cur === id ? null : cur));
+            }, 2200);
+        };
+
+        // Small delay so the row's layout animation (0.24s) has settled first.
+        const t = setTimeout(() => { raf = requestAnimationFrame(attempt); }, 80);
+        return () => { cancelled = true; clearTimeout(t); cancelAnimationFrame(raf); };
+    }, [revealTick, loading, revealRow]);
+
     // Single runQuery — the primary feed fetch, with tiered fallback
     // (subcategory, then category) when a live search comes up empty.
     const runQuery = useCallback((offset, { append }) => {
@@ -2176,9 +2346,11 @@ export default function HomeProductFeed({ category, q = "" }) {
         (append ? setLoadingMore : setLoading)(true);
 
         const trimmed = q.trim();
-        const request = trimmed
-            ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, categoryId: category?.id || null, signal: controller.signal, token })
-            : fetchBrandItemsFeed({ categoryId: category?.id || null, q: "", limit: PAGE_SIZE, offset, signal: controller.signal, token });
+        const request = followedOnly
+            ? fetchBrandItemsFeed({ categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset, signal: controller.signal, token, followedOnly: true })
+            : trimmed
+                ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, categoryId: category?.id || null, signal: controller.signal, token })
+                : fetchBrandItemsFeed({ categoryId: category?.id || null, q: "", limit: PAGE_SIZE, offset, signal: controller.signal, token });
 
         request
             .then((res) => {
@@ -2194,6 +2366,7 @@ export default function HomeProductFeed({ category, q = "" }) {
                 });
                 setTotal(res.total ?? incoming.length ?? null);
                 setHasMore(!!res.hasMore);
+                if (!append && pendingRevealRef.current) setRevealTick((t) => t + 1);
             })
             .catch((err) => { if (err?.name !== "AbortError") setHasMore(false); })
             .finally(() => {
@@ -2201,10 +2374,13 @@ export default function HomeProductFeed({ category, q = "" }) {
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [category?.id, q, token]);
+    }, [category?.id, q, token, followedOnly]);
+
+
+    runQueryRef.current = runQuery;
 
     useEffect(() => {
-        const key = `${category?.id || ""}::${q}::${token || ""}`;
+        const key = `${category?.id || ""}::${q}::${token || ""}::${followedOnly ? 1 : 0}`;
         const now = Date.now();
         const isDuplicateInvocation =
             lastRunRef.current.key === key &&
@@ -2235,7 +2411,7 @@ export default function HomeProductFeed({ category, q = "" }) {
         );
         return () => clearTimeout(debounceRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [category?.id, q, token]);
+    }, [category?.id, q, token, followedOnly]);
 
     useEffect(() => () => sellerAbortRef.current?.abort(), []);
 
@@ -2276,6 +2452,69 @@ export default function HomeProductFeed({ category, q = "" }) {
         setSellItem(item);
     };
 
+    const handleFollowedOnlyChange = (next) => {
+        pendingRevealRef.current = null; // a manual tab change cancels any pending reveal
+        if (next && (!isLoggedIn || !token)) {
+            requireLogin("Login to see the products you follow.");
+            return;
+        }
+        if (next) {
+            // Instant feedback: narrow what's on screen; the server list replaces it right after.
+            setItems((prev) => prev.filter((it) => isFollowedNow(it.id)));
+        }
+        setFollowedOnly(next);
+    };
+
+    const handleToggleFollow = (item) => {
+        if (!isLoggedIn || !token) {
+            requireLogin("Login to follow products and find them later in your Following tab.");
+            return;
+        }
+        const inFollowedView = followedOnlyRef.current;
+        const prevIndex = itemsRef.current.findIndex((it) => String(it.id) === String(item.id));
+        const willFollow = toggleFollow(item.id);
+        if (willFollow === null) return;
+
+        if (willFollow) {
+            showToast(
+                {
+                    message: "Added to Following",
+                    actionLabel: inFollowedView ? null : "View",
+                    onAction: async () => {
+                        await settle(); // make sure the server knows about this follow before we fetch the list
+                        handleFollowedOnlyChange(true);
+                        pendingRevealRef.current = item.id; // set after, because the call above clears it
+                    },
+                },
+                2500
+            );
+            return;
+        }
+
+        // Unfollowed
+        if (inFollowedView) {
+            if (String(openItemId) === String(item.id)) closeDropdown();
+            setItems((prev) => prev.filter((it) => String(it.id) !== String(item.id)));
+            showToast(
+                {
+                    message: "Removed",
+                    actionLabel: "Undo",
+                    onAction: () => {
+                        toggleFollow(item.id); // now unfollowed, so this re-follows
+                        setItems((prev) => {
+                            if (prev.some((it) => String(it.id) === String(item.id))) return prev;
+                            const at = Math.min(Math.max(prevIndex, 0), prev.length);
+                            return [...prev.slice(0, at), item, ...prev.slice(at)];
+                        });
+                    },
+                },
+                3500
+            );
+        } else {
+            showToast({ message: "Removed from Following" }, 1800);
+        }
+    };
+
     const buyerSellerPayload = buyState ? toBuyerSellerPayload(buyState.seller) : null;
 
     const showFullSkeleton = loading && items.length === 0;
@@ -2306,11 +2545,9 @@ export default function HomeProductFeed({ category, q = "" }) {
     const columns = useMemo(() => bucketItemsByColumn(items, columnCount), [items, columnCount]);
 
     return (
-        <div>
-            <div className="flex items-center justify-between px-1 pb-2">
-                <h2 className="text-[14.5px] font-extrabold tracking-wider" style={{ color: C.ink }}>
-                    {category ? category.name : "All products"}
-                </h2>
+        <>
+            <div className="flex items-center justify-between gap-2 px-1 pb-2">
+                <FeedViewTabs followedOnly={followedOnly} followCount={followCount} onChange={handleFollowedOnlyChange} />
                 <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
             </div>
 
@@ -2337,14 +2574,34 @@ export default function HomeProductFeed({ category, q = "" }) {
                         </div>
                     )
                     : items.length === 0 ? (
-                        <div className="flex flex-col items-center gap-1.5 px-6 py-16 text-center">
-                            <Package className="h-6 w-6" style={{ color: C.hair }} />
+                        <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+                            {followedOnly ? (
+                                <span className="flex h-11 w-11 items-center justify-center rounded-full" style={{ background: C.hairSoft }}>
+                                    <Pin className="h-5 w-5" style={{ color: C.muted }} />
+                                </span>
+                            ) : (
+                                <Package className="h-6 w-6" style={{ color: C.hair }} />
+                            )}
                             <p className="text-[13px] font-bold" style={{ color: C.ink }}>
-                                {q ? "No products match that search" : "No products here yet"}
+                                {followedOnly
+                                    ? (q ? "None of your followed products match" : "You're not following anything yet")
+                                    : (q ? "No products match that search" : "No products here yet")}
                             </p>
-                            <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>
-                                {q ? "Try a different search term." : "Try a different category."}
+                            <p className="max-w-[260px] text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>
+                                {followedOnly && !q
+                                    ? "Tap Follow on any product you buy often. It will show up here with live seller prices."
+                                    : q ? "Try a different search term." : "Try a different category."}
                             </p>
+                            {followedOnly && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleFollowedOnlyChange(false)}
+                                    className="mt-2 rounded-full px-4 py-2 text-[12px] font-extrabold tracking-wide text-white"
+                                    style={{ background: C.primary }}
+                                >
+                                    Browse all products
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div
@@ -2371,6 +2628,8 @@ export default function HomeProductFeed({ category, q = "" }) {
                                                     onToggle={() => toggleDropdown(item)}
                                                     onInfo={() => setInfoItemId(item.id)}
                                                     onImageOpen={setLightboxSrc}
+                                                    isFollowed={isFollowed(item.id)}
+                                                    onToggleFollow={() => handleToggleFollow(item)}
                                                     includeGst={includeGst}
                                                     isLoggedIn={isLoggedIn}
                                                     onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
@@ -2487,8 +2746,39 @@ export default function HomeProductFeed({ category, q = "" }) {
                     : (console.error("EditListingModal failed to import — check the file path/export"), null)
             )}
 
+            <div className="pointer-events-none fixed inset-x-0 z-[80] flex justify-center px-4 bottom-[calc(84px+env(safe-area-inset-bottom,0px))] md:bottom-6">
+                <AnimatePresence>
+                    {followToast && (
+                        <motion.div
+                            role="status"
+                            initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.96 }}
+                            transition={{ duration: 0.18, ease: EASE }}
+                            className="pointer-events-auto flex items-center gap-2 rounded-full bg-black py-1.5 pl-3.5 pr-1.5 text-[12px] font-bold text-white shadow-lg"
+                        >
+                            <span className="whitespace-nowrap">{followToast.message}</span>
+                            {followToast.actionLabel ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        clearTimeout(followToastTimerRef.current);
+                                        followToast.onAction?.();
+                                        setFollowToast(null);
+                                    }}
+                                    className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-extrabold hover:bg-white/25"
+                                >
+                                    {followToast.actionLabel}
+                                </button>
+                            ) : (
+                                <span className="w-1.5" />
+                            )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
 
             {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />}
-        </div>
+        </>
     );
 }
