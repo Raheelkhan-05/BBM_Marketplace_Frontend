@@ -251,7 +251,7 @@ function SearchField({ value, onChange, placeholder, className = "" }) {
             <Search className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} />
             <input
                 value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-                className="w-full min-w-0 bg-transparent text-[16px] font-medium tracking-wide outline-none placeholder:text-slate-400 sm:text-[13px]"
+                className="w-full min-w-0 bg-transparent text-[13px] font-medium tracking-wide outline-none placeholder:text-slate-400 sm:text-[13px]"
                 style={{ color: C.ink }}
             />
             {value && (
