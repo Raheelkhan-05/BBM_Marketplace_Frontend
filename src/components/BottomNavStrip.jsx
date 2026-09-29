@@ -7,22 +7,30 @@
 // Tapping the floating Menu button opens a FULL-SCREEN menu page (shop-name
 // title, icon-tile rows, dividers between groups, Helpline and Sign out).
 // The button stays visible on top and toggles the page.
+//
+// While the menu is open, a labelled Home button springs up directly above
+// the Menu button so it's reachable with the thumb. It always keeps a white
+// background; when you're on /home it gets a bold black outline, black
+// icon/label and a small indicator bar. The "Home" row is therefore left out
+// of the list itself to avoid duplication.
 import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, LogOut, ArrowUpRight } from "lucide-react";
+import { Menu, X, LogOut, ArrowUpRight, Home } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import { useCart } from "../context/CartContext.jsx";
 import { useChatContext } from "../context/ChatContext.jsx";
 import { useListings } from "../context/ListingsContext.jsx";
 import HelpBulb from "./HelpBulb.jsx";
-import { buildMenuItems } from "./menuItems.js";
+import { buildMenuItems, MENU_ROUTES } from "./menuItems.js";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)", tile: "rgba(20,27,34,0.06)" };
 
-// Bottom clearance so the last menu row never hides behind the FAB.
+// Bottom clearance so the last menu row never hides behind the FAB stack
+// (Menu FAB 56px + gap 12px + Home FAB ~56px).
 const FAB_CLEARANCE = 88;
+const HOME_FAB_EXTRA = 72;
 // On /home the search bar is pinned to the bottom, so the FAB sits above it.
 const FAB_BOTTOM_DEFAULT = 16;
 const FAB_BOTTOM_HOME = 84;
@@ -92,7 +100,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
 
-    const items = buildMenuItems({
+    const allItems = buildMenuItems({
         isApprovedSeller, navigate,
         cartCount,
         chatUnread: chatUnreadTotal,
@@ -100,6 +108,10 @@ export default function BottomNavStrip({ onOpenRfq }) {
         salesUnread: salesUnreadCount,
         productsBadge: productsBadgeCount,
     });
+
+    // Home lives in the quick-access FAB now, so it's dropped from the list
+    // to avoid showing it twice. (Desktop nav still uses the full list.)
+    const items = allItems.filter((it) => it.id !== "home");
 
     const [pageOpen, setPageOpen] = useState(false);
 
@@ -117,15 +129,76 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const badgeTotal = items.reduce((sum, it) => sum + (it.rawBadge || 0), 0);
     const badgeDisplay = badgeTotal > 0 ? (badgeTotal > 9 ? "9+" : badgeTotal) : null;
     const fabBottom = pathname === "/home" ? FAB_BOTTOM_HOME : FAB_BOTTOM_DEFAULT;
+    const onHome = pathname === "/home";
+
+    const goHome = () => {
+        setPageOpen(false);
+        // Already on Home: just close the menu, no redundant navigation.
+        if (!onHome) navigate(MENU_ROUTES.home);
+    };
 
     return (
         <>
-            {/* Floating menu button — z-40 sits ABOVE the full-screen page (z-[39]),
-                so it stays visible and toggles the menu (Menu icon ↔ X). */}
+            {/* Floating button column — z-40 sits ABOVE the full-screen page (z-[39]).
+                Bottom-anchored, so anything added above the Menu button grows upward
+                and never shifts the Menu button itself. */}
             <div
-                className="fixed right-4 z-40 md:hidden"
+                className="fixed right-4 z-40 flex flex-col items-center gap-3 md:hidden"
                 style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
             >
+                {/* Quick-access Home — only while the menu is open */}
+                <AnimatePresence>
+                    {isLoggedIn && pageOpen && (
+                        <motion.button
+                            key="home-fab"
+                            type="button"
+                            onClick={goHome}
+                            aria-label="Go to Home"
+                            aria-current={onHome ? "page" : undefined}
+                            initial={{ opacity: 0, y: 28, scale: 0.5 }}
+                            animate={{
+                                opacity: 1, y: 0, scale: 1,
+                                transition: { type: "spring", stiffness: 420, damping: 26, delay: 0.06 },
+                            }}
+                            exit={{
+                                opacity: 0, y: 20, scale: 0.6,
+                                transition: { duration: 0.16, ease: "easeIn" },
+                            }}
+                            whileTap={{ scale: 0.92 }}
+                            className="relative flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-2xl bg-white shadow-[0_8px_22px_-8px_rgba(0,0,0,0.45)] transition-[border-color,color] duration-200"
+                            style={{
+                                // Always white. Active = bold black outline + black content;
+                                // inactive = hairline border + muted content.
+                                border: `2px solid ${onHome ? "#000" : C.hair}`,
+                                color: onHome ? "#000" : C.muted,
+                            }}
+                        >
+                            <Home size={19} strokeWidth={onHome ? 2.6 : 2.2} />
+                            <span
+                                className="text-[9.5px] uppercase leading-none tracking-wider"
+                                style={{ fontWeight: onHome ? 800 : 700 }}
+                            >
+                                Home
+                            </span>
+
+                            {/* Active indicator bar along the bottom edge */}
+                            <AnimatePresence>
+                                {onHome && (
+                                    <motion.span
+                                        key="active-bar"
+                                        aria-hidden="true"
+                                        initial={{ scaleX: 0, opacity: 0 }}
+                                        animate={{ scaleX: 1, opacity: 1 }}
+                                        exit={{ scaleX: 0, opacity: 0 }}
+                                        transition={{ duration: 0.2, ease: "easeOut" }}
+                                        className="absolute bottom-1 h-[3px] w-5 rounded-full bg-black"
+                                    />
+                                )}
+                            </AnimatePresence>
+                        </motion.button>
+                    )}
+                </AnimatePresence>
+
                 {isLoggedIn ? (
                     <motion.button
                         type="button"
@@ -189,12 +262,12 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     </h1>
                 </div>
 
-                {/* Scrollable list — bottom padding clears the floating button */}
+                {/* Scrollable list — bottom padding clears the stacked floating buttons */}
                 <div
                     className="flex-1 overflow-y-auto px-5 pt-3"
                     style={{
                         overscrollBehavior: "contain",
-                        paddingBottom: `calc(${FAB_CLEARANCE}px + env(safe-area-inset-bottom) + 16px)`,
+                        paddingBottom: `calc(${FAB_CLEARANCE + HOME_FAB_EXTRA}px + env(safe-area-inset-bottom) + 16px)`,
                     }}
                     data-lenis-prevent=""
                     onWheel={stopScrollPropagation}
