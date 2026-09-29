@@ -161,7 +161,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
                     style={{ background: allActive ? C.accentTintIcon : "#F1F3F4" }}
                 >
-                    <LayoutGrid className="h-3 w-3" style={{ color: C.muted }} />
+                    <LayoutGrid className="h-3 w-3" style={{ color: "#000000" }} />
                 </span>
                 <span className="whitespace-nowrap text-[12.5px] font-bold tracking-wide" style={{ color: allActive ? C.accent : C.ink }}>
                     All
