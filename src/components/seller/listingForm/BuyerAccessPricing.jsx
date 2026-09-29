@@ -807,7 +807,7 @@ const BuyerAccessPricing = forwardRef(function BuyerAccessPricing(
             </div>
 
             <div className="flex gap-1 rounded-full p-0.5 w-fit" style={{ background: C.hairSoft }}>
-                {[{ value: "public", label: "All buyers" }, { value: "restricted", label: "Only selected buyers" }].map((opt) => (
+                {[{ value: "public", label: "Full Visibility" }, { value: "restricted", label: "Partial Visibility" }].map((opt) => (
                     <button
                         key={opt.value}
                         type="button"
