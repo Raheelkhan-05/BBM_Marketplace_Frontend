@@ -5,7 +5,7 @@
 //   [image | title + brand/model + category + packaging | price breakdown].
 //   The price block is the same unit / pack / master-pack breakdown the
 //   buyer sees, and is a tappable "Edit price" chip that opens the same
-//   wheel-picker price modal (+ promo slider + slide-to-confirm) that the
+//   wheel-picker price modal (+ promo row + slide-to-confirm) that the
 //   seller's own row uses in the feed. Saves via updateSellerProductSubmission.
 // - Below the header, an owner info strip shows what only the seller cares
 //   about: Stock, MOQ, Dispatch / Production lead time, Promo budget
@@ -23,6 +23,13 @@
 //   the price editor between GST-inclusive and GST-exclusive.
 // - On lg+ screens rows are laid out in two independent columns (round-robin,
 //   same idea as the feed) so an opened editor never reflows the other column.
+//
+// PROMOTION FLOW (this revision):
+// - In the price modal, "Promotion → Manage" opens PromotionPlanModal, a
+//   PICKER only (existing services pre-ticked). Done returns to the price
+//   modal and stages the selection ("Promotion 5% → 7%"). The price modal's
+//   single slide-to-confirm then saves price and/or promotion together, so
+//   there is only one confirm gesture. Nothing is saved before the slide.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -47,6 +54,7 @@ import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import EditListingModal from "../components/seller/listingForm/EditListingModal.jsx";
+import PromotionPlanModal, { PromotionRow, savePromotionPlan, saveResultMessage } from "../components/seller/listingForm/PromotionPlanModal.jsx";
 import { InlineWheelField } from "../components/seller/listingForm/PriceWheelPicker.jsx";
 import { saleUnitLabel, round2, deriveDisplayPrices, hasOuterPack } from "../shared/packUnits.js";
 import { resizedImageUrl } from "../utils/imageUrl.js";
@@ -409,10 +417,11 @@ function SlideToConfirm({ label, onConfirm, resetKey, disabled = false }) {
 
 /* ---------------- price editor modal ---------------- */
 
-function EditPriceModal({ it, includeGst, onApply, onClose }) {
+// Edits price AND (optionally) stages a promotion-services change. The single
+// slide-to-confirm at the bottom saves whatever is pending.
+function EditPriceModal({ it, includeGst, token, onApply, onClose }) {
     useLenisScrollLock();
 
-    const navigate = useNavigate();
     const packSize = Number(it.pack_size) > 0 ? Number(it.pack_size) : 1;
     const masterPackSize = Number(it.units_per_master_pack) > 0 ? Number(it.units_per_master_pack) : 1;
     const hasOuter = hasOuterPack(it.units_per_master_pack);
@@ -432,6 +441,8 @@ function EditPriceModal({ it, includeGst, onApply, onClose }) {
     const rawPerSaleUnitRef = useRef(canonicalPerSaleUnit);
     const [values, setValues] = useState(reference);
     const [perSaleUnit, setPerSaleUnit] = useState(canonicalPerSaleUnit);
+    const [promoOpen, setPromoOpen] = useState(false);
+    const [pendingPromo, setPendingPromo] = useState(null); // { keys, percent } — staged, not saved yet
 
 
     const commitLevel = (level) => (v) => {
@@ -442,8 +453,8 @@ function EditPriceModal({ it, includeGst, onApply, onClose }) {
     };
 
     const priceDirty = round2(perSaleUnit) !== canonicalPerSaleUnit;
-    const dirty = priceDirty;
-    const resetKey = `${perSaleUnit}`;
+    const dirty = priceDirty || !!pendingPromo;
+    const resetKey = `${perSaleUnit}|${pendingPromo ? pendingPromo.keys.join(",") : ""}`;
 
 
     const handleConfirm = () => {
@@ -454,6 +465,8 @@ function EditPriceModal({ it, includeGst, onApply, onClose }) {
             basePrice: newBasePrice,
             priceBasis: hasOuter ? "per_master_pack" : "per_pack",
             finalInclusive,
+            priceChanged: priceDirty,
+            promotionServices: pendingPromo ? pendingPromo.keys : null,
         });
     };
 
@@ -510,28 +523,37 @@ function EditPriceModal({ it, includeGst, onApply, onClose }) {
                     ))}
                 </div>
 
-                <button
-                    type="button"
-                    onClick={() => { onClose(); navigate("/seller/marketing"); }}
-                    className="mt-4 flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left"
-                    style={{ borderColor: C.hair, background: C.hairSoft }}
-                >
-                    <span className="flex items-center gap-2 text-[12px] font-bold tracking-wide" style={{ color: C.ink }}>
-                        <Megaphone className="h-3.5 w-3.5" />
-                        Promotion {it.marketing_commission_percent ?? "—"}%
-                    </span>
-                    <span className="text-[11px] font-bold" style={{ color: C.muted }}>Manage →</span>
-                </button>
+                <PromotionRow
+                    currentPercent={it.marketing_commission_percent}
+                    pending={pendingPromo}
+                    onClick={() => setPromoOpen(true)}
+                />
 
                 <div className="mt-5">
                     <SlideToConfirm
                         resetKey={resetKey}
                         disabled={!dirty}
-                        label={dirty ? "Slide to confirm changes" : "Change the price above first"}
+                        label={dirty ? "Slide to confirm changes" : "Change the price or promotion first"}
                         onConfirm={handleConfirm}
                     />
                 </div>
             </motion.div>
+
+            <AnimatePresence>
+                {promoOpen && (
+                    <PromotionPlanModal
+                        submission={it}
+                        token={token}
+                        title={toTitleCase(it.brand?.name || it.product_name || "Product")}
+                        stagedKeys={pendingPromo ? pendingPromo.keys : null}
+                        onClose={() => setPromoOpen(false)}
+                        onDone={(keys, percent) => {
+                            setPendingPromo(keys ? { keys, percent } : null);
+                            setPromoOpen(false);
+                        }}
+                    />
+                )}
+            </AnimatePresence>
         </motion.div>,
         document.body
     );
@@ -655,7 +677,7 @@ function OwnerInfoStrip({ cells, activeSection, onSelect }) {
 }
 
 function ListingRow({
-    it, idx, includeGst, isHighlighted, isEditing, editingSection, editor,
+    it, idx, includeGst, isHighlighted, isEditing, editingSection, editor, token,
     togglingId, savingPriceId,
     onToggleEdit, onActivate, onDeactivate, onOpenImage, onShare, onSavePrice,
 }) {
@@ -896,6 +918,7 @@ function ListingRow({
                     <EditPriceModal
                         it={it}
                         includeGst={includeGst}
+                        token={token}
                         onClose={() => setPriceOpen(false)}
                         onApply={(payload) => { setPriceOpen(false); onSavePrice(it, payload); }}
                     />
@@ -1048,28 +1071,42 @@ export default function SellerManageListingsPage() {
     const activateListing = (id) => setListingActive(id, true);
     const deactivateListing = (id) => setListingActive(id, false);
 
-    // Saves a price / promo change made in the price modal. The row updates
-    // instantly; if the server rejects it, the old values are restored.
-    async function handleSavePrice(it, { basePrice, priceBasis, finalInclusive }) {
-        const prev = { price: it.price, base_price: it.base_price };
-        patchItem(it.id, { price: finalInclusive, base_price: basePrice });
+    // Runs when the price modal's slide-to-confirm completes. It can save the
+    // price, the staged promotion plan, or both. The price updates instantly
+    // (and rolls back on failure); the promotion patch lands once the server accepts it.
+    async function handleSavePrice(it, { basePrice, priceBasis, finalInclusive, priceChanged, promotionServices }) {
         setSavingPriceId(it.id);
+        let priceOk = null;
+        let promoOk = null;
+        let failMsg = null;
 
-        let res = null;
-        try {
-            res = await updateSellerProductSubmission(token, it.id, {
-                basePrice: String(basePrice), priceBasis, gstInclusive: false,
-            });
-        } catch { res = null; }
-        setSavingPriceId(null);
-
-        if (res?.success) {
-            setToastMsg("Price updated.");
-            reload({ silent: true });
-        } else {
-            patchItem(it.id, prev);
-            setToastMsg(res?.message || "Couldn't update the price. Try again.");
+        if (priceChanged) {
+            const prev = { price: it.price, base_price: it.base_price };
+            patchItem(it.id, { price: finalInclusive, base_price: basePrice });
+            let res = null;
+            try {
+                res = await updateSellerProductSubmission(token, it.id, {
+                    basePrice: String(basePrice), priceBasis, gstInclusive: false,
+                });
+            } catch { res = null; }
+            priceOk = !!res?.success;
+            if (!priceOk) {
+                patchItem(it.id, prev);
+                failMsg = res?.message || "Couldn't update the price. Try again.";
+            }
         }
+
+        if (promotionServices) {
+            const r = await savePromotionPlan(token, it.id, promotionServices);
+            promoOk = r.ok;
+            if (r.ok) patchItem(it.id, r.patch);
+            else failMsg = failMsg || r.message || "Couldn't update the promotion. Try again.";
+        }
+
+        setSavingPriceId(null);
+        const msg = saveResultMessage({ priceOk, promoOk, failMsg });
+        if (msg) setToastMsg(msg);
+        if (priceOk || promoOk) reload({ silent: true });
     }
 
     // One editor open at a time.
@@ -1223,6 +1260,7 @@ export default function SellerManageListingsPage() {
                                                 it={it}
                                                 idx={i * columnCount + colIdx}
                                                 includeGst={includeGst}
+                                                token={token}
                                                 isHighlighted={highlightedIds.has(it.id)}
                                                 isEditing={editingId === it.id}
                                                 editingSection={editingSection}

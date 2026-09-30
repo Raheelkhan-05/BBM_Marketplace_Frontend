@@ -120,6 +120,15 @@
 //   including the ?shop= query string. AuthPage reads that and returns
 //   them to exactly this page after login/onboarding, instead of a bare
 //   /home.
+//
+// PROMOTION FLOW (this revision):
+// - The own-listing price modal no longer has the old commission slider.
+//   Its "Promotion X% · Manage →" row opens PromotionPlanModal, a PICKER
+//   only (existing services pre-ticked). Done returns here and stages the
+//   selection ("Promotion 5% → 7%"). The modal's single slide-to-confirm
+//   then saves price and/or promotion together — there is no second
+//   confirm step. Nothing is saved before the slide. Saved changes patch
+//   the seller row in place and the open dropdown silently re-syncs.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -131,7 +140,7 @@ import { fetchBrandItemsFeed, fetchBrandItemSellers, observePriceTrends, fetchPr
 import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
-import CommissionSlider from "../seller/listingForm/CommissionSlider.jsx";
+import PromotionPlanModal, { PromotionRow, savePromotionPlan, saveResultMessage } from "../seller/listingForm/PromotionPlanModal.jsx";
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
 import SellThisItemModal from "../catalog/SellThisItemModal";
 import BuyNowModal from "../BuyNowModal";
@@ -278,13 +287,10 @@ function AnimatedPriceValue({ value, direction, className, style }) {
     );
 }
 
-// C-shaped color object CommissionSlider expects — same tokens already
-// used throughout this file, just re-exposed under the property names
-// CommissionSlider's own markup reads (it was written against
-// SellerListingForm's own `C`, which uses these exact keys).
-const SLIDER_C = { ...C, warn: "#a16207", ok: "#059669" };
-
-function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose }) {
+// Own-listing price modal. Edits price AND can stage a promotion-services
+// change via the picker (PromotionPlanModal). The single slide-to-confirm at
+// the bottom saves whatever is pending — price, promotion, or both.
+function OwnListingPriceModal({ seller, includeGst, submitting, token, onApply, onClose }) {
     const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
     const masterPackSize = Number(seller.units_per_master_pack) > 0 ? Number(seller.units_per_master_pack) : 1;
     const hasOuter = hasOuterPack(seller.units_per_master_pack);
@@ -293,7 +299,6 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
 
     const canonicalInclusive = round2(Number(seller.price) || 0);
     const canonicalPerSaleUnit = round2(includeGst ? canonicalInclusive : canonicalInclusive / (1 + gst / 100));
-    const canonicalCommission = Number(seller.marketing_commission_percent) || 0.25;
 
     const reference = useMemo(
         () => threeTierFromSaleUnit(canonicalPerSaleUnit, packSize, masterPackSize, hasOuter),
@@ -304,7 +309,8 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
     const rawPerSaleUnitRef = useRef(canonicalPerSaleUnit);
     const [values, setValues] = useState(reference);
     const [perSaleUnit, setPerSaleUnit] = useState(canonicalPerSaleUnit);
-    const [commissionPercent, setCommissionPercent] = useState(canonicalCommission);
+    const [promoOpen, setPromoOpen] = useState(false);
+    const [pendingPromo, setPendingPromo] = useState(null); // { keys, percent } — staged, not saved yet
 
     const commitLevel = (level) => (v) => {
         const rawNext = saleUnitFromLevel(level, v, packSize, masterPackSize, hasOuter);
@@ -315,8 +321,8 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
     };
 
     const priceDirty = round2(perSaleUnit) !== canonicalPerSaleUnit;
-    const commissionDirty = round2(commissionPercent) !== round2(canonicalCommission);
-    const dirty = priceDirty || commissionDirty;
+    const dirty = priceDirty || !!pendingPromo;
+    const resetKey = `${perSaleUnit}|${pendingPromo ? pendingPromo.keys.join(",") : ""}`;
 
     useEffect(() => {
         const prevOverflow = document.body.style.overflow;
@@ -332,7 +338,8 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
             basePrice: newBasePrice,
             priceBasis: hasOuter ? "per_master_pack" : "per_pack",
             finalInclusive,
-            marketingCommissionPercent: commissionDirty ? round2(commissionPercent) : undefined,
+            priceChanged: priceDirty,
+            promotionServices: pendingPromo ? pendingPromo.keys : null,
         });
     };
 
@@ -388,26 +395,44 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
                     </div>
                 </div>
 
-                <div className="mt-4">
-                    <CommissionSlider
-                        value={commissionPercent}
-                        onChange={setCommissionPercent}
-                        C={SLIDER_C}
-                        isErr={false}
-                        hideHint
-                    />
-                </div>
+                <PromotionRow
+                    currentPercent={seller.marketing_commission_percent}
+                    pending={pendingPromo}
+                    disabled={submitting}
+                    onClick={() => setPromoOpen(true)}
+                />
 
                 <div className="mt-5">
                     <SlideToConfirm
-                        resetKey={`${perSaleUnit}`}
+                        resetKey={resetKey}
                         busy={submitting}
                         disabled={!dirty}
-                        label={dirty ? "Slide to confirm changes" : "Change something above first"}
+                        label={dirty ? "Slide to confirm changes" : "Change the price or promotion first"}
                         onConfirm={handleConfirm}
                     />
                 </div>
             </motion.div>
+
+            <AnimatePresence>
+                {promoOpen && (
+                    <PromotionPlanModal
+                        submission={{
+                            id: seller.submission_id,
+                            ...(Object.prototype.hasOwnProperty.call(seller, "marketing_services") ? { marketing_services: seller.marketing_services } : {}),
+                            marketing_commission_percent: seller.marketing_commission_percent,
+                            marketing_legacy_percent: seller.marketing_legacy_percent,
+                        }}
+                        token={token}
+                        title={seller.display_name}
+                        stagedKeys={pendingPromo ? pendingPromo.keys : null}
+                        onClose={() => setPromoOpen(false)}
+                        onDone={(keys, percent) => {
+                            setPendingPromo(keys ? { keys, percent } : null);
+                            setPromoOpen(false);
+                        }}
+                    />
+                )}
+            </AnimatePresence>
         </motion.div>,
         document.body
     );
@@ -428,7 +453,7 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
 //
 // Price labels follow the same rules as the product header's PriceBreakdown
 // ("/Pc", "/10 Pc", "/50 Pc"; pack row skipped when a pack is 1 unit).
-function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
+function OwnListingPriceCell({ seller, includeGst, submitting, token, onApply }) {
     const [open, setOpen] = useState(false);
     const [pressed, setPressed] = useState(false);
     const packSize = Number(seller.pack_size) > 0 ? Number(seller.pack_size) : 1;
@@ -510,6 +535,7 @@ function OwnListingPriceCell({ seller, includeGst, submitting, onApply }) {
                         seller={seller}
                         includeGst={includeGst}
                         submitting={submitting}
+                        token={token}
                         onClose={() => setOpen(false)}
                         onApply={(payload) => { onApply(payload); setOpen(false); }}
                     />
@@ -1992,7 +2018,7 @@ function useSellerDeliverability(sellers, address, enabled) {
 function SellerDropdown({
     item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange,
     currentUserId, onRequireLogin, isLoggedIn, buyerAddress, navigate,
-    token, onOwnListingPriceApplied, onOwnListingSaved, onEditOwnListing,
+    token, onOwnListingPriceApplied, onOwnListingPatched, onOwnListingSaved, onEditOwnListing,
 }) {
     const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
 
@@ -2042,16 +2068,33 @@ function SellerDropdown({
 
     const [savingOwnPriceId, setSavingOwnPriceId] = useState(null);
 
-    const handleOwnPriceSave = async (submissionId, { basePrice, priceBasis, finalInclusive, marketingCommissionPercent }) => {
-        onOwnListingPriceApplied?.(submissionId, finalInclusive);
+    // Runs when the own-listing modal's slide-to-confirm completes. Saves the
+    // price, the staged promotion plan, or both, then always re-syncs the row
+    // from the server (which also repairs the optimistic price after a failure).
+    const handleOwnPriceSave = async (submissionId, { basePrice, priceBasis, finalInclusive, priceChanged, promotionServices }) => {
         setSavingOwnPriceId(submissionId);
-        const payload = { basePrice: String(basePrice), priceBasis, gstInclusive: false };
-        if (marketingCommissionPercent !== undefined) {
-            payload.marketingCommissionPercent = String(marketingCommissionPercent);
+        let priceOk = null;
+        let promoOk = null;
+        let failMsg = null;
+
+        if (priceChanged) {
+            onOwnListingPriceApplied?.(submissionId, finalInclusive);
+            const payload = { basePrice: String(basePrice), priceBasis, gstInclusive: false };
+            let res = null;
+            try { res = await updateSellerProductSubmission(token, submissionId, payload); } catch { res = null; }
+            priceOk = !!res?.success;
+            if (!priceOk) failMsg = res?.message || "Couldn't update the price. Try again.";
         }
-        const res = await updateSellerProductSubmission(token, submissionId, payload);
+
+        if (promotionServices) {
+            const r = await savePromotionPlan(token, submissionId, promotionServices);
+            promoOk = r.ok;
+            if (r.ok) onOwnListingPatched?.(submissionId, r.patch);
+            else failMsg = failMsg || r.message || "Couldn't update the promotion. Try again.";
+        }
+
         setSavingOwnPriceId(null);
-        if (res?.success) onOwnListingSaved?.();
+        onOwnListingSaved?.(saveResultMessage({ priceOk, promoOk, failMsg }));
     };
 
     return (
@@ -2186,6 +2229,7 @@ function SellerDropdown({
                                                     <OwnListingPriceCell
                                                         seller={s}
                                                         includeGst={includeGst}
+                                                        token={token}
                                                         submitting={savingOwnPriceId === s.submission_id}
                                                         onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)}
                                                     />
@@ -3038,15 +3082,17 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
         return fresh;
     }, [items]);
 
-    // components/home/HomeProductFeed.jsx — inside HomeProductFeed
-    const patchOwnListingPrice = useCallback((itemId, submissionId, newPrice) => {
+    // Merge a partial patch (price, promotion fields…) into ONE seller row of
+    // one product's dropdown, so the UI updates instantly before the server
+    // re-sync lands.
+    const patchOwnListing = useCallback((itemId, submissionId, patch) => {
         setSellerState((prev) => {
             const entry = prev[itemId];
-            if (!entry) return prev;
+            if (!entry?.items) return prev;
             return {
                 ...prev, [itemId]: {
                     ...entry, items: entry.items.map((row) =>
-                        row.submission_id === submissionId ? { ...row, price: newPrice } : row)
+                        row.submission_id === submissionId ? { ...row, ...patch } : row)
                 }
             };
         });
@@ -3187,8 +3233,12 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                                                             buyerAddress={buyerAddress}
                                                             navigate={navigate}
                                                             token={token}
-                                                            onOwnListingPriceApplied={(submissionId, newPrice) => patchOwnListingPrice(item.id, submissionId, newPrice)}
-                                                            onOwnListingSaved={() => loadSellersFor(item.id, { silent: true })}
+                                                            onOwnListingPriceApplied={(submissionId, newPrice) => patchOwnListing(item.id, submissionId, { price: newPrice })}
+                                                            onOwnListingPatched={(submissionId, patch) => patchOwnListing(item.id, submissionId, patch)}
+                                                            onOwnListingSaved={(message) => {
+                                                                if (message) showToast({ message }, 2200);
+                                                                loadSellersFor(item.id, { silent: true });
+                                                            }}
                                                             onEditOwnListing={(submissionId) => setEditingSubmissionId(submissionId)}
                                                         />
                                                     )}
