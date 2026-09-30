@@ -2943,8 +2943,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                 no rounded corners, no side border, so it never reads as a "card".
                 The rounded/bordered "card" look returns from sm: and up. */}
             <div
-                className="-mx-3 bg-white sm:mx-0 sm:rounded-2xl sm:border"
-                style={{ borderColor: C.hair }}
+                // className="-mx-3 bg-white sm:mx-0 sm:rounded-2xl sm:border"
+                className="-mx-3 bg-white sm:mx-0 sm:rounded-2xl"
             >
 
                 {showFullSkeleton
@@ -2997,7 +2997,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                             style={{ borderColor: C.hair, opacity: loading ? 0.55 : 1, transition: "opacity 0.15s ease" }}
                         >
                             {columns.map((colItems, colIdx) => (
-                                <div key={colIdx} className="min-w-0 flex-1 sm:divide-y" style={{ borderColor: C.hairSoft }}>
+                                // <div key={colIdx} className="min-w-0 flex-1 sm:divide-y" style={{ borderColor: C.hairSoft }}>
+                                <div key={colIdx} className="min-w-0 flex-1" style={{ borderColor: C.hairSoft }}>
                                     {colItems.map((item) => {
                                         const isOpen = openItemId === item.id;
                                         const i = items.indexOf(item);
@@ -3076,7 +3077,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                         {loadingMore && (
                             <div className="flex divide-x border-t" style={{ borderColor: C.hair }}>
                                 {Array.from({ length: columnCount }).map((_, colIdx) => (
-                                    <div key={colIdx} className="min-w-0 flex-1 divide-y" style={{ borderColor: C.hairSoft }}>
+                                    // <div key={colIdx} className="min-w-0 flex-1 divide-y" style={{ borderColor: C.hairSoft }}>
+                                    <div key={colIdx} className="min-w-0 flex-1" style={{ borderColor: C.hairSoft }}>
                                         {Array.from({ length: Math.ceil(PAGE_SIZE / columnCount) }).map((_, i) => (
                                             <RowSkeleton key={i} />
                                         ))}
