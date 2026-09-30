@@ -124,10 +124,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
-import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
+import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
+import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
 import useFollowedItems from "../../hooks/useFollowedItems";
-import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints } from "../../utils/api";
+import { fetchBrandItemsFeed, fetchBrandItemSellers, observePriceTrends, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints } from "../../utils/api";
 import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -1453,7 +1453,10 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     aria-label={shopMode ? "Buy from this store" : isOpen ? "Collapse sellers" : "Expand sellers"}
                     className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right cursor-pointer"
                 >
-                    <FollowButton following={isFollowed} onToggle={onToggleFollow} />
+                    <div className="flex items-center gap-1">
+                        {isLoggedIn && !isOutOfStock && <PriceTrendBadge trend={item.price_trend} />}
+                        <FollowButton following={isFollowed} onToggle={onToggleFollow} />
+                    </div>
                     {isOutOfStock ? (
                         <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
                             OUT OF STOCK
@@ -1776,8 +1779,28 @@ function sellerPricingForMode(seller, sortMode, includeGst) {
     return bestAchievablePricing(seller, includeGst); // "best_price" and "fastest_delivery" both show effective-at-MOQ-style pricing here
 }
 
+const TREND_EPS = 5e-5;
+
+// MUST match pricePerBaseUnit() in catalog.controller.js exactly.
+function pricePerBaseUnit(price, packSize, masterPackSize) {
+    const p = Number(price);
+    if (!(p > 0)) return null;
+    const pack = Number(packSize) > 0 ? Number(packSize) : 1;
+    const master = Number(masterPackSize) > 0 ? Number(masterPackSize) : 1;
+    return Math.round((p / (pack * master)) * 10000) / 10000;
+}
+
+// Mirrors the SQL rule: new price differs from the last shown one =>
+// prev = last shown, cur = new. `pending` = not yet confirmed by the server.
+function nextPriceTrend(trend, ppu) {
+    if (ppu == null) return trend;
+    if (!trend || trend.cur == null) return { cur: ppu, prev: null, dir: 0, pending: true };
+    if (Math.abs(trend.cur - ppu) < TREND_EPS) return trend;
+    return { cur: ppu, prev: trend.cur, dir: ppu < trend.cur ? -1 : 1, pending: true };
+}
+
 function applyLowestToItem(it, best) {
-    return {
+    const next = {
         ...it,
         lowest_price: best?.price ?? null,
         lowest_price_pack_size: best?.pack_size ?? null,
@@ -1789,6 +1812,73 @@ function applyLowestToItem(it, best) {
         lowest_price_available_stock: best?.stock_quantity ?? null,
         lowest_price_moq: best?.moq ?? null,
     };
+    // undefined = row isn't tracked (e.g. search results) -> leave alone.
+    // Out-of-stock "best" is never a shown price -> baseline is not touched.
+    if (it.price_trend !== undefined && best && !isSellerOutOfStock(best)) {
+        next.price_trend = nextPriceTrend(
+            it.price_trend,
+            pricePerBaseUnit(best.price, best.pack_size, best.units_per_master_pack)
+        );
+    }
+    return next;
+}
+
+// Small filled triangle (ticker-style). Points down for a drop, up for a rise.
+function TrendGlyph({ down, className }) {
+    return (
+        <svg viewBox="0 0 8 8" className={className} aria-hidden="true">
+            <path d={down ? "M4 7 0.9 1.6h6.2z" : "M4 1 7.1 6.4H0.9z"} fill="currentColor" />
+        </svg>
+    );
+}
+
+// Green ▼ = cheaper than the last price you saw, red ▲ = more expensive.
+// Deliberately quiet: white chip, hairline border, colour only on glyph + number.
+function PriceTrendBadge({ trend }) {
+    const reduce = useReducedMotion();
+    const dir = Number(trend?.dir) || 0;
+    if (!dir || !(trend.prev > 0) || !(trend.cur > 0)) return null;
+
+    const down = dir < 0;
+    const pct = Math.abs((trend.cur - trend.prev) / trend.prev) * 100;
+    const pctLabel = pct < 1 ? "<1%" : `${Math.round(pct)}%`;
+    const color = down ? "#059669" : "#B3261E";
+    const label = `Price ${down ? "dropped" : "rose"} ${pctLabel} since you last saw it`;
+
+    return (
+        <motion.span
+            // Re-key on any change so a new movement replays the entrance once.
+            key={`${dir}-${trend.cur}`}
+            role="img"
+            aria-label={label}
+            title={label}
+            initial={reduce ? false : { opacity: 0, x: 6 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.22, ease: EASE }}
+            className="relative inline-flex h-[22px] shrink-0 select-none items-center gap-1 rounded-full border bg-white pl-1.5 pr-2 text-[10px] font-extrabold leading-none tracking-wide tabular-nums"
+            style={{ color, borderColor: `${color}33` }}
+        >
+            {/* One soft ring, once — draws the eye to a fresh change, then stays out of the way */}
+            {!reduce && (
+                <motion.span
+                    className="pointer-events-none absolute inset-0 rounded-full"
+                    style={{ border: `1px solid ${color}` }}
+                    initial={{ opacity: 0.45, scale: 1 }}
+                    animate={{ opacity: 0, scale: 1.45 }}
+                    transition={{ duration: 0.9, ease: "easeOut", delay: 0.15 }}
+                />
+            )}
+            <motion.span
+                className="flex items-center"
+                initial={reduce ? false : { y: down ? -4 : 4, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 520, damping: 22, delay: 0.08 }}
+            >
+                <TrendGlyph down={down} className="h-[9px] w-[9px]" />
+            </motion.span>
+            <span>{pctLabel}</span>
+        </motion.span>
+    );
 }
 
 function computeListingLowestFromSellers(sellers) {
@@ -2601,6 +2691,44 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
             return changed ? next : prev;
         });
     }, [sellerState, openItemId]);
+
+    const trendFlushTimerRef = useRef(null);
+    useEffect(() => {
+        if (!isLoggedIn || !token || shopSlug) return;           // local updates only happen in global scope
+        if (!items.some((it) => it.price_trend?.pending)) return;
+
+        clearTimeout(trendFlushTimerRef.current);
+        trendFlushTimerRef.current = setTimeout(async () => {
+            const sent = itemsRef.current
+                .filter((it) => it.price_trend?.pending && it.price_trend.cur != null)
+                .slice(0, 50)
+                .map((it) => ({ id: it.id, ppu: it.price_trend.cur }));
+            if (!sent.length) return;
+
+            let trends = null;
+            try {
+                const res = await observePriceTrends(token, sent);
+                if (res?.success) trends = res.trends || {};
+            } catch { /* keep the optimistic value */ }
+
+            const sentPpu = new Map(sent.map((s) => [String(s.id), s.ppu]));
+            setItems((prev) => prev.map((it) => {
+                const key = String(it.id);
+                const t = it.price_trend;
+                if (!t?.pending || !sentPpu.has(key)) return it;
+                // Price moved again while in flight: the next flush covers it.
+                if (Math.abs(t.cur - sentPpu.get(key)) >= TREND_EPS) return it;
+                const s = trends?.[key];
+                return {
+                    ...it,
+                    price_trend: s
+                        ? { cur: Number(s.cur), prev: s.prev != null ? Number(s.prev) : null, dir: Number(s.dir) || 0 }
+                        : { ...t, pending: false },
+                };
+            }));
+        }, 250);
+    }, [items, isLoggedIn, token, shopSlug]);
+    useEffect(() => () => clearTimeout(trendFlushTimerRef.current), []);
 
     // Refetch — with the new sort applied server-side — whenever the
     // buyer switches tabs on an already-open dropdown, or when their

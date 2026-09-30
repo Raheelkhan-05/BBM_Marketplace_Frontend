@@ -869,6 +869,15 @@ export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "r
   return res.json();
 }
 
+export async function observePriceTrends(token, obs) {
+  const res = await fetch(`${API_BASE}/catalog/price-trends/observe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ obs }),
+  });
+  return res.json();
+}
+
 export async function fetchShopInfo(shopSlug, signal) {
   const res = await fetch(`${API_BASE}/catalog/shops/${encodeURIComponent(shopSlug)}`, { signal });
   return res.json();
