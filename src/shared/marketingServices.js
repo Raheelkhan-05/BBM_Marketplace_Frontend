@@ -16,7 +16,7 @@ export const MARKETING_SERVICES = [
         description: "Show up higher in category and search results."
     },
     {
-        key: "buyer_discovery", label: "Buyer Discovery", percent: 0.5, icon: "Users",
+        key: "buyer_discovery", label: "Buyer Discovery", percent: 5, icon: "Users",
         description: "Recommend your product to buyers who match it."
     },
     {
