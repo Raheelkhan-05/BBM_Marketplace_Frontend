@@ -297,7 +297,7 @@ export default function MarketplaceSearchBar({
                 }
             `}</style>
 
-            <div className="relative rounded-full shadow-lg shadow-black/10">
+            <div className="relative rounded-full shadow-lg shadow-black/10 md:mt-5">
                 <div
                     aria-hidden="true"
                     className={`bbm-comet-glow-wrap ${glowFading ? "bbm-comet-glow-fade-out" : ""}`}

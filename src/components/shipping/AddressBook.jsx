@@ -1,163 +1,212 @@
 // components/shipping/AddressBook.jsx
 //
-// Amazon-style delivery address selector, shared identically by
-// BuyNowModal and TransportPreferenceModal.
+// Delivery address selector, driven by BuyerAddressContext (fetched once, shared everywhere).
+//   props: onChange(addr), disabled, variant: "card" (default) | "bar"
+//   ref:   openChange(), ensureSavedAddress()
 //
-// TOP LEVEL: only the currently-deliverable address is ever shown here —
-// contact name, then full address, then phone — with a single "Change"
-// action. Nothing else is rendered at top level.
-//
-// FIRST-RUN AUTOFILL: if the buyer has zero saved addresses, one is
-// seeded from their business profile AND immediately persisted via
-// createBuyerAddress (the backend marks the first address `is_default`
-// automatically), so "the deliverable address" always refers to a real,
-// saved row — never to an unsaved draft sitting only in local state.
-//
-// CHANGE MODAL: "Change" opens every saved address as a list of groups.
-// Clicking a group expands it in place to reveal two actions:
-//   - "Deliver to this address" -> selects it, persists it as default
-//     (setDefaultBuyerAddress), closes the modal, and it now shows on top.
-//   - "Edit" -> opens the same address form pre-filled for that address;
-//     saving updates it in place (updateBuyerAddress) and returns to the
-//     list without changing the current selection.
-// "Add a new address" opens a blank form; saving creates it
-// (createBuyerAddress), selects it, persists it as default, and closes
-// the modal — matching how picking an existing address behaves.
-//
-// SINGLE SOURCE OF TRUTH: every selection (autofill, pick, or new save)
-// is reported to the parent via onChange AND persisted server-side via
-// setDefaultBuyerAddress, so "the last address picked anywhere" stays
-// consistent across BuyNowModal, TransportPreferenceModal, sessions and
-// devices.
-//
-// LABEL: the buyer can type their own name for an address (e.g.
-// "Warehouse", "Head Office"); if left blank it falls back to their
-// contact name, then to "Address N" — never a hardcoded generic string.
+// - "bar":  the Home-page selector. A whole-bar tap target with an "aura" ring (a soft
+//           light travelling around the border), a pin badge that drops in with a
+//           ripple whenever the address changes, and a black "Change" pill.
+// - "card": full address card, used inside Buy Now / Cart / Transport modal.
+// - The change/add modal renders in a portal (never clipped) above every other modal.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { MapPin, Plus, Loader2, ChevronDown, Pencil, Check, X, Phone } from "lucide-react";
+import { createPortal } from "react-dom";
+import { motion } from "framer-motion";
+import { MapPin, Plus, Loader2, ChevronDown, ChevronRight, Pencil, Check, X, Phone } from "lucide-react";
 import { C, TextField } from "../seller/listingForm/FormPrimitives.jsx";
-import {
-    fetchBuyerAddresses, createBuyerAddress, updateBuyerAddress, fetchBusinessProfile,
-    fetchCheckoutStatus, setDefaultBuyerAddress,
-} from "../../utils/api.js";
 import { usePincodeResolution } from "../../hooks/usePincodeResolution.js";
+import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
 
 const EMPTY_ADDRESS = { label: "", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
+const stopBubble = (e) => e.stopPropagation();
 
-// Business-registration text (registered_address / dispatch_address) is
-// very often ALREADY a fully-formatted string that ends with the same
-// city, state and pincode we also pull out separately (bp.district /
-// bp.state / bp.pincode). If we don't strip that trailing chunk before
-// saving, every display template that appends ", {city}, {state} –
-// {pincode}" ends up showing it twice, e.g.:
-//   "...Rajkot, Rajkot, Gujarat — 360003, RAJKOT, Gujarat – 360003"
-// This strips a trailing occurrence of the city/state/pincode (in any
-// order, any dash style, any casing) from the raw line so address_line1
-// only ever contains the STREET portion.
-function stripTrailingLocation(raw, { city, state, pincode }) {
-    let line = String(raw || "").trim();
-    if (!line) return line;
+// Comet-style sweep: transparent for most of the turn, then a teal -> light-teal head.
+const AURA_CONIC =
+    "conic-gradient(from 0deg, rgba(0,111,131,0) 0deg, rgba(0,111,131,0) 200deg, rgba(0,111,131,0.85) 290deg, #5cc8d8 332deg, rgba(255,255,255,0) 360deg)";
 
-    const esc = (s) => String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const dash = "[-\\u2010-\\u2015]"; // hyphen + all common unicode dashes (–, —, etc.)
-    const sep = "[\\s,]*";
-
-    const patterns = [
-        city && state && pincode && new RegExp(`${sep}${esc(city)}${sep},?${sep}${esc(state)}${sep}${dash}${sep}${esc(pincode)}${sep}$`, "i"),
-        state && pincode && new RegExp(`${sep}${esc(state)}${sep}${dash}${sep}${esc(pincode)}${sep}$`, "i"),
-        city && new RegExp(`${sep}${esc(city)}${sep}${esc(city)}${sep}$`, "i"), // "...Rajkot, Rajkot"
-        pincode && new RegExp(`${sep}${esc(pincode)}${sep}$`, "i"),
-    ].filter(Boolean);
-
-    for (const re of patterns) {
-        if (re.test(line)) line = line.replace(re, "").trim();
-    }
-    return line.replace(/[\s,]+$/, "").trim();
+const AURA_CSS = `
+.bbm-aura-spin {
+    transform: translate(-50%, -50%);
+    animation: bbm-aura-spin 7s linear infinite;
+    will-change: transform;
 }
-
-// Both pieces (business profile + phone) are fetched together, right
-// here, so there's nothing to race against on a buyer's very first
-// address.
-function seedFromBusinessProfile(bp, phone) {
-    if (!bp) return null;
-    const useDispatch = bp.dispatch_same_as_registered === false && bp.dispatch_address;
-    const city = bp.district || "";
-    const state = useDispatch ? (bp.dispatch_state || bp.state || "") : (bp.state || "");
-    const pincode = useDispatch ? (bp.dispatch_pincode || bp.pincode || "") : (bp.pincode || "");
-    const rawLine = useDispatch ? bp.dispatch_address : bp.registered_address;
-
-    return {
-        // Intentionally blank: this is the buyer's FIRST, auto-seeded
-        // address. It must never be forced to equal contact_name (see
-        // fallbackLabel below) — that produced "Company · Company" in
-        // the UI. The backend defaults an empty label to "Office".
-        label: "",
-        contact_name: bp.legal_name || bp.trade_name || "",
-        contact_phone: phone || "",
-        address_line1: stripTrailingLocation(rawLine, { city, state, pincode }),
-        address_line2: "",
-        city, state, pincode,
-    };
+@keyframes bbm-aura-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
 }
-
-// NOTE: never use this on the auto-seeded first-run address — falling
-// back to contact_name there produces "Company · Company" since the
-// card already shows contact_name right next to the label. It's only
-// safe for addresses the buyer explicitly named, or a manual "Add new".
-function fallbackLabel(addr, existingCount) {
-    const trimmed = (addr.label || "").trim();
-    if (trimmed) return trimmed;
-    const name = (addr.contact_name || "").trim();
-    if (name) return name;
-    return `Address ${existingCount + 1}`;
+@media (prefers-reduced-motion: reduce) {
+    .bbm-aura-spin { animation: none; }
 }
+`;
 
-// ---- The card shown at top level: contact name, then full address,
-// then phone, then a single "Change" action. ----
-function SelectedAddressCard({ address, onChangeClick, disabled }) {
-    if (!address) return null;
+// Hairline frame + a light that travels around it. The square gradient layer is 200% of
+// the bar's width so it always covers the bar's diagonal while rotating.
+function AuraFrame({ children }) {
     return (
-        <div className="flex flex-col gap-2 rounded-xl border p-3.5" style={{ borderColor: C.hair, background: "#fff" }}>
-            <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
+        <div className="relative isolate rounded-2xl">
+            <style>{AURA_CSS}</style>
 
-                    <p className="mt-1 text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>
-                        {address.contact_name}
-                        {address.label && address.label.trim().toLowerCase() !== address.contact_name.trim().toLowerCase() ? (
-                            <span className="ml-1.5 font-semibold" style={{ color: C.muted }}>· {address.label}</span>
-                        ) : null}
-                    </p>
-                    <p className="mt-1 text-[12.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
-                        {address.address_line1}
-                        {address.address_line2 ? `, ${address.address_line2}` : ""}, {address.city}, {address.state} – {address.pincode}
-                    </p>
-                    <p className="mt-1 flex items-center gap-1.5 text-[12.5px] font-semibold tracking-wide" style={{ color: C.ink }}>
-                        <Phone className="h-3 w-3 shrink-0" style={{ color: C.muted }} />
-                        {address.contact_phone}
-                    </p>
-                </div>
-                <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={onChangeClick}
-                    className="shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-bold disabled:opacity-60"
-                    style={{ color: C.secondary, background: `${C.secondary}0f` }}
-                >
-                    Change
-                </button>
-            </div>
+            {/* soft outer glow */}
+            <span aria-hidden className="pointer-events-none absolute -inset-[3px] -z-10 overflow-hidden rounded-[19px] opacity-50 blur-[7px]">
+                <span className="bbm-aura-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: AURA_CONIC }} />
+            </span>
+
+            {/* ring (neutral hairline + travelling light) */}
+            <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl" style={{ background: "rgba(11,17,22,0.10)" }}>
+                <span className="bbm-aura-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: AURA_CONIC }} />
+            </span>
+
+            {/* opaque inner surface leaves a 1.5px ring visible */}
+            <div className="relative m-[1.5px] rounded-[14.5px] bg-white">{children}</div>
         </div>
     );
 }
 
-// ---- One row inside the modal: collapsed shows the address; expanded
-// (after a click) reveals "Deliver to this address" / "Edit". ----
+// Black pin badge (same language as the Follow pin): drops in, squashes, settles, and
+// sends out a single ripple. Re-plays whenever the address changes (keyed by id).
+function PinBadge({ addressKey, outlined = false }) {
+    return (
+        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+            <motion.span
+                key={`ripple-${addressKey}`}
+                aria-hidden
+                className="pointer-events-none absolute inset-0 rounded-full"
+                style={{ background: outlined ? "#006F83" : "#000" }}
+                initial={{ opacity: 0.28, scale: 0.6 }}
+                animate={{ opacity: 0, scale: 2.1 }}
+                transition={{ duration: 0.7, ease: "easeOut", delay: 0.28 }}
+            />
+            <motion.span
+                key={`pin-${addressKey}`}
+                className="relative flex h-9 w-9 items-center justify-center rounded-full"
+                style={outlined
+                    ? { background: "#006F831A", color: "#006F83", originY: 1 }
+                    : { background: "#000", color: "#fff", originY: 1 }}
+                initial={{ y: -12, opacity: 0, scaleY: 1.15 }}
+                animate={{ y: [-12, 3, 0], opacity: 1, scaleY: [1.15, 0.88, 1] }}
+                transition={{ duration: 0.5, times: [0, 0.6, 1], ease: "easeOut" }}
+            >
+                <MapPin className="h-4 w-4" strokeWidth={2.4} />
+            </motion.span>
+        </span>
+    );
+}
+
+function SelectedAddressCard({ address, onChangeClick, disabled }) {
+    if (!address) return null;
+    const showLabel = address.label && address.label.trim().toLowerCase() !== (address.contact_name || "").trim().toLowerCase();
+    return (
+        <div className="flex items-start justify-between gap-3 rounded-xl border p-3.5" style={{ borderColor: C.hair, background: "#fff" }}>
+            <div className="min-w-0">
+                <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>
+                    {address.contact_name}
+                    {showLabel && <span className="ml-1.5 font-semibold" style={{ color: C.muted }}>· {address.label}</span>}
+                </p>
+                <p className="mt-1 text-[12.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                    {address.address_line1}
+                    {address.address_line2 ? `, ${address.address_line2}` : ""}, {address.city}, {address.state} – {address.pincode}
+                </p>
+                <p className="mt-1 flex items-center gap-1.5 text-[12.5px] font-semibold tracking-wide" style={{ color: C.ink }}>
+                    <Phone className="h-3 w-3 shrink-0" style={{ color: C.muted }} />
+                    {address.contact_phone}
+                </p>
+            </div>
+            <button type="button" disabled={disabled} onClick={onChangeClick}
+                className="shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-bold disabled:opacity-60"
+                style={{ color: C.secondary, background: `${C.secondary}0f` }}>
+                Change
+            </button>
+        </div>
+    );
+}
+
+// Home-page bar. The city + pincode is the hero (that's what a buyer scans for),
+// the recipient and street are secondary, the whole bar is one big tap target.
+function SelectedAddressBar({ address, onChangeClick, disabled }) {
+    const label = (address.label || "").trim();
+    const showLabel = label && label.toLowerCase() !== (address.contact_name || "").trim().toLowerCase();
+    return (
+        <AuraFrame>
+            <button
+                type="button"
+                onClick={onChangeClick}
+                disabled={disabled}
+                aria-label="Change delivery address"
+                className="group flex w-full items-center gap-3 rounded-[14.5px] px-3 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.02] active:bg-black/[0.04] disabled:opacity-60"
+            >
+                <PinBadge addressKey={address.id} />
+
+                <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 text-[9.5px] font-extrabold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
+                        Deliver to
+                        {showLabel && (
+                            <span className="rounded-full px-1.5 py-[1px] text-[9px] font-bold tracking-wider" style={{ background: "#006F8314", color: "#006F83" }}>
+                                {label}
+                            </span>
+                        )}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                        {address.city} {address.pincode}
+                        <span className="font-semibold" style={{ color: C.muted }}> · {address.contact_name}</span>
+                    </span>
+                    <span className="block truncate text-[11px] font-medium tracking-wide" style={{ color: C.muted }}>
+                        {address.address_line1}{address.address_line2 ? `, ${address.address_line2}` : ""}, {address.state}
+                    </span>
+                </span>
+
+                <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-black py-1.5 pl-3 pr-2 text-[11.5px] font-bold tracking-wide text-white transition-transform duration-150 group-active:scale-95">
+                    Change <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.6} />
+                </span>
+            </button>
+        </AuraFrame>
+    );
+}
+
+// No address yet: same frame, but an invitation instead of a value.
+function EmptyAddressBar({ onAddClick, disabled }) {
+    return (
+        <AuraFrame>
+            <button
+                type="button"
+                onClick={onAddClick}
+                disabled={disabled}
+                className="group flex w-full items-center gap-3 rounded-[14.5px] px-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.02] active:bg-black/[0.04] disabled:opacity-60"
+            >
+                <PinBadge addressKey="empty" outlined />
+                <span className="min-w-0 flex-1">
+                    <span className="block text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>Add your delivery address</span>
+                    <span className="block text-[11px] font-medium tracking-wide" style={{ color: C.muted }}>
+                        See which sellers deliver to you and how fast
+                    </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-1 rounded-full bg-black py-1.5 pl-2.5 pr-3 text-[11.5px] font-bold tracking-wide text-white transition-transform duration-150 group-active:scale-95">
+                    <Plus className="h-3.5 w-3.5" strokeWidth={2.6} /> Add
+                </span>
+            </button>
+        </AuraFrame>
+    );
+}
+
+function BarSkeleton({ seeding }) {
+    return (
+        <div className="flex items-center gap-3 rounded-2xl border bg-white px-3 py-2.5" style={{ borderColor: C.hair }}>
+            <span className="h-9 w-9 shrink-0 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+            <span className="min-w-0 flex-1 space-y-1.5">
+                <span className="block h-2 w-16 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                <span className="block h-3 w-40 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+            </span>
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.muted }}>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {seeding ? "Setting up…" : ""}
+            </span>
+        </div>
+    );
+}
+
 function AddressRow({ addr, isSelected, isExpanded, onToggle, onDeliverHere, onEdit }) {
     return (
         <div className="rounded-xl border" style={{ borderColor: isSelected ? C.secondary : C.hair, background: isSelected ? `${C.secondary}08` : "#fff" }}>
             <button type="button" onClick={onToggle} className="flex w-full items-start gap-3 p-3 text-left">
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2"
-                    style={{ borderColor: isSelected ? C.secondary : C.hair }}>
+                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: isSelected ? C.secondary : C.hair }}>
                     {isSelected && <Check className="h-2.5 w-2.5" style={{ color: C.secondary }} strokeWidth={3} />}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -167,9 +216,7 @@ function AddressRow({ addr, isSelected, isExpanded, onToggle, onDeliverHere, onE
                     <p className="mt-0.5 text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
                         {addr.address_line1}, {addr.city}, {addr.state} – {addr.pincode}
                     </p>
-                    <p className="mt-0.5 text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                        {addr.contact_phone}
-                    </p>
+                    <p className="mt-0.5 text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>{addr.contact_phone}</p>
                 </div>
                 <ChevronDown className="mt-1 h-4 w-4 shrink-0 transition-transform duration-150" style={{ color: C.muted, transform: isExpanded ? "rotate(180deg)" : "none" }} />
             </button>
@@ -189,12 +236,10 @@ function AddressRow({ addr, isSelected, isExpanded, onToggle, onDeliverHere, onE
     );
 }
 
-// ---- The add/edit form, reused for both "Add a new address" and
-// "Edit" on an existing group. ----
 function AddressForm({ value, onField, onCancel, onSave, showCancel, saving, error }) {
     const { resolved: pincodeGeo, status: pincodeStatus, message: pincodeMessage } = usePincodeResolution(value.pincode || null);
     useEffect(() => {
-        if (pincodeGeo) onField("city", pincodeGeo.district), onField("state", pincodeGeo.state);
+        if (pincodeGeo) { onField("city", pincodeGeo.district); onField("state", pincodeGeo.state); }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pincodeGeo]);
 
@@ -208,13 +253,11 @@ function AddressForm({ value, onField, onCancel, onSave, showCancel, saving, err
             </div>
             <TextField dense label="Address line 1" value={value.address_line1} onChange={(v) => onField("address_line1", v)} />
             <TextField dense label="Address line 2 (optional)" value={value.address_line2} onChange={(v) => onField("address_line2", v)} />
-            <TextField
-                dense label="Pincode" value={value.pincode}
+            <TextField dense label="Pincode" value={value.pincode}
                 onChange={(v) => {
                     const digits = v.replace(/\D/g, "").slice(0, 6);
                     onField("pincode", digits); onField("city", ""); onField("state", "");
-                }}
-            />
+                }} />
             {pincodeStatus === "loading" && <p className="text-[11.5px] font-medium" style={{ color: C.muted }}>Looking up location…</p>}
             {pincodeStatus === "error" && <p className="text-[11.5px] font-medium" style={{ color: "#B3261E" }}>{pincodeMessage}</p>}
             {pincodeStatus === "ok" && value.city && (
@@ -230,121 +273,46 @@ function AddressForm({ value, onField, onCancel, onSave, showCancel, saving, err
                     {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Save address
                 </button>
                 {showCancel && (
-                    <button type="button" onClick={onCancel} className="text-[12.5px] font-bold" style={{ color: C.muted }}>
-                        Cancel
-                    </button>
+                    <button type="button" onClick={onCancel} className="text-[12.5px] font-bold" style={{ color: C.muted }}>Cancel</button>
                 )}
             </div>
         </div>
     );
 }
 
-const AddressBook = forwardRef(function AddressBook({ token, value, onChange, disabled }, ref) {
-    const [addresses, setAddresses] = useState([]);
-    const [loadingAddresses, setLoadingAddresses] = useState(true);
-    const [selectedId, setSelectedId] = useState(value ?? null);
-    const [seeding, setSeeding] = useState(false);
-
-    const seedInFlightRef = useRef(false); // guards against a double create call
-
+const AddressBook = forwardRef(function AddressBook({ onChange, disabled, variant = "card" }, ref) {
+    const { addresses, selectedAddress, loading, seeding, selectAddress, saveAddress } = useBuyerAddress();
 
     const [modalOpen, setModalOpen] = useState(false);
     const [expandedId, setExpandedId] = useState(null);
-
-    // formMode: null | "add" | "edit". formTarget: address id being
-    // edited (null for "add").
-    const [formMode, setFormMode] = useState(null);
+    const [formMode, setFormMode] = useState(null); // null | "add" | "edit"
     const [formTarget, setFormTarget] = useState(null);
     const [formData, setFormData] = useState(EMPTY_ADDRESS);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState(null);
 
-    // Holds the latest onChange without needing it in effect deps.
+    // Report the selected address to the parent whenever it changes.
     const onChangeRef = useRef(onChange);
-    useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
-
-    const reportSelection = (addr) => {
-        setSelectedId(addr.id);
-        onChangeRef.current?.({ ...addr, isDraft: false });
-    };
-
-    const persistDefault = async (addressId) => {
-        if (!addressId || !token) return;
-        try { await setDefaultBuyerAddress(token, addressId); }
-        catch { /* best-effort — not worth blocking the UI over */ }
-    };
-
-    // Initial fetch. If the buyer has zero saved addresses, seed from
-    // their business profile AND persist it immediately, so the top
-    // level always points at a real saved row.
-
+    useEffect(() => { onChangeRef.current = onChange; });
     useEffect(() => {
-        if (!token) return;
-        let cancelled = false;
-        (async () => {
-            setLoadingAddresses(true);
-            const res = await fetchBuyerAddresses(token);
-            if (cancelled) return;
-            if (!res?.success) { setLoadingAddresses(false); return; }
-            const list = res.addresses || [];
+        if (selectedAddress) onChangeRef.current?.({ ...selectedAddress, isDraft: false });
+    }, [selectedAddress]);
 
-            if (list.length === 0) {
-                if (seedInFlightRef.current) return; // already seeding — never call create twice
-                seedInFlightRef.current = true;
+    const openAdd = () => { setFormTarget(null); setFormData(EMPTY_ADDRESS); setError(null); setFormMode("add"); };
 
-                setLoadingAddresses(false);
-                setSeeding(true);
-                const [bpRes, statusRes] = await Promise.all([
-                    fetchBusinessProfile(token),
-                    fetchCheckoutStatus(token),
-                ]);
-                if (cancelled) return;
-                const seeded = bpRes?.success ? seedFromBusinessProfile(bpRes.profile, statusRes?.profile?.phone) : null;
-                if (seeded && seeded.contact_name && seeded.address_line1 && seeded.pincode) {
-                    // label deliberately NOT run through fallbackLabel here —
-                    // send it blank, let the backend's own "Office" default
-                    // apply, so it never mirrors contact_name.
-                    const payload = { ...seeded, is_default: true };
-                    const createRes = await createBuyerAddress(token, payload);
-                    if (cancelled) return;
-                    if (createRes?.success) {
-                        setAddresses([createRes.address]);
-                        reportSelection(createRes.address);
-                    }
-                }
-                setSeeding(false);
-                return;
-            }
-
-            setAddresses(list);
-            setLoadingAddresses(false);
-            const target = (value && list.find((a) => a.id === value)) || list.find((a) => a.is_default) || list[0];
-            if (target) reportSelection(target);
-        })();
-        return () => { cancelled = true; };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [token]);
-
-    // If the parent's `value` hint changes later (e.g. a session
-    // restore) and it points at an address we already have loaded,
-    // reconcile to it.
-    useEffect(() => {
-        if (!value || !addresses.length || value === selectedId) return;
-        const target = addresses.find((a) => a.id === value);
-        if (target) reportSelection(target);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [value, addresses]);
-
-    const selectedAddress = addresses.find((a) => a.id === selectedId) || null;
-
-    const openChangeModal = () => { setExpandedId(null); setFormMode(null); setError(null); setModalOpen(true); };
-    const closeModal = () => { setModalOpen(false); setExpandedId(null); setFormMode(null); setError(null); };
-
-    const deliverHere = (addr) => {
-        reportSelection(addr);
-        if (addr.id !== value) persistDefault(addr.id);
-        closeModal();
+    const openChangeModal = () => {
+        setExpandedId(null); setError(null);
+        if (!addresses.length) openAdd(); else setFormMode(null);
+        setModalOpen(true);
     };
+    const closeModal = () => { setModalOpen(false); setExpandedId(null); setFormMode(null); setFormTarget(null); setError(null); };
+
+    useImperativeHandle(ref, () => ({
+        openChange: openChangeModal,
+        async ensureSavedAddress() { return selectedAddress?.id || addresses.find((a) => a.is_default)?.id || null; },
+    }));
+
+    const deliverHere = (addr) => { selectAddress(addr); closeModal(); };
 
     const openEdit = (addr) => {
         setFormTarget(addr.id);
@@ -356,68 +324,58 @@ const AddressBook = forwardRef(function AddressBook({ token, value, onChange, di
         setError(null);
         setFormMode("edit");
     };
-
-    const openAdd = () => {
-        setFormTarget(null);
-        setFormData(EMPTY_ADDRESS);
-        setError(null);
-        setFormMode("add");
+    const cancelForm = () => {
+        setError(null); setFormTarget(null);
+        if (!addresses.length) closeModal(); else setFormMode(null);
     };
-
-    const cancelForm = () => { setFormMode(null); setFormTarget(null); setError(null); };
-
     const setField = (key, val) => setFormData((f) => ({ ...f, [key]: val }));
 
     const saveForm = async () => {
-        const missing = ["contact_name", "contact_phone", "address_line1", "city", "state", "pincode"].filter((k) => !formData[k].trim());
+        const missing = ["contact_name", "contact_phone", "address_line1", "city", "state", "pincode"].filter((k) => !String(formData[k] || "").trim());
         if (missing.length) { setError("Please fill in the address completely."); return; }
         setError(null);
         setSaving(true);
         try {
-            if (formMode === "edit") {
-                const patch = { ...formData, label: fallbackLabel(formData, addresses.length) };
-                const res = await updateBuyerAddress(token, formTarget, patch);
-                if (!res?.success) { setError(res?.message || "Couldn't save address."); return; }
-                setAddresses((prev) => prev.map((a) => (a.id === formTarget ? res.address : a)));
-                if (formTarget === selectedId) onChangeRef.current?.({ ...res.address, isDraft: false });
-                setFormMode(null);
-                setFormTarget(null);
-            } else {
-                const payload = { ...formData, label: fallbackLabel(formData, addresses.length), is_default: true };
-                const res = await createBuyerAddress(token, payload);
-                if (!res?.success) { setError(res?.message || "Couldn't save address."); return; }
-                setAddresses((prev) => [res.address, ...prev]);
-                deliverHere(res.address);
-                setFormMode(null);
-            }
+            const res = await saveAddress({ id: formMode === "edit" ? formTarget : null, data: formData });
+            if (!res?.success) { setError(res?.message || "Couldn't save address."); return; }
+            if (formMode === "edit") { setFormMode(null); setFormTarget(null); }
+            else closeModal(); // new address is already selected + default
         } finally {
             setSaving(false);
         }
     };
 
-    // Exposed to parents that need a guaranteed, real address id right
-    // before doing something (placing an order, finalising a transport
-    // preference).
-    useImperativeHandle(ref, () => ({
-        async ensureSavedAddress() {
-            return selectedId || addresses.find((a) => a.is_default)?.id || null;
-        },
-    }));
+    const busy = loading || seeding;
 
     return (
         <div className="flex flex-col gap-2.5">
-            {(loadingAddresses || seeding) ? (
-                <div className="flex items-center gap-2 py-2 text-[12px] font-semibold" style={{ color: C.muted }}>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> {seeding ? "Setting up your address…" : "Loading your addresses…"}
-                </div>
+            {busy ? (
+                variant === "bar" ? (
+                    <BarSkeleton seeding={seeding} />
+                ) : (
+                    <div className="flex items-center gap-2 py-2 text-[12px] font-semibold" style={{ color: C.muted }}>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {seeding ? "Setting up your address…" : "Loading your address…"}
+                    </div>
+                )
+            ) : selectedAddress ? (
+                variant === "bar"
+                    ? <SelectedAddressBar address={selectedAddress} onChangeClick={openChangeModal} disabled={disabled} />
+                    : <SelectedAddressCard address={selectedAddress} onChangeClick={openChangeModal} disabled={disabled} />
+            ) : variant === "bar" ? (
+                <EmptyAddressBar onAddClick={openChangeModal} disabled={disabled} />
             ) : (
-                <SelectedAddressCard address={selectedAddress} onChangeClick={openChangeModal} disabled={disabled} />
+                <button type="button" onClick={openChangeModal} disabled={disabled}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-3 py-3 text-[12.5px] font-bold tracking-wide disabled:opacity-60"
+                    style={{ borderColor: `${C.secondary}55`, color: C.secondary }}>
+                    <Plus className="h-3.5 w-3.5" /> Add delivery address
+                </button>
             )}
 
-            {modalOpen && (
-                <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
+            {modalOpen && createPortal(
+                <div className="fixed inset-0 z-[1100] flex items-end justify-center sm:items-center" onClick={stopBubble}>
                     <div onClick={closeModal} className="absolute inset-0 bg-black/40" />
-                    <div className="relative z-10 flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl bg-white sm:rounded-2xl" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+                    <div className="relative z-10 flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl sm:rounded-2xl"
+                        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
                         <div className="flex items-center justify-between border-b px-4 py-3.5" style={{ borderColor: C.hair }}>
                             <span className="text-[14px] font-bold" style={{ color: C.ink }}>
                                 {formMode ? (formMode === "edit" ? "Edit address" : "Add a new address") : "Choose a delivery address"}
@@ -427,29 +385,20 @@ const AddressBook = forwardRef(function AddressBook({ token, value, onChange, di
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto px-4 py-3.5">
+                        <div className="flex-1 overflow-y-auto px-4 py-3.5" data-lenis-prevent
+                            onWheel={stopBubble} onTouchStart={stopBubble} onTouchMove={stopBubble}>
                             {formMode ? (
-                                <AddressForm
-                                    value={formData}
-                                    onField={setField}
-                                    onCancel={cancelForm}
-                                    onSave={saveForm}
-                                    showCancel
-                                    saving={saving}
-                                    error={error}
-                                />
+                                <AddressForm value={formData} onField={setField} onCancel={cancelForm} onSave={saveForm}
+                                    showCancel saving={saving} error={error} />
                             ) : (
                                 <div className="flex flex-col gap-2">
                                     {addresses.map((addr) => (
-                                        <AddressRow
-                                            key={addr.id}
-                                            addr={addr}
-                                            isSelected={addr.id === selectedId}
+                                        <AddressRow key={addr.id} addr={addr}
+                                            isSelected={addr.id === selectedAddress?.id}
                                             isExpanded={expandedId === addr.id}
                                             onToggle={() => setExpandedId((cur) => (cur === addr.id ? null : addr.id))}
                                             onDeliverHere={() => deliverHere(addr)}
-                                            onEdit={() => openEdit(addr)}
-                                        />
+                                            onEdit={() => openEdit(addr)} />
                                     ))}
                                     <button type="button" onClick={openAdd}
                                         className="flex w-fit items-center gap-1.5 rounded-lg px-1 py-1.5 text-[12.5px] font-bold" style={{ color: C.secondary }}>
@@ -459,7 +408,8 @@ const AddressBook = forwardRef(function AddressBook({ token, value, onChange, di
                             )}
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );

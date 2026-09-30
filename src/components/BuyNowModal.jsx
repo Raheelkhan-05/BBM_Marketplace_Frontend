@@ -1,78 +1,58 @@
-// components/BuyNowModal.jsx — TWO-PHASE FLOW (UI/UX only, business logic untouched)
+// components/BuyNowModal.jsx — SINGLE-PAGE FLOW
 //
-// ADDRESS HANDLING: the inline address list/"add new" form used to live
-// entirely in this file. That's extracted into <AddressBook>
-// (components/shipping/AddressBook.jsx) so BuyNowModal and
-// TransportPreferenceModal share one implementation, one visual style,
-// and one behavior: picking or saving an address in either place marks
-// it as the buyer's default address on the server.
+// Top to bottom, in the order a buyer thinks:
+//   1. WHAT am I buying   -> header: tappable product image (lightbox), name, brand, seller, tags
+//   2. RULES              -> quantity card: selected qty, pack info, slabs / discounts
+//   3. WHAT DOES IT COST  -> always-visible price summary (+ pay-on-credit for approved buyers)
+//   4. WHERE / HOW        -> delivery address (shared BuyerAddressContext), transport, estimate
+//   5. DETAILS            -> seller terms + full product details (both closed by default)
 //
-// `selectedAddressId` below is a DERIVED value (not state) — the
-// non-draft id AddressBook last reported via onChange.
-//
-// PHASES (this revision):
-//   "details"  — order mode, quantity, price breakdown (no delivery
-//                 estimate), seller terms. Nothing here touches address.
-//   "shipping" — shipping address, transport preference, delivery
-//                 estimate. The actual placeOrder/addToCart/credit-order
-//                 call only ever fires from this phase.
-//
-// Clicking the primary CTA in "details" just advances to "shipping" —
-// it never places an order. The "shipping" phase has its own Back
-// button (returns to "details" without discarding anything) and its
-// own primary CTA, which is the one that actually submits.
-//
-// SELLER CLOSED (this revision): a closed seller window (outside hours,
-// non-working day, holiday) NEVER blocks placing an order. handleSubmit
-// no longer checks windowStatus. The informational "seller is closed /
-// accepted later" message is shown ONLY in the sticky footer (both
-// phases) — it is no longer rendered anywhere inside the scrollable body.
-// Location serviceability is still a hard block.
-
+// STICKY FOOTER (thumb zone): quantity stepper + total, Add to cart, and ONE primary button:
+//   - no transport preference yet -> "Select transport & Buy now"
+//   - transport already set       -> "Buy now"
+// Quantity warnings (below MOQ / out of stock / exceeds stock) show in the footer, right
+// next to the stepper being tapped.
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import PaymentQRModal from "./PaymentQRModal.jsx";
 import AddressBook from "./shipping/AddressBook.jsx";
+import ImageLightbox from "./ImageLightbox.jsx";
 import {
-    Loader2, Lock, CheckCircle2, X, Plus, MapPin, ShieldCheck, IndianRupee,
-    Minus, Layers, FileText, Calendar, Beaker, Package, Truck, ReceiptText,
-    CreditCard, Boxes, ShoppingCart, Clock, ChevronDown, ChevronLeft, PackageCheck, AlertCircle
+    Loader2, Lock, CheckCircle2, X, Plus, MapPin, Minus, Layers, FileText, Calendar, Beaker,
+    Package, Truck, ReceiptText, CreditCard, Boxes, ShoppingCart, ChevronDown, AlertCircle,
+    Share2, Info, Zap, Store, Maximize2,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-
+import { BuyerAddressProvider, useBuyerAddress } from "../context/BuyerAddressContext.jsx";
 import {
     fetchCheckoutStatus, fetchOrderQuote,
-    placeOrder, cancelMyOrder, fetchCreditStatus, requestCredit as requestCreditApi,
-    requestCreditIncrease as requestCreditIncreaseApi,
+    placeOrder, cancelMyOrder, fetchCreditStatus,
+    requestCreditIncrease as requestCreditIncreaseApi, fetchBrandItemDetail, fetchOrderConstraints,
 } from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
-import { TRANSPORT_OPTIONS } from "../../shared/transportOptions.js";
 import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
 import { clearPaymentSession } from "../utils/paymentSession.js";
-import { C, EASE, Label, TextField, ChipToggleGroup, SectionCard } from "./seller/listingForm/FormPrimitives.jsx";
+import { C, EASE, Label, ChipToggleGroup } from "./seller/listingForm/FormPrimitives.jsx";
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, hasOuterPack, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
-import { fetchOrderConstraints } from "../utils/api.js";
 import TransportPreferenceModal from "./transport/TransportPreferenceModal.jsx";
-import { Share2 } from "lucide-react";
 import { shareProductLink } from "../utils/share.js";
 import { routeTransportModeLabel, getRouteTransportFields } from "../../shared/routeTransportFields.js";
 import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
+import { resizedImageUrl } from "../utils/imageUrl";
 import { useOrderResume } from "../context/OrderResumeContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 
 /* ============================================================
-   All logic below (constants, pure functions, computeLocalQuote,
-   normalizeQuote, etc.) is IDENTICAL to the original file —
-   copy verbatim, no changes.
+   Pure logic — unchanged
    ============================================================ */
 
 const BASIS_OPTIONS = [
     { value: "per_pack", label: "Packs" },
     { value: "per_master_pack", label: "Master packs" },
 ];
-const VISIBLE_BASIS_OPTIONS = BASIS_OPTIONS;
 
 function getVisibleBasisOptions(seller) {
     const hasMasterPack = Number(seller?.masterPackSize) >= 1;
@@ -131,7 +111,7 @@ function formatMoqForBasis(moqSaleUnits, seller) {
     return `${n} ${label}${n === 1 ? "" : "s"}`;
 }
 
-function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buyerState) {
+function computeLocalQuote(seller, quantity, basis, isSample) {
     const qty = Number(quantity);
     if (!seller || !(qty > 0)) return null;
 
@@ -172,7 +152,7 @@ function computeLocalQuote(seller, quantity, basis, isSample, buyerPincode, buye
         unitPrice, basePriceApplied: slabPrice, appliedSlab, discountPercent, discountTier,
         grossSubtotal, discountAmount, subtotal, moq,
         meetsMoq: moq ? saleQty >= moq : true,
-        availableStock, stockShortfall, estimatedDeliveryDate: null, isEstimate: true,
+        availableStock, stockShortfall, outOfStock, estimatedDeliveryDate: null, isEstimate: true,
     };
 }
 
@@ -215,31 +195,36 @@ function normalizeQuote(raw) {
     return { ...raw, ...acceptanceFields, saleUnitQuantity, grossSubtotal, discountAmount, discountPercent };
 }
 
+function pick(obj, ...keys) {
+    for (const k of keys) {
+        const v = obj?.[k];
+        if (v !== undefined && v !== null && v !== "") return v;
+    }
+    return null;
+}
+const isHiddenLabel = (name) => typeof name === "string" && name.trim().toLowerCase() === "pending";
+
 /* ============================================================
-   REDESIGNED presentational primitives
+   Presentational primitives
    ============================================================ */
 
 function Stepper({ value, onChange, min = 1, max }) {
     const atMax = max != null && Number(value) >= Number(max);
     const atMin = Number(value) <= Number(min);
     return (
-        <div className="flex items-center overflow-hidden rounded-xl border" style={{ borderColor: C.hair }}>
-            <button type="button" disabled={atMin} onClick={() => onChange(Math.max(min, Number(value) - 1))}
-                className="flex h-11 w-11 shrink-0 items-center justify-center transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent">
+        <div className="flex items-center overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.hair }}>
+            <button type="button" aria-label="Decrease quantity" disabled={atMin} onClick={() => onChange(Math.max(min, Number(value) - 1))}
+                className="flex h-11 w-11 shrink-0 items-center justify-center transition-colors duration-150 active:bg-black/[0.06] hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent">
                 <Minus className="h-4 w-4" style={{ color: C.ink }} />
             </button>
             <div className="h-11 w-px" style={{ background: C.hair }} />
-            <input
-                type="text"
-                inputMode="numeric"
-                value={value}
+            <input type="text" inputMode="numeric" value={value} aria-label="Quantity"
                 onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
                 className="h-11 w-full min-w-0 flex-1 bg-transparent text-center text-[16px] font-extrabold tabular-nums tracking-wide focus:outline-none"
-                style={{ color: C.ink }}
-            />
+                style={{ color: C.ink }} />
             <div className="h-11 w-px" style={{ background: C.hair }} />
-            <button type="button" disabled={atMax} onClick={() => onChange(Number(value) + 1)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center transition-colors duration-150 hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent">
+            <button type="button" aria-label="Increase quantity" disabled={atMax} onClick={() => onChange(Number(value) + 1)}
+                className="flex h-11 w-11 shrink-0 items-center justify-center transition-colors duration-150 active:bg-black/[0.06] hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent">
                 <Plus className="h-4 w-4" style={{ color: C.ink }} />
             </button>
         </div>
@@ -248,34 +233,15 @@ function Stepper({ value, onChange, min = 1, max }) {
 
 function Notice({ tone = "warn", children }) {
     const tones = {
-        warn: { background: "#FEF6E7", color: "#92600A", icon: AlertCircle },
-        danger: { background: "#FDECEC", color: "#B3261E", icon: AlertCircle },
-        info: { background: `${C.secondary}0f`, color: C.secondary, icon: AlertCircle },
+        warn: { background: "#FEF6E7", color: "#92600A" },
+        danger: { background: "#FDECEC", color: "#B3261E" },
+        info: { background: `${C.secondary}0f`, color: C.secondary },
     };
     const t = tones[tone] || tones.warn;
-    const Icon = t.icon;
     return (
         <div className="flex items-start gap-2 rounded-xl px-2.5 py-2" style={{ background: t.background }}>
-            <Icon className="mt-[1px] h-4 w-4 shrink-0" style={{ color: t.color }} />
+            <AlertCircle className="mt-[1px] h-4 w-4 shrink-0" style={{ color: t.color }} />
             <p className="text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: t.color }}>{children}</p>
-        </div>
-    );
-}
-
-function ConstraintNotice({ reasons }) {
-    const active = reasons.filter(Boolean);
-    if (!active.length) return null;
-    return (
-        <div className="flex items-start gap-2.5 rounded-xl px-3.5 py-3" style={{ background: "#FDECEC" }}>
-            <AlertCircle className="mt-[1px] h-4 w-4 shrink-0" style={{ color: "#B3261E" }} />
-            <div className="min-w-0">
-                <p className="text-[12.5px] font-bold" style={{ color: "#B3261E" }}>Can't place an order right now</p>
-                <div className="mt-1 flex flex-col gap-0.5">
-                    {active.map((r, i) => (
-                        <span key={i} className="text-[12px] font-medium leading-snug" style={{ color: "#B3261E" }}>{r.message}</span>
-                    ))}
-                </div>
-            </div>
         </div>
     );
 }
@@ -284,30 +250,83 @@ function SkeletonBar({ width = "70%" }) {
     return <span className="inline-block h-3.5 animate-pulse rounded" style={{ width, background: C.hairSoft }} />;
 }
 
-function QuoteRow({ label, value, tone, strong, small }) {
+function QuoteRow({ label, value, tone, small }) {
     return (
         <div className="flex items-center justify-between gap-3">
             <span className={`font-medium tracking-wide ${small ? "text-[12.5px]" : "text-[13.5px]"}`} style={{ color: tone || C.muted }}>{label}</span>
-            <span className={`shrink-0 tabular-nums font-bold tracking-wide ${strong ? "text-[17px]" : "text-[13.5px]"}`} style={{ color: tone || C.ink }}>{value}</span>
+            <span className={`shrink-0 tabular-nums font-bold tracking-wide ${small ? "text-[12.5px]" : "text-[13.5px]"}`} style={{ color: tone || C.ink }}>{value}</span>
         </div>
     );
 }
 
-function Panel({ icon: Icon, title, subtitle, children }) {
+function Card({ icon: Icon, title, right, children }) {
     return (
-        <div className="rounded-2xl border bg-white p-4 sm:p-4.5" style={{ borderColor: C.hairSoft }}>
-            <div className="mb-3 flex items-center gap-2">
-                {Icon && (
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12` }}>
-                        <Icon className="h-3.5 w-3.5" style={{ color: C.secondary }} />
-                    </span>
-                )}
-                <div className="min-w-0">
-                    <h3 className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>{title}</h3>
-                    {subtitle && <p className="text-[11.5px] font-medium tracking-wide" style={{ color: C.muted }}>{subtitle}</p>}
-                </div>
+        <section className="rounded-2xl border bg-white p-3.5 sm:p-4" style={{ borderColor: C.hair }}>
+            <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>
+                    {Icon && <Icon className="h-3.5 w-3.5" />} {title}
+                </p>
+                {right}
             </div>
             <div className="flex flex-col gap-3">{children}</div>
+        </section>
+    );
+}
+
+function Collapse({ icon: Icon, title, hint, defaultOpen = false, children }) {
+    return (
+        <details open={defaultOpen} className="group rounded-2xl border bg-white p-3.5 sm:p-4" style={{ borderColor: C.hair }}>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-1.5">
+                    {Icon && <Icon className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} />}
+                    <span className="text-[11px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.muted }}>{title}</span>
+                    {hint && <span className="truncate text-[11px] font-medium tracking-wide" style={{ color: C.muted }}>· {hint}</span>}
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: C.muted }} />
+            </summary>
+            <div className="mt-3 border-t pt-3" style={{ borderColor: C.hairSoft }}>{children}</div>
+        </details>
+    );
+}
+
+function Fact({ label, value }) {
+    if (value === null || value === undefined || value === "") return null;
+    return (
+        <div className="flex items-baseline justify-between gap-3 border-b py-2 text-[12.5px] last:border-b-0" style={{ borderColor: C.hairSoft }}>
+            <span className="shrink-0 font-semibold tracking-wide" style={{ color: C.muted }}>{label}</span>
+            <span className="text-right font-bold tracking-wide" style={{ color: C.ink }}>{String(value)}</span>
+        </div>
+    );
+}
+
+function Pill({ icon: Icon, tone = "neutral", children }) {
+    const tones = {
+        neutral: { background: C.hairSoft, color: C.muted },
+        teal: { background: "#006F8314", color: "#006F83" },
+        warn: { background: "#f59e0b1a", color: "#b45309" },
+        purple: { background: "#7c3aed14", color: "#7c3aed" },
+    };
+    const t = tones[tone] || tones.neutral;
+    return (
+        <span className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10.5px] font-bold tracking-wide whitespace-nowrap" style={t}>
+            {Icon && <Icon className="h-2.5 w-2.5" strokeWidth={2.5} />} {children}
+        </span>
+    );
+}
+
+function TransportFields({ mode, fields }) {
+    const rows = getRouteTransportFields(mode)
+        .map((f) => ({ f, val: fields?.[f.key] }))
+        .filter((x) => x.val);
+    if (!rows.length) return null;
+    return (
+        <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+            {rows.map(({ f, val }) => (
+                <div key={f.key} className="flex items-baseline gap-1.5">
+                    <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{f.label.replace(/\s*\(if any\)\s*/i, "")}:</span>
+                    <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
+                </div>
+            ))}
         </div>
     );
 }
@@ -316,96 +335,37 @@ function Panel({ icon: Icon, title, subtitle, children }) {
    Main component
    ============================================================ */
 
-export default function BuyNowModal({ seller, product, onClose, resumeIntent: resumeIntentProp }) {
-
+function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntentProp }) {
     const { token, profile } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
-    const { reportApproved, reportRejected } = useOrderResume();
+    const { reportApproved, reportRejected, registerActive, unregisterActive } = useOrderResume();
     const { socket } = useSocket();
+    const { addresses, selectedAddress, loading: addressLoading, selectAddress } = useBuyerAddress();
 
-    // Optimistic: the parent (HomeProductFeed) already confirmed the buyer
-    // is logged in before this modal was ever opened, so in the overwhelming
-    // common case we already know they can check out. Seed from context so
-    // the modal's content renders on the very first frame instead of behind
-    // a spinner; fetchCheckoutStatus below still runs and will correct this
-    // (e.g. flip to the "verify your details" screen) if it's ever wrong.
     const [access, setAccess] = useState(() =>
         profile && (profile.email_verified || profile.phone_verified)
             ? { canCheckout: true, profile }
             : undefined
     );
 
-    // ---- Two-phase flow ----
-    // "details": quantity + price, no address. "shipping": address +
-    // transport + delivery estimate, and the only phase from which an
-    // order can actually be placed / added to cart / bought on credit.
-    const [phase, setPhase] = useState("details");
-    // What the "shipping" phase's primary CTA should actually submit as
-    // when pressed — set right before we advance out of "details".
-    const [pendingOrderType, setPendingOrderType] = useState(null);
-
-    const goToShipping = (orderType = null) => {
-        setError(null);
-        setPendingOrderType(orderType);
-        setPhase("shipping");
-    };
-    const goBackToDetails = () => {
-        setError(null);
-        setPhase("details");
-    };
-
-    // A couple of background checks below (stale/rejected transport
-    // preference) can now resolve WHILE the buyer is still on "details",
-    // since we prefetch address/city/state early (see below). They
-    // still shouldn't pop the transport modal over the buyer mid-review
-    // — only once they've actually reached "shipping". phaseRef gives
-    // those effects a way to read the current phase without becoming a
-    // dependency (which would re-run the fetches themselves).
-    const phaseRef = useRef(phase);
-    useEffect(() => { phaseRef.current = phase; }, [phase]);
-    const deferredShowTransportModalRef = useRef(false);
-
-    const requestShowTransportModal = useCallback(() => {
-        if (phaseRef.current === "shipping") {
-            setShowTransportModal(true);
-        } else {
-            deferredShowTransportModalRef.current = true;
-        }
-    }, []);
-
-    useEffect(() => {
-        if (phase === "shipping" && deferredShowTransportModalRef.current) {
-            deferredShowTransportModalRef.current = false;
-            setShowTransportModal(true);
-        }
-    }, [phase]);
-
-    // ---- Address (see file header note) ----
-    // `desiredAddressId` is a HINT passed down to <AddressBook> (e.g. from
-    // a restored session, or from a preference just set inside the
-    // transport modal). `effectiveAddress` is what AddressBook actually
-    // reports back — the source of truth for pincode/city/state used
-    // everywhere below.
-    const [desiredAddressId, setDesiredAddressId] = useState(null);
-    const [effectiveAddress, setEffectiveAddress] = useState(null);
+    // ---- Delivery address (shared context; already loaded on Home) ----
     const addressBookRef = useRef(null);
+    const selectedAddressId = selectedAddress?.id || null;
+    const effectivePincode = selectedAddress?.pincode || "";
+    const effectiveState = selectedAddress?.state || "";
+    const effectiveCity = selectedAddress?.city || "";
 
-    const handleAddressChange = (addr) => {
-        setEffectiveAddress(addr);
-        if (addr && !addr.isDraft) setDesiredAddressId(addr.id);
-    };
-
-    // Derived, not state — kept under this name so every existing
-    // reference below (quote effect, handleSubmit, session save) works
-    // unchanged.
-    const selectedAddressId = effectiveAddress && !effectiveAddress.isDraft ? effectiveAddress.id : null;
-    const effectivePincode = effectiveAddress?.pincode || "";
-    const effectiveState = effectiveAddress?.state || "";
-    const effectiveCity = effectiveAddress?.city || "";
+    const restoreAddressIdRef = useRef(null);
+    useEffect(() => {
+        if (!restoreAddressIdRef.current || !addresses.length) return;
+        const target = addresses.find((a) => a.id === restoreAddressIdRef.current);
+        restoreAddressIdRef.current = null;
+        if (target) selectAddress(target);
+    }, [addresses, selectAddress]);
 
     const [awaitingPaymentOrderId, setAwaitingPaymentOrderId] = useState(null);
-    const [orderMode, setOrderMode] = useState("standard");
+    const [orderMode, setOrderMode] = useState("standard"); // standard | sample | credit
     const isSample = orderMode === "sample";
     const isCredit = orderMode === "credit";
 
@@ -416,35 +376,28 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
 
     const [basis, setBasis] = useState(defaultBasis);
     const minQuantity = useMemo(() => computeMinQuantity(seller, basis), [seller, basis]);
-    const visibleBasisOptions = useMemo(() => getVisibleBasisOptions(seller), [seller?.masterPackSize]);
+    const visibleBasisOptions = useMemo(() => getVisibleBasisOptions(seller), [seller?.masterPackSize]); // eslint-disable-line react-hooks/exhaustive-deps
     const [quantity, setQuantity] = useState(() => computeMinQuantity(seller, defaultBasis));
     const userPickedBasis = useRef(false);
     const belowMoq = !isSample && Number(quantity) < minQuantity;
 
     const [transportPreference, setTransportPreference] = useState(seller?.transportPreference ?? null);
     const [pendingTransportProposal, setPendingTransportProposal] = useState(seller?.transportPendingProposal ?? null);
+    const transportPrefRef = useRef(transportPreference);
+    transportPrefRef.current = transportPreference;
 
     useEffect(() => {
         setTransportPreference(seller?.transportPreference ?? null);
         setPendingTransportProposal(seller?.transportPendingProposal ?? null);
     }, [seller?.transportPreference, seller?.transportPendingProposal]);
 
+    useEffect(() => { if (!userPickedBasis.current) setBasis(defaultBasis); }, [defaultBasis]);
     useEffect(() => {
-        if (!userPickedBasis.current) setBasis(defaultBasis);
-    }, [defaultBasis]);
-
-    useEffect(() => {
-        if (basis === "per_master_pack" && !(Number(seller?.masterPackSize) >= 1)) {
-            setBasis("per_pack");
-        }
+        if (basis === "per_master_pack" && !(Number(seller?.masterPackSize) >= 1)) setBasis("per_pack");
     }, [basis, seller?.masterPackSize]);
-
     useEffect(() => {
-        if (basis === "per_pack" && Number(seller?.masterPackSize) >= 1) {
-            setBasis("per_master_pack");
-        }
+        if (basis === "per_pack" && Number(seller?.masterPackSize) >= 1) setBasis("per_master_pack");
     }, [basis, seller?.masterPackSize]);
-
     useEffect(() => {
         if (isSample) return;
         setQuantity((q) => (Number(q) < minQuantity ? minQuantity : q));
@@ -456,18 +409,19 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
     const maxQuantity = !isSample && seller?.stockType === "ready_stock"
         ? (quote?.availableStock ?? seller?.availableStock ?? null)
         : null;
-
     const exceedsStock = !isSample && maxQuantity != null && Number(quantity) > Number(maxQuantity);
     const outOfStock = !isSample && (
-        quote?.outOfStock
-        || (maxQuantity != null && maxQuantity < minQuantity) // can't even meet MOQ from what's left
+        quote?.outOfStock || (maxQuantity != null && maxQuantity < minQuantity)
     );
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
     const [done, setDone] = useState(null);
+    const [toast, setToast] = useState(null);
+    const [lightboxSrc, setLightboxSrc] = useState(null);
     const quoteTimer = useRef(null);
     const [showTransportModal, setShowTransportModal] = useState(false);
+    const autoPlaceRef = useRef(false);
     const [transportRemovedNotice, setTransportRemovedNotice] = useState(null);
     const isFirstQuoteRef = useRef(true);
     const requestIdRef = useRef(0);
@@ -475,9 +429,7 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
     const standardBasisRef = useRef(defaultBasis);
 
     useEffect(() => {
-        if (!isSample && basis !== "per_unit") {
-            standardBasisRef.current = basis;
-        }
+        if (!isSample && basis !== "per_unit") standardBasisRef.current = basis;
     }, [isSample, basis]);
 
     useEffect(() => {
@@ -489,8 +441,19 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isSample]);
 
-    const [creditStatus, setCreditStatus] = useState(null);
+    // ---- Product details (image, specs, description…) — non-blocking ----
+    const [detail, setDetail] = useState(null);
+    useEffect(() => {
+        if (!product?.id) return;
+        let cancelled = false;
+        fetchBrandItemDetail(product.id)
+            .then((res) => { if (!cancelled && res?.success) setDetail(res.item); })
+            .catch(() => { /* header still renders from `product` */ });
+        return () => { cancelled = true; };
+    }, [product?.id]);
 
+    // ---- Credit (pay on credit for approved buyers; requesting credit is NOT offered here) ----
+    const [creditStatus, setCreditStatus] = useState(null);
     useEffect(() => {
         if (!seller?.offerId || !token) return;
         fetchCreditStatus(token, { submissionId: seller.offerId }).then((res) => setCreditStatus(res?.credit || null));
@@ -498,14 +461,14 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
 
     const canBuyOnCredit = creditStatus?.status === "approved";
     const [requestingIncrease, setRequestingIncrease] = useState(false);
-
     const creditRemaining = creditStatus
         ? Math.max(Number(creditStatus.credit_limit || 0) - Number(creditStatus.credit_used || 0), 0)
         : 0;
-    const crossesCreditLimit = canBuyOnCredit && !!quote && Number(quote.subtotal || 0) > creditRemaining;
+    const crossesCreditLimit = isCredit && canBuyOnCredit && !!quote && Number(quote.subtotal || 0) > creditRemaining;
     const limitIncreasePending = !!creditStatus?.limit_increase_request_message_id;
     const limitIncreaseCooldownActive = !!creditStatus?.limit_increase_cooldown_until
         && new Date(creditStatus.limit_increase_cooldown_until) > new Date();
+    const fmtDate = (d) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
     const handleRequestCreditIncrease = async () => {
         if (!creditStatus?.id) return;
@@ -516,14 +479,13 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         setCreditStatus((prev) => (prev ? { ...prev, limit_increase_request_message_id: "pending" } : prev));
     };
 
-    useEffect(() => {
-        if (isCredit && !canBuyOnCredit) setOrderMode("standard");
-    }, [isCredit, canBuyOnCredit]);
+    useEffect(() => { if (isCredit && !canBuyOnCredit) setOrderMode("standard"); }, [isCredit, canBuyOnCredit]);
 
+    // Instant local quote, then the confirmed server quote below.
     useEffect(() => {
         if (!(Number(quantity) > 0)) { setQuote(null); return; }
         setQuote((prev) => {
-            const local = computeLocalQuote(seller, quantity, basis, isSample, effectivePincode, effectiveState);
+            const local = computeLocalQuote(seller, quantity, basis, isSample);
             return local ? normalizeQuote(local) : prev;
         });
     }, [seller, quantity, basis, isSample, effectivePincode, effectiveState]);
@@ -540,18 +502,15 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         return () => { document.body.style.overflow = original; };
     }, []);
 
-    // Preference was resolved for a specific destination route. If the
-    // effective address's city/state changes, that preference no longer
-    // applies to the (new) route — clear it so "Set preference" reappears
-    // instead of silently keeping a stale pick.
     useEffect(() => {
-        if (!transportPreference?.destCity || !transportPreference?.destState) return;
+        const pref = transportPrefRef.current;
+        if (!pref?.destCity || !pref?.destState) return;
         if (!effectiveCity || !effectiveState) return;
         const sameRoute =
-            transportPreference.destCity.trim().toLowerCase() === effectiveCity.trim().toLowerCase() &&
-            transportPreference.destState.trim().toLowerCase() === effectiveState.trim().toLowerCase();
+            pref.destCity.trim().toLowerCase() === effectiveCity.trim().toLowerCase() &&
+            pref.destState.trim().toLowerCase() === effectiveState.trim().toLowerCase();
         if (!sameRoute) setTransportPreference(null);
-    }, [effectiveCity, effectiveState]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [effectiveCity, effectiveState]);
 
     useEffect(() => {
         let cancelled = false;
@@ -574,8 +533,7 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         return () => clearInterval(id);
     }, []);
 
-    // Informational ONLY — never used to block placement. Drives the
-    // "seller is closed / accepted later" notice in the sticky footer.
+    // Informational ONLY — a closed seller never blocks placing an order.
     const windowStatus = useMemo(
         () => checkOrderWindow(constraints ? {
             workingDays: constraints.workingDays,
@@ -587,15 +545,10 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         [constraints, clockTick]
     );
 
-    const PINCODE_RE = /^\d{6}$/;
-
     const locationStatus = useMemo(() => {
-        if (!PINCODE_RE.test(effectivePincode || "")) {
-            return { serviceable: true };
-        }
+        if (!/^\d{6}$/.test(effectivePincode || "")) return { serviceable: true };
         return checkLocationServiceable(constraints?.dispatchingLocations, { state: effectiveState, city: effectiveCity });
     }, [constraints, effectivePincode, effectiveState, effectiveCity]);
-
     const blockedByConstraints = !locationStatus.serviceable;
 
     useEffect(() => {
@@ -607,7 +560,7 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         }
     }, [isSample, seller?.sampleQuantity]);
 
-    // Quote fetch effect
+    // Server quote (debounced; first one immediate)
     useEffect(() => {
         if (!seller?.offerId || !(Number(quantity) > 0)) return;
         clearTimeout(quoteTimer.current);
@@ -643,26 +596,30 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         });
 
         return () => clearTimeout(quoteTimer.current);
-    }, [seller?.offerId, quantity, basis, isSample, selectedAddressId, effectivePincode, effectiveState]);
+    }, [seller?.offerId, quantity, basis, isSample, selectedAddressId, effectivePincode, effectiveState]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    const awaitQuote = () => Promise.race([
+        pendingQuoteRef.current,
+        new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+
+    // ---- Transport preference for this route (one merged check per route) ----
     const lastCheckedRouteRef = useRef(null);
-
     useEffect(() => {
         if (!effectiveCity || !effectiveState || !seller?.sellerId) return;
-
         const routeKey = `${effectiveState.trim().toLowerCase()}::${effectiveCity.trim().toLowerCase()}`;
         if (lastCheckedRouteRef.current === routeKey) return;
         lastCheckedRouteRef.current = routeKey;
-
-        const sameAsCurrent =
-            transportPreference?.destCity?.trim().toLowerCase() === effectiveCity.trim().toLowerCase() &&
-            transportPreference?.destState?.trim().toLowerCase() === effectiveState.trim().toLowerCase();
-        if (sameAsCurrent) return;
 
         let cancelled = false;
         (async () => {
             const res = await fetchBuyerTransportPreference(seller.sellerId, effectiveState, effectiveCity, token);
             if (cancelled) return;
+
+            const cur = transportPrefRef.current;
+            const sameAsCurrent =
+                cur?.destCity?.trim().toLowerCase() === effectiveCity.trim().toLowerCase() &&
+                cur?.destState?.trim().toLowerCase() === effectiveState.trim().toLowerCase();
 
             const pendingProposal = res?.pendingProposal
                 ? { ...res.pendingProposal, destCity: effectiveCity, destState: effectiveState }
@@ -675,86 +632,52 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
                     `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.` +
                     (res.rejectedNotice.reason ? ` Reason: ${res.rejectedNotice.reason}` : "")
                 );
-                if (res.rejectedNotice.routeOptionId) {
-                    reportRejected(res.rejectedNotice.routeOptionId, res.rejectedNotice.reason || null);
-                }
-                requestShowTransportModal();
-                return;
-            }
-
-            if (res?.success && res.decided) {
-                setTransportPreference(res.preference ? { ...res.preference, destCity: effectiveCity, destState: effectiveState } : null);
-                setTransportRemovedNotice(null);
-            } else {
-                setTransportPreference(null);
-                setTransportRemovedNotice(res?.invalidated ? "The seller no longer offers your previously selected transport option." : null);
-                if (!pendingProposal) requestShowTransportModal();
-            }
-        })();
-
-        return () => { cancelled = true; };
-    }, [effectiveCity, effectiveState, seller?.sellerId, token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    const initialPreferenceCheckedRef = useRef(false);
-    useEffect(() => {
-        if (initialPreferenceCheckedRef.current) return;
-        if (!seller?.sellerId || !effectiveCity || !effectiveState) return;
-        initialPreferenceCheckedRef.current = true;
-
-        (async () => {
-            const res = await fetchBuyerTransportPreference(seller.sellerId, effectiveState, effectiveCity, token);
-            if (res?.rejectedNotice) {
-                setTransportPreference(null);
-                setTransportRemovedNotice(
-                    `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.` +
-                    (res.rejectedNotice.reason ? ` Reason: ${res.rejectedNotice.reason}` : "")
-                );
-                if (res.rejectedNotice.routeOptionId) {
-                    reportRejected(res.rejectedNotice.routeOptionId, res.rejectedNotice.reason || null);
-                }
-                requestShowTransportModal();
+                if (res.rejectedNotice.routeOptionId) reportRejected(res.rejectedNotice.routeOptionId, res.rejectedNotice.reason || null);
                 return;
             }
             if (res?.invalidated) {
                 setTransportPreference(null);
                 setTransportRemovedNotice("The seller no longer offers your previously selected transport option.");
-                requestShowTransportModal();
+                return;
+            }
+            if (sameAsCurrent) return;
+            if (res?.success && res.decided) {
+                setTransportPreference(res.preference ? { ...res.preference, destCity: effectiveCity, destState: effectiveState } : null);
+                setTransportRemovedNotice(null);
+            } else {
+                setTransportPreference(null);
             }
         })();
-    }, [seller?.sellerId, effectiveCity, effectiveState, token]);
 
-    const handleSubmit = async (explicitOrderType) => {
+        return () => {
+            cancelled = true;
+            if (lastCheckedRouteRef.current === routeKey) lastCheckedRouteRef.current = null;
+        };
+    }, [effectiveCity, effectiveState, seller?.sellerId, token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ---- Place order ----
+    const handleSubmit = async (override = {}) => {
         setError(null);
-        // NOTE: the seller's order window (windowStatus) is intentionally NOT
-        // checked here anymore. A closed seller only delays acceptance — it
-        // must never block placing the order. Location serviceability below
-        // is still a hard block.
+        if (!selectedAddressId) return setError("Please add a delivery address first.");
         if (!locationStatus.serviceable) return setError(locationStatus.message);
 
         if (!isSample && Number(quantity) < minQuantity) {
-            setError(`Minimum order quantity is ${minQuantity} ${moqUnitLabel}${minQuantity === 1 ? "" : "s"}.`);
-            return;
+            return setError(`Minimum order quantity is ${minQuantity} ${moqUnitLabel}${minQuantity === 1 ? "" : "s"}.`);
         }
         if (!isSample && maxQuantity != null && Number(quantity) > Number(maxQuantity)) {
-            setError(Number(maxQuantity) <= 0
+            return setError(Number(maxQuantity) <= 0
                 ? "This item is currently out of stock with this seller."
                 : `You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller.`);
-            return;
-        }
-
-        let addressId = selectedAddressId;
-        if (!addressId) {
-            addressId = await addressBookRef.current?.ensureSavedAddress();
-            if (!addressId) return;
         }
         if (!(Number(quantity) > 0)) return setError("Please enter a valid quantity.");
 
+        const routeOptionId = override.routeOptionId ?? transportPreference?.routeOptionId;
+        if (!routeOptionId) return setError("Please select a transport preference.");
+
         setSubmitting(true);
-
-        const confirmed = await pendingQuoteRef.current;
+        const confirmed = await awaitQuote();
         const finalQuote = confirmed || quote;
-        const effectiveOrderType = explicitOrderType || (isSample ? "sample" : "standard");
-
+        const effectiveOrderType = isSample ? "sample" : isCredit ? "credit" : "standard";
 
         if (finalQuote) {
             if (effectiveOrderType === "sample" && finalQuote.exceedsSampleQuantity) {
@@ -772,23 +695,17 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
             quantity: Number(quantity),
             purchaseBasis: basis,
             orderType: effectiveOrderType,
-            shippingAddressId: addressId,
+            shippingAddressId: selectedAddressId,
             notes: notes.trim() || undefined,
-            transportRouteOptionId: transportPreference?.routeOptionId || undefined,
+            transportRouteOptionId: routeOptionId,
         });
         setSubmitting(false);
         if (!res?.success) return setError(res?.message || "Couldn't place the order.");
 
         if (res.orderStatus === "awaiting_payment") {
             saveOrderFormSession({
-                orderId: res.orderId,
-                seller,
-                product,
-                quantity,
-                basis,
-                selectedAddressId: addressId,
-                notes,
-                orderMode: effectiveOrderType,
+                orderId: res.orderId, seller, product, quantity, basis,
+                selectedAddressId, notes, orderMode: effectiveOrderType,
             });
             setAwaitingPaymentOrderId(res.orderId);
         } else {
@@ -796,33 +713,39 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         }
     };
 
+    const handleAddToCart = async () => {
+        setError(null);
+        if (quote && quote.meetsMoq === false) return setError(`Minimum order quantity is ${formatMoqForBasis(quote.moq, seller)}.`);
+        if (maxQuantity != null && Number(quantity) > Number(maxQuantity)) {
+            return setError(`You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller.`);
+        }
+        const confirmed = await awaitQuote();
+        const finalQuote = confirmed || quote;
+        if (finalQuote && finalQuote.meetsMoq === false) return setError(`Minimum order quantity is ${formatMoqForBasis(finalQuote.moq, seller)}.`);
+        setSubmitting(true);
+        const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
+        setSubmitting(false);
+        if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
+        onClose();
+        navigate("/cart");
+    };
+
     const restoreFromSession = (session) => {
         if (!session) return;
         setQuantity(session.quantity);
         userPickedBasis.current = true;
         setBasis(session.basis);
-        setDesiredAddressId(session.selectedAddressId || null);
+        restoreAddressIdRef.current = session.selectedAddressId || null;
         setNotes(session.notes || "");
         setOrderMode(session.orderMode || "standard");
-        // A restored session implies the buyer had already worked through
-        // order details previously — land them back on the shipping step
-        // rather than making them redo phase 1.
-        setPendingOrderType(session.orderMode === "credit" ? "credit" : null);
-        setPhase("shipping");
     };
 
     useEffect(() => {
         const session = loadOrderFormSession();
-        if (session && session.seller?.offerId === seller?.offerId && session.orderId) {
-            restoreFromSession(session);
-        }
+        if (session && session.seller?.offerId === seller?.offerId && session.orderId) restoreFromSession(session);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Resume-from-approved-transport-proposal: OrderResumeContext navigates
-    // here with location.state.resumeIntent once the buyer taps "Resume" on
-    // TransportResolutionBanner. Only apply it if it actually belongs to
-    // THIS seller/offer being viewed (the buyer could navigate to a
-    // different product while an unrelated intent is still pending).
     const resumeAppliedRef = useRef(false);
     useEffect(() => {
         const ri = resumeIntentProp || location.state?.resumeIntent;
@@ -835,8 +758,7 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         setBasis(ri.basis);
         setOrderMode(ri.orderMode || "standard");
         setNotes(ri.notes || "");
-        setDesiredAddressId(ri.addressId || null);
-        setPendingOrderType(ri.orderMode === "credit" ? "credit" : null);
+        restoreAddressIdRef.current = ri.addressId || null;
 
         if (ri.resolvedMode) {
             setTransportPreference({
@@ -848,11 +770,6 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
             });
             setPendingTransportProposal(null);
         }
-
-        setPhase("shipping");
-
-        // Clear it from history state so a later re-render / back-nav
-        // doesn't re-apply it a second time.
         navigate(location.pathname + location.search, { replace: true, state: {} });
     }, [location.state, seller?.offerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -861,6 +778,15 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         restoreFromSession(session);
         clearPaymentSession();
         clearOrderFormSession();
+        setAwaitingPaymentOrderId(null);
+    };
+
+    const handleBackToEdit = async () => {
+        if (awaitingPaymentOrderId) {
+            const res = await cancelMyOrder(token, awaitingPaymentOrderId, "Buyer went back to edit the order before paying");
+            if (!res?.success) console.warn("Couldn't cancel the pending order before going back:", res?.message);
+        }
+        clearPaymentSession();
         setAwaitingPaymentOrderId(null);
     };
 
@@ -879,27 +805,14 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         },
     }[access?.reason] || { title: "Can't place an order right now", body: "Please try again in a moment.", cta: "Close", action: onClose };
 
-    const [requestingCredit, setRequestingCredit] = useState(false);
-    const handleRequestCredit = async () => {
-        if (!seller?.offerId) { setError("Couldn't reach this seller right now."); return; }
-        setRequestingCredit(true);
-        const reqRes = await requestCreditApi(token, { submissionId: seller.offerId });
-        setRequestingCredit(false);
-        if (!reqRes?.success) { setError(reqRes?.message || "Couldn't send the credit request."); return; }
-        onClose();
-        navigate(`/chat/${reqRes.conversationId}`);
-    };
-
     useEffect(() => {
         if (!pendingTransportProposal?.routeOptionId || !seller?.sellerId || !effectiveCity || !effectiveState) return;
-
         let cancelled = false;
         (async () => {
             const res = await fetchBuyerTransportPreference(
                 seller.sellerId, effectiveState, effectiveCity, token, pendingTransportProposal.routeOptionId
             );
             if (cancelled || !res?.success) return;
-
             if (res.checkedProposalStatus === "approved") {
                 const resolved = {
                     routeOptionId: pendingTransportProposal.routeOptionId,
@@ -920,21 +833,13 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
                     (res.rejectedReason ? ` Reason: ${res.rejectedReason}` : "")
                 );
                 reportRejected(pendingTransportProposal.routeOptionId, res.rejectedReason || null);
-                requestShowTransportModal();
             }
         })();
-
         return () => { cancelled = true; };
-    }, [clockTick, pendingTransportProposal?.routeOptionId, seller?.sellerId, effectiveCity, effectiveState, token]);
+    }, [clockTick, pendingTransportProposal?.routeOptionId, seller?.sellerId, effectiveCity, effectiveState, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // INSTANT path — mirrors the clockTick effect above, but reacts to the
-    // socket event directly instead of waiting up to 30s for the next poll
-    // tick. This is what makes an OPEN modal update the moment the seller
-    // acts, instead of only the global resume banner updating instantly
-    // (OrderResumeContext) while this modal's own on-screen state lags.
     useEffect(() => {
         if (!socket) return;
-
         const onNotif = async (payload) => {
             const routeOptionId = payload?.routeOptionId;
             if (!routeOptionId) return;
@@ -963,53 +868,91 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
                     (payload.reason ? ` Reason: ${payload.reason}` : "")
                 );
                 reportRejected(routeOptionId, payload.reason || null);
-                requestShowTransportModal();
             }
         };
-
         socket.on("notification:new", onNotif);
         return () => socket.off("notification:new", onNotif);
-    }, [socket, pendingTransportProposal, seller?.sellerId, effectiveCity, effectiveState, token]);
+    }, [socket, pendingTransportProposal, seller?.sellerId, effectiveCity, effectiveState, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const { registerActive, unregisterActive } = useOrderResume();
     useEffect(() => {
-        // Whatever proposal this modal is currently tracking (pending OR
-        // just-resolved-via-resume) must be excluded from the global
-        // resumable/rejected prompts while this modal is open on screen.
         const key = pendingTransportProposal?.routeOptionId || resumeIntentProp?.proposalRouteOptionId || null;
         if (!key) return;
         registerActive(key);
         return () => unregisterActive(key);
     }, [pendingTransportProposal?.routeOptionId, resumeIntentProp?.proposalRouteOptionId, registerActive, unregisterActive]);
 
-    const handleBackToEdit = async () => {
-        if (awaitingPaymentOrderId) {
-            const res = await cancelMyOrder(token, awaitingPaymentOrderId, "Buyer went back to edit the order before paying");
-            if (!res?.success) {
-                console.warn("Couldn't cancel the pending order before going back:", res?.message);
-            }
-        }
-        clearPaymentSession();
-        setAwaitingPaymentOrderId(null);
-    };
+    useEffect(() => {
+        if (!toast) return;
+        const t = setTimeout(() => setToast(null), 2200);
+        return () => clearTimeout(t);
+    }, [toast]);
 
-    const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.hsnCode || seller.freightIncluded != null || seller.dispatchOrigin);
-    const canSample = seller?.sampleAvailable;
+    /* ---------------- derived display values ---------------- */
+    const moqUnitLabel = basis === "per_master_pack" ? "Master Pack" : "Pack";
     const basisLabel = basis === "per_pack" ? "pack(s)" : basis === "per_master_pack" ? "master pack(s)" : (seller?.unit || "units");
     const deliveryDateLabel = (val) => (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val) ? formatDDMon(new Date(val)) : val);
-    const moqUnitLabel = basis === "per_master_pack" ? "Master Pack" : "Pack";
-    const creditCooldownActive = creditStatus?.status === "rejected" && creditStatus.cooldown_until && new Date(creditStatus.cooldown_until) > new Date();
+    const canSample = seller?.sampleAvailable;
 
-    // Primary CTA presentation for the "shipping" phase — depends on
-    // whether we arrived here intending a sample / credit / standard order.
-    const finalCtaLabel = isSample ? "Request sample" : pendingOrderType === "credit" ? "Buy on credit" : "Place order";
-    const finalCtaBackground = isSample
+    const productName = product?.name || pick(detail, "name");
+    const brandName = product?.brand_name || product?.brandName || pick(detail, "brand_name", "brandName");
+    const brandNotApplicable = pick(detail, "brand_not_applicable", "brandNotApplicable");
+    const modelNo = product?.model_no || pick(detail, "model_no", "modelNo");
+    const gradeVariant = pick(detail, "grade_variant", "gradeVariant");
+    const manufacturer = pick(detail, "manufacturer");
+    const description = pick(detail, "description");
+    const manufacturingDetails = pick(detail, "manufacturing_details", "manufacturingDetails");
+    const specifications = detail?.specifications || [];
+    const categoryLabel = [product?.category_name || pick(detail, "category_name"), product?.subcategory_name || pick(detail, "subcategory_name")]
+        .filter((x) => x && !isHiddenLabel(x)).join(" · ");
+    const galleryImages = detail?.images?.length ? detail.images : (detail?.image ? [detail.image] : []);
+    const heroImage = product?.image || galleryImages[0] || null;
+    const brandImage = product?.brand_image || pick(detail, "brand_image", "brandImage");
+    const subLabel = [brandNotApplicable ? null : brandName, modelNo].filter(Boolean).join(" · ");
+    const packagingLine = Number(seller?.packSize) > 0
+        ? `1 pack = ${seller.packSize} ${seller.unit}${Number(seller?.masterPackSize) >= 1 ? ` · 1 master pack = ${seller.masterPackSize} packs` : ""}`
+        : null;
+    const leadDays = seller?.stockType === "made_to_order" ? seller?.productionLeadTimeDays : seller?.dispatchTimeDays;
+
+    const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.freightIncluded != null || seller.dispatchOrigin);
+    const hasProductDetails = !!(manufacturer || modelNo || gradeVariant || description || manufacturingDetails || specifications.length || galleryImages.length > 1);
+
+    // One quantity warning at a time, shown in the footer next to the stepper.
+    const qtyNotice = isSample ? null
+        : outOfStock ? "This item is currently out of stock with this seller."
+            : exceedsStock ? `You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller. Please reduce the quantity.`
+                : quote && quote.meetsMoq === false ? `Below the seller's MOQ of ${formatMoqForBasis(quote.moq, seller)}.`
+                    : null;
+
+    /* ---------------- primary CTA ---------------- */
+    const needsTransport = !transportPreference;
+    const waitingApproval = needsTransport && !!pendingTransportProposal;
+    const verb = isSample ? "Request sample" : isCredit ? "Buy on credit" : "Buy now";
+    const ctaLabel = !selectedAddressId
+        ? "Add delivery address"
+        : waitingApproval
+            ? "Waiting for seller approval"
+            : needsTransport
+                ? `Select transport & ${verb === "Buy now" ? "Buy now" : verb.toLowerCase()}`
+                : verb;
+    const ctaDisabled = submitting || addressLoading || blockedByConstraints || waitingApproval
+        || (!isSample && (belowMoq || outOfStock || exceedsStock)) || crossesCreditLimit;
+    const ctaBackground = isSample
         ? "linear-gradient(135deg, #006F83 0%, #047084 100%)"
-        : pendingOrderType === "credit"
+        : isCredit
             ? "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)"
             : "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)";
-    // const finalCtaDisabled = submitting || (!isSample && (belowMoq || outOfStock || exceedsStock));
-    const finalCtaDisabled = submitting || !transportPreference || (!isSample && (belowMoq || outOfStock || exceedsStock));
+
+    const handlePrimary = () => {
+        setError(null);
+        if (!selectedAddressId) { addressBookRef.current?.openChange(); return; }
+        if (!transportPreference) {
+            if (pendingTransportProposal) return;
+            autoPlaceRef.current = true;
+            setShowTransportModal(true);
+            return;
+        }
+        handleSubmit();
+    };
 
     const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
 
@@ -1017,7 +960,7 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
         <motion.div className="fixed inset-0 z-[999] flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center sm:p-4"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
             <motion.div
-                className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[24px] bg-white shadow-2xl sm:rounded-[20px]"
+                className="relative flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[24px] bg-white shadow-2xl sm:rounded-[20px]"
                 initial={{ y: 24, opacity: 0, scale: 0.98 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 24, opacity: 0 }}
                 transition={{ duration: 0.22, ease: EASE }}
                 onClick={(e) => e.stopPropagation()}>
@@ -1038,7 +981,7 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
                         <h2 className="mt-5 text-[19px] font-bold tracking-tight" style={{ color: C.ink }}>
                             {done.orderType === "sample" ? "Sample requested" : done.paymentMethod === "credit" ? "Order placed on credit" : "Order placed"}
                         </h2>
-                        <p className="mt-1.5 rounded-full bg-slate-50 px-3 py-1 font-mono text-[12px] font-semibold" style={{ color: C.secondary }}>{done.orderNumber}</p>
+                        <p className="mt-1.5 rounded-full bg-[#FCFBF9] px-3 py-1 font-mono text-[12px] font-semibold" style={{ color: C.secondary }}>{done.orderNumber}</p>
                         <p className="mt-3 max-w-sm text-[13px] font-medium leading-relaxed" style={{ color: C.muted }}>{done.message}</p>
 
                         {done.estimatedDeliveryDate && (
@@ -1046,13 +989,11 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
                                 <Calendar className="h-3.5 w-3.5" /> Estimated delivery {deliveryDateLabel(done.estimatedDeliveryDate)}
                             </p>
                         )}
-
                         {done.stockShortfall && (
                             <div className="mt-4 w-full">
                                 <Notice tone="warn">This item is short on stock right now — fulfilment may take a little longer than usual.</Notice>
                             </div>
                         )}
-
                         <div className="mt-7 flex w-full gap-2.5">
                             <button onClick={onClose} className="flex-1 rounded-xl border py-3 text-[13.5px] font-bold" style={{ borderColor: C.hair, color: C.ink }}>Keep browsing</button>
                             <button onClick={() => navigate("/orders")} className="flex-1 rounded-xl py-3 text-[13.5px] font-bold text-white shadow-sm" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>View orders</button>
@@ -1071,563 +1012,474 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
                     </div>
                 ) : (
                     <>
-                        {/* ---------------- Header ---------------- */}
-                        <div className="flex shrink-0 flex-col gap-2.5 border-b px-5 py-4 sm:px-6" style={{ borderColor: C.hairSoft }}>
-                            <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                    <p className="text-[11px] font-bold tracking-wider" style={{ color: C.secondary }}>Place order</p>
-                                    <h2 className="mt-0.5 truncate text-[18px] font-bold tracking-wide" style={{ color: C.ink }}>{product?.name}</h2>
-                                    <p className="truncate text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>from {seller?.display_name}</p>
+                        {/* ============ 1. HEADER — what am I buying ============ */}
+                        <div className="shrink-0 border-b px-4 py-3.5 sm:px-5" style={{ borderColor: C.hairSoft }}>
+                            <div className="flex items-start gap-3">
+                                {/* Tappable image -> lightbox */}
+                                <button type="button" disabled={!heroImage} onClick={() => heroImage && setLightboxSrc(heroImage)}
+                                    aria-label="View product image"
+                                    className="relative flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+                                    style={{ background: "#F4F5F6", cursor: heroImage ? "zoom-in" : "default" }}>
+                                    {heroImage
+                                        ? <img src={resizedImageUrl(heroImage, { width: 256 })} alt="" referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                                        : <Package className="h-5 w-5" style={{ color: C.muted }} />}
+                                    {heroImage && (
+                                        <span className="absolute bottom-1 right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-black/60 p-[3px] text-white">
+                                            <Maximize2 className="h-2.5 w-2.5" />
+                                        </span>
+                                    )}
+                                </button>
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-[10.5px] font-extrabold uppercase tracking-[0.08em]" style={{ color: C.secondary }}>Place order</p>
+                                    <h2 className="mt-0.5 line-clamp-2 text-[15.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>{productName}</h2>
+                                    {subLabel && (
+                                        <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11.5px] font-bold uppercase tracking-wider" style={{ color: "#006F83" }}>
+                                            {brandImage && !brandNotApplicable && (
+                                                <img src={resizedImageUrl(brandImage, { width: 64 })} alt="" className="h-4 w-4 shrink-0 rounded object-cover" />
+                                            )}
+                                            <span className="truncate">{subLabel}</span>
+                                        </p>
+                                    )}
+                                    {categoryLabel && <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>{categoryLabel}</p>}
+                                    <p className="mt-1 flex items-center gap-1 truncate text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                        <Store className="h-3 w-3 shrink-0" /> <span className="truncate">Sold by {seller?.display_name}{seller?.dispatchOrigin ? ` · ${seller.dispatchOrigin}` : ""}</span>
+                                    </p>
                                 </div>
-                                <div className="flex shrink-0 items-center gap-1">
+                                <div className="flex shrink-0 items-center gap-0.5">
                                     <button
                                         onClick={async () => {
                                             const result = await shareProductLink({
-                                                submissionId: seller.offerId,
-                                                productName: product?.name,
-                                                sellerName: seller?.display_name,
+                                                submissionId: seller.offerId, productName: product?.name, sellerName: seller?.display_name,
                                             });
-                                            if (result === "copied") setToastMsg?.("Link copied!");
+                                            if (result === "copied") setToast("Link copied!");
                                         }}
                                         aria-label="Share this seller's listing"
-                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]"
-                                    >
+                                        className="flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]">
                                         <Share2 className="h-4 w-4" style={{ color: C.muted }} />
                                     </button>
                                     <button onClick={onClose} aria-label="Close"
-                                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]">
-                                        <X className="h-4.5 w-4.5" style={{ color: C.muted }} />
+                                        className="flex h-9 w-9 items-center justify-center rounded-full transition-colors duration-150 hover:bg-black/[0.05]">
+                                        <X className="h-[18px] w-[18px]" style={{ color: C.muted }} />
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        {/* ---------------- Scrollable body ---------------- */}
-                        <div
-                            className="flex-1 overflow-y-auto"
-                            data-lenis-prevent
-                            onWheel={stopScrollPropagation}
-                            onTouchStart={stopScrollPropagation}
-                            onTouchMove={stopScrollPropagation}
-                        >
-                            <div className="flex flex-col gap-3 px-5 py-4 sm:px-6">
+                        {/* ============ BODY ============ */}
+                        <div className="flex-1 overflow-y-auto" data-lenis-prevent
+                            onWheel={stopScrollPropagation} onTouchStart={stopScrollPropagation} onTouchMove={stopScrollPropagation}>
+                            <div className="flex flex-col gap-3 px-4 py-4 sm:px-5">
 
-                                {phase === "details" && (
-                                    <>
-                                        {canSample && (
-                                            <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-                                                {[
-                                                    { v: "standard", t: "Standard order" },
-                                                    { v: "sample", t: "Order a sample", icon: Beaker },
-                                                ].map(({ v, t, icon: Icon }) => (
+                                {canSample && (
+                                    <div className="flex gap-1 rounded-xl bg-[#FCFBF9] p-1">
+                                        {[{ v: "standard", t: "Standard order" }, { v: "sample", t: "Order a sample", icon: Beaker }].map(({ v, t, icon: Icon }) => (
+                                            <button key={v} type="button" onClick={() => setOrderMode(v)}
+                                                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-bold tracking-wide transition-all duration-150"
+                                                style={(v === "sample" ? isSample : !isSample)
+                                                    ? { background: "#fff", color: v === "sample" ? "#D2462B" : C.secondary, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
+                                                    : { color: C.muted }}>
+                                                {Icon && <Icon className="h-3.5 w-3.5" />} {t}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                                {isSample && (
+                                    <p className="-mt-1 px-1 text-[12px] font-medium" style={{ color: C.muted }}>
+                                        {seller.samplePrice ? `Sample price: ₹${inr(seller.samplePrice)}/${seller.unit}` : "This sample is free."}
+                                    </p>
+                                )}
+
+                                {(qtyNotice || error) && (
+                                    <div className="mb-2.5 flex flex-col gap-2">
+                                        {qtyNotice && <Notice tone="danger">{qtyNotice}</Notice>}
+                                        {error && <Notice tone="danger">{error}</Notice>}
+                                    </div>
+                                )}
+                                {!windowStatus.open && windowStatus.message && (
+                                    <div className="mb-1"><Notice tone="warn">{windowStatus.message}</Notice></div>
+                                )}
+
+                                {/* ============ 2. QUANTITY (rules + summary; the stepper lives in the footer) ============ */}
+                                <Card icon={Package} title="Quantity" right={!isSample ? (
+                                    <span className="text-[11px] font-bold tracking-wide" style={{ color: C.muted }}>MOQ {minQuantity} {moqUnitLabel}{minQuantity === 1 ? "" : "s"}</span>
+                                ) : null}>
+                                    {!isSample && packagingLine && (
+                                        <div className="flex items-center gap-2 rounded-lg bg-[#FCFBF9] px-3 py-2">
+                                            <Boxes className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
+                                            <p className="text-[12px] font-semibold tracking-wide" style={{ color: C.ink }}>{packagingLine}</p>
+                                        </div>
+                                    )}
+
+                                    {!isSample && visibleBasisOptions.length > 1 && (
+                                        <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={visibleBasisOptions} />
+                                    )}
+
+                                    {isSample ? (
+                                        <div className="flex items-center justify-between rounded-xl bg-[#FCFBF9] px-3.5 py-3">
+                                            <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                                {quantity} {seller?.unit}
+                                                {Number(seller?.packSize) > 0 && (
+                                                    <span className="ml-1.5 text-[11.5px] font-semibold" style={{ color: C.muted }}>
+                                                        (~{round2(Number(quantity) / Number(seller.packSize))} pack{round2(Number(quantity) / Number(seller.packSize)) === 1 ? "" : "s"})
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold" style={{ color: C.muted }}>Fixed by seller</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center justify-between gap-3 rounded-xl bg-[#FCFBF9] px-3.5 py-3">
+                                            <p className="min-w-0 text-[13.5px] font-extrabold tabular-nums tracking-wide capitalize" style={{ color: C.ink }}>
+                                                {quantity || 0} {basisLabel}
+                                                {Number(seller?.packSize) > 0 && (
+                                                    <span className="ml-1.5 text-[11.5px] font-semibold normal-case" style={{ color: C.muted }}>
+                                                        = {toBaseUnits(seller, Number(quantity) || 0, basis)} {seller?.unit}
+                                                    </span>
+                                                )}
+                                            </p>
+                                            <span className="shrink-0 text-[10.5px] font-bold tracking-wide" style={{ color: C.muted }}>Adjust below ↓</span>
+                                        </div>
+                                    )}
+
+                                    {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
+                                                <Layers className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Price slabs
+                                            </span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {seller.priceSlabs.map((slab, i) => {
+                                                    const active = quote?.appliedSlab && Number(quote.appliedSlab.minQty) === Number(slab.minQty);
+                                                    return (
+                                                        <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
+                                                            style={active ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
+                                                            {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} {moqUnitLabel.toLowerCase()}{Number(slab.maxQty || slab.minQty) === 1 ? "" : "s"}: ₹{inr(slab.price)}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {!isSample && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
+                                        <div className="flex flex-col gap-1.5">
+                                            <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
+                                                <Layers className="h-3.5 w-3.5" style={{ color: "#D2462B" }} /> Quantity discounts
+                                            </span>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {seller.quantityDiscounts.map((tier, i) => {
+                                                    const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
+                                                    const tierUnitLabel = Number(seller?.masterPackSize) >= 1 ? "master pack" : "pack";
+                                                    return (
+                                                        <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
+                                                            style={active ? { borderColor: "#D2462B", background: "rgba(210,70,43,0.08)", color: "#D2462B" } : { borderColor: C.hair, color: C.muted }}>
+                                                            {tier.minQty}+ {tierUnitLabel}{Number(tier.minQty) === 1 ? "" : "s"}: {tier.discountPercent}% off
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+                                </Card>
+
+                                {/* ============ 3. PRICE SUMMARY ============ */}
+                                <Card icon={ReceiptText} title="Price summary">
+                                    {quote ? (
+                                        <div className="flex flex-col gap-2.5 rounded-xl bg-[#FCFBF9] p-3.5">
+                                            <div className="flex items-baseline justify-between gap-2 tracking-wide">
+                                                <span className="text-[14px] font-bold" style={{ color: C.ink }}>
+                                                    ₹{inr(quote.basePriceApplied ?? quote.unitPrice)}{" "}
+                                                    <span className="font-medium" style={{ color: C.muted }}>/ {isSample ? seller?.unit : saleUnitLabel(seller?.masterPackSize)}</span>
+                                                </span>
+                                                {!isSample && Number(seller?.packSize) > 0 && (
+                                                    <span className="shrink-0 text-[11px] font-medium tabular-nums" style={{ color: C.muted }}>
+                                                        ≈ ₹{inr((quote.basePriceApplied ?? quote.unitPrice) / saleUnitQtyToBaseUnits(1, seller.packSize, seller.masterPackSize))} / {seller?.unit}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                {isSample
+                                                    ? `${quote.baseUnitQuantity} ${seller?.unit}`
+                                                    : `${quote.saleUnitQuantity} ${saleUnitLabel(seller?.masterPackSize)}${quote.saleUnitQuantity === 1 ? "" : "s"}${Number(seller?.packSize) > 0 ? ` · ${saleUnitQtyToBaseUnits(quote.saleUnitQuantity, seller.packSize, seller.masterPackSize)} ${seller?.unit}` : ""}`}
+                                            </p>
+                                            <div className="h-px" style={{ background: C.hair }} />
+                                            <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} small />
+                                            {!isSample && quote.discountAmount > 0 && (
+                                                <QuoteRow label={`Discount (${quote.discountPercent}% off)`} value={`− ₹${inr(quote.discountAmount)}`} tone={C.secondary} small />
+                                            )}
+                                            <div className="h-px" style={{ background: C.hair }} />
+                                            <div className="flex items-center justify-between tracking-wide">
+                                                <span className="text-[13.5px] font-bold" style={{ color: C.ink }}>{isSample ? "Total payable (sample)" : "Total payable"}</span>
+                                                <span className="text-[20px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(quote.subtotal)}</span>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p className="text-[12.5px] font-medium" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
+                                    )}
+
+                                    {/* Pay now / Pay on credit — only for buyers already approved for credit */}
+                                    {!isSample && canBuyOnCredit && (
+                                        <div className="flex flex-col gap-2">
+                                            <div className="flex gap-1 rounded-xl bg-[#FCFBF9] p-1">
+                                                {[{ v: "standard", t: "Pay now" }, { v: "credit", t: "Pay on credit", icon: CreditCard }].map(({ v, t, icon: Icon }) => (
                                                     <button key={v} type="button" onClick={() => setOrderMode(v)}
-                                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-bold transition-all tracking-wide duration-150"
+                                                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold tracking-wide transition-all duration-150"
                                                         style={orderMode === v
-                                                            ? { background: "#fff", color: v === "sample" ? "#D2462B" : C.secondary, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
+                                                            ? { background: "#fff", color: v === "credit" ? "#7c3aed" : C.secondary, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
                                                             : { color: C.muted }}>
                                                         {Icon && <Icon className="h-3.5 w-3.5" />} {t}
                                                     </button>
                                                 ))}
                                             </div>
-                                        )}
-                                        {isSample && (
-                                            <p className="-mt-1 px-1 text-[12px] font-medium" style={{ color: C.muted }}>
-                                                {seller.samplePrice ? `Sample price: ₹${inr(seller.samplePrice)}/${seller.unit}` : "This sample is free."}
-                                            </p>
-                                        )}
-
-                                        {/* ---------------- Quantity ---------------- */}
-                                        <Panel icon={Package} title="Quantity" subtitle={!isSample ? `MOQ ${minQuantity} ${moqUnitLabel}${minQuantity === 1 ? "" : "s"}` : undefined}>
-                                            {!isSample && Number(seller?.packSize) > 0 && (
-                                                <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
-                                                    <Boxes className="h-3.5 w-3.5 shrink-0" style={{ color: C.secondary }} />
-                                                    <p className="text-[12px] font-semibold tracking-wide" style={{ color: C.ink }}>
-                                                        1 pack = {seller.packSize} {seller.unit}
-                                                        {Number(seller?.masterPackSize) >= 1 && ` · 1 master pack = ${seller.masterPackSize} packs`}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {!isSample && visibleBasisOptions.length > 1 && (
-                                                <ChipToggleGroup dense value={basis} onChange={(v) => { userPickedBasis.current = true; setBasis(v); }} options={visibleBasisOptions} />
-                                            )}
-
-                                            {isSample ? (
-                                                <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3.5 py-3">
-                                                    <span className="text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                                                        {quantity} {seller?.unit}
-                                                        {Number(seller?.packSize) > 0 && (
-                                                            <span className="ml-1.5 text-[11.5px] font-semibold" style={{ color: C.muted }}>
-                                                                (~{round2(Number(quantity) / Number(seller.packSize))} pack{round2(Number(quantity) / Number(seller.packSize)) === 1 ? "" : "s"})
-                                                            </span>
-                                                        )}
-                                                    </span>
-                                                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold" style={{ color: C.muted }}>Fixed by seller</span>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center gap-3">
-                                                    <Stepper value={quantity} onChange={setQuantity} min={minQuantity} max={maxQuantity} />
-
-                                                    <p className="text-[12.5px] capitalize font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
-                                                        {basisLabel}
-                                                        {Number(seller?.packSize) > 0 && (
-                                                            <span className="block text-[11.5px] tracking-wide" style={{ color: C.muted }}>
-                                                                = {toBaseUnits(seller, Number(quantity) || 0, basis)} {seller?.unit}
-                                                            </span>
-                                                        )}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {!isSample && quote && quote.meetsMoq === false && (
-                                                <Notice tone="danger">Below the seller's MOQ of {formatMoqForBasis(quote.moq, seller)}.</Notice>
-                                            )}
-                                            {!isSample && outOfStock && (
-                                                <Notice tone="danger">This item is currently out of stock with this seller.</Notice>
-                                            )}
-                                            {!isSample && !outOfStock && exceedsStock && (
-                                                <Notice tone="danger">
-                                                    You can order at most {maxQuantity} {saleUnitLabel(seller?.masterPackSize)}{Number(maxQuantity) === 1 ? "" : "s"} from this seller. Please reduce the quantity.
-                                                </Notice>
-                                            )}
-
-                                            {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
-                                                <div className="flex flex-col gap-1.5">
-                                                    <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
-                                                        <Layers className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Price slabs
-                                                    </span>
-                                                    <div className="flex flex-wrap gap-1.5">
-                                                        {seller.priceSlabs.map((slab, i) => {
-                                                            const active = quote?.appliedSlab && Number(quote.appliedSlab.minQty) === Number(slab.minQty);
-                                                            return (
-                                                                <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
-                                                                    style={active ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary } : { borderColor: C.hair, color: C.muted }}>
-                                                                    {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} pack{Number(slab.maxQty || slab.minQty) === 1 ? "" : "s"}: ₹{inr(slab.price)}
-                                                                </span>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {!isSample && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
-                                                <div className="flex flex-col gap-1.5">
-                                                    <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
-                                                        <Layers className="h-3.5 w-3.5" style={{ color: "#D2462B" }} /> Quantity discounts
-                                                    </span>
-                                                    <div className="flex flex-wrap gap-1.5">
-                                                        {seller.quantityDiscounts.map((tier, i) => {
-                                                            const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
-                                                            const tierUnitLabel = Number(seller?.masterPackSize) >= 1 ? "master pack" : "pack";
-                                                            return (
-                                                                <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
-                                                                    style={active ? { borderColor: "#D2462B", background: "rgba(210,70,43,0.08)", color: "#D2462B" } : { borderColor: C.hair, color: C.muted }}>
-                                                                    {tier.minQty}+ {tierUnitLabel}{Number(tier.minQty) === 1 ? "" : "s"}: {tier.discountPercent}% off
-                                                                </span>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </Panel>
-
-                                        {/* ---------------- Price breakdown (no delivery estimate here) ---------------- */}
-                                        <details className="group rounded-2xl border bg-white p-4 sm:p-4.5" style={{ borderColor: C.hairSoft }}>
-                                            <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
-                                                <span className="flex items-center gap-2">
-                                                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12` }}>
-                                                        <ReceiptText className="h-3.5 w-3.5" style={{ color: C.secondary }} />
-                                                    </span>
-                                                    <span className="text-[14px] font-bold" style={{ color: C.ink }}>Price breakdown</span>
-                                                </span>
-                                                <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: C.muted }} />
-                                            </summary>
-
-                                            <div className="mt-3 flex flex-col gap-3 border-t pt-3" style={{ borderColor: C.hairSoft }}>
-                                                {quote ? (
-                                                    <>
-                                                        <div className="flex items-center gap-3 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hair }}>
-                                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" style={{ background: `${C.secondary}12` }}>
-                                                                <Boxes className="h-4 w-4" style={{ color: C.secondary }} />
-                                                            </span>
-                                                            <div className="min-w-0 flex-1">
-                                                                {isSample ? (
-                                                                    <p className="text-[14px] font-extrabold tabular-nums" style={{ color: C.ink }}>
-                                                                        {quote.baseUnitQuantity} {seller?.unit}
-                                                                    </p>
-                                                                ) : (
-                                                                    <p className="text-[14px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>
-                                                                        {quote.saleUnitQuantity} {saleUnitLabel(seller?.masterPackSize)}{quote.saleUnitQuantity === 1 ? "" : "s"}
-                                                                        {Number(seller?.packSize) > 0 && (
-                                                                            <span className="font-semibold" style={{ color: C.muted }}>
-                                                                                {" "}· {saleUnitQtyToBaseUnits(quote.saleUnitQuantity, seller.packSize, seller.masterPackSize)} {seller?.unit}
-                                                                            </span>
-                                                                        )}
-                                                                    </p>
-                                                                )}
-                                                                {!isSample && basis === "per_master_pack" && (
-                                                                    <p className="text-[11px] font-medium tracking-wider" style={{ color: C.muted }}>
-                                                                        {quantity} master pack{Number(quantity) === 1 ? "" : "s"} selected
-                                                                    </p>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex flex-col gap-2.5 rounded-xl bg-slate-50 p-3.5">
-                                                            <span className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>Rate applied</span>
-
-                                                            <div className="flex items-baseline justify-between gap-2 tracking-wide">
-                                                                <span className="text-[14px] font-bold" style={{ color: C.ink }}>
-                                                                    ₹{inr(quote.basePriceApplied ?? quote.unitPrice)}{" "}
-                                                                    <span className="font-medium" style={{ color: C.muted }}>/ {isSample ? seller?.unit : saleUnitLabel(seller?.masterPackSize)}</span>
-                                                                </span>
-                                                                {!isSample && Number(seller?.packSize) > 0 && (
-                                                                    <span className="shrink-0 text-[11px] font-medium tabular-nums" style={{ color: C.muted }}>
-                                                                        ≈ ₹{inr((quote.basePriceApplied ?? quote.unitPrice) / saleUnitQtyToBaseUnits(1, seller.packSize, seller.masterPackSize))} / {seller?.unit}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-
-                                                            <div className="h-px" style={{ background: C.hair }} />
-
-                                                            <QuoteRow label="Subtotal" value={`₹${inr(quote.grossSubtotal)}`} tone={C.ink} small />
-                                                            {!isSample && quote.discountAmount > 0 && (
-                                                                <QuoteRow label={`Discount (${quote.discountPercent}% off)`} value={`− ₹${inr(quote.discountAmount)}`} tone={C.secondary} small />
-                                                            )}
-
-                                                            <div className="h-px" style={{ background: C.hair }} />
-
-                                                            <div className="flex items-center justify-between tracking-wide">
-                                                                <span className="text-[13.5px] font-bold" style={{ color: C.ink }}>
-                                                                    {isSample ? "Total payable (sample)" : "Total payable"}
-                                                                </span>
-                                                                <span className="text-[20px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(quote.subtotal)}</span>
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Seller-closed / delayed-acceptance notice removed from here —
-                                                            it now lives ONLY in the sticky footer. */}
-                                                    </>
-                                                ) : (
-                                                    <p className="text-[12.5px] font-medium" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
-                                                )}
-                                            </div>
-                                        </details>
-
-                                        {/* ---------------- Seller terms (collapsible, quieter) ---------------- */}
-                                        {hasTerms && (
-                                            <details className="group rounded-2xl border bg-white p-4 sm:p-4.5" style={{ borderColor: C.hairSoft }}>
-                                                <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
-                                                    <span className="flex items-center gap-2">
-                                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: `${C.secondary}12` }}>
-                                                            <FileText className="h-3.5 w-3.5" style={{ color: C.secondary }} />
-                                                        </span>
-                                                        <span className="text-[14px] font-bold" style={{ color: C.ink }}>Seller terms</span>
-                                                    </span>
-                                                    <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180" style={{ color: C.muted }} />
-                                                </summary>
-                                                <div className="mt-3 flex flex-col gap-2 border-t pt-3 text-[13px] font-medium" style={{ borderColor: C.hairSoft }}>
-                                                    {seller.deliveryTimeline && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Delivery</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.deliveryTimeline}</span></div>}
-                                                    {seller.paymentTerms && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Payment</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.paymentTerms}</span></div>}
-                                                    {seller.returnPolicy && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Returns</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.returnPolicy}</span></div>}
-                                                    {seller.warranty && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Warranty</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.warranty}</span></div>}
-                                                    {seller.dispatchOrigin && <div className="flex justify-between gap-3"><span style={{ color: C.muted }}>Ships from</span><span style={{ color: C.ink, fontWeight: 700 }} className="text-right">{seller.dispatchOrigin}</span></div>}
-                                                    {seller.freightIncluded != null && (
-                                                        <div className="flex justify-between gap-3">
-                                                            <span style={{ color: C.muted }}>Freight</span>
-                                                            <span style={{ color: seller.freightIncluded ? C.secondary : C.ink, fontWeight: 700 }} className="text-right">
-                                                                {seller.freightIncluded ? "Included in price" : "Extra, paid by buyer"}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </details>
-                                        )}
-                                    </>
-                                )}
-
-                                {/* Mounted for the WHOLE LIFETIME of the modal, not just while
-                                    phase === "shipping" — this is the actual fix. AddressBook
-                                    (and the transport-preference check that follows once an
-                                    address resolves) now fetches exactly ONCE, as soon as the
-                                    modal opens, in parallel with the buyer reviewing phase 1.
-                                    Flipping phase back and forth afterwards is a pure CSS
-                                    visibility toggle — it never remounts AddressBook, so it
-                                    never re-enters a "loading" state again.
-                                    display:"contents" when visible means this wrapper doesn't
-                                    add an extra box — its children lay out exactly as if the
-                                    div weren't there, preserving the parent's `gap-3` flex
-                                    spacing. display:"none" when hidden removes it from layout
-                                    and paint entirely, while keeping it mounted in React. */}
-                                <div style={{ display: phase === "shipping" ? "contents" : "none" }}>
-                                    <>
-                                        {/* Quick recap so the price/quantity chosen in phase 1 stays visible */}
-                                        <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3.5 py-3">
-                                            <div className="min-w-0">
-                                                <p className="truncate text-[13px] font-bold" style={{ color: C.ink }}>
-                                                    {isSample
-                                                        ? `${quantity} ${seller?.unit} (sample)`
-                                                        : `${quote?.saleUnitQuantity ?? quantity} ${saleUnitLabel(seller?.masterPackSize)}${(quote?.saleUnitQuantity ?? quantity) === 1 ? "" : "s"}`}
+                                            {isCredit && (
+                                                <p className="px-1 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                    Credit available: ₹{inr(creditRemaining)}
                                                 </p>
-                                                <button type="button" onClick={goBackToDetails} className="mt-0.5 text-[11.5px] font-bold tracking-wide underline underline-offset-2" style={{ color: C.secondary }}>
-                                                    Edit order details
-                                                </button>
-                                            </div>
-                                            {quote && (
-                                                <span className="shrink-0 text-[16px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(quote.subtotal)}</span>
+                                            )}
+                                            {crossesCreditLimit && (
+                                                limitIncreasePending ? (
+                                                    <Notice tone="info">You've asked {seller.display_name} for a higher credit limit — waiting for their response.</Notice>
+                                                ) : limitIncreaseCooldownActive ? (
+                                                    <Notice tone="warn">This order is above your remaining credit. Your last request was declined — you can ask again after {fmtDate(creditStatus.limit_increase_cooldown_until)}.</Notice>
+                                                ) : (
+                                                    <>
+                                                        <Notice tone="warn">This order is above your remaining credit limit.</Notice>
+                                                        <button type="button" onClick={handleRequestCreditIncrease} disabled={requestingIncrease}
+                                                            className="flex w-full items-center justify-center gap-1.5 rounded-xl border px-4 py-2.5 text-[13px] font-bold disabled:opacity-50"
+                                                            style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                                            <CreditCard className="h-3.5 w-3.5" /> {requestingIncrease ? "Requesting…" : "Ask for a higher credit limit"}
+                                                        </button>
+                                                    </>
+                                                )
                                             )}
                                         </div>
+                                    )}
+                                </Card>
 
-                                        {/* ---------------- Shipping address ---------------- */}
-                                        <Panel icon={MapPin} title="Shipping address">
-                                            <AddressBook
-                                                ref={addressBookRef}
-                                                token={token}
-                                                value={desiredAddressId}
-                                                onChange={handleAddressChange}
-                                                disabled={submitting}
-                                            />
+                                {/* ============ 4. DELIVERY ============ */}
+                                <Card icon={MapPin} title="Delivery">
+                                    <AddressBook ref={addressBookRef} disabled={submitting} />
 
-                                            <div className="flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hairSoft }}>
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <p className="text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>Preferred transport</p>
-                                                    <button type="button" onClick={() => setShowTransportModal(true)} className="shrink-0 text-[12px] font-bold tracking-wide" style={{ color: C.secondary }}>
-                                                        {transportPreference || pendingTransportProposal ? "Change" : "Set preference"}
-                                                    </button>
-                                                </div>
+                                    {blockedByConstraints && <Notice tone="danger">{locationStatus.message}</Notice>}
 
-                                                {transportPreference ? (
-                                                    <div className="flex flex-col gap-1.5">
-                                                        <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                            {routeTransportModeLabel(transportPreference.mode)}
-                                                        </p>
-                                                        <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
-                                                            {getRouteTransportFields(transportPreference.mode).map((f) => {
-                                                                const val = transportPreference.fields?.[f.key];
-                                                                if (!val) return null;
-                                                                const displayLabel = f.label.replace(/\s*\(if any\)\s*/i, "");
-                                                                return (
-                                                                    <div key={f.key} className="flex items-baseline gap-1.5">
-                                                                        <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{displayLabel}:</span>
-                                                                        <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                ) : pendingTransportProposal ? (
-                                                    <div className="flex flex-col gap-1.5">
-                                                        <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                            {routeTransportModeLabel(pendingTransportProposal.mode)}
-                                                        </p>
-                                                        <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
-                                                            {/* unchanged fields mapping */}
-                                                        </div>
-                                                        <Notice tone="warn">
-                                                            This option is still waiting for {seller?.display_name}'s approval. You won't be able to place your order until it's approved — you can wait, or pick a different, already-approved option above.
-                                                        </Notice>
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-[12px] font-bold tracking-wide" style={{ color: "#B3261E" }}>
-                                                        You need to set a transport preference before you can place this order.
+                                    <div className="flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hairSoft }}>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
+                                                <Truck className="h-3.5 w-3.5" /> Preferred transport
+                                            </p>
+                                            <button type="button" onClick={() => { autoPlaceRef.current = false; setShowTransportModal(true); }}
+                                                disabled={!selectedAddressId}
+                                                className="shrink-0 text-[12px] font-bold tracking-wide disabled:opacity-40" style={{ color: C.secondary }}>
+                                                {transportPreference || pendingTransportProposal ? "Change" : "Select"}
+                                            </button>
+                                        </div>
+
+                                        {transportPreference ? (
+                                            <div className="flex flex-col gap-1.5">
+                                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{routeTransportModeLabel(transportPreference.mode)}</p>
+                                                <TransportFields mode={transportPreference.mode} fields={transportPreference.fields} />
+                                            </div>
+                                        ) : pendingTransportProposal ? (
+                                            <div className="flex flex-col gap-1.5">
+                                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{routeTransportModeLabel(pendingTransportProposal.mode)}</p>
+                                                <TransportFields mode={pendingTransportProposal.mode} fields={pendingTransportProposal.fields} />
+                                                <Notice tone="warn">
+                                                    Waiting for {seller?.display_name}'s approval. You can place the order once it's approved, or pick a different, already-approved option.
+                                                </Notice>
+                                            </div>
+                                        ) : (
+                                            <p className="text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                Not selected yet — we'll ask when you tap "{verb}".
+                                            </p>
+                                        )}
+                                        {transportRemovedNotice && <Notice tone="warn">{transportRemovedNotice}</Notice>}
+                                    </div>
+
+                                    {!blockedByConstraints && quote && (
+                                        <div className="flex flex-col gap-2 rounded-xl bg-[#FCFBF9] p-3.5">
+                                            <div className="flex items-center gap-2.5">
+                                                <Truck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
+                                                <div className="min-w-0 flex-1">
+                                                    <span className="text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>Estimated delivery</span>
+                                                    <p className="text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>
+                                                        {quote.isEstimate || !quote.estimatedDeliveryDate ? <SkeletonBar width="100px" /> : deliveryDateLabel(quote.estimatedDeliveryDate)}
                                                     </p>
+                                                </div>
+                                            </div>
+                                            {!quote.isEstimate && (quote.acceptanceDelayDays > 0 || quote.leadDays > 0 || quote.transitDaysMin != null) && (
+                                                <div className="border-t pt-2" style={{ borderColor: C.hair }}>
+                                                    {quote.acceptanceDelayDays > 0 && <QuoteRow small label="Acceptance delay" value={`${quote.acceptanceDelayDays} day${quote.acceptanceDelayDays === 1 ? "" : "s"}`} />}
+                                                    {quote.leadDays > 0 && <QuoteRow small label={seller?.stockType === "made_to_order" ? "Production time" : "Dispatch time"} value={`${quote.leadDays} day${quote.leadDays === 1 ? "" : "s"}`} />}
+                                                    {quote.transitDaysMin != null && (
+                                                        <QuoteRow small label="Transit" value={quote.transitDaysMin === quote.transitDaysMax
+                                                            ? `${quote.transitDaysMin} day${quote.transitDaysMin === 1 ? "" : "s"}`
+                                                            : `${quote.transitDaysMin}–${quote.transitDaysMax} days`} />
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    <div className="flex flex-col gap-1 border-t pt-3" style={{ borderColor: C.hairSoft }}>
+                                        <Label>Note to seller (optional)</Label>
+                                        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any special instructions…"
+                                            className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[13.5px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2"
+                                            style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
+                                    </div>
+                                </Card>
+
+                                {/* ============ 5. DETAILS (both closed by default) ============ */}
+                                {hasTerms && (
+                                    <Collapse icon={FileText} title="Seller terms">
+                                        <div className="flex flex-col">
+                                            <Fact label="Delivery" value={seller.deliveryTimeline} />
+                                            <Fact label="Payment" value={seller.paymentTerms} />
+                                            <Fact label="Returns" value={seller.returnPolicy} />
+                                            <Fact label="Warranty" value={seller.warranty} />
+                                            <Fact label="Ships from" value={seller.dispatchOrigin} />
+                                            {seller.freightIncluded != null && <Fact label="Freight" value={seller.freightIncluded ? "Included in price" : "Extra, paid by buyer"} />}
+                                        </div>
+                                    </Collapse>
+                                )}
+
+                                {(hasProductDetails || (product?.id && !detail)) && (
+                                    <Collapse icon={Info} title="Product details" hint={hasProductDetails ? "specs, description & more" : "loading…"}>
+                                        {!detail && product?.id ? (
+                                            <div className="flex flex-col gap-2">
+                                                <SkeletonBar width="60%" /><SkeletonBar width="90%" /><SkeletonBar width="75%" />
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col gap-3.5">
+                                                {galleryImages.length > 1 && (
+                                                    <div className="flex gap-2 overflow-x-auto pb-1">
+                                                        {galleryImages.slice(0, 8).map((src, i) => (
+                                                            <button key={i} type="button" onClick={() => setLightboxSrc(src)} aria-label={`View image ${i + 1}`}
+                                                                className="h-14 w-14 shrink-0 overflow-hidden rounded-lg" style={{ background: "#F4F5F6", cursor: "zoom-in" }}>
+                                                                <img src={resizedImageUrl(src, { width: 128 })} alt="" loading="lazy" className="h-full w-full object-cover" />
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                {(manufacturer || modelNo || gradeVariant) && (
+                                                    <div className="rounded-xl border px-3.5" style={{ borderColor: C.hair }}>
+                                                        <Fact label="Manufacturer" value={manufacturer} />
+                                                        <Fact label="Model / Part No." value={modelNo} />
+                                                        <Fact label="Grade / Variant" value={gradeVariant} />
+                                                    </div>
+                                                )}
+                                                {description && (
+                                                    <div>
+                                                        <p className="mb-1 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Description</p>
+                                                        <p className="text-[12.5px] font-medium leading-relaxed" style={{ color: C.ink }}>{description}</p>
+                                                    </div>
+                                                )}
+                                                {manufacturingDetails && (
+                                                    <div>
+                                                        <p className="mb-1 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Manufacturing</p>
+                                                        <p className="text-[12.5px] font-medium leading-relaxed" style={{ color: C.ink }}>{manufacturingDetails}</p>
+                                                    </div>
+                                                )}
+                                                {specifications.length > 0 && (
+                                                    <div>
+                                                        <p className="mb-1 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Specifications</p>
+                                                        <div className="overflow-hidden rounded-xl border" style={{ borderColor: C.hair }}>
+                                                            {specifications.map((s, i) => (
+                                                                <div key={i} className="flex justify-between gap-3 px-3.5 py-2 text-[12px] font-semibold"
+                                                                    style={{ background: i % 2 === 0 ? "white" : C.hairSoft, color: C.ink }}>
+                                                                    <span style={{ color: C.muted }}>{s.key}</span>
+                                                                    <span className="text-right">{s.value}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
                                                 )}
                                             </div>
-
-                                            <div className="flex flex-col gap-1 border-t pt-3" style={{ borderColor: C.hairSoft }}>
-                                                <Label>Note to seller (optional)</Label>
-                                                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any special instructions…"
-                                                    className="w-full resize-none rounded-lg border bg-white px-3 py-2.5 text-[13.5px] font-medium placeholder:text-slate-300 focus:outline-none focus:ring-2"
-                                                    style={{ borderColor: C.hair, color: C.ink, ["--tw-ring-color"]: `${C.secondary}22` }} />
-                                            </div>
-                                        </Panel>
-
-                                        {/* ---------------- Delivery estimate ---------------- */}
-                                        {!blockedByConstraints && quote && (
-                                            <Panel icon={Truck} title="Delivery estimate">
-                                                <div className="flex flex-col gap-2 rounded-xl bg-slate-50 p-3.5">
-                                                    {quote.acceptanceDelayDays > 0 && (
-                                                        <QuoteRow small label="Acceptance delay" value={`${quote.acceptanceDelayDays} day${quote.acceptanceDelayDays === 1 ? "" : "s"}`} />
-                                                    )}
-                                                    {quote.leadDays > 0 && (
-                                                        <QuoteRow small label={seller?.stockType === "made_to_order" ? "Production time" : "Dispatch time"} value={`${quote.leadDays} day${quote.leadDays === 1 ? "" : "s"}`} />
-                                                    )}
-                                                    <QuoteRow
-                                                        small
-                                                        label="Transit"
-                                                        value={quote.transitDaysMin === quote.transitDaysMax
-                                                            ? `${quote.transitDaysMin} day${quote.transitDaysMin === 1 ? "" : "s"}`
-                                                            : `${quote.transitDaysMin}–${quote.transitDaysMax} days`}
-                                                    />
-
-                                                    <div className="h-px" style={{ background: C.hair }} />
-
-                                                    <div className="flex items-center gap-2.5">
-                                                        <Truck className="h-4 w-4 shrink-0" style={{ color: C.secondary }} />
-                                                        <div className="min-w-0 flex-1">
-                                                            <span className="text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>Estimated delivery</span>
-                                                            <p className="text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                                {quote.isEstimate || !quote.estimatedDeliveryDate ? <SkeletonBar width="100px" /> : deliveryDateLabel(quote.estimatedDeliveryDate)}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </Panel>
                                         )}
-                                    </>
-
-                                </div>
-
-                                {error && <Notice tone="danger">{error}</Notice>}
+                                    </Collapse>
+                                )}
                             </div>
                         </div>
 
-                        {/* ---------------- Sticky footer ---------------- */}
-                        <div className="shrink-0 border-t bg-white px-5 py-4 sm:px-6" style={{ borderColor: C.hairSoft }}>
-                            {phase === "shipping" && !transportPreference && (
-                                <div className="mb-3">
-                                    <Notice tone={pendingTransportProposal ? "warn" : "danger"}>
-                                        {pendingTransportProposal
-                                            ? "Waiting for the seller to approve your transport option — you'll be able to place the order once it's approved."
-                                            : "Please set a transport preference above to continue."}
-                                    </Notice>
-                                </div>
-                            )}
-                            {phase === "shipping" && !locationStatus.serviceable ? (
-                                <ConstraintNotice reasons={[{ icon: MapPin, message: locationStatus.message }]} />
-                            ) : (
-                                <>
-                                    {/* Seller closed / acceptance delayed — informational ONLY, never blocks
-                                        ordering. Shown in the sticky footer in BOTH phases and nowhere else. */}
-                                    {!windowStatus.open && windowStatus.message && (
-                                        <div className="mb-3"><Notice tone="warn">{windowStatus.message}</Notice></div>
-                                    )}
-
-                                    {phase === "details" && quote && (
-                                        <div className="mb-3 flex items-center justify-between">
-                                            <span className="text-[11.5px] font-bold tracking-wider" style={{ color: C.muted }}>Total payable</span>
-                                            <span className="flex items-center text-[19px] font-extrabold tabular-nums tracking-wider" style={{ color: C.ink }}>
-                                                <IndianRupee className="h-4 w-4" />{inr(quote.subtotal)}
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {phase === "details" && !isSample && (
-                                        canBuyOnCredit ? (
-                                            crossesCreditLimit ? (
-                                                limitIncreasePending ? (
-                                                    <div className="mb-2.5">
-                                                        <Notice tone="info">
-                                                            You've asked {seller.display_name} for a higher credit limit — waiting for their response.
-                                                        </Notice>
-                                                    </div>
-                                                ) : limitIncreaseCooldownActive ? (
-                                                    <div className="mb-2.5">
-                                                        <Notice tone="warn">
-                                                            This order is above your remaining credit. Your last request was declined — you can ask again
-                                                            after {new Date(creditStatus.limit_increase_cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.
-                                                        </Notice>
-                                                    </div>
-                                                ) : (
-                                                    <button type="button" onClick={handleRequestCreditIncrease} disabled={requestingIncrease}
-                                                        className="mb-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-3 text-[13.5px] font-bold disabled:opacity-50"
-                                                        style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
-                                                        <CreditCard className="h-3.5 w-3.5" /> {requestingIncrease ? "Requesting…" : "Ask for a higher credit limit"}
-                                                    </button>
-                                                )
-                                            ) : (
-                                                <button type="button" onClick={() => goToShipping("credit")} disabled={submitting || belowMoq || outOfStock || exceedsStock}
-                                                    className="mb-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border px-5 py-3 text-[13.5px] font-bold disabled:opacity-50"
-                                                    style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
-                                                    <CreditCard className="h-3.5 w-3.5" /> Buy on credit
-                                                </button>
-                                            )
-                                        ) : creditStatus?.status === "pending" ? (
-                                            <div className="mb-2.5"><Notice tone="info">Your credit request to {seller.display_name} is awaiting their response — check your chat with them.</Notice></div>
-                                        ) : creditCooldownActive ? (
-                                            <div className="mb-2.5">
-                                                <Notice tone="warn">Your last credit request was declined. You can request again after {new Date(creditStatus.cooldown_until).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.</Notice>
-                                            </div>
-                                        ) : (
-                                            <button type="button" onClick={handleRequestCredit} disabled={requestingCredit || belowMoq || outOfStock || exceedsStock}
-                                                className="mb-2.5 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-3 text-[12.5px] font-bold disabled:opacity-60"
-                                                style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
-                                                <CreditCard className="h-3.5 w-3.5" /> {requestingCredit ? "Requesting…" : "Request credit from this seller"}
-                                            </button>
-                                        )
-                                    )}
-
-                                    {phase === "details" ? (
-                                        <div className="flex gap-2.5">
-                                            {!isSample && (
-                                                <button
-                                                    type="button"
-                                                    onClick={async () => {
-                                                        if (quote && quote.meetsMoq === false) {
-                                                            setError(`Minimum order quantity is ${formatMoqForBasis(quote.moq, seller)}.`);
-                                                            return;
-                                                        }
-                                                        if (maxQuantity != null && Number(quantity) > Number(maxQuantity)) {
-                                                            setError(`You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller.`);
-                                                            return;
-                                                        }
-                                                        const confirmed = await pendingQuoteRef.current;
-                                                        const finalQuote = confirmed || quote;
-                                                        if (finalQuote && finalQuote.meetsMoq === false) {
-                                                            setError(`Minimum order quantity is ${formatMoqForBasis(finalQuote.moq, seller)}.`);
-                                                            return;
-                                                        }
-                                                        setSubmitting(true);
-                                                        const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
-                                                        setSubmitting(false);
-                                                        if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
-                                                        onClose();
-                                                        navigate("/cart");
-                                                    }}
-                                                    disabled={submitting || belowMoq || outOfStock || exceedsStock}
-                                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-4 py-3.5 text-[13.5px] font-bold disabled:opacity-50"
-                                                    style={{ borderColor: C.hair, color: C.ink }}
-                                                >
-                                                    <ShoppingCart className="h-4 w-4" /> Add to cart
-                                                </button>
-                                            )}
-
-                                            <button
-                                                type="button"
-                                                onClick={() => goToShipping(null)}
-                                                disabled={submitting || (!isSample && (belowMoq || outOfStock || exceedsStock))}
-                                                className="flex flex-[1.4] items-center justify-center gap-1.5 rounded-xl px-5 py-3.5 text-[14px] font-bold text-white shadow-sm transition-opacity duration-150 disabled:opacity-50"
-                                                style={{ background: isSample ? "linear-gradient(135deg, #006F83 0%, #047084 100%)" : "linear-gradient(135deg, #000000 0%, #000000 100%)" }}>
-                                                Continue
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="flex gap-2.5">
-                                            <button
-                                                type="button"
-                                                onClick={goBackToDetails}
-                                                disabled={submitting}
-                                                className="flex items-center justify-center gap-1 rounded-xl border px-4 py-3.5 text-[13.5px] font-bold disabled:opacity-50"
-                                                style={{ borderColor: C.hair, color: C.ink }}
+                        {/* ============ STICKY FOOTER (thumb zone) ============ */}
+                        <div className="shrink-0 border-t bg-white px-4 pb-3 pt-3 sm:px-5" style={{ borderColor: C.hairSoft }}>
+                            <div className="mb-3 grid grid-cols-2 gap-3">
+                                {/* Quantity */}
+                                <div className="min-w-0">
+                                    {isSample ? (
+                                        <>
+                                            <p
+                                                className="mb-1 text-[10px] font-extrabold uppercase tracking-[0.1em]"
+                                                style={{ color: C.muted }}
                                             >
-                                                <ChevronLeft className="h-4 w-4" /> Back
-                                            </button>
-
-                                            <button
-                                                onClick={() => handleSubmit(pendingOrderType || undefined)}
-                                                disabled={finalCtaDisabled}
-                                                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-5 py-3.5 text-[14px] font-bold text-white shadow-sm transition-opacity duration-150 disabled:opacity-50"
-                                                style={{ background: finalCtaBackground }}>
-                                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : finalCtaLabel}
-                                            </button>
-                                        </div>
+                                                Sample quantity
+                                            </p>
+                                            <p
+                                                className="text-[15px] font-extrabold tabular-nums"
+                                                style={{ color: C.ink }}
+                                            >
+                                                {quantity} {seller?.unit}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <p
+                                                className="mb-1 truncate text-[10px] font-extrabold uppercase tracking-[0.1em]"
+                                                style={{ color: C.muted }}
+                                            >
+                                                Quantity · {basisLabel}
+                                            </p>
+                                            <Stepper
+                                                value={quantity}
+                                                onChange={setQuantity}
+                                                min={minQuantity}
+                                                max={maxQuantity}
+                                            />
+                                        </>
                                     )}
-                                </>
-                            )}
+                                </div>
+
+                                {/* Total payable */}
+                                <div className="min-w-0 text-right">
+                                    <p
+                                        className="mb-1 text-[10px] font-extrabold uppercase tracking-[0.1em]"
+                                        style={{ color: C.muted }}
+                                    >
+                                        Total payable
+                                    </p>
+                                    <p
+                                        className="text-[21px] font-extrabold leading-none tabular-nums tracking-wide"
+                                        style={{ color: C.ink }}
+                                    >
+                                        {quote ? `₹${inr(quote.subtotal)}` : "—"}
+                                    </p>
+                                </div>
+                            </div>
+
+
+                            <div className="flex gap-2.5">
+                                {!isSample && (
+                                    <button type="button" onClick={handleAddToCart} aria-label="Add to cart"
+                                        disabled={submitting || belowMoq || outOfStock || exceedsStock}
+                                        className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border px-4 py-3.5 text-[13.5px] font-bold disabled:opacity-50"
+                                        style={{ borderColor: C.hair, color: C.ink }}>
+                                        <ShoppingCart className="h-4 w-4" /> <span className="inline">Add to cart</span>
+                                    </button>
+                                )}
+                                <button type="button" onClick={handlePrimary} disabled={ctaDisabled}
+                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-5 py-3.5 text-[14px] font-bold text-white shadow-sm transition-opacity duration-150 disabled:opacity-50"
+                                    style={{ background: ctaBackground }}>
+                                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : ctaLabel}
+                                </button>
+                            </div>
                         </div>
+
+                        {toast && (
+                            <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center">
+                                <span className="rounded-full bg-black px-3.5 py-1.5 text-[12px] font-bold text-white shadow-lg">{toast}</span>
+                            </div>
+                        )}
                     </>
                 )}
             </motion.div>
+
             {showTransportModal && (
                 <TransportPreferenceModal
                     open
@@ -1636,18 +1488,23 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
                     destState={effectiveState}
                     destAddressId={selectedAddressId}
                     removedNotice={transportRemovedNotice}
-                    onClose={() => { setShowTransportModal(false); setTransportRemovedNotice(null); }}
-                    onAddressChange={setDesiredAddressId}
+                    onClose={() => { autoPlaceRef.current = false; setShowTransportModal(false); setTransportRemovedNotice(null); }}
+                    onAddressChange={() => { /* address now lives in BuyerAddressContext */ }}
                     onResolved={(result) => {
+                        setShowTransportModal(false);
+                        setTransportRemovedNotice(null);
                         if (result?.pending) {
+                            autoPlaceRef.current = false;
                             setTransportPreference(null);
                             setPendingTransportProposal(result);
-                        } else {
-                            setTransportPreference(result);
-                            setPendingTransportProposal(null);
+                            return;
                         }
-                        setTransportRemovedNotice(null);
-                        setShowTransportModal(false);
+                        setTransportPreference(result);
+                        setPendingTransportProposal(null);
+                        if (autoPlaceRef.current && result?.routeOptionId) {
+                            autoPlaceRef.current = false;
+                            handleSubmit({ routeOptionId: result.routeOptionId });
+                        }
                     }}
                     onIntentSource="buynow"
                     onCaptureIntent={() => ({
@@ -1657,9 +1514,26 @@ export default function BuyNowModal({ seller, product, onClose, resumeIntent: re
                         quantity, basis, orderMode,
                         notes, addressId: selectedAddressId,
                     })}
-
                 />
             )}
+
+            {/* Image lightbox: portalled above everything (never clipped by the dialog's transform),
+                and its clicks never bubble to the overlay (which would close Buy Now). */}
+            {lightboxSrc && createPortal(
+                <div className="fixed inset-0 z-[1200]" onClick={(e) => e.stopPropagation()}>
+                    <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />
+                </div>,
+                document.body
+            )}
         </motion.div>
+    );
+}
+
+// Self-contained: works whether or not a BuyerAddressProvider already wraps the app.
+export default function BuyNowModal(props) {
+    return (
+        <BuyerAddressProvider>
+            <BuyNowModalInner {...props} />
+        </BuyerAddressProvider>
     );
 }

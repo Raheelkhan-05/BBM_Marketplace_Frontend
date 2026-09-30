@@ -6,6 +6,8 @@ import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import CategoryStrip from "../components/home/CategoryStrip.jsx";
 import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
+import DeliverToBar from "../components/shipping/DeliverToBar.jsx";
+import { BuyerAddressProvider } from "../context/BuyerAddressContext.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
 
 const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
@@ -26,7 +28,6 @@ function useIsMobile() {
 }
 
 export default function HomePage() {
-    const [isRfqOpen, setIsRfqOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [activeCategory, setActiveCategory] = useState(null);
     const navigate = useNavigate();
@@ -52,40 +53,44 @@ export default function HomePage() {
     };
 
     const handleSubmit = (trimmedQuery) => setQuery(trimmedQuery);
-
     const handleImageResolved = (result) => navigate("/browse", { state: { imageResult: result } });
 
     return (
         <div className="min-h-screen bg-[#FFFFFF] text-slate-900 antialiased overflow-x-hidden" style={{ fontFamily: FONT_BODY }}>
-            <SmoothScrollProvider>
-                {/* extra bottom padding on mobile so the last feed items clear the fixed search bar */}
-                <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20 pt-3 space-y-2">
+            <BuyerAddressProvider>
+                <SmoothScrollProvider>
+                    {/* extra bottom padding on mobile so the last feed items clear the fixed search bar */}
+                    <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20 pt-3">
 
-                    {shopSlug && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
+                        {/* Delivery address — fetched once, reused by seller list, Buy Now and Cart */}
+                        <DeliverToBar />
 
-                    {/* Mobile: pinned to the bottom of the screen. Desktop: normal flow, as before. */}
-                    <div
-                        className="fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-white via-white/90 to-transparent px-2.5 pb-3 pt-6 md:static md:z-auto md:bg-none md:p-0"
-                        style={isMobile ? { paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))" } : undefined}
-                    >
-                        <MarketplaceSearchBar
-                            value={query}
-                            onChange={setQuery}
-                            onSubmit={handleSubmit}
-                            onImageResolved={handleImageResolved}
-                            showMediaButtons={false}
-                            onSuggestionSelect={handleSuggestionSelect}
-                            placeholder={shopName ? `Search in ${shopName}…` : undefined}
-                            clearOnSubmit={false}
-                            suggestionsDirection={isMobile ? "up" : "down"}
-                        />
-                    </div>
+                        {shopSlug && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
 
-                    <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
+                        {/* Mobile: pinned to the bottom of the screen. Desktop: normal flow. */}
+                        <div
+                            className="fixed inset-x-0 bottom-0 z-40 bg-gradient-to-t from-white via-white/90 to-transparent px-2.5 pb-3 pt-6 md:static md:z-auto md:bg-none md:p-0 "
+                            style={isMobile ? { paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))" } : undefined}
+                        >
+                            <MarketplaceSearchBar
+                                value={query}
+                                onChange={setQuery}
+                                onSubmit={handleSubmit}
+                                onImageResolved={handleImageResolved}
+                                showMediaButtons={false}
+                                onSuggestionSelect={handleSuggestionSelect}
+                                placeholder={shopName ? `Search in ${shopName}…` : undefined}
+                                clearOnSubmit={false}
+                                suggestionsDirection={isMobile ? "up" : "down"}
+                            />
+                        </div>
 
-                    <HomeProductFeed category={activeCategory} q={query} shopSlug={shopSlug} />
-                </main>
-            </SmoothScrollProvider>
+                        <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
+
+                        <HomeProductFeed category={activeCategory} q={query} shopSlug={shopSlug} />
+                    </main>
+                </SmoothScrollProvider>
+            </BuyerAddressProvider>
 
             <FloatingSellButton to="/seller/sell" label="Sell" />
         </div>

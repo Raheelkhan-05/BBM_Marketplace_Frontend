@@ -147,7 +147,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
     const allActive = !activeCategoryId;
 
     return (
-        <div className="flex gap-2 overflow-x-auto px-0.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex gap-2 overflow-x-auto px-0.5 py-1 mt-2 md:mt-4  mb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <motion.button
                 onClick={() => onSelect(null)}
                 whileTap={{ scale: 0.96 }}

@@ -125,9 +125,10 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
-import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, Lock, Zap, MapPin, Pin, Clock } from "lucide-react";
+import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
 import useFollowedItems from "../../hooks/useFollowedItems";
-import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, fetchBuyerAddresses, updateSellerProductSubmission, fetchBrandItemSellerOffer } from "../../utils/api";
+import { fetchBrandItemsFeed, fetchBrandItemSellers, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints } from "../../utils/api";
+import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
 import CommissionSlider from "../seller/listingForm/CommissionSlider.jsx";
@@ -138,6 +139,7 @@ import { useSocket } from "../../context/SocketContext.jsx";
 import { resizedImageUrl } from "../../utils/imageUrl";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { round2 } from "../../shared/packUnits.js";
+import { checkLocationServiceable } from "../../shared/orderConstraints.js";
 import { InlineWheelField } from "../seller/listingForm/PriceWheelPicker.jsx";
 import EditListingModal from "../seller/listingForm/EditListingModal.jsx";
 import { useLenis } from "../../providers/SmoothScrollProvider.jsx";
@@ -1804,12 +1806,99 @@ function computeListingLowestFromSellers(sellers) {
     return bestIn || bestOut;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DELIVERABILITY: which sellers can actually deliver to the buyer's selected address.
+// Uses `dispatching_locations` on the seller row when the RPC provides it; otherwise
+// lazily loads each seller's order constraints (max 6 at a time) into a module-level
+// cache (60s TTL, shared across dropdowns), so reopening a list is instant.
+// While a seller's data is still loading we treat it as deliverable (no false blocks);
+// checkout re-validates on the server regardless.
+// ─────────────────────────────────────────────────────────────────────────────
+const CONSTRAINTS_TTL_MS = 60000;
+const constraintsCache = new Map();    // submissionId -> { t, locations } | { t, failed: true }
+const constraintsInflight = new Map(); // submissionId -> Promise
+
+function loadDispatchingLocations(submissionId) {
+    const hit = constraintsCache.get(submissionId);
+    if (hit && Date.now() - hit.t < CONSTRAINTS_TTL_MS) return Promise.resolve(hit);
+    if (constraintsInflight.has(submissionId)) return constraintsInflight.get(submissionId);
+
+    const p = Promise.resolve()
+        .then(() => fetchOrderConstraints(submissionId))
+        .then((res) => {
+            const entry = res?.success ? { t: Date.now(), locations: res.dispatchingLocations } : { t: Date.now(), failed: true };
+            constraintsCache.set(submissionId, entry);
+            return entry;
+        })
+        .catch(() => {
+            const entry = { t: Date.now(), failed: true };
+            constraintsCache.set(submissionId, entry);
+            return entry;
+        })
+        .finally(() => { constraintsInflight.delete(submissionId); });
+
+    constraintsInflight.set(submissionId, p);
+    return p;
+}
+
+const hasEmbeddedLocations = (s) => Object.prototype.hasOwnProperty.call(s, "dispatching_locations");
+
+function useSellerDeliverability(sellers, address, enabled) {
+    const [version, setVersion] = useState(0);
+    const aliveRef = useRef(true);
+    useEffect(() => {
+        aliveRef.current = true;
+        return () => { aliveRef.current = false; };
+    }, []);
+
+    const city = address?.city || "";
+    const state = address?.state || "";
+    const pincode = address?.pincode || "";
+    const active = !!enabled && /^\d{6}$/.test(pincode) && !!city && !!state;
+
+    const idsKey = active
+        ? sellers.filter((s) => s.submission_id && !hasEmbeddedLocations(s)).map((s) => s.submission_id).join(",")
+        : "";
+
+    useEffect(() => {
+        if (!active || !idsKey) return;
+        const ids = idsKey.split(",").filter(Boolean);
+        let cancelled = false;
+        (async () => {
+            for (let i = 0; i < ids.length; i += 6) {
+                await Promise.all(ids.slice(i, i + 6).map(loadDispatchingLocations));
+                if (cancelled || !aliveRef.current) return;
+                setVersion((v) => v + 1);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [active, idsKey]);
+
+    // Returns null when deliverable/unknown, or the { serviceable:false, message } status.
+    const check = (s) => {
+        if (!active) return null;
+        let locations;
+        if (hasEmbeddedLocations(s)) {
+            locations = s.dispatching_locations;
+        } else {
+            const hit = constraintsCache.get(s.submission_id);
+            if (!hit || hit.failed) return null;
+            locations = hit.locations;
+        }
+        const status = checkLocationServiceable(locations, { state, city });
+        return status && status.serviceable === false ? status : null;
+    };
+
+    return { check, version };
+}
+
 // Inline seller accordion. `state` is { loading, items, error, total,
 // hasMore } for this item's fetch — items already arrive from the
 // backend correctly ordered for whichever `sortMode` was requested (see
 // loadSellersFor in the parent). `buyerAddress` drives whether the
 // "Fastest delivery" tab is even shown, and is what total_delivery_days
-// on each seller row was computed against.
+// on each seller row was computed against — and which sellers are shown
+// as "Not deliverable" (no buy action at all).
 function SellerDropdown({
     item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange,
     currentUserId, onRequireLogin, isLoggedIn, buyerAddress, navigate,
@@ -1818,9 +1907,9 @@ function SellerDropdown({
     const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
 
     const { ref: listRef, handleWheel } = useLenisPreventToggle();
+    const { check: checkDeliverable, version: deliverabilityVersion } = useSellerDeliverability(items, buyerAddress, isLoggedIn);
 
     // Only the very first fetch (nothing on screen yet) shows the skeleton.
-    // A sort-switch refresh (isRefreshing) keeps existing rows visible.
     const showSkeleton = loading && items.length === 0;
 
     const hasKnownDestination = !!(buyerAddress?.city && buyerAddress?.state);
@@ -1847,13 +1936,13 @@ function SellerDropdown({
         return outOfStock.length ? [...inStock, ...outOfStock] : list;
     }, [items, sortMode, includeGst]);
 
-    // "Fastest" badge must never land on an out-of-stock seller.
+    // "Fastest" badge must never land on an out-of-stock or non-deliverable seller.
     const fastestSubmissionId = useMemo(() => {
         if (sortMode !== "fastest_delivery" || !hasKnownDestination) return null;
-        return sortedItems.find((s) => !isSellerOutOfStock(s))?.submission_id ?? null;
-    }, [sortMode, hasKnownDestination, sortedItems]);
+        return sortedItems.find((s) => !isSellerOutOfStock(s) && !checkDeliverable(s))?.submission_id ?? null;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortMode, hasKnownDestination, sortedItems, deliverabilityVersion]);
 
-    // First out-of-stock row, used to place the small section label.
     const firstOutOfStockId = useMemo(
         () => sortedItems.find(isSellerOutOfStock)?.submission_id ?? null,
         [sortedItems]
@@ -1861,10 +1950,7 @@ function SellerDropdown({
 
     const alreadySelling = item?.has_own_listing === true;
 
-    const [savingOwnPrice, setSavingOwnPrice] = useState(false);
-
     const [savingOwnPriceId, setSavingOwnPriceId] = useState(null);
-
 
     const handleOwnPriceSave = async (submissionId, { basePrice, priceBasis, finalInclusive, marketingCommissionPercent }) => {
         onOwnListingPriceApplied?.(submissionId, finalInclusive);
@@ -1889,8 +1975,6 @@ function SellerDropdown({
         >
             <div className="border-b px-3 py-2.5 sm:px-4" style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}>
                 <div className="flex flex-nowrap items-center justify-end gap-2 pb-2 overflow-x-auto">
-
-
                     {/* Pills stay mounted through a sort switch — never gated on loading */}
                     {items.length > 1 && (
                         <SellerSortToggle value={sortMode} onChange={onSortModeChange} options={availableSortOptions} />
@@ -1903,7 +1987,6 @@ function SellerDropdown({
                     className="max-h-64 overflow-y-auto overscroll-contain seller-scroll"
                     style={{ scrollbarGutter: "stable" }}
                 >
-
                     {showSkeleton ? (
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
                             <div className="flex items-center justify-between gap-3 py-3">
@@ -1922,16 +2005,14 @@ function SellerDropdown({
                     ) : sortedItems.length === 0 ? (
                         <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>No sellers listing this yet.</p>
                     ) : (
-                        // Plain div, no AnimatePresence mode="wait" swap — rows stay
-                        // mounted across a sort switch. Each row is a motion.div with
-                        // `layout`, so when sortedItems' order changes, Framer Motion
-                        // animates each row from its old position to its new one
-                        // (the "subtle pull" reorder) instead of a hard cut.
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft, opacity: isRefreshing ? 0.7 : 1, transition: "opacity 0.15s ease" }}>
                             {sortedItems.map((s) => {
                                 const pricing = sellerPricingForMode(s, sortMode, includeGst);
                                 const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) < moqInSaleUnits(s);
                                 const isOwn = isOwnSellerRow(s, currentUserId);
+                                // Seller doesn't ship to the buyer's selected address -> no buy action at all.
+                                const notDeliverable = !isOwn && !outOfStock && isLoggedIn ? checkDeliverable(s) : null;
+                                const blocked = outOfStock || !!notDeliverable;
                                 const totalDeliveryDays = s.total_delivery_days;
                                 const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
 
@@ -1947,15 +2028,16 @@ function SellerDropdown({
                                             layout
                                             transition={{ layout: { duration: 0.35, ease: EASE } }}
                                             role="button"
-                                            tabIndex={0}
-                                            onClick={() => !outOfStock && !isOwn && onBuySeller(s)}
+                                            tabIndex={blocked ? -1 : 0}
+                                            onClick={() => !blocked && !isOwn && onBuySeller(s)}
                                             onKeyDown={(e) => {
-                                                if ((e.key === "Enter" || e.key === " ") && !outOfStock && !isOwn) { e.preventDefault(); onBuySeller(s); }
+                                                if ((e.key === "Enter" || e.key === " ") && !blocked && !isOwn) { e.preventDefault(); onBuySeller(s); }
                                             }}
-                                            aria-disabled={outOfStock || isOwn}
-                                            className="relative flex items-start gap-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03] cursor-pointer bg-[#FCFBF9] max-md:cursor-default"
-
-                                            style={outOfStock ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" } : undefined}
+                                            aria-disabled={blocked || isOwn}
+                                            className={`relative flex items-start gap-3 py-3 text-left transition-colors duration-150 bg-[#FCFBF9] max-md:cursor-default ${notDeliverable ? "cursor-not-allowed" : "hover:bg-black/[0.03] cursor-pointer"}`}
+                                            style={outOfStock
+                                                ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" }
+                                                : notDeliverable ? { opacity: 0.62 } : undefined}
                                         >
                                             {/* Mobile only: swallow row taps so the slider is the only way to buy */}
                                             <div className="absolute inset-0 md:hidden" onClick={(e) => e.stopPropagation()} />
@@ -1971,8 +2053,8 @@ function SellerDropdown({
                                                 )}
                                                 <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                     {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
-                                                    {totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
-                                                    {!s.is_custom_priced && pricing?.discountPercent > 0
+                                                    {!notDeliverable && totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
+                                                    {!notDeliverable && !s.is_custom_priced && pricing?.discountPercent > 0
                                                         ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
                                                         : ""}
                                                 </p>
@@ -1990,15 +2072,24 @@ function SellerDropdown({
                                                         Edit listing
                                                     </button>
                                                 )}
-
                                             </div>
 
-                                            {/* RIGHT COL — price + buy action */}
+                                            {/* RIGHT COL — price + buy action (or the reason there is none) */}
                                             <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5 text-right">
                                                 {outOfStock ? (
                                                     <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
                                                         OUT OF STOCK
                                                     </span>
+                                                ) : notDeliverable ? (
+                                                    <div className="relative z-10 flex max-w-[9.5rem] flex-col items-end gap-1">
+                                                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide"
+                                                            style={{ background: "#FDECEC", color: "#B3261E" }}>
+                                                            <Ban className="h-2.5 w-2.5" strokeWidth={2.8} /> NOT DELIVERABLE
+                                                        </span>
+                                                        <span className="text-[10.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
+                                                            Doesn't ship to {buyerAddress?.city}{buyerAddress?.state ? `, ${buyerAddress.state}` : ""}
+                                                        </span>
+                                                    </div>
                                                 ) : !isLoggedIn ? (
                                                     <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
                                                 ) : isOwn ? (
@@ -2008,7 +2099,6 @@ function SellerDropdown({
                                                         submitting={savingOwnPriceId === s.submission_id}
                                                         onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)}
                                                     />
-
                                                 ) : (
                                                     <>
                                                         {/* Mobile: price + swipe to buy, full width of the right column */}
@@ -2046,8 +2136,7 @@ function SellerDropdown({
                                 </p>
                             )}
                         </div>
-                    )
-                    }
+                    )}
                 </div>
 
                 {!showSkeleton && !alreadySelling && (
@@ -2099,23 +2188,9 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
 
     const [includeGst, setIncludeGst] = useState(true);
 
-    // The buyer's default saved address — used to power the "Fastest
-    // delivery" sort tab, and to compute a delivery estimate to display
-    // on every seller row regardless of active tab. Fetched once per
-    // session/token change, not per product row.
-    const [buyerAddress, setBuyerAddress] = useState(null);
-    useEffect(() => {
-        if (!token) { setBuyerAddress(null); return; }
-        let cancelled = false;
-        fetchBuyerAddresses(token)
-            .then((res) => {
-                if (cancelled) return;
-                const list = res?.addresses || [];
-                setBuyerAddress(list.find((a) => a.is_default) || list[0] || null);
-            })
-            .catch(() => { if (!cancelled) setBuyerAddress(null); });
-        return () => { cancelled = true; };
-    }, [token]);
+    // Delivery address now comes from the shared context (same one shown at the top of Home),
+    // so changing it there instantly updates delivery estimates in every seller list.
+    const { selectedAddress: buyerAddress } = useBuyerAddress();
 
     // If the buyer's address becomes unavailable (logged out, fetch
     // failed) while "Fastest delivery" was selected, fall back to a mode
@@ -3037,7 +3112,16 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                 {buyState && buyerSellerPayload && (
                     <BuyNowModal
                         seller={buyerSellerPayload}
-                        product={{ name: buyState.item.name, brand_name: buyState.item.brand_name }}
+                        product={{
+                            id: buyState.item.id,
+                            name: buyState.item.name,
+                            brand_name: buyState.item.brand_name,
+                            brand_image: buyState.item.brand_image,
+                            image: buyState.item.image,
+                            model_no: buyState.item.model_no,
+                            category_name: buyState.item.category_name,
+                            subcategory_name: buyState.item.subcategory_name,
+                        }}
                         onClose={() => setBuyState(null)}
                     />
                 )}
