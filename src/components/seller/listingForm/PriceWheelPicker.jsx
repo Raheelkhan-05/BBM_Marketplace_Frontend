@@ -38,6 +38,7 @@ import { useLenis } from "../../../providers/SmoothScrollProvider.jsx";
 import { X, Minus, Plus, Check } from "lucide-react";
 import { C, EASE } from "./FormPrimitives.jsx";
 
+export const WHEEL_SCROLL_ENABLED = false;
 const LIVE_COMMIT_DEBOUNCE_MS = 350;
 export const ITEM_HEIGHT = 44;
 const VISIBLE_ROWS = 5;
@@ -403,7 +404,7 @@ export function InlineWheelField({ seed, step, filterFn, formatValue, prefix, su
                     onInputBlur={handleInputBlur} onEnter={handleEnter} onCancelEdit={() => cancelEdit(true)} />
             </div>
             <p className="text-center text-[10px] font-semibold leading-snug tracking-wide" style={{ color: draftError ? ERROR_RED : C.muted }}>
-                {draftError || "Tap to type, or slide to scroll."}
+                {draftError || (WHEEL_SCROLL_ENABLED ? "Tap to type, or slide to scroll" : "Tap to type")}
             </p>
         </div>
     );
@@ -507,29 +508,16 @@ export function WheelColumn({ wheel, formatValue, editing, draft, hasError, pref
             <div
                 ref={containerRef}
                 onScroll={onScroll}
-                data-lenis-prevent=""
-                // Stop the gesture here — never let it reach Lenis or the
-                // page's own scroll. `overscrollBehavior: contain` is what
-                // stops "scroll chaining": once this inner list hits its
-                // own top/bottom, browsers by default hand the leftover
-                // scroll delta to the parent page, which is exactly what
-                // was making the whole page scroll. `contain` keeps the
-                // leftover delta trapped inside this element instead.
-                // stopPropagation on wheel/touchmove is the second half —
-                // Lenis (and any other page-level scroll listener) attaches
-                // at the document/window level, so even with
-                // data-lenis-prevent set, an event that BUBBLES past this
-                // node can still be picked up upstream; stopping it here
-                // means it never leaves this box at all.
-                onWheel={(e) => e.stopPropagation()}
-                onTouchMove={(e) => e.stopPropagation()}
+                data-lenis-prevent={WHEEL_SCROLL_ENABLED ? "" : undefined}
+                onWheel={WHEEL_SCROLL_ENABLED ? (e) => e.stopPropagation() : undefined}
+                onTouchMove={WHEEL_SCROLL_ENABLED ? (e) => e.stopPropagation() : undefined}
                 className="hide-scrollbar absolute inset-x-0"
                 style={{
                     top: -PADDING,
                     height: WHEEL_HEIGHT,
-                    overflowY: "auto",
-                    overscrollBehavior: "contain",
-                    scrollSnapType: "y mandatory",
+                    overflowY: WHEEL_SCROLL_ENABLED ? "auto" : "hidden",
+                    overscrollBehavior: WHEEL_SCROLL_ENABLED ? "contain" : "auto",
+                    scrollSnapType: WHEEL_SCROLL_ENABLED ? "y mandatory" : "none",
                     WebkitOverflowScrolling: "touch",
                     scrollbarWidth: "none",
                     msOverflowStyle: "none",
@@ -838,24 +826,26 @@ export default function PriceWheelPicker({
                 )}
 
 
-                <div className="mt-3 flex items-center justify-center gap-1.5">
-                    {stepOptions.map((s) => (
-                        <button
-                            key={s.value}
-                            type="button"
-                            onClick={() => { if (editing) cancelEdit(); wheel.jumpTo(wheel.selected, s.value); }}
-                            className="rounded-full border px-3 py-1 text-[11.5px] font-bold tracking-wide transition-colors duration-150"
-                            style={wheel.step === s.value
-                                ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary }
-                                : { borderColor: C.hair, color: C.muted }}
-                        >
-                            Step {s.label}
-                        </button>
-                    ))}
-                </div>
+                {WHEEL_SCROLL_ENABLED && (
+                    <div className="mt-3 flex items-center justify-center gap-1.5">
+                        {stepOptions.map((s) => (
+                            <button
+                                key={s.value}
+                                type="button"
+                                onClick={() => { if (editing) cancelEdit(); wheel.jumpTo(wheel.selected, s.value); }}
+                                className="rounded-full border px-3 py-1 text-[11.5px] font-bold tracking-wide transition-colors duration-150"
+                                style={wheel.step === s.value
+                                    ? { borderColor: C.secondary, background: `${C.secondary}14`, color: C.secondary }
+                                    : { borderColor: C.hair, color: C.muted }}
+                            >
+                                Step {s.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 <div className="mt-3 flex w-full items-center justify-center gap-3">
-                    <NudgeButton icon={Minus} onClick={() => nudge(-1)} />
+                    {WHEEL_SCROLL_ENABLED && <NudgeButton icon={Minus} onClick={() => nudge(-1)} />}
                     <WheelColumn
                         wheel={wheel}
                         formatValue={formatValue}
@@ -870,14 +860,16 @@ export default function PriceWheelPicker({
                         onEnter={handleConfirm}
                         onCancelEdit={cancelEdit}
                     />
-                    <NudgeButton icon={Plus} onClick={() => nudge(1)} />
+                    {WHEEL_SCROLL_ENABLED && <NudgeButton icon={Plus} onClick={() => nudge(1)} />}
                 </div>
 
                 <p
                     className="mt-2 text-center text-[11px] font-semibold leading-snug tracking-wide"
                     style={{ color: draftError ? ERROR_RED : C.muted }}
                 >
-                    {draftError || (editing ? "Type a value, then tap the button below." : "Tap the highlighted value to type it in.")}
+                    {draftError || (editing
+                        ? "Type a value, then tap the button below."
+                        : WHEEL_SCROLL_ENABLED ? "Tap the highlighted value to type it in." : "Tap the value to type it in.")}
                 </p>
 
                 <button
