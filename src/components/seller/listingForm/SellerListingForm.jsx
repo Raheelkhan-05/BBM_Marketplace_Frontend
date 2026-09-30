@@ -1249,7 +1249,7 @@ export default function SellerListingForm({
     const showSection = (key) => !resolvedOnlySection || resolvedOnlySection === key;
 
     return (
-        <div className="flex flex-col gap-3 pb-24 sm:gap-3.5" onKeyDown={handleRootKeyDown}>
+        <div className="flex flex-col gap-3 pb-16 sm:gap-3.5" onKeyDown={handleRootKeyDown}>
             {error && (
                 <div className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12px] font-semibold leading-snug" style={{ background: "rgba(199,31,17,0.08)", color: C.danger }}>
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}

@@ -604,33 +604,49 @@ function PriceChip({ rows, onEdit, saving }) {
 // Owner-only facts: stock, MOQ, lead time, promo budget, visibility.
 // Mobile: 3 cells on the first line, 2 wider cells on the second.
 // sm and up: all 5 in one line. Hairlines come from the 1px grid gap.
-function OwnerInfoStrip({ cells }) {
+function OwnerInfoStrip({ cells, activeSection, onSelect }) {
     return (
         <div
             className="grid min-w-0 grid-cols-6 gap-px overflow-hidden rounded-xl border sm:grid-cols-5"
             style={{ borderColor: C.hair, background: C.hair }}
         >
-            {cells.map(({ key, label, Icon, value, tone }, i) => (
-                <div
-                    key={key}
-                    className={`flex min-w-0 flex-col items-center justify-center gap-0.5 px-2 py-2 text-center ${i < 3 ? "col-span-2" : "col-span-3"} sm:col-span-1`}
-                    style={{ background: C.surface }}
-                >
-                    <span className="flex max-w-full items-center gap-1 text-[8.5px] font-bold uppercase leading-none tracking-wider" style={{ color: C.muted }}>
-                        <Icon className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} />
-                        <span className="truncate">{label}</span>
-                    </span>
-                    <span className="w-full truncate text-[12px] font-extrabold leading-tight tracking-wide" style={{ color: tone || C.ink }}>
-                        {value}
-                    </span>
-                </div>
-            ))}
+            {cells.map(({ key, label, Icon, value, tone, section }, i) => {
+                const isActive = !!activeSection && activeSection === section;
+                return (
+                    <button
+                        key={key}
+                        type="button"
+                        onClick={() => onSelect?.(section)}
+                        aria-label={`Edit ${label}`}
+                        aria-pressed={isActive}
+                        className={`flex min-w-0 cursor-pointer flex-col items-center justify-center gap-0.5 px-2 py-2 text-center transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${isActive ? "" : "hover:bg-white active:bg-white"} ${i < 3 ? "col-span-2" : "col-span-3"} sm:col-span-1`}
+                        style={{
+                            background: isActive ? C.primary : C.surface,
+                            ["--tw-ring-color"]: `${C.primary}55`,
+                        }}
+                    >
+                        <span
+                            className="flex max-w-full items-center gap-1 text-[8.5px] font-bold uppercase leading-none tracking-wider transition-colors duration-150"
+                            style={{ color: isActive ? "rgba(255,255,255,0.65)" : C.muted }}
+                        >
+                            <Icon className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} />
+                            <span className="truncate">{label}</span>
+                        </span>
+                        <span
+                            className="w-full truncate text-[12px] font-extrabold leading-tight tracking-wide transition-colors duration-150"
+                            style={{ color: isActive ? "#fff" : tone || C.ink }}
+                        >
+                            {value}
+                        </span>
+                    </button>
+                );
+            })}
         </div>
     );
 }
 
 function ListingRow({
-    it, idx, includeGst, isHighlighted, isEditing, editor,
+    it, idx, includeGst, isHighlighted, isEditing, editingSection, editor,
     togglingId, savingPriceId,
     onToggleEdit, onActivate, onDeactivate, onOpenImage, onShare, onSavePrice,
 }) {
@@ -693,12 +709,12 @@ function ListingRow({
                 : { value: `${fmtQty(stock)} ${compact}`, tone: sState === "low" ? "#b45309" : C.ink };
 
     const cells = [
-        { key: "stock", label: "Stock", Icon: Boxes, ...stockCell },
-        { key: "moq", label: "MOQ", Icon: Package, value: it.moq != null ? `${fmtQty(it.moq)} ${compact}` : "—" },
-        { key: "lead", ...leadCell },
-        { key: "promo", label: "Promo budget", Icon: Megaphone, value: promo != null && promo !== "" ? `${promo}%` : "—" },
+        { key: "stock", section: "fulfilment", label: "Stock", Icon: Boxes, ...stockCell },
+        { key: "moq", section: "packaging", label: "MOQ", Icon: Package, value: it.moq != null ? `${fmtQty(it.moq)} ${compact}` : "—" },
+        { key: "lead", section: "fulfilment", ...leadCell },
+        { key: "promo", section: "pricing", label: "Promo budget", Icon: Megaphone, value: promo != null && promo !== "" ? `${promo}%` : "—" },
         {
-            key: "vis", label: "Visibility", Icon: Eye,
+            key: "vis", section: "customPricing", label: "Visibility", Icon: Eye,
             value: partial ? "Partial" : "Full", tone: partial ? "#b45309" : "#15803d",
         },
     ];
@@ -793,7 +809,11 @@ function ListingRow({
 
                         {/* OWNER INFO STRIP */}
                         <div className="mt-3" onClick={stop}>
-                            <OwnerInfoStrip cells={cells} />
+                            <OwnerInfoStrip
+                                cells={cells}
+                                activeSection={isEditing ? editingSection : null}
+                                onSelect={(section) => onToggleEdit(it.id, section)}
+                            />
                         </div>
                     </div>
 
@@ -901,6 +921,9 @@ export default function SellerManageListingsPage() {
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [editingId, setEditingId] = useState(null);
+    // Which part of the edit form opens: null = the full form, otherwise a
+    // section key ("fulfilment" | "packaging" | "pricing" | "customPricing").
+    const [editingSection, setEditingSection] = useState(null);
     const [query, setQuery] = useState("");
     const [needsRestockOnly, setNeedsRestockOnly] = useState(false);
     const [includeGst, setIncludeGst] = useState(true);
@@ -1041,14 +1064,29 @@ export default function SellerManageListingsPage() {
         }
     }
 
-    // One editor open at a time. Tapping the same row again collapses it.
-    function toggleEdit(id) {
-        setEditingId((prev) => (prev === id ? null : id));
+    // One editor open at a time.
+    // - Header / "Edit details" (no section): opens the full form, or closes it.
+    // - A strip cell (section): opens just that section; tapping the same cell
+    //   again closes it, tapping a different cell switches sections.
+    function toggleEdit(id, section = null) {
+        if (editingId === id && (section === null || section === editingSection)) {
+            setEditingId(null);
+            setEditingSection(null);
+            return;
+        }
+        setEditingId(id);
+        setEditingSection(section);
+    }
+
+    function closeEditor() {
+        setEditingId(null);
+        setEditingSection(null);
     }
 
     function handleEditSaved(id, submission, message) {
         patchItem(id, submission);
         setEditingId(null);
+        setEditingSection(null);
         setToastMsg(message);
         reload({ silent: true });
     }
@@ -1180,14 +1218,16 @@ export default function SellerManageListingsPage() {
                                                 includeGst={includeGst}
                                                 isHighlighted={highlightedIds.has(it.id)}
                                                 isEditing={editingId === it.id}
+                                                editingSection={editingSection}
                                                 editor={
                                                     editingId === it.id ? (
                                                         <EditListingModal
                                                             inline
                                                             token={token}
                                                             submissionId={it.id}
-                                                            focusSection={null}
-                                                            onClose={() => setEditingId(null)}
+                                                            key={`${it.id}-${editingSection || "all"}`}
+                                                            focusSection={editingSection}
+                                                            onClose={closeEditor}
                                                             onSaved={handleEditSaved}
                                                         />
                                                     ) : null
