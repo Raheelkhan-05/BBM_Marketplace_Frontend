@@ -1841,7 +1841,7 @@ export default function SellerListingForm({
 
             {showSection("marketing") && (
                 <SectionCard id="section-marketing" icon={Megaphone} title="Marketing & Promotion"
-                    subtitle="Choose how we promote this product"
+                    subtitle=""
                     open={resolvedOnlySection ? true : openSection === "marketing"} onOpenChange={(v) => handleSectionToggle("marketing", v)}
                     missingCount={missingCountBySection.marketing} totalCount={totalCountBySection.marketing}
                     readOnly={readOnly}>
