@@ -1169,12 +1169,6 @@ export default function SellerManageListingsPage() {
                     </div>
 
                     <div className="flex items-center justify-between gap-2 px-1">
-                        <FilterChip
-                            label="Needs restock"
-                            active={needsRestockOnly}
-                            onClick={() => setNeedsRestockOnly((v) => !v)}
-                            count={stats.low + stats.out}
-                        />
                         <div className="flex items-center gap-2">
                             <FilterChip label="Needs restock" active={needsRestockOnly}
                                 onClick={() => setNeedsRestockOnly((v) => !v)} count={stats.low + stats.out} />
