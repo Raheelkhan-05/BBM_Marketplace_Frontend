@@ -168,3 +168,22 @@ export async function searchGeoLocationsByType(q, type) {
     const res = await fetch(`${API_BASE}/geo/search?${params}`);
     return res.json();
 }
+
+export async function fetchAllMySubmissions(token) {
+    const items = [];
+    let page = 1, totalPages = 1;
+    do {
+        const res = await authedJson(`/seller/catalog/submissions?page=${page}&pageSize=100`, token);
+        if (!res?.success) return { success: false, message: res?.message || "Couldn't load listings." };
+        items.push(...(res.items || []));
+        totalPages = res.pagination?.totalPages || 1;
+        page += 1;
+    } while (page <= totalPages && page <= 30);
+    return { success: true, items };
+}
+
+export async function bulkUpdateMarketing(token, { submissionIds, mode, services }) {
+    return authedJson(`/seller/catalog/marketing/bulk`, token, {
+        method: "PATCH", body: JSON.stringify({ submissionIds, mode, services }),
+    });
+}

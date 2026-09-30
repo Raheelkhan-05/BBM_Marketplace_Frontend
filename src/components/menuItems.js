@@ -7,6 +7,7 @@
 import {
     Home, PackagePlus, Boxes, Store, FileText, HandCoins,
     Truck, ShoppingCart, MessageCircle,
+    Megaphone,
 } from "lucide-react";
 
 export const MENU_ROUTES = {
@@ -19,6 +20,7 @@ export const MENU_ROUTES = {
     creditRequest: "/credit",      // TODO confirm
     transport: "/transport-library",
     cart: "/cart",
+    marketing: "/seller/marketing",
     purchaseOrders: "/orders?tab=purchases",
     chats: "/chat",
 };
@@ -28,6 +30,9 @@ export const MENU_ROUTES = {
 const matchMyStore = (p) =>
     startsWithRoute(MENU_ROUTES.myStore)(p) ||
     startsWithRoute(MENU_ROUTES.myStoreOnboarding)(p);
+
+const matchMarketing = (p) =>
+    startsWithRoute(MENU_ROUTES.marketing)(p);
 
 const badgeLabel = (n) => (n > 0 ? (n > 9 ? "9+" : n) : null);
 const startsWithRoute = (route) => (p) => p === route || p.startsWith(route + "/");
@@ -56,6 +61,7 @@ export function buildMenuItems({
             item("list-product", "List a product", PackagePlus, MENU_ROUTES.listProduct, 0),
             item("manage-products", "Manage products", Boxes, MENU_ROUTES.manageProducts, 0, productsBadge),
             item("my-store", "My store", Store, MENU_ROUTES.myStore, 0, 0, matchMyStore),
+            item("marketing", "Marketing", Megaphone, MENU_ROUTES.marketing, 0, 0, matchMarketing),
             item("sales-orders", "Sales orders", FileText, MENU_ROUTES.salesOrders, 0, salesUnread, matchSalesOrders),
         ]
         : [item("my-store", "My store", Store, MENU_ROUTES.myStoreOnboarding, 0, 0, matchMyStore)];

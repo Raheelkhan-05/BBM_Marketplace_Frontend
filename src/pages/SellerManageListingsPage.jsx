@@ -47,7 +47,6 @@ import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import EditListingModal from "../components/seller/listingForm/EditListingModal.jsx";
-import CommissionSlider from "../components/seller/listingForm/CommissionSlider.jsx";
 import { InlineWheelField } from "../components/seller/listingForm/PriceWheelPicker.jsx";
 import { saleUnitLabel, round2, deriveDisplayPrices, hasOuterPack } from "../shared/packUnits.js";
 import { resizedImageUrl } from "../utils/imageUrl.js";
@@ -64,7 +63,7 @@ const C = {
     teal: "#006F83",
     surface: "#FCFBF9",
 };
-const SLIDER_C = { ...C, warn: "#a16207", ok: "#059669" };
+
 const EASE = [0.16, 1, 0.3, 1];
 const LOW_STOCK_THRESHOLD = 10;
 
@@ -413,6 +412,7 @@ function SlideToConfirm({ label, onConfirm, resetKey, disabled = false }) {
 function EditPriceModal({ it, includeGst, onApply, onClose }) {
     useLenisScrollLock();
 
+    const navigate = useNavigate();
     const packSize = Number(it.pack_size) > 0 ? Number(it.pack_size) : 1;
     const masterPackSize = Number(it.units_per_master_pack) > 0 ? Number(it.units_per_master_pack) : 1;
     const hasOuter = hasOuterPack(it.units_per_master_pack);
@@ -421,7 +421,7 @@ function EditPriceModal({ it, includeGst, onApply, onClose }) {
 
     const canonicalInclusive = round2(Number(it.price) || 0);
     const canonicalPerSaleUnit = round2(includeGst ? canonicalInclusive : canonicalInclusive / (1 + gst / 100));
-    const canonicalCommission = Number(it.marketing_commission_percent) || 0.25;
+
 
     const reference = useMemo(
         () => threeTierFromSaleUnit(canonicalPerSaleUnit, packSize, masterPackSize, hasOuter),
@@ -432,7 +432,7 @@ function EditPriceModal({ it, includeGst, onApply, onClose }) {
     const rawPerSaleUnitRef = useRef(canonicalPerSaleUnit);
     const [values, setValues] = useState(reference);
     const [perSaleUnit, setPerSaleUnit] = useState(canonicalPerSaleUnit);
-    const [commissionPercent, setCommissionPercent] = useState(canonicalCommission);
+
 
     const commitLevel = (level) => (v) => {
         const rawNext = saleUnitFromLevel(level, v, packSize, masterPackSize, hasOuter);
@@ -442,8 +442,9 @@ function EditPriceModal({ it, includeGst, onApply, onClose }) {
     };
 
     const priceDirty = round2(perSaleUnit) !== canonicalPerSaleUnit;
-    const commissionDirty = round2(commissionPercent) !== round2(canonicalCommission);
-    const dirty = priceDirty || commissionDirty;
+    const dirty = priceDirty;
+    const resetKey = `${perSaleUnit}`;
+
 
     const handleConfirm = () => {
         const exactPerSaleUnit = rawPerSaleUnitRef.current;
@@ -453,7 +454,6 @@ function EditPriceModal({ it, includeGst, onApply, onClose }) {
             basePrice: newBasePrice,
             priceBasis: hasOuter ? "per_master_pack" : "per_pack",
             finalInclusive,
-            marketingCommissionPercent: commissionDirty ? round2(commissionPercent) : undefined,
         });
     };
 
@@ -510,15 +510,24 @@ function EditPriceModal({ it, includeGst, onApply, onClose }) {
                     ))}
                 </div>
 
-                <div className="mt-4">
-                    <CommissionSlider value={commissionPercent} onChange={setCommissionPercent} C={SLIDER_C} isErr={false} hideHint />
-                </div>
+                <button
+                    type="button"
+                    onClick={() => { onClose(); navigate("/seller/marketing"); }}
+                    className="mt-4 flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left"
+                    style={{ borderColor: C.hair, background: C.hairSoft }}
+                >
+                    <span className="flex items-center gap-2 text-[12px] font-bold tracking-wide" style={{ color: C.ink }}>
+                        <Megaphone className="h-3.5 w-3.5" />
+                        Promotion {it.marketing_commission_percent ?? "—"}%
+                    </span>
+                    <span className="text-[11px] font-bold" style={{ color: C.muted }}>Manage →</span>
+                </button>
 
                 <div className="mt-5">
                     <SlideToConfirm
-                        resetKey={`${perSaleUnit}-${commissionPercent}`}
+                        resetKey={resetKey}
                         disabled={!dirty}
-                        label={dirty ? "Slide to confirm changes" : "Change something above first"}
+                        label={dirty ? "Slide to confirm changes" : "Change the price above first"}
                         onConfirm={handleConfirm}
                     />
                 </div>
@@ -698,6 +707,8 @@ function ListingRow({
                 ? { label: "Dispatch", Icon: Clock, value: daysText(leadNum) }
                 : { label: "Dispatch", Icon: Zap, value: "Ready to ship", tone: "#15803d" };
     const promo = it.marketing_commission_percent;
+    const promoLegacy = !Array.isArray(it.marketing_services) || !it.marketing_services.length;
+
     const partial = it.visibility_mode === "restricted";
 
     const stockCell = isMTO
@@ -712,10 +723,14 @@ function ListingRow({
         { key: "stock", section: "fulfilment", label: "Stock", Icon: Boxes, ...stockCell },
         { key: "moq", section: "packaging", label: "MOQ", Icon: Package, value: it.moq != null ? `${fmtQty(it.moq)} ${compact}` : "—" },
         { key: "lead", section: "fulfilment", ...leadCell },
-        { key: "promo", section: "pricing", label: "Promo budget", Icon: Megaphone, value: promo != null && promo !== "" ? `${promo}%` : "—" },
         {
             key: "vis", section: "customPricing", label: "Visibility", Icon: Eye,
             value: partial ? "Partial" : "Full", tone: partial ? "#b45309" : "#15803d",
+        },
+        {
+            key: "promo", section: "marketing", label: "Promo budget", Icon: Megaphone,
+            value: promo != null && promo !== "" ? `${promo}%${promoLegacy ? " · legacy" : ""}` : "—",
+            tone: promoLegacy ? "#b45309" : undefined,
         },
     ];
 
@@ -1035,24 +1050,17 @@ export default function SellerManageListingsPage() {
 
     // Saves a price / promo change made in the price modal. The row updates
     // instantly; if the server rejects it, the old values are restored.
-    async function handleSavePrice(it, { basePrice, priceBasis, finalInclusive, marketingCommissionPercent }) {
-        const prev = {
-            price: it.price,
-            base_price: it.base_price,
-            marketing_commission_percent: it.marketing_commission_percent,
-        };
-        patchItem(it.id, {
-            price: finalInclusive,
-            base_price: basePrice,
-            ...(marketingCommissionPercent !== undefined ? { marketing_commission_percent: marketingCommissionPercent } : {}),
-        });
+    async function handleSavePrice(it, { basePrice, priceBasis, finalInclusive }) {
+        const prev = { price: it.price, base_price: it.base_price };
+        patchItem(it.id, { price: finalInclusive, base_price: basePrice });
         setSavingPriceId(it.id);
 
-        const payload = { basePrice: String(basePrice), priceBasis, gstInclusive: false };
-        if (marketingCommissionPercent !== undefined) payload.marketingCommissionPercent = String(marketingCommissionPercent);
-
         let res = null;
-        try { res = await updateSellerProductSubmission(token, it.id, payload); } catch { res = null; }
+        try {
+            res = await updateSellerProductSubmission(token, it.id, {
+                basePrice: String(basePrice), priceBasis, gstInclusive: false,
+            });
+        } catch { res = null; }
         setSavingPriceId(null);
 
         if (res?.success) {
@@ -1167,6 +1175,11 @@ export default function SellerManageListingsPage() {
                             onClick={() => setNeedsRestockOnly((v) => !v)}
                             count={stats.low + stats.out}
                         />
+                        <div className="flex items-center gap-2">
+                            <FilterChip label="Needs restock" active={needsRestockOnly}
+                                onClick={() => setNeedsRestockOnly((v) => !v)} count={stats.low + stats.out} />
+                            <FilterChip label="Marketing" active={false} onClick={() => navigate("/seller/marketing")} />
+                        </div>
                         <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
                     </div>
                 </div>

@@ -400,7 +400,7 @@ function OwnListingPriceModal({ seller, includeGst, submitting, onApply, onClose
 
                 <div className="mt-5">
                     <SlideToConfirm
-                        resetKey={`${perSaleUnit}-${commissionPercent}`}
+                        resetKey={`${perSaleUnit}`}
                         busy={submitting}
                         disabled={!dirty}
                         label={dirty ? "Slide to confirm changes" : "Change something above first"}

@@ -77,11 +77,13 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
     Loader2, CheckCircle2, AlertTriangle, ImagePlus,
-    Info, Pencil, UploadCloud, Tag,
+    Info, Pencil, UploadCloud, Tag, Megaphone,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { uploadSellerFile } from "../../../utils/api.js";
 import BuyerAccessPricing from "./BuyerAccessPricing.jsx";
+import MarketingServicePicker from "./MarketingServicePicker.jsx";
+import { normalizeServiceKeys, sumServicePercent } from "../../../shared/marketingServices.js";
 import { fetchCommissionInfo, fetchDefaultListingTemplates, lookupPincode, findBrandItemMatch } from "../../../utils/sellerListingApi.js";
 import {
     C, TextField, TextAreaField, SelectField, ToggleField, ChipToggleGroup, RepeatableRows,
@@ -99,7 +101,6 @@ import { fetchLowestPriceForBrandItem } from "../../../utils/api.js";
 import BrandCombobox from "./BrandCombobox.jsx";
 import DispatchingLocationsPicker from "./DispatchingLocationsPicker.jsx";
 import PolicySelect from "./PolicySelect.jsx";
-import CommissionSlider from "./CommissionSlider.jsx";
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -125,7 +126,9 @@ export const DEFAULT_LISTING_FORM = {
     basePrice: "", priceBasis: "per_pack", gstInclusive: null,
     freightIncluded: null,
 
-    marketingCommissionPercent: "",
+    marketingServices: normalizeServiceKeys([]),   // new listings start on the required service
+    marketingLegacyPercent: null,
+
 
     sampleAvailable: null, sampleQuantity: "", sampleUnitBasis: "per_unit", // was "per_pack"
 
@@ -149,7 +152,8 @@ export const DEFAULT_LISTING_FORM = {
 const SECTION_FIELD_MAP = {
     product: ["productName", "brandName", "images"],
     packaging: ["unit", "packSize", "hasOuterPack", "masterPackSize", "moq", "sampleAvailable", "sampleQuantity"],
-    pricing: ["gstPercent", "gstInclusive", "basePrice", "freightIncluded", "marketingCommissionPercent"],
+    pricing: ["gstPercent", "gstInclusive", "basePrice", "freightIncluded"],
+    marketing: ["marketingServices"],
     fulfilment: ["stockType", "stockQuantity", "productionLeadTimeDays"],
     terms: ["returnPolicyKey", "warrantyKey"],
     delivery: ["dispatchingLocations"],
@@ -193,7 +197,7 @@ const FIELD_ORDER = [
     // Packaging
     "unit", "packSize", "hasOuterPack", "masterPackSize", "moq", "sampleAvailable", "sampleQuantity",
     // Pricing
-    "gstPercent", "basePrice", "gstInclusive", "freightIncluded", "marketingCommissionPercent",
+    "gstPercent", "basePrice", "gstInclusive", "freightIncluded", "marketingServices",
     // Fulfilment
     "stockType", "stockQuantity", "productionLeadTimeDays",
     // Terms
@@ -451,11 +455,8 @@ function computeMissing(form) {
     add(form.gstInclusive == null, "gstInclusive", "Price includes GST");
     add(!(Number(form.basePrice) > 0), "basePrice", "Base price");
     add(form.freightIncluded == null, "freightIncluded", "Freight included");
-    add(
-        !(Number(form.marketingCommissionPercent) >= 0.25 && Number(form.marketingCommissionPercent) <= 100),
-        "marketingCommissionPercent",
-        "Promotion & Visibility Budget %"
-    );
+    add(!Array.isArray(form.marketingServices), "marketingServices", "Marketing & Promotion plan");
+
     add(form.sampleAvailable && !(Number(form.sampleQuantity) > 0), "sampleQuantity", "Sample quantity");
     add(!form.stockType, "stockType", "Fulfilment type");
 
@@ -575,7 +576,10 @@ export default function SellerListingForm({
 
     // The rate that actually drives every calculation below — the seller's
     // own choice, not a platform-wide flat rate anymore.
-    const effectiveCommissionPercent = Number(form.marketingCommissionPercent) || 0;
+    const effectiveCommissionPercent = Array.isArray(form.marketingServices)
+        ? sumServicePercent(form.marketingServices)
+        : (Number(form.marketingLegacyPercent) || 0);
+
 
     useEffect(() => {
         fetchCommissionInfo().then((res) => {
@@ -798,6 +802,7 @@ export default function SellerListingForm({
             const d = res.defaults || {};
             const delivery = d.delivery?.data || {};
             const taxLegal = d.tax_legal?.data || {};
+            const restoredServices = Array.isArray(commercial.marketingServices) ? normalizeServiceKeys(commercial.marketingServices) : null;
             const commercial = d.commercial_terms?.data || {};
 
             // Stored as the flat array (see handleSubmit) — unflatten before
@@ -812,6 +817,7 @@ export default function SellerListingForm({
                 dispatchPincode: delivery.dispatchPincode ?? f.dispatchPincode,
                 dispatchingLocations: restoredDispatchingLocations ?? f.dispatchingLocations,
                 returnPolicyKey: taxLegal.returnPolicyKey ?? f.returnPolicyKey,
+                marketingServices: restoredServices ?? f.marketingServices,
                 warrantyKey: taxLegal.warrantyKey ?? f.warrantyKey,
             }));
         });
@@ -1181,7 +1187,7 @@ export default function SellerListingForm({
             sampleAvailable: !!form.sampleAvailable,
             gstInclusive: !!form.gstInclusive,
             freightIncluded: !!form.freightIncluded,
-            marketingCommissionPercent: String(round2(Number(form.marketingCommissionPercent))),
+            marketingServices: Array.isArray(form.marketingServices) ? normalizeServiceKeys(form.marketingServices) : null, // null = untouched legacy
             genericProductBrandId: form.brandItemMatch?.id || null,
             moq: String(round2ToInt(form.moq)),
             pricingTouched,
@@ -1685,17 +1691,7 @@ export default function SellerListingForm({
                             />
                         </FieldAnchor>
                     </div>
-                    <FieldAnchor fieldKey="marketingCommissionPercent">
-                        <CommissionSlider
-                            value={form.marketingCommissionPercent === "" ? "" : Number(form.marketingCommissionPercent)}
-                            onChange={(v) => {
-                                setField("marketingCommissionPercent", String(v));
-                                touch("marketingCommissionPercent");
-                            }}
-                            C={C}
-                            isErr={isErr("marketingCommissionPercent")}
-                        />
-                    </FieldAnchor>
+
                     <RepeatableRows2
                         label="Discount slabs"
                         hint={form.hasOuterPack ? "Extra % off above a quantity threshold, in Master Packs" : "Extra % off above a quantity threshold, in Packs"}
@@ -1840,27 +1836,24 @@ export default function SellerListingForm({
                             />
                         </FieldAnchor>
                     </div>
+                </SectionCard>
+            )}
 
-
-                    {commissionWheelOpen && (
-                        <PriceWheelPicker
-                            open
-                            unit="percent"
-                            direction="increase"
-                            min={0.25}
-                            max={100}
-                            unitLabel="Commission"
-                            referenceLabel="Platform minimum"
-                            referenceValue={platformDefaultCommissionPercent}
-                            initialValue={Number(form.marketingCommissionPercent) || platformDefaultCommissionPercent}
-                            onClose={() => setCommissionWheelOpen(false)}
-                            onConfirm={(v) => {
-                                setField("marketingCommissionPercent", String(v));
-                                touch("marketingCommissionPercent");
-                                setCommissionWheelOpen(false);
-                            }}
+            {showSection("marketing") && (
+                <SectionCard id="section-marketing" icon={Megaphone} title="Marketing & Promotion"
+                    subtitle="Choose how we promote this product"
+                    open={resolvedOnlySection ? true : openSection === "marketing"} onOpenChange={(v) => handleSectionToggle("marketing", v)}
+                    missingCount={missingCountBySection.marketing} totalCount={totalCountBySection.marketing}
+                    readOnly={readOnly}>
+                    <FieldAnchor fieldKey="marketingServices">
+                        <MarketingServicePicker
+                            value={form.marketingServices}
+                            onChange={(v) => { setField("marketingServices", v); touch("marketingServices"); }}
+                            legacyPercent={form.marketingLegacyPercent}
+                            exampleOrderValue={moqPreview.totalAmount}
+                            error={isErr("marketingServices")}
                         />
-                    )}
+                    </FieldAnchor>
                 </SectionCard>
             )}
 

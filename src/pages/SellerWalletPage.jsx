@@ -37,8 +37,8 @@ function Card({ title, children, right }) {
 // pages/SellerWalletPage.jsx — reordered, top to bottom:
 
 const TXN_LABEL = {
-    commission_accrued: { label: "Commission + GST deducted", color: "#c71f11", sign: -1 },
-    commission_reversed: { label: "Commission reversed", color: "#059669", sign: 1 },
+    commission_accrued: { label: "Marketing & promotion (incl. GST)", color: "#c71f11", sign: -1 },
+    commission_reversed: { label: "Marketing charges reversed", color: "#059669", sign: 1 },
     payment_made: { label: "Credits added", color: "#059669", sign: 1 },
     signup_credit: { label: "Welcome credits", color: "#059669", sign: 1 },
     manual_adjustment: { label: "Adjustment", color: C.muted, sign: null },
@@ -61,43 +61,82 @@ function withClosingBalances(txns, currentBalance) {
     });
 }
 
+function BreakdownPanel({ t }) {
+    const b = t.breakdown;
+    const services = Array.isArray(b.services) ? b.services : [];
+    const svcSum = round2(services.reduce((s, x) => s + Number(x.amount || 0), 0));
+    const fee = Number(b.feeAmount) || 0, gst = Number(b.gstAmount) || 0, total = Number(b.total) || 0;
+    const reconciles = Math.abs(svcSum - fee) < 0.005 && Math.abs(round2(fee + gst) - total) < 0.005
+        && Math.abs(total - Math.abs(Number(t.amount) || 0)) < 0.005;
+    const row = "flex items-center justify-between gap-2 text-[12px] font-semibold tracking-wide";
+    return (
+        <div className="mt-2 rounded-xl border p-2.5" style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}>
+            {b.orderValue != null && (
+                <p className="mb-1.5 text-[11px] font-semibold tabular-nums tracking-wide" style={{ color: C.muted }}>
+                    Order value ₹{inr(b.orderValue)} × {b.feePercent}% = ₹{inr(fee)}
+                </p>
+            )}
+            <div className="flex flex-col gap-1">
+                {services.map((s) => (
+                    <div key={s.key} className={row} style={{ color: C.muted }}>
+                        <span className="min-w-0 truncate">{s.label}{s.percent != null ? ` (${s.percent}%)` : ""}</span>
+                        <span className="tabular-nums font-bold" style={{ color: C.ink }}>₹{inr(s.amount)}</span>
+                    </div>
+                ))}
+                <div className={`${row} border-t pt-1`} style={{ color: C.muted, borderColor: C.hairSoft }}>
+                    <span>Fee</span><span className="tabular-nums font-bold" style={{ color: C.ink }}>₹{inr(fee)}</span>
+                </div>
+                <div className={row} style={{ color: C.muted }}>
+                    <span>GST on fee ({b.gstPercent}%)</span><span className="tabular-nums font-bold" style={{ color: C.ink }}>₹{inr(gst)}</span>
+                </div>
+                <div className={`${row} border-t pt-1`} style={{ borderColor: C.hair }}>
+                    <span className="font-extrabold uppercase" style={{ color: C.ink }}>Total</span>
+                    <span className="tabular-nums font-extrabold" style={{ color: C.ink }}>₹{inr(total)}</span>
+                </div>
+            </div>
+            <p className="mt-1.5 text-[10.5px] font-bold tracking-wide" style={{ color: reconciles ? "#059669" : "#b45309" }}>
+                {reconciles ? "✓ Adds up to the amount deducted" : "Amounts differ from this entry. Contact support."}
+            </p>
+        </div>
+    );
+}
+
 function TxnRow({ t, navigate }) {
+    const [open, setOpen] = useState(false);
     const meta = TXN_LABEL[t.type] || { label: t.type, color: C.muted, sign: null };
     const hasOrder = !!t.order_id;
     const hasNote = !!(t.note && t.note.trim());
-
+    const hasBreakdown = !!t.breakdown && Array.isArray(t.breakdown.services);
     return (
         <div className="border-b pb-2.5 last:border-b-0 last:pb-0" style={{ borderColor: C.hairSoft }}>
-            <div
-                className="flex items-start justify-between gap-2"
-                onClick={() => { if (hasOrder) navigate(`/seller/orders/${t.order_id}`); }}
-                style={{ cursor: (hasOrder || hasNote) ? "pointer" : "default" }}
-            >
+            <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1 overflow-hidden">
                     <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{meta.label}</p>
-                    {hasNote && (
-                        <p className="mt-0.5 overflow-hidden text-[11.5px] font-medium tracking-wide whitespace-pre-wrap" style={{ color: C.muted }}>
-                            {t.note}
-                        </p>
-                    )}
-                    <p className="mt-0.5 text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>
-                        {new Date(t.created_at).toLocaleString("en-IN")}
-                    </p>
+                    {hasNote && <p className="mt-0.5 overflow-hidden whitespace-pre-wrap text-[11.5px] font-medium tracking-wide" style={{ color: C.muted }}>{t.note}</p>}
+                    <p className="mt-0.5 text-[11px] font-semibold tracking-wider" style={{ color: C.muted }}>{new Date(t.created_at).toLocaleString("en-IN")}</p>
+                    <div className="mt-1 flex items-center gap-3">
+                        {hasBreakdown && (
+                            <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+                                className="flex items-center gap-1 text-[11px] font-bold" style={{ color: C.ink }}>
+                                {open ? "Hide breakdown" : "View breakdown"}
+                                <ChevronDown className="h-3 w-3 transition-transform duration-200" style={{ transform: open ? "rotate(180deg)" : "none" }} />
+                            </button>
+                        )}
+                        {hasOrder && (
+                            <button type="button" onClick={() => navigate(`/seller/orders/${t.order_id}`)} className="text-[11px] font-bold underline" style={{ color: C.muted }}>
+                                View order
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-0.5">
                     <p className="text-[15px] font-extrabold tabular-nums" style={{ color: meta.color }}>
-                        {meta.sign === null
-                            ? `${t.amount > 0 ? "+" : ""}₹${inr(t.amount)}`
-                            : `${meta.sign > 0 ? "+" : "−"}₹${inr(Math.abs(t.amount))}`}
+                        {meta.sign === null ? `${t.amount > 0 ? "+" : ""}₹${inr(t.amount)}` : `${meta.sign > 0 ? "+" : "−"}₹${inr(Math.abs(t.amount))}`}
                     </p>
-                    {/* Closing balance — the running credits balance right after
-                        this transaction posted, same "balance after" convention
-                        a bank passbook uses. */}
-                    <p className="text-[10.5px] font-semibold tabular-nums tracking-wide" style={{ color: C.muted }}>
-                        Bal: ₹{inr(t.closingBalance)}
-                    </p>
+                    <p className="text-[10.5px] font-semibold tabular-nums tracking-wide" style={{ color: C.muted }}>Bal: ₹{inr(t.closingBalance)}</p>
                 </div>
             </div>
+            {hasBreakdown && open && <BreakdownPanel t={t} />}
         </div>
     );
 }

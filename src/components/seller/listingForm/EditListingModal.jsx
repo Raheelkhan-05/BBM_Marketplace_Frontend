@@ -20,6 +20,7 @@ const SECTION_LABELS = {
     identity: "Identity", packaging: "Packaging", pricing: "Tax & Pricing",
     customPricing: "Buyer Access & Pricing",
     fulfilment: "Fulfilment", dispatch: "Delivery", delivery: "Delivery",
+    marketing: "Marketing & Promotion",
     policies: "Policies",
 };
 function getSectionLabel(key) { return SECTION_LABELS[key] || ""; }
@@ -58,7 +59,8 @@ function submissionToInitialValues(s) {
         priceBasis: hasOuterPackLocal ? "per_master_pack" : "per_pack",
         gstInclusive: false,
         freightIncluded: Boolean(s.freight_included),
-        marketingCommissionPercent: s.marketing_commission_percent != null ? String(s.marketing_commission_percent) : "",
+        marketingServices: Array.isArray(s.marketing_services) && s.marketing_services.length ? s.marketing_services : null, // null = legacy
+        marketingLegacyPercent: s.marketing_legacy_percent ?? (Array.isArray(s.marketing_services) && s.marketing_services.length ? null : s.marketing_commission_percent ?? null),
         sampleAvailable: Boolean(s.sample_available),
         sampleQuantity: s.sample_quantity != null
             ? String(baseUnitsToBasisQty(s.sample_quantity, sampleBasis, packSize, masterPackSize)) : "",
