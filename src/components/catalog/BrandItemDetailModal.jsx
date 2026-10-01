@@ -28,8 +28,8 @@ function FactRow({ label, value }) {
     if (value === null) return null;
     return (
         <div className="flex items-baseline justify-between gap-3 border-b py-2 text-[12px] last:border-b-0" style={{ borderColor: C.hairSoft }}>
-            <span className="shrink-0 font-semibold" style={{ color: C.muted }}>{label}</span>
-            <span className="text-right font-bold" style={{ color: C.ink }}>{String(value)}</span>
+            <span className="shrink-0 font-semibold tracking-wide" style={{ color: C.muted }}>{label}</span>
+            <span className="text-right font-bold tracking-wide" style={{ color: C.ink }}>{String(value)}</span>
         </div>
     );
 }
@@ -486,26 +486,18 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
 
                                         <div className="mt-4 flex items-start justify-between gap-2">
                                             <div className="min-w-0">
-                                                <p className="text-[16px] font-extrabold leading-tight" style={{ color: C.ink }}>{name}</p>
+                                                <p className="text-[16px] font-extrabold tracking-wide leading-tight" style={{ color: C.ink }}>{name}</p>
                                                 {!brandNotApplicable && brandName && (
                                                     <div className="mt-0.5 flex items-center gap-1.5">
                                                         {brandImage && <img src={brandImage} alt="" className="h-4 w-4 rounded object-cover" />}
-                                                        <p className="text-[12.5px] font-bold" style={{ color: C.primary }}>{brandName}</p>
+                                                        <p className="text-[12.5px] font-bold tracking-wide" style={{ color: C.primary }}>{brandName}</p>
                                                     </div>
                                                 )}
                                             </div>
                                         </div>
 
-                                        <div className="mt-2 flex flex-wrap gap-1.5">
-                                            {gradeVariant && (
-                                                <span className="rounded-full px-2.5 py-1 text-[10.5px] font-bold" style={{ background: `${C.secondary}14`, color: C.secondary }}>
-                                                    {gradeVariant}
-                                                </span>
-                                            )}
-                                        </div>
-
                                         {(manufacturer || modelNo || gradeVariant) && (
-                                            <div className="mt-1 rounded-xl border px-3.5" style={{ borderColor: C.hair }}>
+                                            <div className="mt-3 rounded-xl border px-3.5" style={{ borderColor: C.hair }}>
                                                 <FactRow label="Manufacturer" value={manufacturer} />
                                                 <FactRow label="Model / Part No." value={modelNo} />
                                                 <FactRow label="Grade / Variant" value={gradeVariant} />
@@ -513,21 +505,21 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                         )}
                                         {description && (
                                             <div className="mt-4">
-                                                <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Description</p>
-                                                <p className="text-[12.5px] font-medium leading-relaxed" style={{ color: C.ink }}>{description}</p>
+                                                <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Description</p>
+                                                <p className="text-[12.5px] font-medium leading-relaxed tracking-wide" style={{ color: C.ink }}>{description}</p>
                                             </div>
                                         )}
 
                                         {manufacturingDetails && (
                                             <div className="mt-4">
-                                                <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Manufacturing</p>
-                                                <p className="text-[12.5px] font-medium leading-relaxed" style={{ color: C.ink }}>{manufacturingDetails}</p>
+                                                <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Manufacturing</p>
+                                                <p className="text-[12.5px] font-medium leading-relaxed tracking-wide" style={{ color: C.ink }}>{manufacturingDetails}</p>
                                             </div>
                                         )}
 
                                         {specifications.length > 0 && (
                                             <div className="mt-4">
-                                                <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Specifications</p>
+                                                <p className="mb-1.5 text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Specifications</p>
                                                 <div className="overflow-hidden rounded-xl border" style={{ borderColor: C.hair }}>
                                                     {specifications.map((s, i) => (
                                                         <div
@@ -535,8 +527,8 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                                             className="flex justify-between px-3.5 py-2 text-[12px] font-semibold"
                                                             style={{ background: i % 2 === 0 ? "white" : C.hairSoft, color: C.ink }}
                                                         >
-                                                            <span style={{ color: C.muted }}>{s.key}</span>
-                                                            <span className="text-right">{s.value}</span>
+                                                            <span className="tracking-wide" style={{ color: C.muted }}>{s.key}</span>
+                                                            <span className="text-right tracking-wide">{s.value}</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -555,11 +547,11 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
                                                                 : `₹${inr(lowestPrice)} – ₹${inr(highestPrice)}`
                                                         ) : "Ask sellers"}
                                                         {lowestPrice != null && (
-                                                            <span className="ml-1 text-[11px] font-bold" style={{ color: C.muted }}>/{priceSuffix}</span>
+                                                            <span className="ml-1 text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>/{priceSuffix}</span>
                                                         )}
                                                     </p>
                                                     {lowestPrice != null && (
-                                                        <p className="mt-0.5 text-[10px] font-semibold" style={{ color: C.muted }}>
+                                                        <p className="mt-0.5 text-[10px] font-semibold tracking-wider" style={{ color: C.muted }}>
                                                             GST-inclusive, as listed by each seller
                                                         </p>
                                                     )}
