@@ -4,33 +4,27 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Loader2, PackageX, Lock } from "lucide-react";
 import BuyNowModal from "../components/BuyNowModal.jsx";
 import LandingPage from "./LandingPage.jsx";
-import { fetchSharedProductLink } from "../utils/api.js";
+import { fetchSharedProductLink, fetchBrandItemSellers } from "../utils/api.js";
+import { toBuyerSellerPayload } from "../utils/buyerSellerPayload";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const C = { ink: "#0B1116", muted: "#667077", secondary: "#006F83" };
 
-// Same mapping as HomeProductFeed's toBuyerSellerPayload, so the shared-link flow
-// and the inline flow never drift apart.
-function toBuyerSellerPayload(s) {
-    return {
-        offerId: s.submission_id, sellerId: s.seller_id, display_name: s.display_name,
-        unit: s.unit, moq: s.moq, price: s.price, gstPercent: s.gst_percent,
-        availableStock: s.stock_quantity ?? null, stockType: s.stock_type,
-        leadTime: s.stock_type === "made_to_order" ? s.production_lead_time_days : s.dispatch_time_days,
-        transportPreference: s.transportPreference || null,
-        transportPendingProposal: s.transportPendingProposal || null,
-        dispatchTimeDays: s.dispatch_time_days, productionLeadTimeDays: s.production_lead_time_days,
-        priceSlabs: s.price_slabs || [], quantityDiscounts: s.quantity_discounts || [],
-        paymentTerms: s.payment_terms, returnPolicy: s.return_policy, warranty: s.warranty,
-        deliveryTimeline: s.delivery_timeline, freightIncluded: s.freight_included,
-        transportOptions: s.seller_profiles?.transport_options || s.transport_options || [],
-        priceBasis: s.price_basis,
-        dispatchOrigin: [s.dispatch_district, s.dispatch_state].filter(Boolean).join(", ") || null,
-        dispatchPincode: s.dispatch_pincode, dispatchState: s.dispatch_state,
-        packSize: s.pack_size, masterPackSize: s.units_per_master_pack,
-        sampleAvailable: s.sample_available || false, sampleQuantity: s.sample_quantity ?? null,
-        samplePrice: s.sample_price ?? null,
-    };
+// If the shared-link payload is a leaner row than the home feed's seller list
+// (no pack size / slabs / sample fields), fill the gaps from the same seller
+// list the home page uses, so the modal is identical. Runs inside the single
+// loading phase; failures are ignored (we just use what we have).
+const FULL_ROW_KEYS = ["pack_size", "units_per_master_pack", "price_slabs", "quantity_discounts"];
+async function hydrateSeller(seller, productId, token) {
+    const isFull = FULL_ROW_KEYS.every((k) => Object.prototype.hasOwnProperty.call(seller, k));
+    if (isFull || !productId) return seller;
+    try {
+        const res = await fetchBrandItemSellers(productId, { sort: "price_asc", limit: 30, offset: 0, token });
+        const full = res?.success ? (res.items || []).find((r) => r.submission_id === seller.submission_id) : null;
+        return full ? { ...seller, ...full } : seller;
+    } catch {
+        return seller;
+    }
 }
 
 function Overlay({ onBackdrop, children }) {
@@ -47,108 +41,110 @@ export default function SharedProductPage() {
     const { submissionId } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
-    const { token, effectiveLoggedIn } = useAuth();
+    const auth = useAuth();
+    const { token, effectiveLoggedIn } = auth;
+    // Auth is still hydrating on a cold open. Adjust to whatever flag your AuthContext exposes.
+    const authLoading = !!(auth.loading ?? auth.authLoading ?? auth.initializing ?? auth.isLoading);
+
     const [state, setState] = useState({ loading: true, error: null, code: null, data: null });
     const [showModal, setShowModal] = useState(true);
 
     useEffect(() => {
-        // Must be logged in before the backend will say whether this buyer can see the product.
+        if (authLoading) return; // don't decide anything until we know who the user is
+
         if (!effectiveLoggedIn) {
             setState({ loading: false, error: null, code: "LOGIN_REQUIRED", data: null });
             return;
         }
+
         let cancelled = false;
-        fetchSharedProductLink(submissionId, token).then((res) => {
+        (async () => {
+            const res = await fetchSharedProductLink(submissionId, token);
             if (cancelled) return;
             if (!res?.success) {
                 setState({ loading: false, error: res?.message || "This link is no longer available.", code: res?.code || null, data: null });
                 return;
             }
-            setState({ loading: false, error: null, code: null, data: res });
-        });
+            const productId = res.product?.id ?? res.product?.brandItemId ?? res.product?.brand_item_id ?? null;
+            const seller = await hydrateSeller(res.seller, productId, token);
+            if (cancelled) return;
+            setState({ loading: false, error: null, code: null, data: { ...res, seller } });
+        })();
         return () => { cancelled = true; };
-    }, [submissionId, token, effectiveLoggedIn]);
+    }, [submissionId, token, effectiveLoggedIn, authLoading]);
 
-    if (state.loading) {
-        return (
-            <>
-                <LandingPage />
-                <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/20">
-                    <Loader2 className="h-6 w-6 animate-spin text-white" />
-                </div>
-            </>
+    const goHome = () => navigate("/", { replace: true });
+    const loading = authLoading || state.loading;
+
+    let overlay = null;
+    let modal = null;
+
+    if (loading) {
+        // ONE loader for the whole wait (auth + fetch), then straight into the modal.
+        overlay = (
+            <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                <Loader2 className="h-6 w-6 animate-spin text-white" />
+            </div>
         );
-    }
-
-    if (state.code === "LOGIN_REQUIRED") {
+    } else if (state.code === "LOGIN_REQUIRED") {
         const back = `${location.pathname}${location.search}`;
-        return (
-            <>
-                <LandingPage />
-                <Overlay onBackdrop={() => navigate("/")}>
-                    <Lock className="h-6 w-6" style={{ color: C.muted }} />
-                    <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>Login to view this product</p>
-                    <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>This link needs you to be signed in first.</p>
-                    <button
-                        // `from` is what AuthPage reads elsewhere in the app; `returnTo` kept for compatibility.
-                        onClick={() => navigate("/login", { state: { from: back, returnTo: location.pathname } })}
-                        className="mt-2 rounded-xl px-4 py-2 text-[13px] font-bold tracking-wide text-white"
-                        style={{ background: C.secondary }}>
-                        Login
-                    </button>
-                </Overlay>
-            </>
+        overlay = (
+            <Overlay onBackdrop={goHome}>
+                <Lock className="h-6 w-6" style={{ color: C.muted }} />
+                <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>Login to view this product</p>
+                <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>This link needs you to be signed in first.</p>
+                <button
+                    onClick={() => navigate("/login", { state: { from: back, returnTo: location.pathname } })}
+                    className="mt-2 rounded-xl px-4 py-2 text-[13px] font-bold tracking-wide text-white"
+                    style={{ background: C.secondary }}>
+                    Login
+                </button>
+            </Overlay>
+        );
+    } else if (state.code === "RESTRICTED") {
+        overlay = (
+            <Overlay onBackdrop={goHome}>
+                <Lock className="h-6 w-6" style={{ color: C.muted }} />
+                <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>Not available for your account</p>
+                <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>{state.error}</p>
+                <button onClick={goHome} className="mt-2 text-[13px] font-bold tracking-wide" style={{ color: C.secondary }}>Browse other products</button>
+            </Overlay>
+        );
+    } else if (state.error) {
+        overlay = (
+            <Overlay onBackdrop={goHome}>
+                <PackageX className="h-6 w-6" style={{ color: C.muted }} />
+                <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>{state.error}</p>
+                <button onClick={goHome} className="mt-2 text-[13px] font-bold tracking-wide" style={{ color: C.secondary }}>Browse other products</button>
+            </Overlay>
+        );
+    } else if (state.data && showModal) {
+        const { product, seller } = state.data;
+        // Same product shape HomeProductFeed passes to BuyNowModal.
+        modal = (
+            <BuyNowModal
+                seller={toBuyerSellerPayload(seller)}
+                product={{
+                    id: product.id ?? product.brandItemId ?? product.brand_item_id ?? null,
+                    name: product.name,
+                    brand_name: product.brand_name ?? product.brandName,
+                    brand_image: product.brand_image ?? product.brandImage,
+                    image: product.image ?? product.images?.[0] ?? null,
+                    model_no: product.model_no ?? product.modelNo,
+                    category_name: product.category_name ?? product.categoryName,
+                    subcategory_name: product.subcategory_name ?? product.subcategoryName,
+                }}
+                onClose={() => { setShowModal(false); goHome(); }}
+            />
         );
     }
 
-    if (state.code === "RESTRICTED") {
-        return (
-            <>
-                <LandingPage />
-                <Overlay onBackdrop={() => navigate("/")}>
-                    <Lock className="h-6 w-6" style={{ color: C.muted }} />
-                    <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>Not available for your account</p>
-                    <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>{state.error}</p>
-                    <button onClick={() => navigate("/")} className="mt-2 text-[13px] font-bold tracking-wide" style={{ color: C.secondary }}>Browse other products</button>
-                </Overlay>
-            </>
-        );
-    }
-
-    if (state.error) {
-        return (
-            <>
-                <LandingPage />
-                <Overlay onBackdrop={() => navigate("/")}>
-                    <PackageX className="h-6 w-6" style={{ color: C.muted }} />
-                    <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>{state.error}</p>
-                    <button onClick={() => navigate("/")} className="mt-2 text-[13px] font-bold tracking-wide" style={{ color: C.secondary }}>Browse other products</button>
-                </Overlay>
-            </>
-        );
-    }
-
-    const { product, seller } = state.data;
+    // LandingPage is rendered once, in a stable position, so it never remounts between states.
     return (
         <>
             <LandingPage />
-            {showModal && (
-                <BuyNowModal
-                    seller={toBuyerSellerPayload(seller)}
-                    // Spread keeps every field the API sends (image, model_no, category…);
-                    // id + image are normalised so the modal can show the photo and load full details.
-                    product={{
-                        ...product,
-                        id: product.id ?? product.brandItemId ?? product.brand_item_id ?? null,
-                        name: product.name,
-                        brand_name: product.brand_name ?? product.brandName,
-                        brand_image: product.brand_image ?? product.brandImage,
-                        image: product.image ?? product.images?.[0] ?? null,
-                        model_no: product.model_no ?? product.modelNo,
-                    }}
-                    onClose={() => { setShowModal(false); navigate("/"); }}
-                />
-            )}
+            {overlay}
+            {modal}
         </>
     );
 }

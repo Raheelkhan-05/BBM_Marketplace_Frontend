@@ -152,6 +152,7 @@ import { checkLocationServiceable } from "../../shared/orderConstraints.js";
 import { InlineWheelField } from "../seller/listingForm/PriceWheelPicker.jsx";
 import EditListingModal from "../seller/listingForm/EditListingModal.jsx";
 import { useLenis } from "../../providers/SmoothScrollProvider.jsx";
+import { toBuyerSellerPayload } from "../../utils/buyerSellerPayload";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
@@ -957,47 +958,6 @@ function BrandBadge({ name, image }) {
             {initials}
         </span>
     );
-}
-
-// Maps a raw seller row (from catalog_brand_item_sellers) onto exactly
-// what BuyNowModal expects — identical mapping to BrandItemSellersPage's
-// buyerSellerPayload, kept in sync so the inline flow and the full
-// sellers-page flow never drift apart.
-function toBuyerSellerPayload(s) {
-    return {
-        offerId: s.submission_id,
-        sellerId: s.seller_id,
-        display_name: s.display_name,
-        unit: s.unit,
-        moq: s.moq,
-        price: s.price,
-        gstPercent: s.gst_percent,
-        availableStock: s.stock_quantity ?? null,
-        stockType: s.stock_type,
-        leadTime: effectiveLeadTime(s),
-        transportPreference: s.transportPreference || null,
-        transportPendingProposal: s.transportPendingProposal || null,
-        dispatchTimeDays: s.dispatch_time_days,
-        productionLeadTimeDays: s.production_lead_time_days,
-        priceSlabs: s.price_slabs || [],
-        quantityDiscounts: s.quantity_discounts || [],
-        // hsnCode: s.hsn_code,
-        paymentTerms: s.payment_terms,
-        returnPolicy: s.return_policy,
-        warranty: s.warranty,
-        deliveryTimeline: s.delivery_timeline,
-        freightIncluded: s.freight_included,
-        transportOptions: s.seller_profiles?.transport_options || [],
-        priceBasis: s.price_basis,
-        dispatchOrigin: [s.dispatch_district, s.dispatch_state].filter(Boolean).join(", ") || null,
-        dispatchPincode: s.dispatch_pincode,
-        dispatchState: s.dispatch_state,
-        packSize: s.pack_size,
-        masterPackSize: s.units_per_master_pack,
-        sampleAvailable: s.sample_available || false,
-        sampleQuantity: s.sample_quantity ?? null,
-        samplePrice: s.sample_price ?? null,
-    };
 }
 
 // Whether a given seller row (from the sellers dropdown) belongs to the
