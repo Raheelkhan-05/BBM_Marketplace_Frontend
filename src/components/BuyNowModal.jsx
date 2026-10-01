@@ -335,7 +335,7 @@ function TransportFields({ mode, fields }) {
    Main component
    ============================================================ */
 
-function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntentProp }) {
+function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntentProp, deferPriceUntilConfirmed = false }) {
     const { token, profile } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
@@ -426,6 +426,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const isFirstQuoteRef = useRef(true);
     const requestIdRef = useRef(0);
     const pendingQuoteRef = useRef(Promise.resolve());
+    const [quoteFailed, setQuoteFailed] = useState(false);
     const standardBasisRef = useRef(defaultBasis);
 
     useEffect(() => {
@@ -483,12 +484,13 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
     // Instant local quote, then the confirmed server quote below.
     useEffect(() => {
+        if (deferPriceUntilConfirmed) return; // never show a non-custom estimate
         if (!(Number(quantity) > 0)) { setQuote(null); return; }
         setQuote((prev) => {
             const local = computeLocalQuote(seller, quantity, basis, isSample);
             return local ? normalizeQuote(local) : prev;
         });
-    }, [seller, quantity, basis, isSample, effectivePincode, effectiveState]);
+    }, [seller, quantity, basis, isSample, effectivePincode, effectiveState, deferPriceUntilConfirmed]);
 
     useEffect(() => {
         const lenis = window.lenis;
@@ -588,8 +590,10 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                 if (myRequestId === requestIdRef.current && res?.success) {
                     const confirmed = normalizeQuote({ ...res, isEstimate: false });
                     setQuote(confirmed);
+                    setQuoteFailed(false);
                     resolve(confirmed);
                 } else {
+                    if (myRequestId === requestIdRef.current) setQuoteFailed(true);
                     resolve(null);
                 }
             }, delay);
@@ -893,6 +897,9 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const deliveryDateLabel = (val) => (typeof val === "string" && /^\d{4}-\d{2}-\d{2}/.test(val) ? formatDDMon(new Date(val)) : val);
     const canSample = seller?.sampleAvailable;
 
+    // While deferring, no price is shown until the server has confirmed it.
+    const priceLoading = deferPriceUntilConfirmed && !quoteFailed && (!quote || quote.isEstimate);
+
     const productName = product?.name || pick(detail, "name");
     const brandName = product?.brand_name || product?.brandName || pick(detail, "brand_name", "brandName");
     const brandNotApplicable = pick(detail, "brand_not_applicable", "brandNotApplicable");
@@ -934,7 +941,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
             : needsTransport
                 ? `Select transport & ${verb === "Buy now" ? "Buy now" : verb.toLowerCase()}`
                 : verb;
-    const ctaDisabled = submitting || addressLoading || blockedByConstraints || waitingApproval
+    const ctaDisabled = submitting || addressLoading || blockedByConstraints || waitingApproval || priceLoading
         || (!isSample && (belowMoq || outOfStock || exceedsStock)) || crossesCreditLimit;
     const ctaBackground = isSample
         ? "linear-gradient(135deg, #006F83 0%, #047084 100%)"
@@ -1091,6 +1098,9 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
                                 {(qtyNotice || error) && (
                                     <div className="mb-2.5 flex flex-col gap-2">
+                                        {deferPriceUntilConfirmed && quoteFailed && !quote && (
+                                            <Notice tone="danger">Couldn't load the latest price. Change the quantity or reopen this link to retry.</Notice>
+                                        )}
                                         {qtyNotice && <Notice tone="danger">{qtyNotice}</Notice>}
                                         {error && <Notice tone="danger">{error}</Notice>}
                                     </div>
@@ -1140,7 +1150,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                         </div>
                                     )}
 
-                                    {!isSample && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
+                                    {!isSample && !priceLoading && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
                                         <div className="flex flex-col gap-1.5">
                                             <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
                                                 <Layers className="h-3.5 w-3.5" style={{ color: C.secondary }} /> Price slabs
@@ -1159,7 +1169,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                         </div>
                                     )}
 
-                                    {!isSample && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
+                                    {!isSample && !priceLoading && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
                                         <div className="flex flex-col gap-1.5">
                                             <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: C.ink }}>
                                                 <Layers className="h-3.5 w-3.5" style={{ color: "#D2462B" }} /> Quantity discounts
@@ -1182,7 +1192,15 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
                                 {/* ============ 3. PRICE SUMMARY ============ */}
                                 <Card icon={ReceiptText} title="Price summary">
-                                    {quote ? (
+                                    {priceLoading ? (
+                                        <div className="flex flex-col gap-2.5 rounded-xl bg-[#FCFBF9] p-3.5">
+                                            <SkeletonBar width="45%" />
+                                            <SkeletonBar width="30%" />
+                                            <div className="h-px" style={{ background: C.hair }} />
+                                            <SkeletonBar width="80%" />
+                                            <SkeletonBar width="60%" />
+                                        </div>
+                                    ) : quote ? (
                                         <div className="flex flex-col gap-2.5 rounded-xl bg-[#FCFBF9] p-3.5">
                                             <div className="flex items-baseline justify-between gap-2 tracking-wide">
                                                 <span className="text-[14px] font-bold" style={{ color: C.ink }}>
@@ -1448,7 +1466,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                         className="text-[21px] font-extrabold leading-none tabular-nums tracking-wide"
                                         style={{ color: C.ink }}
                                     >
-                                        {quote ? `₹${inr(quote.subtotal)}` : "—"}
+                                        {priceLoading ? <SkeletonBar width="90px" /> : quote ? `₹${inr(quote.subtotal)}` : "—"}
                                     </p>
                                 </div>
                             </div>
@@ -1457,7 +1475,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                             <div className="flex gap-2.5">
                                 {!isSample && (
                                     <button type="button" onClick={handleAddToCart} aria-label="Add to cart"
-                                        disabled={submitting || belowMoq || outOfStock || exceedsStock}
+                                        disabled={submitting || belowMoq || outOfStock || exceedsStock || priceLoading}
                                         className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border px-4 py-3.5 text-[13.5px] font-bold disabled:opacity-50"
                                         style={{ borderColor: C.hair, color: C.ink }}>
                                         <ShoppingCart className="h-4 w-4" /> <span className="inline">Add to cart</span>

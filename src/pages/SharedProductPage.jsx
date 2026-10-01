@@ -123,6 +123,7 @@ export default function SharedProductPage() {
         // Same product shape HomeProductFeed passes to BuyNowModal.
         modal = (
             <BuyNowModal
+                deferPriceUntilConfirmed
                 seller={toBuyerSellerPayload(seller)}
                 product={{
                     id: product.id ?? product.brandItemId ?? product.brand_item_id ?? null,
