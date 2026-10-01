@@ -5,6 +5,7 @@ import { useLenis } from "../../../providers/SmoothScrollProvider.jsx";
 import { fetchSellerSubmissionDetail, updateSellerProductSubmission } from "../../../utils/api.js";
 import { round2 } from "../../../shared/packUnits.js";
 import SellerListingForm, { unflattenDispatchingLocations } from "./SellerListingForm.jsx";
+import { DEFAULT_VALIDITY_HOURS } from "../../../shared/listingValidity.js";
 
 const C = {
     ink: "#0B1116", muted: "#667077",
@@ -20,6 +21,7 @@ const SECTION_LABELS = {
     identity: "Identity", packaging: "Packaging", pricing: "Tax & Pricing",
     customPricing: "Buyer Access & Pricing",
     fulfilment: "Fulfilment", dispatch: "Delivery", delivery: "Delivery",
+    validity: "Listing validity",
     marketing: "Marketing & Promotion",
     policies: "Policies",
 };
@@ -59,6 +61,7 @@ function submissionToInitialValues(s) {
         priceBasis: hasOuterPackLocal ? "per_master_pack" : "per_pack",
         gstInclusive: false,
         freightIncluded: Boolean(s.freight_included),
+        validityHours: s.validity_hours ?? DEFAULT_VALIDITY_HOURS,
         marketingServices: Array.isArray(s.marketing_services) && s.marketing_services.length ? s.marketing_services : null, // null = legacy
         marketingLegacyPercent: s.marketing_legacy_percent ?? (Array.isArray(s.marketing_services) && s.marketing_services.length ? null : s.marketing_commission_percent ?? null),
         sampleAvailable: Boolean(s.sample_available),

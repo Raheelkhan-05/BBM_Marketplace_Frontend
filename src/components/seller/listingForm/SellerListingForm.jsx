@@ -59,25 +59,31 @@
 //      highlight state so it can never get stuck "on" the way it could
 //      before if a drag was abandoned without a clean dragleave.
 //
-// THIS PASS: implements the `onlySection` prop SellerManageListingsPage
-// already passes in (previously a documented no-op). When set, this form
-// renders ONLY the matching section card — collapse/expand is disabled
-// for it (there's nothing else to collapse in favour of, so it just
-// stays permanently open), every other section is not rendered at all,
-// and the section header shows a small "Editing just this section" note
-// instead of the missing/total pill (which counts fields across the
-// WHOLE form's section, not just what's currently editable, and would
-// otherwise be confusing sitting next to a form that only shows one
-// section). SellerManageListingsPage's SECTION_FILTERS keys are
-// "identity" | "packaging" | "pricing" | "fulfilment" | "dispatch" |
-// "policies" — this file's own internal section ids are "product" |
-// "packaging" | "pricing" | "fulfilment" | "terms" | "delivery", so
-// ONLY_SECTION_ALIAS maps the caller's vocabulary onto this file's.
+// PREVIOUS PASS: implements the `onlySection` prop SellerManageListingsPage
+// already passes in. When set, this form renders ONLY the matching section
+// card — collapse/expand is disabled for it, every other section is not
+// rendered at all. SellerManageListingsPage's keys are mapped onto this
+// file's own internal section ids by ONLY_SECTION_ALIAS.
+//
+// THIS PASS: LISTING VALIDITY IS NOW A REQUIRED, NEVER-PRESELECTED CHOICE.
+//   - DEFAULT_LISTING_FORM.validityHours is "" (nothing selected) so a new
+//     listing, or an existing catalog item being listed again, starts with
+//     no duration chosen. The seller must pick one.
+//   - The previous "restore validityHours from the seller's last submission"
+//     prefill (fetchDefaultListingTemplates) was removed, since it silently
+//     preselected a duration for every new listing.
+//   - "validityHours" is now part of computeMissing / SECTION_FIELD_MAP /
+//     FIELD_ORDER, so it blocks submit, shows an error state, counts in the
+//     progress bar and takes part in the Enter/Tab keyboard flow.
+//   - Edit mode is unchanged: EditListingModal prefills validityHours from
+//     the saved listing, so the edit form still shows the saved duration
+//     selected. One-tap "Renew" on SellerManageListingsPage reuses that
+//     saved value; changing it happens here.
 import { useEffect, useMemo, useState, useRef } from "react";
 import {
     Package, IndianRupee, Boxes, Truck, FileText,
     Loader2, CheckCircle2, AlertTriangle, ImagePlus,
-    Info, Pencil, UploadCloud, Tag, Megaphone,
+    Info, Pencil, UploadCloud, Tag, Megaphone, Clock,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext.jsx";
 import { uploadSellerFile } from "../../../utils/api.js";
@@ -96,6 +102,7 @@ import {
     Label,
     CertificateUploadField,
 } from "./FormPrimitives.jsx";
+import { VALIDITY_OPTIONS, validityLabel, resolveValidityHours } from "../../../shared/listingValidity.js";
 import PriceWheelPicker, { InlineWheelField } from "./PriceWheelPicker.jsx";
 import { fetchLowestPriceForBrandItem } from "../../../utils/api.js";
 import BrandCombobox from "./BrandCombobox.jsx";
@@ -126,6 +133,10 @@ export const DEFAULT_LISTING_FORM = {
     basePrice: "", priceBasis: "per_pack", gstInclusive: null,
     freightIncluded: null,
 
+    // Nothing preselected: the seller must choose a validity for every new
+    // listing. Edit mode overrides this with the listing's saved value.
+    validityHours: "",
+
     marketingServices: normalizeServiceKeys([]),   // new listings start on the required service
     marketingLegacyPercent: null,
 
@@ -150,6 +161,7 @@ export const DEFAULT_LISTING_FORM = {
 // Maps each section to the field keys computeMissing() can flag for it —
 // lets the header show a live "X left" count without opening the section.
 const SECTION_FIELD_MAP = {
+    validity: ["validityHours"],
     product: ["productName", "brandName", "images"],
     packaging: ["unit", "packSize", "hasOuterPack", "masterPackSize", "moq", "sampleAvailable", "sampleQuantity"],
     pricing: ["gstPercent", "gstInclusive", "basePrice", "freightIncluded"],
@@ -184,14 +196,16 @@ function resolveOnlySection(onlySection) {
 }
 
 // Canonical top-to-bottom field order — mirrors the ACTUAL on-page order
-// the sections render in (Product → Packaging → Pricing → Fulfilment →
-// Terms → Delivery), and each field's order within its own section. This
-// is the single source of truth for "what comes next" when a seller
-// presses Enter/Tab, so keyboard flow always continues from wherever the
-// seller currently is instead of snapping back to the first incomplete
+// the sections render in (Validity → Product → Packaging → Pricing →
+// Fulfilment → Terms → Delivery), and each field's order within its own
+// section. This is the single source of truth for "what comes next" when a
+// seller presses Enter/Tab, so keyboard flow always continues from wherever
+// the seller currently is instead of snapping back to the first incomplete
 // field anywhere on the form. If a field is ever reordered on the page,
 // update its position here too so the two stay in sync.
 const FIELD_ORDER = [
+    // Validity
+    "validityHours",
     // Product
     "productName", "brandName", "images",
     // Packaging
@@ -436,6 +450,9 @@ function totalForSection(fields, form) {
 function computeMissing(form) {
     const missing = [];
     const add = (cond, key, label) => { if (cond) missing.push({ key, label }); };
+
+    // Validity has no default: it's missing until the seller picks a duration.
+    add(!(Number(form.validityHours) > 0), "validityHours", "Listing validity");
 
     add(!form.productName?.trim(), "productName", "Product name");
     add(!form.brandNotApplicable && !form.brandName?.trim(), "brandName", "Brand");
@@ -795,6 +812,9 @@ export default function SellerListingForm({
     // backend), not just dispatch info. Product-specific fields (name, brand,
     // images, unit/packSize/masterPackSize, price, stock, MOQ) are deliberately
     // NOT prefilled — those are always specific to the new item being listed.
+    //
+    // Listing validity is deliberately NOT restored from the last submission
+    // either: the seller must pick it fresh for every new listing.
     useEffect(() => {
         if (!token || mode === "edit") return;
         fetchDefaultListingTemplates(token).then((res) => {
@@ -802,15 +822,12 @@ export default function SellerListingForm({
             const d = res.defaults || {};
             const delivery = d.delivery?.data || {};
             const taxLegal = d.tax_legal?.data || {};
-            const restoredServices = Array.isArray(commercial.marketingServices) ? normalizeServiceKeys(commercial.marketingServices) : null;
             const commercial = d.commercial_terms?.data || {};
+            const restoredServices = Array.isArray(commercial.marketingServices) ? normalizeServiceKeys(commercial.marketingServices) : null;
 
-            // Stored as the flat array (see handleSubmit) — unflatten before
-            // merging into form state, otherwise it's the wrong shape for both
-            // computeMissing and the picker.
             const restoredDispatchingLocations = Array.isArray(delivery.dispatchingLocations)
                 ? unflattenDispatchingLocations(delivery.dispatchingLocations)
-                : delivery.dispatchingLocations; // already object-shaped from some other source — pass through
+                : delivery.dispatchingLocations;
 
             setForm((f) => ({
                 ...f,
@@ -1037,9 +1054,17 @@ export default function SellerListingForm({
         };
     }, []);
 
+    // The validity block is a standalone card, not a collapsible section, so
+    // it must never trigger an openSection switch (that would needlessly
+    // collapse whichever real section the seller has open).
+    function sectionNeedsSwitch(fieldKey) {
+        const section = FIELD_TO_SECTION[fieldKey];
+        return !!section && section !== "validity" && section !== openSection && !resolvedOnlySection;
+    }
+
     function jumpToError(firstMissing) {
         const section = FIELD_TO_SECTION[firstMissing.key];
-        const needsSwitch = section && section !== openSection && !resolvedOnlySection;
+        const needsSwitch = sectionNeedsSwitch(firstMissing.key);
         if (needsSwitch) setOpenSection(section);
 
         setTimeout(() => {
@@ -1060,7 +1085,7 @@ export default function SellerListingForm({
     // "advance" flow and jumpToError-style jumps.
     function focusFieldKey(key, { select = false } = {}) {
         const section = FIELD_TO_SECTION[key];
-        const needsSwitch = section && section !== openSection && !resolvedOnlySection;
+        const needsSwitch = sectionNeedsSwitch(key);
         if (needsSwitch) setOpenSection(section);
 
         setTimeout(() => {
@@ -1187,6 +1212,7 @@ export default function SellerListingForm({
             sampleAvailable: !!form.sampleAvailable,
             gstInclusive: !!form.gstInclusive,
             freightIncluded: !!form.freightIncluded,
+            validityHours: resolveValidityHours(form.validityHours),
             marketingServices: Array.isArray(form.marketingServices) ? normalizeServiceKeys(form.marketingServices) : null, // null = untouched legacy
             genericProductBrandId: form.brandItemMatch?.id || null,
             moq: String(round2ToInt(form.moq)),
@@ -1260,6 +1286,55 @@ export default function SellerListingForm({
                 <div className="flex items-start gap-2 rounded-xl px-3.5 py-3 text-[12px] font-semibold leading-snug" style={{ background: "rgba(199,31,17,0.08)", color: C.danger }}>
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {error}
                 </div>
+            )}
+
+            {showSection("validity") && (
+                <FieldAnchor fieldKey="validityHours">
+                    <div
+                        id="section-validity"
+                        className="rounded-2xl border bg-white p-3 transition-colors duration-150"
+                        style={{ borderColor: isErr("validityHours") ? "#c71f11" : C.hair }}
+                    >
+                        <div className="flex items-center gap-2">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: C.hairSoft }}>
+                                <Clock className="h-3.5 w-3.5" style={{ color: C.ink }} strokeWidth={2.4} />
+                            </span>
+                            <div className="min-w-0">
+                                <p className="text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                                    Listing validity <span style={{ color: C.primary }}>*</span>
+                                </p>
+                                <p className="text-[13px] font-medium tracking-wide" style={{ color: C.muted }}>How long should this stay live for buyers?</p>
+                            </div>
+                        </div>
+                        <div className="mt-2.5 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Listing validity">
+                            {VALIDITY_OPTIONS.map((o) => {
+                                const active = Number(form.validityHours) === o.hours;
+                                return (
+                                    <button
+                                        key={o.hours} type="button" role="radio" aria-checked={active} disabled={readOnly}
+                                        onClick={() => { setField("validityHours", o.hours); touch("validityHours"); }}
+                                        className="rounded-full px-3 py-1.5 text-[12px] font-bold tracking-wide transition-colors duration-150 active:scale-[0.97] disabled:opacity-60"
+                                        style={{ background: active ? C.primary : "#fff", color: active ? "#fff" : C.ink, border: `1.5px solid ${active ? C.primary : C.hair}` }}
+                                    >
+                                        {o.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {isErr("validityHours") && (
+                            <p className="mt-2 text-[12px] font-semibold leading-snug tracking-wide" style={{ color: "#c71f11" }}>
+                                Choose how long this listing should stay live.
+                            </p>
+                        )}
+                        <p className="mt-2 text-[12px] font-medium leading-snug tracking-wider" style={{ color: C.muted }}>
+                            {mode === "edit"
+                                ? "Changing this restarts the countdown from the moment you save. The Renew button on your listings page reuses this duration."
+                                : Number(form.validityHours) > 0
+                                    ? `Live for ${validityLabel(form.validityHours)} from the moment you submit. After that it pauses and you can renew it in one tap.`
+                                    : "Pick a duration. After it ends the listing pauses and you can renew it in one tap."}
+                        </p>
+                    </div>
+                </FieldAnchor>
             )}
 
             {/* ---------------- Product ---------------- */}

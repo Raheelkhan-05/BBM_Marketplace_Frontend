@@ -1,6 +1,6 @@
 // src/pages/SellerManageListingsPage.jsx
 //
-// REDESIGN (this revision):
+// REDESIGN (earlier revision):
 // - Each listing row now mirrors HomeProductFeed's ProductRow header:
 //   [image | title + brand/model + category + packaging | price breakdown].
 //   The price block is the same unit / pack / master-pack breakdown the
@@ -13,32 +13,39 @@
 // - Under the strip: Share, "Edit details" (opens the full inline edit form
 //   as a dropdown, exactly like before) and the Live / Paused switch.
 //   Tapping anywhere on the header also toggles the inline edit form.
-// - REMOVED: the section chip bar (SECTION_FILTERS), the per-row pencil icon,
-//   the unused read-only detail modal / deactivate-confirm panel, and the
-//   section-based row display logic. The inline editor always opens the
-//   full form (focusSection = null).
 // - KEPT: search, "Needs restock" filter, wallet card, realtime + resync,
 //   toasts, onboarding gate, floating Sell button.
-// - ADDED: a GST toggle (same as the feed) that switches the row prices and
-//   the price editor between GST-inclusive and GST-exclusive.
+// - GST toggle (same as the feed) switches the row prices and the price
+//   editor between GST-inclusive and GST-exclusive.
 // - On lg+ screens rows are laid out in two independent columns (round-robin,
 //   same idea as the feed) so an opened editor never reflows the other column.
 //
-// PROMOTION FLOW (this revision):
+// PROMOTION FLOW (earlier revision):
 // - In the price modal, "Promotion → Manage" opens PromotionPlanModal, a
 //   PICKER only (existing services pre-ticked). Done returns to the price
-//   modal and stages the selection ("Promotion 5% → 7%"). The price modal's
-//   single slide-to-confirm then saves price and/or promotion together, so
-//   there is only one confirm gesture. Nothing is saved before the slide.
+//   modal and stages the selection. The price modal's single slide-to-confirm
+//   then saves price and/or promotion together.
+//
+// RENEW FLOW (this revision):
+// - Renewing is now ONE TAP. The old "Renew" toggle + RefreshPanel drawer
+//   (duration chips + second confirm button, which popped in with no
+//   animation) is gone. The "Renew" button renews immediately using the
+//   validity the seller already saved on that listing (it.validity_hours).
+//   The button appears ONLY once the listing has expired, right in the
+//   expired banner. While a listing is live, only the countdown shows.
+// - Changing the duration is done only from the edit module (the form's
+//   "Listing validity" section, prefilled with the saved value).
+// - The button shows the duration it will use ("Renew · 7 days") and a
+//   spinner while the request is in flight, so there's no guessing.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence, useMotionValue, useTransform, animate } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
 import Toast from "../components/Toast.jsx";
 import {
     Search, Package, Boxes, Clock, Megaphone, Eye, Share2, X, Loader2,
-    ChevronRight, ChevronDown, ImageIcon, Wallet, Zap,
+    ChevronRight, ChevronDown, ImageIcon, Wallet, Zap, RefreshCw,
 } from "lucide-react";
 import { fetchWalletStatus } from "../utils/walletApi.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -48,12 +55,15 @@ import { shareProductLink } from "../utils/share.js";
 // SmoothScrollProvider (a second local one would create a decoy Lenis).
 import { useLenis } from "../providers/SmoothScrollProvider.jsx";
 import {
-    fetchMySellerSubmissions, updateSellerProductSubmission, setSellerSubmissionActive,
+    fetchMySellerSubmissions, updateSellerProductSubmission, setSellerSubmissionActive, refreshSellerSubmission,
 } from "../utils/api.js";
 import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import EditListingModal from "../components/seller/listingForm/EditListingModal.jsx";
+import {
+    DEFAULT_VALIDITY_HOURS, validityLabel, getListingExpiry, formatTimeLeft, formatExpiryDate,
+} from "../shared/listingValidity.js";
 import PromotionPlanModal, { PromotionRow, savePromotionPlan, saveResultMessage } from "../components/seller/listingForm/PromotionPlanModal.jsx";
 import { InlineWheelField } from "../components/seller/listingForm/PriceWheelPicker.jsx";
 import { saleUnitLabel, round2, deriveDisplayPrices, hasOuterPack } from "../shared/packUnits.js";
@@ -146,13 +156,20 @@ function priceRowsFor(it, includeGst) {
 }
 
 // One badge at most, so status never reads as two conflicting signals.
-function getListingStatus(it, isActive, sState) {
+function getListingStatus(it, isActive, sState, isExpired = false) {
+    if (isExpired) return { label: "Expired", bg: "#fee2e2", fg: "#c71f11" };
     if (!isActive) return { label: "Paused", bg: C.hairSoft, fg: C.muted };
-    if (it.review_status === "pending_review") return { label: "Pending review", bg: "#fef3c7", fg: "#b45309" };
     if (it.review_status === "rejected") return { label: "Rejected", bg: "#fee2e2", fg: "#c71f11" };
     if (sState === "out") return { label: "Out of stock", bg: "#fee2e2", fg: "#c71f11" };
     if (sState === "low") return { label: "Low stock", bg: "#fef3c7", fg: "#b45309" };
     return null;
+}
+
+// The validity a one-tap renewal will use: whatever the seller saved on this
+// listing. Only legacy rows with nothing saved fall back to the default.
+function renewalHoursFor(it) {
+    const saved = Number(it.validity_hours);
+    return saved > 0 ? saved : DEFAULT_VALIDITY_HOURS;
 }
 
 // Two columns from lg up, one below. Manual bucketing (like the feed) so an
@@ -676,13 +693,81 @@ function OwnerInfoStrip({ cells, activeSection, onSelect }) {
     );
 }
 
+// One-tap renewal. Uses the validity the seller already saved on the listing;
+// the duration it will apply is shown on the button itself.
+// Same height / shape language as the "Edit details" and "Share" pills.
+function RenewButton({ hours, busy, onClick, productName = "listing" }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={busy}
+            aria-busy={busy}
+            aria-label={`Reactivate ${productName} for ${validityLabel(hours)}`}
+            className="inline-flex h-9 min-w-[112px] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[11.5px] font-bold tracking-wide text-white transition-all duration-150 active:scale-[0.97] disabled:opacity-80"
+            style={{ background: C.primary }}
+        >
+            {busy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+                <RefreshCw className="h-3.5 w-3.5" strokeWidth={2.5} />
+            )}
+            <span>{busy ? "Reactivating..." : "Reactivate"}</span>
+            {!busy && <span className="font-semibold text-white/65">· for {validityLabel(hours)}</span>}
+        </button>
+    );
+}
+
+// Inline notice shown between the product header and the info strip once a
+// listing has expired. It never blurs or locks the row, so the seller can still
+// read and edit everything; it just gives one clear, obvious action.
+function ExpiredBanner({ expiresAt, hours, busy, productName, onRenew, reduceMotion }) {
+    return (
+        <motion.div
+            key="expired-banner"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.28, ease: EASE }}
+            style={{ overflow: "hidden" }}
+            onClick={(e) => e.stopPropagation()}
+        >
+            <div className="pt-3">
+                <div
+                    role="group"
+                    aria-label="Listing expired"
+                    className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
+                    style={{ background: "#FFF8E6", borderColor: "rgba(180,83,9,0.2)" }}
+                >
+                    <span
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                        style={{ background: "#fef3c7", color: "#b45309" }}
+                    >
+                        <Clock className="h-4 w-4" strokeWidth={2.3} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-bold leading-tight tracking-wide" style={{ color: "#92400E" }}>
+                            Listing expired
+                        </p>
+                        <p className="mt-0.5 text-[10.5px] font-medium leading-snug tracking-wide" style={{ color: "#92400E" }}>
+                            {expiresAt ? `Hidden from buyers since ${formatExpiryDate(expiresAt)}` : "Hidden from buyers"}
+                        </p>
+                    </div>
+                    <RenewButton productName={productName} hours={hours} busy={busy} onClick={onRenew} />
+                </div>
+            </div>
+        </motion.div>
+    );
+}
+
 function ListingRow({
     it, idx, includeGst, isHighlighted, isEditing, editingSection, editor, token,
-    togglingId, savingPriceId,
+    togglingId, savingPriceId, nowMs, refreshingId, onRefresh,
     onToggleEdit, onActivate, onDeactivate, onOpenImage, onShare, onSavePrice,
 }) {
     const rowRef = useRef(null);
     const [priceOpen, setPriceOpen] = useState(false);
+    const reduceMotion = useReducedMotion();
 
     // Bring the opened editor into view after the expand animation starts.
     useEffect(() => {
@@ -702,15 +787,40 @@ function ListingRow({
     const image = it.image || it.brand?.image;
     const gallery = it.images?.length ? it.images : it.brand?.images?.length ? it.brand.images : image ? [image] : [];
 
-    const isActive = it.is_active !== false;
+    const expiry = getListingExpiry(it, nowMs);
+    const isExpired = expiry.expired;
+    const isActive = it.is_active !== false && !isExpired;
     const isPending = it.review_status === "pending_review";
     const stock = it.stock_quantity;
     const sState = stockState(stock, it.moq);
     const isMTO = it.stock_type === "made_to_order";
     const saleUnit = saleUnitLabel(it.units_per_master_pack);
     const compact = compactSaleUnit(saleUnit);
-    const status = getListingStatus(it, isActive, sState);
     const rows = useMemo(() => priceRowsFor(it, includeGst), [it, includeGst]);
+
+    // Renewal: only approved listings, and only once the listing has expired.
+    // While it's still live the row just shows the countdown, no button.
+    const renewHours = renewalHoursFor(it);
+    const canRenew = it.review_status === "approved" && isExpired;
+    const renewing = refreshingId === it.id;
+
+    // The banner already says "expired", so the header badge would be a duplicate.
+    const status = canRenew ? null : getListingStatus(it, isActive, sState, isExpired);
+
+    // Brief "Renewed" confirmation on the validity line after a successful renewal.
+    const [renewedFlash, setRenewedFlash] = useState(false);
+    const wasExpired = useRef(isExpired);
+    useEffect(() => {
+        if (wasExpired.current && !isExpired) {
+            setRenewedFlash(true);
+            wasExpired.current = isExpired;
+            const t = setTimeout(() => setRenewedFlash(false), 3500);
+            return () => clearTimeout(t);
+        }
+        wasExpired.current = isExpired;
+    }, [isExpired]);
+
+    const showValidityRow = expiry.tracked && !isExpired;
 
     const leadRaw = isMTO
         ? (it.production_lead_time_days ?? it.lead_time)
@@ -769,9 +879,14 @@ function ListingRow({
                 animate={{ backgroundColor: isHighlighted ? "rgba(253,243,216,1)" : "rgba(253,243,216,0)" }}
                 transition={{ duration: isHighlighted ? 0.18 : 1.2, ease: "easeOut" }}
             >
-                <div className="px-3 pb-3 pt-3 sm:px-4" style={{ background: isEditing ? C.hairSoft : "transparent" }}>
+                <motion.div
+                    className="relative overflow-hidden px-3 pb-3 pt-3 sm:px-4"
+                    initial={false}
+                    animate={{ backgroundColor: isEditing ? "rgba(11,17,22,0.05)" : "rgba(11,17,22,0)" }}
+                    transition={{ duration: 0.4, ease: EASE }}
+                >
                     {/* HEADER — image | product info | price (mirrors the feed's ProductRow) */}
-                    <div style={{ opacity: isActive ? 1 : 0.6 }}>
+                    <div className="transition-opacity duration-500" style={{ opacity: isActive ? 1 : 0.6 }}>
                         <div
                             role="button"
                             tabIndex={0}
@@ -843,8 +958,24 @@ function ListingRow({
                                 />
                             </div>
                         </div>
+                    </div>
 
-                        {/* OWNER INFO STRIP */}
+                    {/* EXPIRED BANNER — inline, never blocks the row. One tap renews. */}
+                    <AnimatePresence initial={false}>
+                        {canRenew && (
+                            <ExpiredBanner
+                                expiresAt={it.expires_at}
+                                hours={renewHours}
+                                busy={renewing}
+                                reduceMotion={reduceMotion}
+                                productName={toTitleCase(name)}
+                                onRenew={() => onRefresh(it, renewHours)}
+                            />
+                        )}
+                    </AnimatePresence>
+
+                    {/* OWNER INFO STRIP */}
+                    <div className="transition-opacity duration-500" style={{ opacity: isActive ? 1 : 0.6 }}>
                         <div className="mt-3" onClick={stop}>
                             <OwnerInfoStrip
                                 cells={cells}
@@ -857,6 +988,23 @@ function ListingRow({
                     {it.rejection_reason && it.review_status === "rejected" && (
                         <p className="mt-2 text-[11px] font-semibold leading-snug tracking-wide" style={{ color: "#c71f11" }}>
                             {it.rejection_reason}
+                        </p>
+                    )}
+
+                    {/* VALIDITY — countdown while live; briefly confirms a fresh renewal */}
+                    {showValidityRow && (
+                        <p
+                            className="mt-2 flex min-w-0 items-center gap-1 text-[11px] font-semibold tracking-wide transition-colors duration-500"
+                            style={{ color: renewedFlash ? "#15803d" : expiry.expiringSoon ? "#b45309" : C.muted }}
+                            onClick={stop}
+                            aria-live="polite"
+                        >
+                            {renewedFlash
+                                ? <Check className="h-3 w-3 shrink-0" strokeWidth={2.8} />
+                                : <Clock className="h-3 w-3 shrink-0" strokeWidth={2.4} />}
+                            <span className="truncate">
+                                {renewedFlash ? "Renewed · " : ""}Live until {formatExpiryDate(it.expires_at)} · {formatTimeLeft(expiry.msLeft)} left
+                            </span>
                         </p>
                     )}
 
@@ -885,11 +1033,11 @@ function ListingRow({
                             </button>
                         </div>
 
-                        {!isPending && (
+                        {!isPending && !isExpired && (
                             <ActiveToggle isActive={isActive} busy={togglingId === it.id} onChange={(next) => (next ? onActivate(it.id) : onDeactivate(it.id))} />
                         )}
                     </div>
-                </div>
+                </motion.div>
 
                 {/* FULL EDIT FORM — inline dropdown, unchanged behaviour */}
                 <AnimatePresence initial={false}>
@@ -972,10 +1120,19 @@ export default function SellerManageListingsPage() {
     const location = useLocation();
     const [toastMsg, setToastMsg] = useState(location.state?.toast || null);
 
+    const [nowMs, setNowMs] = useState(() => Date.now());
+    const [refreshingId, setRefreshingId] = useState(null);
+    const [expiredOnly, setExpiredOnly] = useState(() => new URLSearchParams(location.search).get("filter") === "expired");
+
     useEffect(() => {
         // Clear the router state so refreshing/back-nav doesn't re-show the toast.
         if (location.state?.toast) window.history.replaceState({}, document.title);
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        const t = setInterval(() => setNowMs(Date.now()), 60000);
+        return () => clearInterval(t);
+    }, []);
 
     const isApprovedSeller = profile?.seller_status === "approved";
 
@@ -1002,7 +1159,7 @@ export default function SellerManageListingsPage() {
 
     // Safety net for changes that happened while the tab was unfocused.
     useEffect(() => {
-        function onVisible() { if (document.visibilityState === "visible") reload({ silent: true }); }
+        function onVisible() { if (document.visibilityState === "visible") { setNowMs(Date.now()); reload({ silent: true }); } }
         document.addEventListener("visibilitychange", onVisible);
         window.addEventListener("focus", onVisible);
         return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); };
@@ -1015,14 +1172,16 @@ export default function SellerManageListingsPage() {
 
     const stats = useMemo(() => {
         const total = items.length;
-        const live = items.filter((it) => it.is_active !== false && it.review_status === "approved").length;
+        const live = items.filter((it) => it.is_active !== false && it.review_status === "approved" && !getListingExpiry(it, nowMs).expired).length;
+        const expired = items.filter((it) => getListingExpiry(it, nowMs).expired).length;
         const low = items.filter((it) => stockState(it.stock_quantity, it.moq) === "low").length;
         const out = items.filter((it) => stockState(it.stock_quantity, it.moq) === "out").length;
-        return { total, live, low, out };
-    }, [items]);
+        return { total, live, expired, low, out };
+    }, [items, nowMs]);
 
     const filtered = useMemo(() => {
         let list = items;
+        if (expiredOnly) list = list.filter((it) => getListingExpiry(it, nowMs).expired);
         if (needsRestockOnly) list = list.filter((it) => stockState(it.stock_quantity, it.moq) !== "ok");
         const term = query.trim().toLowerCase();
         if (term) {
@@ -1033,7 +1192,7 @@ export default function SellerManageListingsPage() {
             });
         }
         return list;
-    }, [items, needsRestockOnly, query]);
+    }, [items, needsRestockOnly, expiredOnly, query, nowMs]);
 
     const columnCount = useResponsiveColumnCount();
     const columns = useMemo(() => bucketItemsByColumn(filtered, columnCount), [filtered, columnCount]);
@@ -1066,7 +1225,7 @@ export default function SellerManageListingsPage() {
         const res = await setSellerSubmissionActive(token, id, active);
         setTogglingId(null);
         if (res?.success) patchItem(id, res.submission);
-        else setToastMsg("Couldn't update the listing. Try again.");
+        else setToastMsg(res?.message || "Couldn't update the listing. Try again.");
     }
     const activateListing = (id) => setListingActive(id, true);
     const deactivateListing = (id) => setListingActive(id, false);
@@ -1107,6 +1266,25 @@ export default function SellerManageListingsPage() {
         const msg = saveResultMessage({ priceOk, promoOk, failMsg });
         if (msg) setToastMsg(msg);
         if (priceOk || promoOk) reload({ silent: true });
+    }
+
+    // One-tap renewal: `hours` is the validity already saved on the listing.
+    // The guard on refreshingId stops double taps from firing two requests.
+    async function handleRefreshListing(it, hours) {
+        if (refreshingId) return false;
+        setRefreshingId(it.id);
+        let res = null;
+        try { res = await refreshSellerSubmission(token, it.id, hours); } catch { res = null; }
+        setRefreshingId(null);
+        if (res?.success && res.submission) {
+            patchItem(it.id, res.submission);
+            setNowMs(Date.now());
+            setToastMsg(`Listing renewed. Live until ${formatExpiryDate(res.submission.expires_at)}.`);
+            reload({ silent: true });
+            return true;
+        }
+        setToastMsg(res?.message || "Couldn't renew the listing. Try again.");
+        return false;
     }
 
     // One editor open at a time.
@@ -1179,6 +1357,7 @@ export default function SellerManageListingsPage() {
                             {stats.total} listing{stats.total === 1 ? "" : "s"}
                             <span className="mx-1">·</span>
                             {stats.live} live
+                            {stats.expired > 0 && (<><span className="mx-1">·</span><span style={{ color: "#c71f11" }}>{stats.expired} expired</span></>)}
                         </p>
                     </div>
                     <div className="flex justify-end">
@@ -1205,13 +1384,39 @@ export default function SellerManageListingsPage() {
                         />
                     </div>
 
-                    <div className="flex items-center justify-between gap-2 px-1">
-                        <div className="flex items-center gap-2">
-                            <FilterChip label="Needs restock" active={needsRestockOnly}
-                                onClick={() => setNeedsRestockOnly((v) => !v)} count={stats.low + stats.out} />
-                            <FilterChip label="Marketing" active={false} onClick={() => navigate("/seller/marketing")} />
+                    <div className="flex items-center gap-2 px-1">
+                        {/* Scrollable filter chips */}
+                        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto scrollbar-none">
+                            <FilterChip
+                                label="Needs restock"
+                                active={needsRestockOnly}
+                                onClick={() => setNeedsRestockOnly((v) => !v)}
+                                count={stats.low + stats.out}
+                            />
+
+                            {(stats.expired > 0 || expiredOnly) && (
+                                <FilterChip
+                                    label="Expired"
+                                    active={expiredOnly}
+                                    onClick={() => setExpiredOnly((v) => !v)}
+                                    count={stats.expired}
+                                />
+                            )}
+
+                            <FilterChip
+                                label="Marketing"
+                                active={false}
+                                onClick={() => navigate("/seller/marketing")}
+                            />
                         </div>
-                        <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+
+                        {/* GST always stays visible */}
+                        <div className="shrink-0">
+                            <GstToggle
+                                includeGst={includeGst}
+                                onChange={setIncludeGst}
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -1263,6 +1468,7 @@ export default function SellerManageListingsPage() {
                                                 token={token}
                                                 isHighlighted={highlightedIds.has(it.id)}
                                                 isEditing={editingId === it.id}
+                                                nowMs={nowMs} refreshingId={refreshingId} onRefresh={handleRefreshListing}
                                                 editingSection={editingSection}
                                                 editor={
                                                     editingId === it.id ? (

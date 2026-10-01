@@ -1135,6 +1135,15 @@ export async function setSellerSubmissionActive(token, id, isActive) {
   return res.json();
 }
 
+export async function refreshSellerSubmission(token, id, validityHours) {
+  const res = await fetch(`${API_BASE}/seller/catalog/submissions/${id}/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(validityHours != null ? { validityHours } : {}),
+  });
+  return res.json();
+}
+
 export async function adminListBrandItemSubmissions(token, brandItemId) {
   const res = await fetch(`${API_BASE}/admin/seller-submissions/by-brand-item/${brandItemId}`, {
     headers: { Authorization: `Bearer ${token}` },
