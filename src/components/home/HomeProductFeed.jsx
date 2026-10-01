@@ -1353,6 +1353,8 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
     };
     const stopPrefetch = () => clearTimeout(prefetchTimer.current);
 
+    const priceVerifying = item._priceVerified === false;
+
     return (
         <motion.div
             initial={animateEntrance ? { opacity: 0, y: 6 } : false}
@@ -1420,13 +1422,13 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                         className="mt-1 text-[10px] sm:text-[11px] md:text-[11.5px] font-semibold leading-tight tracking-wide min-h-[1.2em]"
                         style={{ color: C.secondary }}
                     >
-                        {packaging || "\u00A0"}
+                        {packaging && !priceVerifying ? packaging : "\u00A0"}
                     </p>}
                     {shopMode && <p
                         className="mt-1 text-[11px] sm:text-[12px] md:text-[12.5px] font-semibold leading-tight tracking-wide min-h-[1.2em]"
                         style={{ color: C.secondary }}
                     >
-                        {packaging || "\u00A0"}
+                        {packaging && !priceVerifying ? packaging : "\u00A0"}
                     </p>}
                 </div>
 
@@ -1449,6 +1451,12 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                         </span>
                     ) : !isLoggedIn ? (
                         <LockedPriceBlock seed={item.id} unit={item.lowest_price_unit} size="row" onClick={onRequireLogin} />
+                    ) : priceVerifying ? (
+                        <div className="flex flex-col items-end gap-1.5 py-1">
+                            <span className="h-2.5 w-14 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                            <span className="h-3 w-16 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                            <span className="h-3 w-12 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                        </div>
                     ) : (
                         <>
                             {((isLoggedIn && item.price_trend) || (breakdown && !shopMode)) && (
@@ -2828,6 +2836,37 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
         return () => { cancelled = true; clearTimeout(t); cancelAnimationFrame(raf); };
     }, [revealTick, loading, revealRow]);
 
+    // Search results come from a source that doesn't apply wallet / custom-visibility
+    // rules, so their header price can belong to a seller this buyer can't see.
+    // Re-resolve each row's lowest price through the SAME filtered endpoint the
+    // seller dropdown uses (4 at a time), then replace the row's price fields.
+    const verifyLowestFor = useCallback(async (rows, requestToken) => {
+        const queue = [...rows];
+        const worker = async () => {
+            while (queue.length) {
+                const it = queue.shift();
+                if (requestToken !== queryTokenRef.current) return;
+                let best;
+                let ok = false;
+                try {
+                    const addr = buyerAddressRef.current;
+                    const res = await fetchBrandItemSellers(it.id, {
+                        sort: "price_asc", limit: LOWEST_PROBE_SIZE, offset: 0, token,
+                        destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
+                    });
+                    if (res?.success) { best = computeListingLowestFromSellers(res.items || []); ok = true; }
+                } catch { /* keep the row's own value below */ }
+                if (requestToken !== queryTokenRef.current) return;
+                setItems((prev) => prev.map((row) => {
+                    if (String(row.id) !== String(it.id)) return row;
+                    // On failure keep the original numbers, just stop showing the skeleton.
+                    return ok ? { ...applyLowestToItem(row, best), _priceVerified: true } : { ...row, _priceVerified: true };
+                }));
+            }
+        };
+        await Promise.all([worker(), worker(), worker(), worker()]);
+    }, [token]);
+
     // Single runQuery — the primary feed fetch, with tiered fallback
     // (subcategory, then category) when a live search comes up empty.
     const runQuery = useCallback((offset, { append }) => {
@@ -2853,18 +2892,19 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
         request
             .then((res) => {
                 if (!res?.success) return;
-                if (requestToken !== queryTokenRef.current) return
+                if (requestToken !== queryTokenRef.current) return;
 
-                const incoming = res.items || [];
-                setItems((prev) => {
-                    if (trimmed) {
-                        return append ? mergeUnique(prev, incoming) : incoming;
-                    }
-                    return append ? mergeUnique(prev, incoming) : incoming;
-                });
+                // Only plain search results need verifying; the feed RPC is already filtered.
+                const needsVerify = !!trimmed && !useFeedRpc && isLoggedIn && !!token;
+                const incoming = needsVerify
+                    ? (res.items || []).map((it) => ({ ...it, _priceVerified: false }))
+                    : (res.items || []);
+
+                setItems((prev) => (append ? mergeUnique(prev, incoming) : incoming));
                 setTotal(res.total ?? incoming.length ?? null);
                 setHasMore(!!res.hasMore);
                 if (!append && pendingRevealRef.current) setRevealTick((t) => t + 1);
+                if (needsVerify) verifyLowestFor(incoming, requestToken);
             })
             .catch((err) => { if (err?.name !== "AbortError") setHasMore(false); })
             .finally(() => {
@@ -2872,7 +2912,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [category?.id, q, token, followedOnly, shopSlug]);
+    }, [category?.id, q, token, followedOnly, shopSlug, isLoggedIn, verifyLowestFor]);
 
 
     runQueryRef.current = runQuery;
