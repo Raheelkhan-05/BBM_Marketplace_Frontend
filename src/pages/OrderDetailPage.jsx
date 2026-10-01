@@ -24,11 +24,12 @@ import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
-import { StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall, basisLabel, PaymentTermsBanner, FreightNotice } from "../components/orders/OrderDisplayHelpers.jsx";
+import { StatusChip, displayStatus, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote, shouldShowDelivery, shouldShowShortfall, basisLabel, PaymentTermsBanner, FreightNotice } from "../components/orders/OrderDisplayHelpers.jsx";
+import OrderTimingNote from "../components/orders/OrderTimingNote.jsx";
 
 const TIMELINE_STEPS = ["pending_confirmation", "confirmed", "shipped", "delivered"];
 
-function Timeline({ status, events }) {
+function Timeline({ status, events, autoRejected = false }) {
     const isTerminalBad = status === "cancelled" || status === "rejected";
     const currentIdx = TIMELINE_STEPS.indexOf(status);
     return (
@@ -53,7 +54,9 @@ function Timeline({ status, events }) {
             {isTerminalBad && (
                 <div className="flex gap-3">
                     <XCircle className="h-5 w-5" style={{ color: C.primary }} />
-                    <p className="text-[12.5px] font-bold tracking-wide" style={{ color: C.primary }}>{status === "cancelled" ? "Cancelled" : "Rejected by seller"}</p>
+                    <p className="text-[12.5px] font-bold tracking-wide" style={{ color: C.primary }}>
+                        {autoRejected ? "Not accepted — the seller didn't respond in 24 hours" : status === "cancelled" ? "Cancelled" : "Rejected by seller"}
+                    </p>
                 </div>
             )}
         </div>
@@ -162,11 +165,12 @@ export default function OrderDetailPage() {
                     </div>
                     <p className="flex items-center gap-1 text-[12px] font-semibold tracking-wider" style={{ color: C.muted }}><Radio className="h-2.5 w-2.5 animate-pulse" style={{ color: "#059669" }} /> Live</p>
                 </div>
-                <StatusChip status={order.status} size="lg" />
+                <StatusChip status={displayStatus(order)} size="lg" />
             </div>
 
             {/* Credit orders only — advance payment is a seller-only concern */}
             <PaymentTermsBanner order={order} viewer="buyer" standalone />
+            <OrderTimingNote order={order} viewer="buyer" className="mt-3" />
 
             <FreightNotice order={order} viewer="buyer" className="mt-3" />
 
@@ -194,7 +198,7 @@ export default function OrderDetailPage() {
             )}
 
             <Card title="Order status">
-                <Timeline status={order.status} events={events} />
+                <Timeline status={order.status} events={events} autoRejected={!!order.auto_rejected_at} />
             </Card>
 
             {(shouldShowDelivery(order, firstItem) || shouldShowShortfall(order)) && (

@@ -32,10 +32,11 @@ import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
 import { C, EASE } from "../components/catalog/tokens.js";
 import { transportLabel } from "../../shared/transportOptions.js";
 import {
-    StatusChip, SampleBadge, ItemQuantityLine, DeliveryEstimate, displayAmount,
+    StatusChip, SampleBadge, displayStatus, ItemQuantityLine, DeliveryEstimate, displayAmount,
     StockShortfallNote, shouldShowDelivery, shouldShowShortfall, formatDeliveryAddress, OrderTagsRow,
     PaymentTermsBanner, FreightNotice, ChatWithBuyerButton, PartyBlock, TotalRow, computeWalletDeduction, DOC_C,
 } from "../components/orders/OrderDisplayHelpers.jsx";
+import OrderTimingNote from "../components/orders/OrderTimingNote.jsx";
 import ConfirmOrderModal from "../components/orders/ConfirmOrderModal.jsx";
 import { confirmSellerOrderWithTransport } from "../utils/api.js"; // see api.js patch
 import ShipOrderModal from "../components/orders/ShipOrderModal.jsx";
@@ -95,8 +96,8 @@ function TabBadge({ count }) {
 }
 
 const PURCHASE_STATUS_TABS = [
-    { key: "", label: "All" }, { key: "pending_confirmation", label: "Pending" }, { key: "confirmed", label: "Confirmed" },
-    { key: "awaiting_payment", label: "Awaiting payment" },
+    { key: "", label: "All" }, { key: "awaiting_payment", label: "Awaiting payment" },
+    { key: "pending_confirmation", label: "Pending" }, { key: "confirmed", label: "Confirmed" },
     { key: "processing", label: "Processing" }, { key: "shipped", label: "Shipped" }, { key: "delivered", label: "Delivered" },
     { key: "cancelled", label: "Cancelled" }, { key: "rejected", label: "Rejected" },
 ];
@@ -167,13 +168,14 @@ function PurchaseOrderCard({ order, idx, onChanged }) {
                         {new Date(order.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                     </p>
                 </div>
-                <StatusChip status={order.status} />
+                <StatusChip status={displayStatus(order)} />
             </div>
 
             {/* Row 2: at-a-glance facts — sample / group / credit / freight, one language */}
             <div className="mt-2">
                 <OrderTagsRow order={order} viewer="buyer" isSample={isSample} groupNumber={order.group_number} />
             </div>
+            <OrderTimingNote order={order} viewer="buyer" />
 
             {/* Row 3: the product — the actual hero content of the card */}
             <div className="mt-3 flex gap-3">
@@ -344,13 +346,14 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions, reload }
                         {new Date(order.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                     </p>
                 </div>
-                <StatusChip status={order.status} />
+                <StatusChip status={displayStatus(order)} />
             </div>
 
             {/* Row 2: at-a-glance facts */}
             <div className="mt-2">
                 <OrderTagsRow order={order} viewer="seller" isSample={isSample} groupNumber={order.group_number} />
             </div>
+            <OrderTimingNote order={order} viewer="seller" />
 
             {/* Row 3: logistics, only if relevant */}
             {(shouldShowShortfall(order) || shouldShowDelivery(order, firstItem)) && (

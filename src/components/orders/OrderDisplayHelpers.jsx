@@ -100,6 +100,7 @@ function round2(n) {
 
 export const STATUS_STYLE = {
     awaiting_payment: { bg: "#64748b14", fg: "#475569", label: "Awaiting payment" },
+    not_accepted: { bg: "#D2462B14", fg: "#D2462B", label: "Not accepted" },
     pending_confirmation: { bg: "#f59e0b14", fg: "#b45309", label: "Awaiting seller" },
     confirmed: { bg: "#006F8314", fg: "#006F83", label: "Confirmed" },
     processing: { bg: "#006F8314", fg: "#006F83", label: "Processing" },
@@ -108,6 +109,8 @@ export const STATUS_STYLE = {
     cancelled: { bg: "#64748b14", fg: "#64748b", label: "Cancelled" },
     rejected: { bg: "#D2462B14", fg: "#D2462B", label: "Rejected" },
 };
+
+export const displayStatus = (order) => (order?.auto_rejected_at ? "not_accepted" : order?.status);
 
 export function StatusChip({ status, size = "sm" }) {
     const s = STATUS_STYLE[status] || { bg: "#64748b14", fg: "#64748b", label: String(status || "").replace(/_/g, " ") };
