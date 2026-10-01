@@ -130,7 +130,7 @@
 //   confirm step. Nothing is saved before the slide. Saved changes patch
 //   the seller row in place and the open dropdown silently re-syncs.
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
@@ -1310,6 +1310,61 @@ function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, bre
     );
 }
 
+// Product name with the info icon INLINE at the very end. If the name is too
+// long, the text is trimmed + "…" so the icon still fits on the last allowed line.
+function ProductNameWithInfo({ name, onInfo }) {
+    const pRef = useRef(null);
+    const textRef = useRef(null);
+
+    useLayoutEffect(() => {
+        const p = pRef.current;
+        const s = textRef.current;
+        if (!p || !s) return;
+
+        const fit = () => {
+            const lines = window.matchMedia("(min-width: 768px)").matches ? 2 : 3;
+            s.textContent = name;
+            const lh = parseFloat(getComputedStyle(p).lineHeight) || 17.5;
+            const max = lh * lines + 1;
+            if (p.scrollHeight <= max) return; // fits, no trimming needed
+
+            let lo = 0, hi = name.length;
+            while (lo < hi) {
+                const mid = Math.ceil((lo + hi) / 2);
+                s.textContent = name.slice(0, mid).trimEnd() + "…";
+                if (p.scrollHeight <= max) lo = mid; else hi = mid - 1;
+            }
+            s.textContent = name.slice(0, lo).trimEnd() + "…";
+        };
+
+        fit();
+        let lastW = p.clientWidth;
+        const ro = new ResizeObserver(() => {
+            if (p.clientWidth !== lastW) { lastW = p.clientWidth; fit(); }
+        });
+        ro.observe(p);
+        return () => ro.disconnect();
+    }, [name]);
+
+    return (
+        <p
+            ref={pRef}
+            className="min-w-0 text-[14px] font-bold leading-tight tracking-wide"
+            style={{ color: C.ink, overflowWrap: "anywhere" }}
+        >
+            <span ref={textRef} />
+            <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onInfo(); }}
+                aria-label="Product details"
+                className="ml-1 inline-flex h-3.5 w-3.5 -translate-y-px items-center justify-center rounded-full align-middle transition-colors hover:bg-black/[0.05]"
+            >
+                <Info className="h-3 w-3" style={{ color: C.muted }} />
+            </button>
+        </p>
+    );
+}
+
 function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow, shopMode = false, isOpening = false, onPrefetch }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
     const categoryLabel = isHiddenLabel(item.category_name) ? null : item.category_name;
@@ -1394,19 +1449,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     tabIndex={0}
                     className="min-w-0 cursor-pointer text-left min-h-[5rem] flex flex-col justify-center"
                 >
-                    <p
-                        className="min-w-0 text-[14px] font-bold leading-tight tracking-wide sm:line-clamp-3 md:line-clamp-2"
-                        style={{ color: C.ink }}
-                    >
-                        {toTitleCase(item.name)}
-                        <button
-                            onClick={(e) => { e.stopPropagation(); onInfo(); }}
-                            aria-label="Product details"
-                            className="ml-1 inline-flex h-3.5 w-3.5 shrink-0 -translate-y-px items-center justify-center rounded-full align-middle transition-colors hover:bg-black/[0.05]"
-                        >
-                            <Info className="h-3 w-3" style={{ color: C.muted }} />
-                        </button>
-                    </p>
+                    <ProductNameWithInfo name={toTitleCase(item.name)} onInfo={onInfo} />
                     <p
                         className="mt-0.5 flex min-w-0 items-center gap-1 truncate uppercase text-[11.5px] font-bold tracking-wider"
                         style={{ color: "#006F83" }}

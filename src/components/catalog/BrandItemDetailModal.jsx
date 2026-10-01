@@ -579,23 +579,37 @@ export default function BrandItemDetailModal({ brandItemId, onClose, onViewSelle
 
                                     {/* "More below" affordance — only shown while there's genuinely
                                         unscrolled content, measured off the real DOM, not a guess. */}
+                                    {/* "More below" affordance — only shown while there's genuinely
+    unscrolled content, measured off the real DOM, not a guess. */}
                                     <AnimatePresence>
                                         {hasOverflow && !atBottom && (
                                             <motion.div
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
                                                 exit={{ opacity: 0 }}
-                                                className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col items-center"
+                                                className="pointer-events-none absolute inset-x-0 bottom-0 z-10"
                                             >
-                                                <div className="h-14 w-full bg-gradient-to-t from-white via-white/85 to-transparent" />
-                                                <motion.div
-                                                    animate={{ y: [0, -3, 0] }}
-                                                    transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
-                                                    className="mb-2 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold text-white"
-                                                    style={{ background: "rgba(11,17,22,0.82)" }}
-                                                >
-                                                    Scroll for more <ChevronDown className="h-3 w-3" />
-                                                </motion.div>
+                                                {/* Blur/fade layer behind the label */}
+                                                <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-white via-white/85 to-transparent" />
+
+                                                {/* Scroll label sits ABOVE the gradient */}
+                                                <div className="relative flex justify-center pb-2">
+                                                    <motion.div
+                                                        animate={{ y: [0, -3, 0] }}
+                                                        transition={{
+                                                            duration: 1.4,
+                                                            repeat: Infinity,
+                                                            ease: "easeInOut",
+                                                        }}
+                                                        className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold text-white shadow-sm"
+                                                        style={{
+                                                            background: "rgba(11,17,22,0.82)",
+                                                        }}
+                                                    >
+                                                        Scroll for more
+                                                        <ChevronDown className="h-3 w-3" />
+                                                    </motion.div>
+                                                </div>
                                             </motion.div>
                                         )}
                                     </AnimatePresence>
