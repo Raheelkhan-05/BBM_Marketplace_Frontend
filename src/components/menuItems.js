@@ -61,7 +61,7 @@ export function buildMenuItems({
             item("list-product", "List a product", PackagePlus, MENU_ROUTES.listProduct, 0),
             item("manage-products", "Manage products", Boxes, MENU_ROUTES.manageProducts, 0, productsBadge),
             item("my-store", "My store", Store, MENU_ROUTES.myStore, 0, 0, matchMyStore),
-            item("marketing", "Marketing", Megaphone, MENU_ROUTES.marketing, 0, 0, matchMarketing),
+            // item("marketing", "Marketing", Megaphone, MENU_ROUTES.marketing, 0, 0, matchMarketing),
             item("sales-orders", "Sales orders", FileText, MENU_ROUTES.salesOrders, 0, salesUnread, matchSalesOrders),
         ]
         : [item("my-store", "My store", Store, MENU_ROUTES.myStoreOnboarding, 0, 0, matchMyStore)];
