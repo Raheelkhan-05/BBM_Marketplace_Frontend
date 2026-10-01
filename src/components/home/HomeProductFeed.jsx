@@ -1480,7 +1480,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right cursor-pointer"
                 >
                     <div className="flex items-center gap-1">
-                        {isLoggedIn && !isOutOfStock && <PriceTrendBadge trend={item.price_trend} />}
+                        {/* {isLoggedIn && !isOutOfStock && <PriceTrendBadge trend={item.price_trend} />} */}
                         <FollowButton following={isFollowed} onToggle={onToggleFollow} />
                     </div>
                     {isOutOfStock ? (
@@ -1491,8 +1491,13 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                         <LockedPriceBlock seed={item.id} unit={item.lowest_price_unit} size="row" onClick={onRequireLogin} />
                     ) : (
                         <>
-                            {breakdown && !shopMode && (
-                                <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
+                            {((isLoggedIn && item.price_trend) || (breakdown && !shopMode)) && (
+                                <div className="flex items-center gap-1.5">
+                                    {isLoggedIn && <PriceTrendBadge trend={item.price_trend} />}
+                                    {breakdown && !shopMode && (
+                                        <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
+                                    )}
+                                </div>
                             )}
                             <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
                         </>
@@ -1858,8 +1863,8 @@ function TrendGlyph({ down, className }) {
     );
 }
 
-// Green ▼ = cheaper than the last price you saw, red ▲ = more expensive.
-// Deliberately quiet: white chip, hairline border, colour only on glyph + number.
+// Green dot = cheaper than the last price you saw, red dot = more expensive.
+// No chip/border: just a rippling dot and the percentage.
 function PriceTrendBadge({ trend }) {
     const reduce = useReducedMotion();
     const dir = Number(trend?.dir) || 0;
@@ -1878,30 +1883,37 @@ function PriceTrendBadge({ trend }) {
             role="img"
             aria-label={label}
             title={label}
-            initial={reduce ? false : { opacity: 0, x: 6 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.22, ease: EASE }}
-            className="relative inline-flex h-[22px] shrink-0 select-none items-center gap-1 rounded-full border bg-white pl-1.5 pr-2 text-[10px] font-extrabold leading-none tracking-wide tabular-nums"
-            style={{ color, borderColor: `${color}33` }}
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.2, ease: EASE }}
+            className="inline-flex shrink-0 select-none items-center gap-1.5 text-[10px] font-extrabold leading-none tracking-wide tabular-nums"
+            style={{ color }}
         >
-            {/* One soft ring, once — draws the eye to a fresh change, then stays out of the way */}
-            {!reduce && (
+            {/* Dot + ripple */}
+            <span className="relative flex h-2 w-2 items-center justify-center">
+                {!reduce && (
+                    <motion.span
+                        className="pointer-events-none absolute inset-0 rounded-full"
+                        style={{ background: color }}
+                        initial={{ opacity: 0.5, scale: 1 }}
+                        animate={{ opacity: 0, scale: 3 }}
+                        transition={{
+                            duration: 1.1,
+                            ease: "easeOut",
+                            delay: 0.15,
+                            repeat: 2,          // plays 3 times; use Infinity for a constant "live" pulse
+                            repeatDelay: 0.4,
+                        }}
+                    />
+                )}
                 <motion.span
-                    className="pointer-events-none absolute inset-0 rounded-full"
-                    style={{ border: `1px solid ${color}` }}
-                    initial={{ opacity: 0.45, scale: 1 }}
-                    animate={{ opacity: 0, scale: 1.45 }}
-                    transition={{ duration: 0.9, ease: "easeOut", delay: 0.15 }}
+                    className="relative h-2 w-2 rounded-full"
+                    style={{ background: color }}
+                    initial={reduce ? false : { scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 520, damping: 22, delay: 0.08 }}
                 />
-            )}
-            <motion.span
-                className="flex items-center"
-                initial={reduce ? false : { y: down ? -4 : 4, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 520, damping: 22, delay: 0.08 }}
-            >
-                <TrendGlyph down={down} className="h-[9px] w-[9px]" />
-            </motion.span>
+            </span>
             <span>{pctLabel}</span>
         </motion.span>
     );
