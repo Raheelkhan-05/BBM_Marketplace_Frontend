@@ -30,6 +30,7 @@ import { useNotifications } from "../context/NotificationsContext.jsx";
 import { fetchSellerOrderById, confirmSellerOrder, confirmSellerOrderWithTransport, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder, fetchSellerOwnTransportOptions, fetchSellerOwnGstin } from "../utils/api.js";
 import { shipSellerOrderWithTransport } from "../utils/api.transport.js";
 import ConfirmOrderModal from "../components/orders/ConfirmOrderModal.jsx";
+import DisputePanel from "../components/orders/DisputePanel.jsx";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
@@ -260,6 +261,8 @@ export default function SellerOrderDetailPage() {
 
                 {order.buyer_notes && <p className="mt-3 text-[12.5px] font-medium italic tracking-wide" style={{ color: C.muted }}>"{order.buyer_notes}"</p>}
             </Card>
+
+            <DisputePanel order={order} viewer="seller" onChanged={reload} />
 
             {actions.length > 0 && (
                 <div className="mt-5 flex gap-2">

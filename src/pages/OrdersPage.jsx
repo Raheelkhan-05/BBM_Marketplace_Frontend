@@ -23,9 +23,11 @@ import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import {
-    fetchMyOrders, cancelMyOrder,
+    fetchMyOrders,
     fetchSellerOrders, confirmSellerOrder, rejectSellerOrder, processSellerOrder, shipSellerOrder, deliverSellerOrder, fetchSellerOwnTransportOptions
 } from "../utils/api.js";
+import PurchaseCardActions from "../components/orders/PurchaseCardActions.jsx";
+import { SellerOrderCardNote } from "../components/orders/DisputePanel.jsx";
 import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
 import { C, EASE } from "../components/catalog/tokens.js";
 import { transportLabel } from "../../shared/transportOptions.js";
@@ -94,6 +96,7 @@ function TabBadge({ count }) {
 
 const PURCHASE_STATUS_TABS = [
     { key: "", label: "All" }, { key: "pending_confirmation", label: "Pending" }, { key: "confirmed", label: "Confirmed" },
+    { key: "awaiting_payment", label: "Awaiting payment" },
     { key: "processing", label: "Processing" }, { key: "shipped", label: "Shipped" }, { key: "delivered", label: "Delivered" },
     { key: "cancelled", label: "Cancelled" }, { key: "rejected", label: "Rejected" },
 ];
@@ -141,10 +144,8 @@ function GroupBadge({ groupNumber }) {
     );
 }
 
-function PurchaseOrderCard({ order, idx, onCancel }) {
+function PurchaseOrderCard({ order, idx, onChanged }) {
     const navigate = useNavigate();
-    const [cancelling, setCancelling] = useState(false);
-    const canCancel = order.status === "pending_confirmation";
     const { purchaseOrderUnreadCounts } = useNotifications();
     const unreadCount = purchaseOrderUnreadCounts.get(String(order.id)) || 0;
     const item = order.items?.[0];
@@ -204,23 +205,14 @@ function PurchaseOrderCard({ order, idx, onCancel }) {
                 </div>
             )}
 
-            {/* Footer: action only — date already shown up top, no repeat */}
-            {canCancel && (
-                <div className="mt-3 flex justify-end border-t pt-2.5" style={{ borderColor: C.hairSoft }}>
-                    <button disabled={cancelling}
-                        onClick={(e) => { e.stopPropagation(); (async () => { setCancelling(true); await onCancel(order.id); setCancelling(false); })(); }}
-                        className="rounded-lg border px-3 py-1.5 text-[12.5px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.primary }}>
-                        {cancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : "Cancel order"}
-                    </button>
-                </div>
-            )}
+            <PurchaseCardActions order={order} onChanged={onChanged} />
         </motion.div>
     );
 }
 
-function PurchaseOrderGroup({ group, startIdx, onCancel }) {
+function PurchaseOrderGroup({ group, startIdx, onChanged }) {
     if (!group.groupId) {
-        return <PurchaseOrderCard order={group.orders[0]} idx={startIdx} onCancel={onCancel} />;
+        return <PurchaseOrderCard order={group.orders[0]} idx={startIdx} onChanged={onChanged} />;
     }
     const combinedTotal = group.orders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
     return (
@@ -235,7 +227,7 @@ function PurchaseOrderGroup({ group, startIdx, onCancel }) {
                 <p className="text-[13px] font-extrabold tabular-nums" style={{ color: C.ink }}>₹{inr(combinedTotal)}</p>
             </div>
             <div className="flex flex-col gap-3">
-                {group.orders.map((o, i) => <PurchaseOrderCard key={o.id} order={o} idx={startIdx + i} onCancel={onCancel} />)}
+                {group.orders.map((o, i) => <PurchaseOrderCard key={o.id} order={o} idx={startIdx + i} onChanged={onChanged} />)}
             </div>
         </div>
     );
@@ -253,7 +245,7 @@ function PurchaseOrdersView() {
     }, [token, activeStatus, activeType]);
 
     const { orders, loading, reload } = useRealtimeOrders({ channelToken: profile?.notificationChannel, fetcher });
-    const handleCancel = async (orderId) => { const res = await cancelMyOrder(token, orderId, "Cancelled by buyer"); if (res?.success) reload(); };
+
 
     const groups = useMemo(() => {
         const map = new Map();
@@ -300,7 +292,7 @@ function PurchaseOrdersView() {
                             <p className="mt-1.5 max-w-xs text-[12.5px] font-medium tracking-wide" style={{ color: C.muted }}>Orders you place with sellers will show up here.</p>
                         </div>
                     ) : groups.map((g, i) => (
-                        <PurchaseOrderGroup key={g.groupId || g.orders[0].id} group={g} startIdx={i} onCancel={handleCancel} />
+                        <PurchaseOrderGroup key={g.groupId || g.orders[0].id} group={g} startIdx={i} onChanged={reload} />
                     ))}
             </div>
         </>
@@ -429,6 +421,8 @@ function SalesOrderCard({ order, idx, onAction, sellerTransportOptions, reload }
                 )}
             </div>
 
+            <SellerOrderCardNote order={order} />
+
             {actions.length > 0 && (
                 <div className="mt-3 flex gap-2">
                     {actions.map((a) => (
@@ -553,7 +547,7 @@ export default function OrdersPage() {
     return (
         <div className="mx-auto min-h-screen max-w-7xl px-2.5 pb-10 pt-3 sm:px-4 lg:px-6">
             {isApprovedSeller && (
-                <div className="mt-0 hidden md:grid grid-cols-2 gap-1 rounded-xl border p-1" style={{ borderColor: C.hair, background: "#fafbfb" }}>
+                <div className="mt-0 hidden grid-cols-2 gap-1 rounded-xl border p-1" style={{ borderColor: C.hair, background: "#fafbfb" }}>
                     <button onClick={() => setActiveTab("purchases")}
                         className="relative rounded-md px-4 py-1.5 text-[13px] font-bold tracking-wide transition-colors"
                         style={{ background: activeTab === "purchases" ? C.primary : "transparent", color: activeTab === "purchases" ? "#fff" : C.muted, boxShadow: activeTab === "purchases" ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>

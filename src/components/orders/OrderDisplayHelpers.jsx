@@ -99,6 +99,7 @@ function round2(n) {
 }
 
 export const STATUS_STYLE = {
+    awaiting_payment: { bg: "#64748b14", fg: "#475569", label: "Awaiting payment" },
     pending_confirmation: { bg: "#f59e0b14", fg: "#b45309", label: "Awaiting seller" },
     confirmed: { bg: "#006F8314", fg: "#006F83", label: "Confirmed" },
     processing: { bg: "#006F8314", fg: "#006F83", label: "Processing" },
@@ -109,7 +110,7 @@ export const STATUS_STYLE = {
 };
 
 export function StatusChip({ status, size = "sm" }) {
-    const s = STATUS_STYLE[status] || STATUS_STYLE.pending_confirmation;
+    const s = STATUS_STYLE[status] || { bg: "#64748b14", fg: "#64748b", label: String(status || "").replace(/_/g, " ") };
     return (
         <span
             className={`shrink-0 rounded-full font-extrabold capitalize tracking-wider ${size === "lg" ? "px-2.5 py-1 text-[11.5px]" : "px-2 py-0.5 text-[11.5px]"}`}
@@ -193,7 +194,7 @@ export function shouldShowDelivery(order, item) {
 // otherwise (list pages, which don't fetch events).
 export function DeliveryEstimate({ order, item, deliveredAt, label = "Estimated delivery" }) {
     if (order.status === "delivered") {
-        const ts = deliveredAt || order.updated_at;
+        const ts = order.delivered_at || deliveredAt || order.updated_at;
         if (!ts) return null;
         const formatted = new Date(ts).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
         return (
@@ -242,7 +243,8 @@ export function getPaymentTerms(order) {
     const v = String(raw || "").toLowerCase();
     if (!v) return null;
     if (v.includes("credit")) return "credit";
-    if (v.includes("advance") || v.includes("prepaid") || v.includes("upfront")) return "advance";
+    if (v.includes("upi") || v.includes("advance") || v.includes("prepaid") || v.includes("upfront")) return "advance";
+    // if (v.includes("advance") || v.includes("prepaid") || v.includes("upfront")) return "advance";
     return null;
 }
 

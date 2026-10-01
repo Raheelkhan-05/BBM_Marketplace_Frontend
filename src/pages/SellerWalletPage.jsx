@@ -94,9 +94,9 @@ function BreakdownPanel({ t }) {
                     <span className="tabular-nums font-extrabold" style={{ color: C.ink }}>₹{inr(total)}</span>
                 </div>
             </div>
-            <p className="mt-1.5 text-[10.5px] font-bold tracking-wide" style={{ color: reconciles ? "#059669" : "#b45309" }}>
+            {/* <p className="mt-1.5 text-[10.5px] font-bold tracking-wide" style={{ color: reconciles ? "#059669" : "#b45309" }}>
                 {reconciles ? "✓ Adds up to the amount deducted" : "Amounts differ from this entry. Contact support."}
-            </p>
+            </p> */}
         </div>
     );
 }

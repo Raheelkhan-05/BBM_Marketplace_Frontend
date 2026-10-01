@@ -17,7 +17,9 @@ import { ArrowLeft, Package, MapPin, Loader2, CheckCircle2, Circle, XCircle, Rad
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
-import { fetchOrderById, cancelMyOrder } from "../utils/api.js";
+import { fetchOrderById } from "../utils/api.js";
+import DisputePanel from "../components/orders/DisputePanel.jsx";
+import { CancelOrderControl } from "../components/orders/PurchaseCardActions.jsx";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import { C, EASE } from "../components/catalog/tokens";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
@@ -137,11 +139,6 @@ export default function OrderDetailPage() {
 
     const deliveredEvent = events.find((e) => e.to_status === "delivered");
 
-    const handleCancel = async () => {
-        const res = await cancelMyOrder(token, id, "Cancelled by buyer");
-        if (res?.success) reload(); else window.alert(res?.message || "Couldn't cancel the order.");
-    };
-
     if (loading && !order) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>;
     if (!order) return (
         <div className="mx-auto max-w-2xl px-4 py-16 text-center">
@@ -248,9 +245,8 @@ export default function OrderDetailPage() {
                 </Card>
             )}
 
-            {order.status === "pending_confirmation" && (
-                <button onClick={handleCancel} className="mt-5 w-full rounded-xl border px-5 py-3 text-[13px] font-bold tracking-wide" style={{ borderColor: C.hair, color: C.primary }}>Cancel order</button>
-            )}
+            <DisputePanel order={order} viewer="buyer" onChanged={reload} />
+            <CancelOrderControl order={order} onCancelled={reload} className="mt-5" />
         </div>
     );
 }
