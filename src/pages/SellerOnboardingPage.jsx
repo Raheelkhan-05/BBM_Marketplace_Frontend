@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, createPortal } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight, ArrowLeft, Loader2, CheckCircle2, Upload, X, Image as ImageIcon,
@@ -571,7 +571,7 @@ function OperationsStep({ form, update }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0">
         <TimeField label="Order acceptance starts" value={form.order_acceptance_start} onChange={(v) => update("order_acceptance_start", v)} />
         <TimeField label="Order acceptance ends" value={form.order_acceptance_end} onChange={(v) => update("order_acceptance_end", v)} />
       </div>
@@ -737,11 +737,119 @@ function TextField({ label, value = "", onChange, optional, placeholder, inputMo
   );
 }
 function TimeField({ label, value = "", onChange, optional }) {
+  const [open, setOpen] = useState(false);
+
+  const display = (() => {
+    if (!/^\d{2}:\d{2}/.test(value || "")) return "Select time";
+    const [h, m] = value.split(":").map(Number);
+    return `${String(h % 12 || 12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${h >= 12 ? "PM" : "AM"}`;
+  })();
+
   return (
     <div className="flex flex-col gap-1">
       <Label optional={optional}>{label}</Label>
-      <input type="time" value={value || ""} onChange={(e) => onChange(e.target.value)} className={fieldWrap()} />
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className={`${fieldWrap()} min-w-0 text-left ${value ? "" : "!font-normal text-slate-300"}`}
+      >
+        {display}
+      </button>
+      {open && (
+        <TimePickerModal
+          title={label}
+          value={value}
+          onClose={() => setOpen(false)}
+          onSave={(v) => { onChange(v); setOpen(false); }}
+        />
+      )}
     </div>
+  );
+}
+
+function TimePickerModal({ title, value, onClose, onSave }) {
+  const init = /^\d{2}:\d{2}/.test(value || "") ? value.split(":").map(Number) : [9, 0];
+  const [hour12, setHour12] = useState(init[0] % 12 || 12);
+  const [minute, setMinute] = useState(init[1]);
+  const [pm, setPm] = useState(init[0] >= 12);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const save = () => {
+    const h24 = (hour12 % 12) + (pm ? 12 : 0);
+    onSave(`${String(h24).padStart(2, "0")}:${String(minute).padStart(2, "0")}`);
+  };
+
+  const hours = Array.from({ length: 12 }, (_, i) => i + 1);
+  const minutes = Array.from({ length: 12 }, (_, i) => i * 5);
+  const chip = (active) =>
+    `flex h-10 items-center justify-center rounded-lg border-2 text-[14px] font-bold tracking-wide transition-colors ${active ? "border-[#047084] bg-[#047084] text-white" : "border-slate-200 bg-white text-slate-600"
+    }`;
+
+  // Portalled to <body> so the animated step container (transform) can't
+  // shift or clip it. Always dead-centre of the screen.
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 px-4"
+      style={{ height: "100dvh" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl"
+        style={{ maxHeight: "90dvh", overflowY: "auto" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <p className="text-[15px] font-extrabold tracking-wide text-slate-900">{title}</p>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="mt-3 text-center text-[32px] font-extrabold tabular-nums tracking-wide text-slate-900">
+          {String(hour12).padStart(2, "0")}:{String(minute).padStart(2, "0")}{" "}
+          <span className="text-[18px] text-[#047084]">{pm ? "PM" : "AM"}</span>
+        </p>
+
+        <p className="mb-1.5 mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Hour</p>
+        <div className="grid grid-cols-6 gap-1.5">
+          {hours.map((h) => (
+            <button key={h} type="button" onClick={() => setHour12(h)} className={chip(h === hour12)}>{h}</button>
+          ))}
+        </div>
+
+        <p className="mb-1.5 mt-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">Minute</p>
+        <div className="grid grid-cols-6 gap-1.5">
+          {minutes.map((m) => (
+            <button key={m} type="button" onClick={() => setMinute(m)} className={chip(m === minute)}>
+              {String(m).padStart(2, "0")}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-1.5">
+          <button type="button" onClick={() => setPm(false)} className={chip(!pm)}>AM</button>
+          <button type="button" onClick={() => setPm(true)} className={chip(pm)}>PM</button>
+        </div>
+
+        <div className="mt-5 flex gap-2.5">
+          <button type="button" onClick={onClose}
+            className="flex-1 rounded-xl border border-slate-200 py-2.5 text-[14px] font-bold tracking-wide text-slate-600">
+            Cancel
+          </button>
+          <button type="button" onClick={save}
+            className="flex-1 rounded-xl py-2.5 text-[14px] font-bold tracking-wide text-white"
+            style={{ background: "#000" }}>
+            Set time
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 function SelectField({ label, value, onChange, options, optional }) {
