@@ -162,11 +162,11 @@ export default function BuyerSearchDialog({ open, onClose, onSearch, onPick }) {
                                                         {sub && (
                                                             <span className="mt-0.5 flex items-center gap-1 truncate text-[11px] font-medium tracking-wide" style={{ color: C.muted }}>
                                                                 {b.location && <MapPin className="h-3 w-3 shrink-0" />}
-                                                                <span className="truncate">{sub}</span>
+                                                                <span className="tracking-wide">{sub}</span>
                                                             </span>
                                                         )}
                                                         {contact && (
-                                                            <span className="mt-0.5 block truncate text-[10.5px] font-medium tabular-nums tracking-wide" style={{ color: C.muted }}>{contact}</span>
+                                                            <span className="mt-0.5 block text-[11.5px] font-medium tabular-nums tracking-wide" style={{ color: C.muted }}>{contact}</span>
                                                         )}
                                                     </span>
                                                     {st ? (
