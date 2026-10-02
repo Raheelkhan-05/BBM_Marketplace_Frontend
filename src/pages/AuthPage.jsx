@@ -381,7 +381,6 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
   const [value, setValue] = useState("");
   const [touched, setTouched] = useState(false);
   const [focused, setFocused] = useState(false);
-  const [confirmingCall, setConfirmingCall] = useState(false);
   const inFlight = useRef(false);
 
   const mode = detectMode(value);
@@ -392,7 +391,6 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
     const raw = e.target.value;
     const nextMode = detectMode(raw);
     setValue(nextMode === "phone" ? raw.replace(/\D/g, "").slice(0, 10) : raw);
-    setConfirmingCall(false);
   };
   const handlePaste = (e) => {
     const text = e.clipboardData.getData("text");
@@ -412,12 +410,6 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
     e.preventDefault();
     setTouched(true);
     if (!valid || loading) return;
-    // Phone OTPs are delivered via a call, not silently — confirm with the
-    // user before we trigger it, rather than surprising them with a ring.
-    if (detectChannel(value) === "phone" && !confirmingCall) {
-      setConfirmingCall(true);
-      return;
-    }
     fireSubmit();
   };
 
@@ -477,27 +469,8 @@ function IdentifierPanel({ onSubmit, loading, serverError }) {
               {!showError && serverError && <p className="text-[12px] font-medium tracking-wide text-[#c71f11]">{serverError}</p>}
             </div>
 
-            <AnimatePresence mode="wait">
-              {confirmingCall && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                  className="mt-0 mb-5 flex items-start gap-3 overflow-hidden"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100">
-                    <Phone className="h-4 w-4 text-slate-700" />
-                  </span>
-                  <p className="text-[13.5px] font-medium leading-relaxed tracking-wide text-slate-500">
-                    <span className="block text-[14px] font-bold tracking-wide text-slate-900">
-                      We'll call you at +91 {value}
-                    </span>
-                    and share a one-time code to verify your number. Please keep your phone nearby.
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <PrimaryButton type="submit" disabled={!valid || loading} loading={loading} loadingText="Sending OTP…" className="mt-0">
-              {confirmingCall ? (<>Yes, call me<ArrowRight className="h-4 w-4" /></>) : (<>Send OTP<ArrowRight className="h-4 w-4" /></>)}
+            <PrimaryButton type="submit" disabled={!valid || loading} loading={loading} loadingText="Sending OTP…" className="mt-3">
+              Send OTP<ArrowRight className="h-4 w-4" />
             </PrimaryButton>
 
             <p className="mt-3.5 max-w-[390px] text-[11.5px] text-center font-medium leading-relaxed tracking-wide text-slate-400">
@@ -657,7 +630,7 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
           subtitle={
             <>
               <span className="break-all">
-                {channel === "email" ? `Sent to ${identifier}.` : `We called +91 ${identifier} with your code.`}
+                {channel === "email" ? `Sent to ${identifier}.` : `We sent a code by SMS to +91 ${identifier}.`}
               </span>{" "}
               <button type="button" onClick={onEditNumber} className="inline-flex items-center gap-1 font-bold tracking-wide" style={{ color: BRAND }}>
                 <Pencil className="h-3 w-3" />Edit
@@ -673,7 +646,7 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
         <div className="mt-4 flex flex-col items-center gap-1.5 text-center sm:mt-5">
           <p className="text-[12.5px] font-medium tracking-wide text-slate-400">
             {secondsLeft > 0 ? (
-              <>{channel === "phone" ? "Missed the call? Try again" : "Didn't get it? Resend"} in {secondsLeft}s</>
+              <>Didn't get it? Resend in {secondsLeft}s</>
             ) : (
               <button
                 type="button" onClick={handleResend} disabled={resending || loading}
@@ -681,8 +654,8 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
                 style={{ color: BRAND }}
               >
                 {resending
-                  ? (<><Loader2 className="h-3 w-3 animate-spin" />{channel === "phone" ? "Calling…" : "Resending…"}</>)
-                  : (<><RotateCw className="h-3 w-3" />{channel === "phone" ? "Call me again" : "Resend code"}</>)}
+                  ? (<><Loader2 className="h-3 w-3 animate-spin" />Resending…</>)
+                  : (<><RotateCw className="h-3 w-3" />Resend code</>)}
               </button>
             )}
           </p>
@@ -692,7 +665,7 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
               className="flex items-center gap-1.5 text-[11.5px] font-bold tracking-wide" style={{ color: BRAND }}
             >
               <Phone className="h-3 w-3" />
-              We're calling +91 {identifier} again now.
+              A new code has been sent to +91 {identifier}.
             </motion.p>
           )}
           {channel === "email" && justResent && secondsLeft === RESEND_SECONDS && (
@@ -715,7 +688,7 @@ function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serve
 // ---------------------------------------------------------------------------
 function AltContactVerify({ token, field, label, placeholder, inputMode, formatValue, validate, required, prefillVerifiedValue, onVerified, showRequiredError }) {
   const [value, setValue] = useState(prefillVerifiedValue || "");
-  // idle | confirm | sending | otp | verified
+  // idle | sending | otp | verified
   const [stage, setStage] = useState(prefillVerifiedValue ? "verified" : "idle");
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -746,13 +719,14 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
   // Label that replaces "Mobile number" / "Email" while the code is being
   // entered, so it's obvious which contact the OTP belongs to.
   const otpLabel = isPhoneField
-    ? `Enter the OTP for +91 ${value}`
+    ? `Enter the OTP sent to +91 ${value}`
     : `Enter the OTP sent to ${value}`;
   const otpHint = isPhoneField
-    ? "You'll get a call with a 6-digit code."
+    ? "We've sent a 6-digit code by SMS."
     : "Check your inbox (and spam folder) for a 6-digit code.";
 
-  const actuallySendCode = async () => {
+  const sendCode = async () => {
+    if (!valid) return;
     setError(null);
     setNotice(null);
     setStage("sending");
@@ -771,19 +745,8 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
     setStage("otp");
   };
 
-  const sendCode = async () => {
-    if (!valid) return;
-    // Phone verification here happens via a call — confirm before dialing
-    // rather than surprising the user, same as the login identifier step.
-    if (isPhoneField && stage !== "confirm") {
-      setStage("confirm");
-      return;
-    }
-    await actuallySendCode();
-  };
-
-  // Missed the call / email never arrived — request a fresh code without
-  // leaving the OTP step. The countdown restarts only if the request worked.
+  // SMS / email never arrived — request a fresh code without leaving the
+  // OTP step. The countdown restarts only if the request worked.
   const resendCode = async () => {
     if (secondsLeft > 0 || resending || verifying) return;
     setError(null);
@@ -802,7 +765,7 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
     }
     setSecondsLeft(RESEND_SECONDS);
     setResetKey((k) => k + 1);
-    setNotice(isPhoneField ? `We're calling +91 ${value} again now.` : `A new code is on its way to ${value}.`);
+    setNotice(isPhoneField ? `A new code has been sent to +91 ${value}.` : `A new code is on its way to ${value}.`);
   };
 
   // Wrong number / email typo — go back to the input with the value intact.
@@ -877,7 +840,7 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
               className={inputClass(showRequiredError)}
             />
             <SecondaryButton type="button" onClick={sendCode} disabled={!valid || stage === "sending"} loading={stage === "sending"}>
-              {stage === "confirm" ? "Yes, call me" : "Verify"}
+              Verify
             </SecondaryButton>
           </div>
 
@@ -886,18 +849,6 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
               Verify your {label.toLowerCase()} to continue.
             </p>
           )}
-
-          <AnimatePresence>
-            {stage === "confirm" && (
-              <motion.p
-                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                className="mt-2 flex items-start gap-2 overflow-hidden rounded-2xl bg-slate-50 px-3 py-2.5 text-[12px] font-medium leading-relaxed tracking-wide text-slate-600"
-              >
-                <Phone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-                You'll receive a call on +91 {value} with your code. Tap "Yes, call me" when ready.
-              </motion.p>
-            )}
-          </AnimatePresence>
         </>
       ) : (
         <div className="mt-2 flex flex-col gap-2.5">
@@ -910,7 +861,7 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
           <div className="flex flex-col gap-1">
             {secondsLeft > 0 ? (
               <p className="text-[12px] font-medium tracking-wide text-slate-400">
-                {isPhoneField ? "Missed the call? Try again" : "Didn't get it? Resend"} in {secondsLeft}s
+                Didn't get it? Resend in {secondsLeft}s
               </p>
             ) : (
               <button
@@ -919,8 +870,8 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
                 style={{ color: BRAND }}
               >
                 {resending
-                  ? (<><Loader2 className="h-3 w-3 animate-spin" />{isPhoneField ? "Calling…" : "Resending…"}</>)
-                  : (<><RotateCw className="h-3 w-3" />{isPhoneField ? "Call me again" : "Resend code"}</>)}
+                  ? (<><Loader2 className="h-3 w-3 animate-spin" />Resending…</>)
+                  : (<><RotateCw className="h-3 w-3" />Resend code</>)}
               </button>
             )}
             {notice && (
