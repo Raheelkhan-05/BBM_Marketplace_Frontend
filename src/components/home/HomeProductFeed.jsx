@@ -190,7 +190,8 @@ function writeFlag(k) { try { localStorage.setItem(k, "1"); } catch { /* private
 // For "never show again", store "1" instead of dayStamp().
 const HINT_KEY = "bbm_tap_hint_day_v1";
 const dayStamp = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
-function readHintDismissedToday() { try { return localStorage.getItem(HINT_KEY) === dayStamp(); } catch { return false; } }
+// function readHintDismissedToday() { try { return localStorage.getItem(HINT_KEY) === dayStamp(); } catch { return false; } }
+function readHintDismissedToday() { try { return localStorage.getItem("HINT_KEY") === dayStamp(); } catch { return false; } }
 function writeHintDismissedToday() { try { localStorage.setItem(HINT_KEY, dayStamp()); } catch { /* private mode */ } }
 
 const DEBUG_RT = false;
@@ -2010,6 +2011,11 @@ function TrendGlyph({ down, className }) {
 
 // Green dot = cheaper than the last price you saw, red dot = more expensive.
 // No chip/border: just a rippling dot and the percentage.
+
+// Optical alignment: digits sit a touch below the line box's geometric middle,
+// so the dot is nudged down by this many whole pixels. Try 0, 1 or 2.
+const DOT_NUDGE_Y = 1;
+
 function PriceTrendBadge({ trend }) {
     const reduce = useReducedMotion();
     const dir = Number(trend?.dir) || 0;
@@ -2020,6 +2026,10 @@ function PriceTrendBadge({ trend }) {
     const pctLabel = pct < 1 ? "<1%" : `${Math.round(pct)}%`;
     const color = down ? "#059669" : "#B3261E";
     const label = `Price ${down ? "dropped" : "rose"} ${pctLabel} since you last saw it`;
+
+    // Dot and ripple live in the SAME grid cell and are centred by the grid itself,
+    // so they always share one exact centre (no manual left/top offsets).
+    const dotStyle = { gridArea: "1 / 1", width: 6, height: 6, borderRadius: "9999px", background: color, placeSelf: "center" };
 
     return (
         <motion.span
@@ -2035,25 +2045,35 @@ function PriceTrendBadge({ trend }) {
             style={{ color }}
         >
             {/* Dot + ripple */}
-            <span className="relative flex h-2 w-2 items-center justify-center">
+            <span
+                aria-hidden
+                className="shrink-0"
+                style={{
+                    display: "grid",
+                    placeItems: "center",
+                    width: 8,
+                    height: 8,
+                    position: "relative",
+                    top: DOT_NUDGE_Y,
+                }}
+            >
                 {!reduce && (
                     <motion.span
-                        className="pointer-events-none absolute inset-0 rounded-full"
-                        style={{ background: color }}
+                        className="pointer-events-none"
+                        style={dotStyle}
                         initial={{ opacity: 0.5, scale: 1 }}
                         animate={{ opacity: 0, scale: 3 }}
                         transition={{
                             duration: 1.1,
                             ease: "easeOut",
                             delay: 0.15,
-                            repeat: 2,          // plays 3 times; use Infinity for a constant "live" pulse
+                            repeat: Infinity,   // constant "live" pulse
                             repeatDelay: 0.4,
                         }}
                     />
                 )}
                 <motion.span
-                    className="relative h-2 w-2 rounded-full"
-                    style={{ background: color }}
+                    style={dotStyle}
                     initial={reduce ? false : { scale: 0 }}
                     animate={{ scale: 1 }}
                     transition={{ type: "spring", stiffness: 520, damping: 22, delay: 0.08 }}
