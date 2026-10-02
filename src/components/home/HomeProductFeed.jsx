@@ -134,7 +134,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useLayoutE
 import { useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
-import { ChevronDown, Package, Info, Store, X, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
+import { ChevronDown, Package, Info, Store, Pointer, ChevronsUp, X, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
 import useFollowedItems from "../../hooks/useFollowedItems";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, observePriceTrends, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints } from "../../utils/api";
 import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
@@ -157,6 +157,9 @@ import { toBuyerSellerPayload } from "../../utils/buyerSellerPayload";
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)", imgBg: "#F4F5F6",
+    // RAL 2009 traffic orange
+    brand: "#DE5307", brandDeep: "#C44705", brandInk: "#8F3200",
+    brandTint: "#FFF3EB", brandTint2: "#FFE2D1", brandHair: "rgba(222,83,7,0.25)",
 };
 const EASE = [0.16, 1, 0.3, 1];
 // Fewer rows per page means fewer images requested on first paint (each
@@ -182,6 +185,13 @@ const FOLLOW_TIP_KEY = "bbm_follow_tip_dismissed_v1";
 
 function readFlag(k) { try { return localStorage.getItem(k) === "1"; } catch { return false; } }
 function writeFlag(k) { try { localStorage.setItem(k, "1"); } catch { /* private mode */ } }
+
+// Tap-hint: dismissed => hidden for the rest of TODAY (local day), shows again tomorrow.
+// For "never show again", store "1" instead of dayStamp().
+const HINT_KEY = "bbm_tap_hint_day_v1";
+const dayStamp = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+function readHintDismissedToday() { try { return localStorage.getItem(HINT_KEY) === dayStamp(); } catch { return false; } }
+function writeHintDismissedToday() { try { localStorage.setItem(HINT_KEY, dayStamp()); } catch { /* private mode */ } }
 
 const DEBUG_RT = false;
 const rtLog = (...args) => { if (DEBUG_RT) console.log("[RT]", ...args); };
@@ -1354,7 +1364,138 @@ function ProductNameWithInfo({ name, onInfo }) {
     );
 }
 
-function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow, shopMode = false, isOpening = false, onPrefetch }) {
+// Looping "finger taps" icon: rises in, presses down (squash) and sends out a ripple.
+function TapHand({ light = false, size = 26 }) {
+    const reduce = useReducedMotion();
+    const color = light ? "#fff" : C.brand;
+    return (
+        <span className="relative flex shrink-0 items-center justify-center" style={{ width: size + 10, height: size + 10 }}>
+            {!reduce && (
+                <motion.span
+                    aria-hidden
+                    className="absolute rounded-full"
+                    style={{ width: 18, height: 18, left: "13%", top: "0%", border: `2px solid ${color}` }}
+                    animate={{ opacity: [0, 0, 0.8, 0, 0], scale: [0.3, 0.3, 0.6, 1.7, 1.7] }}
+                    transition={{ duration: 2.4, times: [0, 0.5, 0.55, 0.85, 1], repeat: Infinity, ease: "easeOut" }}
+                />
+            )}
+            <motion.span
+                className="flex"
+                style={{ color }}
+                animate={reduce ? undefined : { y: [8, 0, 0, 3, 0, 0], scale: [1, 1, 1, 0.84, 1, 1], opacity: [0, 1, 1, 1, 1, 0] }}
+                transition={{ duration: 2.4, times: [0, 0.22, 0.45, 0.55, 0.7, 1], repeat: Infinity, ease: "easeInOut" }}
+            >
+                <Pointer size={size} strokeWidth={2.2} />
+            </motion.span>
+        </span>
+    );
+}
+
+// One-time info banner above the list.
+function TapHintBanner({ onDismiss }) {
+    return (
+        <motion.div
+            initial={{ opacity: 0, height: 0, y: -6 }}
+            animate={{ opacity: 1, height: "auto", y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -6 }}
+            transition={{ duration: 0.28, ease: EASE }}
+            className="overflow-hidden"
+        >
+            <div className="px-1 pb-2">
+                <div
+                    className="flex items-center gap-2.5 rounded-2xl border px-3 py-2.5"
+                    style={{ background: C.brandTint, borderColor: C.brandHair }}
+                >
+                    <TapHand size={26} />
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[13.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>Tap a product</p>
+                        <p className="mt-0.5 text-[11.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                            to see pricing, suppliers and buy options.
+                        </p>
+                    </div>
+                    <motion.button
+                        type="button"
+                        onClick={onDismiss}
+                        whileTap={{ scale: 0.92 }}
+                        whileHover={{ scale: 1.03 }}
+                        className="shrink-0 rounded-full px-4 py-2 text-[12.5px] font-extrabold tracking-wide"
+                        style={{ background: C.brandTint2, color: C.brandInk }}
+                    >
+                        Got it
+                    </motion.button>
+                </div>
+            </div>
+        </motion.div>
+    );
+}
+
+// Pulsing orange ring around the first product row.
+function HintRing() {
+    const reduce = useReducedMotion();
+    return (
+        <motion.span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-1.5 inset-y-0.5 rounded-2xl"
+            style={{ boxShadow: `inset 0 0 0 1.5px ${C.brand}`, background: "rgba(222,83,7,0.035)" }}
+            initial={{ opacity: 0 }}
+            animate={reduce ? { opacity: 1 } : { opacity: [0.55, 1, 0.55] }}
+            exit={{ opacity: 0, transition: { duration: 0.12 } }}
+            transition={reduce ? { duration: 0.2 } : { duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+        />
+    );
+}
+
+// Orange call-to-action strip under the first row. Tapping it behaves exactly like tapping the row.
+function TapHintStrip({ onClick }) {
+    const reduce = useReducedMotion();
+    return (
+        <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: EASE }}
+            className="overflow-hidden"
+        >
+            <div className="px-3 pb-3 sm:px-4">
+                <motion.button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onClick(); }}
+                    whileTap={{ scale: 0.97 }}
+                    aria-label="Tap to see pricing, suppliers and buy options"
+                    className="relative flex w-full items-center gap-2 overflow-hidden rounded-xl py-2 pl-2.5 pr-3 text-left text-white"
+                    style={{
+                        background: `linear-gradient(100deg, ${C.brand} 0%, ${C.brandDeep} 100%)`,
+                        boxShadow: "0 8px 18px -10px rgba(222,83,7,0.75)",
+                    }}
+                >
+                    {!reduce && (
+                        <motion.span
+                            aria-hidden
+                            className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3"
+                            style={{ background: "linear-gradient(100deg, transparent, rgba(255,255,255,0.28), transparent)" }}
+                            animate={{ x: ["0%", "450%"] }}
+                            transition={{ duration: 1.6, ease: "easeInOut", repeat: Infinity, repeatDelay: 1.4 }}
+                        />
+                    )}
+                    <motion.span
+                        className="flex shrink-0"
+                        animate={reduce ? undefined : { y: [0, -3, 0], opacity: [0.65, 1, 0.65] }}
+                        transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                        <ChevronsUp size={18} strokeWidth={2.6} />
+                    </motion.span>
+                    <TapHand light size={22} />
+                    <span className="min-w-0 flex-1 text-[11.5px] font-bold leading-snug tracking-wide">
+                        Tap to see pricing, suppliers and buy options
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={2.6} />
+                </motion.button>
+            </div>
+        </motion.div>
+    );
+}
+
+function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow, shopMode = false, isOpening = false, onPrefetch, showTapHint = false }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
     const categoryLabel = isHiddenLabel(item.category_name) ? null : item.category_name;
     const subcategoryLabel = isHiddenLabel(item.subcategory_name) ? null : item.subcategory_name;
@@ -1411,14 +1552,14 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                 delay: animateEntrance ? Math.min(idx * 0.012, 0.18) : 0,
                 ease: EASE,
             }}
-            className="w-full"
+            className={`relative w-full ${showTapHint ? "rounded-2xl" : ""}`}
             style={{
                 background: isOpen ? C.hairSoft : "transparent",
                 opacity: isOutOfStock ? 0.5 : isOpening ? 0.7 : 1,
             }}
         >
-            <div
-                className={`grid w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 sm:px-4 ${shopMode ? "pb-2.5" : "pb-3 min-h-[7.5rem]"}`}
+            <AnimatePresence>{showTapHint && <HintRing key="hint-ring" />}</AnimatePresence>
+            <div className={`grid w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 sm:px-4 ${shopMode ? "pb-2.5" : "pb-3 min-h-[7.5rem]"}`}
             >
                 {/* COL 1 — IMAGE */}
                 <div className="flex h-full items-center justify-center">
@@ -1514,6 +1655,10 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     onBuy={onToggle}
                 />
             )}
+
+            <AnimatePresence>
+                {showTapHint && <TapHintStrip key="hint-strip" onClick={guardedToggle} />}
+            </AnimatePresence>
         </motion.div>
     );
 }
@@ -2357,6 +2502,21 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
     const [loginPrompt, setLoginPrompt] = useState(null);
     const isLoggedIn = effectiveLoggedIn;
 
+    const [hintDismissed, setHintDismissed] = useState(readHintDismissedToday);
+    const dismissHint = useCallback(() => {
+        setHintDismissed(true);
+        writeHintDismissedToday();
+    }, []);
+    // First in-stock row gets the highlight (an out-of-stock row would be a dead end).
+    const firstHintId = useMemo(() => items.find((it) => !isFeedRowOutOfStock(it))?.id ?? null, [items]);
+    // Browse mode only: store views buy via the slider, so "tap a product" doesn't apply there.
+    const showHint = !hintDismissed && !shopSlug && !loading && items.length > 0;
+
+    // Dismiss only when a sellers dropdown actually opens (not on pin / info / image taps).
+    useEffect(() => {
+        if (openItemId) dismissHint();
+    }, [openItemId, dismissHint]);
+
     const [followedOnly, setFollowedOnly] = useState(false);
     const [followToast, setFollowToast] = useState(null); // { message, actionLabel?, onAction? }
     const [tipDismissed, setTipDismissed] = useState(() => readFlag(FOLLOW_TIP_KEY));
@@ -3155,6 +3315,10 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                 <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
             </div>
 
+            <AnimatePresence>
+                {showHint && <TapHintBanner key="tap-hint" onDismiss={dismissHint} />}
+            </AnimatePresence>
+
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
                 (-mx-3 cancels a parent's assumed px-3 padding; tweak to match your
                 actual page padding) with only a top/bottom hairline (border-y) —
@@ -3239,7 +3403,12 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                                                     onToggleFollow={() => handleToggleFollow(item)}
                                                     includeGst={includeGst}
                                                     isLoggedIn={isLoggedIn}
-                                                    onToggle={() => (shopSlug ? handleShopBuy(item) : toggleDropdown(item))}
+                                                    // onToggle={() => (shopSlug ? handleShopBuy(item) : toggleDropdown(item))}
+                                                    onToggle={() => {
+                                                        dismissHint(); // tapping any record ends the hint for today
+                                                        return shopSlug ? handleShopBuy(item) : toggleDropdown(item);
+                                                    }}
+                                                    showTapHint={showHint && item.id === firstHintId}
                                                     shopMode={!!shopSlug}
                                                     isOpening={openingItemId === item.id}
                                                     onPrefetch={shopSlug ? () => { if (isLoggedIn && token) getOffer(item.id); } : undefined}
