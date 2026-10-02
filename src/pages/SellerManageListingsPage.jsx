@@ -61,6 +61,7 @@ import ImageLightbox from "../components/ImageLightbox.jsx";
 import { SellerOnboardingForm } from "./SellerOnboardingPage.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import EditListingModal from "../components/seller/listingForm/EditListingModal.jsx";
+import { FrostVeil, PadlockBadge } from "../components/seller/ExpiredLock.jsx";
 import {
     DEFAULT_VALIDITY_HOURS, validityLabel, getListingExpiry, formatTimeLeft, formatExpiryDate,
 } from "../shared/listingValidity.js";
@@ -721,7 +722,8 @@ function RenewButton({ hours, busy, onClick, productName = "listing" }) {
 // Inline notice shown between the product header and the info strip once a
 // listing has expired. It never blurs or locks the row, so the seller can still
 // read and edit everything; it just gives one clear, obvious action.
-function ExpiredBanner({ expiresAt, hours, busy, productName, onRenew, reduceMotion }) {
+function ExpiredBanner({ expiresAt, hours, busy, productName, onRenew, reduceMotion, phase, padlockRef }) {
+    const released = phase === "released";
     return (
         <motion.div
             key="expired-banner"
@@ -729,31 +731,28 @@ function ExpiredBanner({ expiresAt, hours, busy, productName, onRenew, reduceMot
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: reduceMotion ? 0 : 0.28, ease: EASE }}
-            style={{ overflow: "hidden" }}
+            style={{ overflow: "hidden", position: "relative", zIndex: 10 }}
             onClick={(e) => e.stopPropagation()}
         >
             <div className="pt-3">
                 <div
                     role="group"
-                    aria-label="Listing expired"
+                    aria-label={released ? "Listing reactivated" : "Listing expired"}
                     className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
                     style={{ background: "#FFF8E6", borderColor: "rgba(180,83,9,0.2)" }}
                 >
-                    <span
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                        style={{ background: "#fef3c7", color: "#b45309" }}
-                    >
-                        <Clock className="h-4 w-4" strokeWidth={2.3} />
-                    </span>
+                    <PadlockBadge phase={phase} reduceMotion={reduceMotion} innerRef={padlockRef} />
                     <div className="min-w-0 flex-1">
                         <p className="text-[12px] font-bold leading-tight tracking-wide" style={{ color: "#92400E" }}>
-                            Listing expired
+                            {released ? "Listing reactivated" : "Listing expired"}
                         </p>
                         <p className="mt-0.5 text-[10.5px] font-medium leading-snug tracking-wide" style={{ color: "#92400E" }}>
-                            {expiresAt ? `Hidden from buyers since ${formatExpiryDate(expiresAt)}` : "Hidden from buyers"}
+                            {released
+                                ? "Live again for buyers"
+                                : expiresAt ? `Hidden from buyers since ${formatExpiryDate(expiresAt)}` : "Hidden from buyers"}
                         </p>
                     </div>
-                    <RenewButton productName={productName} hours={hours} busy={busy} onClick={onRenew} />
+                    {!released && <RenewButton productName={productName} hours={hours} busy={busy} onClick={onRenew} />}
                 </div>
             </div>
         </motion.div>
@@ -803,6 +802,24 @@ function ListingRow({
     const renewHours = renewalHoursFor(it);
     const canRenew = it.review_status === "approved" && isExpired;
     const renewing = refreshingId === it.id;
+
+    const [cardEl, setCardEl] = useState(null);
+    const [padlockEl, setPadlockEl] = useState(null);
+    const [frostPhase, setFrostPhase] = useState(canRenew ? "locked" : null);
+    const wasFrozen = useRef(canRenew);
+    const frostTimer = useRef(null);
+    useEffect(() => {
+        if (canRenew) {
+            clearTimeout(frostTimer.current);
+            setFrostPhase(renewing ? "unlocking" : "locked");
+        } else if (wasFrozen.current) {
+            setFrostPhase("released");
+            clearTimeout(frostTimer.current);
+            frostTimer.current = setTimeout(() => setFrostPhase(null), 2000);
+        }
+        wasFrozen.current = canRenew;
+    }, [canRenew, renewing]);
+    useEffect(() => () => clearTimeout(frostTimer.current), []);
 
     // The banner already says "expired", so the header badge would be a duplicate.
     const status = canRenew ? null : getListingStatus(it, isActive, sState, isExpired);
@@ -880,11 +897,15 @@ function ListingRow({
                 transition={{ duration: isHighlighted ? 0.18 : 1.2, ease: "easeOut" }}
             >
                 <motion.div
+                    ref={setCardEl}
                     className="relative overflow-hidden px-3 pb-3 pt-3 sm:px-4"
                     initial={false}
                     animate={{ backgroundColor: isEditing ? "rgba(11,17,22,0.05)" : "rgba(11,17,22,0)" }}
                     transition={{ duration: 0.4, ease: EASE }}
                 >
+                    {frostPhase && (
+                        <FrostVeil container={cardEl} target={padlockEl} phase={frostPhase} reduceMotion={!!reduceMotion} seed={it.id} />
+                    )}
                     {/* HEADER — image | product info | price (mirrors the feed's ProductRow) */}
                     <div className="transition-opacity duration-500" style={{ opacity: isActive ? 1 : 0.6 }}>
                         <div
@@ -962,7 +983,7 @@ function ListingRow({
 
                     {/* EXPIRED BANNER — inline, never blocks the row. One tap renews. */}
                     <AnimatePresence initial={false}>
-                        {canRenew && (
+                        {(canRenew || frostPhase === "released") && (
                             <ExpiredBanner
                                 expiresAt={it.expires_at}
                                 hours={renewHours}
@@ -970,6 +991,8 @@ function ListingRow({
                                 reduceMotion={reduceMotion}
                                 productName={toTitleCase(name)}
                                 onRenew={() => onRefresh(it, renewHours)}
+                                phase={frostPhase || "locked"}
+                                padlockRef={setPadlockEl}
                             />
                         )}
                     </AnimatePresence>
