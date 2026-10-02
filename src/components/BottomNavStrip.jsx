@@ -4,9 +4,12 @@
 // desktop Header uses), so routes, badges, grouping and active matching live
 // in one place. Approved sellers' "My store" goes to /seller/onboarding.
 //
-// Tapping the floating Menu button opens a FULL-SCREEN menu page (shop-name
-// title, icon-tile rows, dividers between groups, Helpline and Sign out).
-// The button stays visible on top and toggles the page.
+// Tapping the floating Menu button opens a BOTTOM SHEET (shop-name title,
+// icon-tile rows, dividers between groups, Helpline and Sign out). The sheet
+// is only as tall as its content needs, capped at 65% of the screen height;
+// if the items don't fit, the list inside scrolls. A dimmed backdrop sits
+// behind it and tapping the backdrop closes the menu. The button stays
+// visible on top and toggles the sheet.
 //
 // While the menu is open, a simple black Home button (icon + small label)
 // springs up directly above the Menu button so it's reachable with the
@@ -26,10 +29,12 @@ import { buildMenuItems, MENU_ROUTES } from "./menuItems.js";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)", tile: "rgba(20,27,34,0.06)" };
 
-// Bottom clearance so the last menu row never hides behind the FAB stack
-// (Menu FAB 56px + gap 12px + Home FAB ~56px).
-const FAB_CLEARANCE = 88;
-const HOME_FAB_EXTRA = 72;
+// Max height of the menu sheet, as a share of the screen height.
+const SHEET_MAX_HEIGHT = "85dvh";
+
+// FAB geometry, used to keep the last menu row clear of the floating buttons:
+// Menu FAB 56px + gap 12px + Home FAB 56px + a little breathing room.
+const FAB_STACK_HEIGHT = 12;
 // On /home the search bar is pinned to the bottom, so the FAB sits above it.
 const FAB_BOTTOM_DEFAULT = 16;
 const FAB_BOTTOM_HOME = 84;
@@ -118,7 +123,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
     // Close automatically on route change so it never lingers over the next page.
     useEffect(() => { setPageOpen(false); }, [pathname]);
 
-    // Lock background scroll while the full-screen menu is open.
+    // Lock background scroll while the menu is open.
     useEffect(() => {
         if (!pageOpen) return;
         const original = document.body.style.overflow;
@@ -141,7 +146,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     return (
         <>
-            {/* Floating button column — z-40 sits ABOVE the full-screen page (z-[39]).
+            {/* Floating button column — z-40 sits ABOVE the sheet (z-[39]).
                 Bottom-anchored, so anything added above the Menu button grows upward
                 and never shifts the Menu button itself. */}
             <div
@@ -223,28 +228,40 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 )}
             </div>
 
-            {/* Full-screen menu page */}
+            {/* Backdrop — dims the page behind the sheet; tap to close */}
             <div
-                className={`fixed inset-0 z-[39] flex flex-col bg-white transition-transform duration-300 ease-out md:hidden ${pageOpen ? "" : "pointer-events-none"}`}
+                aria-hidden="true"
+                onClick={() => setPageOpen(false)}
+                className={`fixed inset-0 z-[38] bg-black/35 transition-opacity duration-300 md:hidden ${pageOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+            />
+
+            {/* Bottom sheet — height follows its content, capped at 65% of the screen.
+                Past the cap, the list inside scrolls. */}
+            <div
+                className={`fixed inset-x-0 bottom-0 z-[39] flex flex-col overflow-hidden rounded-t-3xl bg-white transition-[transform,box-shadow] duration-300 ease-out md:hidden ${pageOpen ? "shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.35)]" : "pointer-events-none"}`}
                 style={{
+                    maxHeight: SHEET_MAX_HEIGHT,
                     transform: pageOpen ? "translateY(0)" : "translateY(100%)",
-                    paddingTop: "env(safe-area-inset-top)",
                 }}
+                role="dialog"
+                aria-label="Menu"
                 aria-hidden={!pageOpen}
             >
-                {/* Title */}
-                <div className="shrink-0 px-5 pt-3">
-                    <h1 className="mt-2 truncate text-[20px] font-extrabold leading-tight tracking-tight" style={{ color: C.ink }}>
+                {/* Grab handle + title */}
+                <div className="shrink-0 px-5 pt-2.5">
+                    <div className="mx-auto h-1 w-10 rounded-full" style={{ background: C.hair }} />
+                    <h1 className="mt-3 truncate text-[20px] font-extrabold leading-tight tracking-tight" style={{ color: C.ink }}>
                         {profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
                     </h1>
                 </div>
 
-                {/* Scrollable list — bottom padding clears the stacked floating buttons */}
+                {/* List — min-h-0 lets it shrink and scroll when the sheet hits its max height.
+                    Bottom padding clears the stacked floating buttons. */}
                 <div
-                    className="flex-1 overflow-y-auto px-5 pt-3"
+                    className="min-h-0 flex-1 overflow-y-auto px-5 pt-3"
                     style={{
                         overscrollBehavior: "contain",
-                        paddingBottom: `calc(${FAB_CLEARANCE + HOME_FAB_EXTRA}px + env(safe-area-inset-bottom) + 16px)`,
+                        paddingBottom: `calc(${fabBottom + FAB_STACK_HEIGHT}px + env(safe-area-inset-bottom, 0px))`,
                     }}
                     data-lenis-prevent=""
                     onWheel={stopScrollPropagation}
