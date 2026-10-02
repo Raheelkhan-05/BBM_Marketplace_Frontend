@@ -6,7 +6,9 @@
 //     Approved sellers : Requests · Approved · Sellers
 //     Everyone else    : Approved · Sellers
 //
-//   Requests  : incoming buyer requests. Filter chips (All / Pending / Active / Declined)
+//   Requests  : incoming buyer requests. Filter chips (All / Pending / Active / Declined).
+//               Sellers can also "Add buyer": search any verified buyer and approve credit directly.
+//               Declined / turned-off buyers have a Credit switch so a mistaken decline can be undone.
 //   Approved  : ONLY sellers who approved your credit. Filter chips (All / Available / Limit reached)
 //   Sellers   : compact directory of every other shop. Filter chips (All / Not requested / Pending / Approved)
 //
@@ -17,13 +19,14 @@ import { useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     History, ArrowLeft, CreditCard, Search, Loader2, Clock3, Check, X,
-    ChevronDown, Ban, TrendingUp, AlertCircle, Store,
+    ChevronDown, Ban, TrendingUp, AlertCircle, Store, UserPlus,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import useCreditCenter from "../hooks/useCreditCenter.js";
 import LimitDialog from "../components/credit/LimitDialog.jsx";
+import BuyerSearchDialog from "../components/credit/BuyerSearchDialog.jsx";
 import { C, EASE, fmtINR, initials, shortDate, timeLabel, dayLabel } from "../components/credit/tokens.js";
 
 // Row separator: a touch stronger than the card border so rows read clearly.
@@ -423,7 +426,7 @@ function DetailRow({ label, value, mono }) {
 // Visual weight follows importance, so the eye lands on decisions first:
 //   • Needs action  → accent stripe, decision facts inline, big Approve / Decline buttons
 //   • Active credit → the balance is the hero number; controls are quiet secondary links
-//   • Declined/off  → dimmed, single line, nothing to decide
+//   • Declined/off  → dimmed, single line; the Credit switch lets the seller undo a mistake
 const fmtDate = (d) => d && new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 function DetailsPanel({ buyerInfo }) {
@@ -456,7 +459,7 @@ function TextAction({ icon: Icon, children, onClick, disabled }) {
     );
 }
 
-function RequestRow({ item, busy, onApprove, onDecline, onUpdateLimit, onDeclineIncrease, onToggle }) {
+function RequestRow({ item, busy, onApprove, onDecline, onUpdateLimit, onDeclineIncrease, onToggle, onReenable }) {
     const { credit, buyerInfo } = item;
     const name = buyerInfo?.businessName || buyerInfo?.name || "Buyer";
     const person = buyerInfo?.businessName ? buyerInfo?.name : null;
@@ -472,7 +475,6 @@ function RequestRow({ item, busy, onApprove, onDecline, onUpdateLimit, onDecline
     const left = Math.max(limit - used, 0);
     const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
     const barColor = limit > 0 && left <= 0 ? C.danger : pct >= 75 ? C.warn : C.ok;
-    const cooling = credit.cooldown_until && new Date(credit.cooldown_until) > new Date();
 
     const hasDetails = !!buyerInfo && !!(buyerInfo.phone || buyerInfo.email || buyerInfo.location || buyerInfo.gstin || buyerInfo.memberSince);
     const details = (
@@ -573,7 +575,11 @@ function RequestRow({ item, busy, onApprove, onDecline, onUpdateLimit, onDecline
         );
     }
 
-    // ── 3 · declined / turned off (nothing to decide → quiet, dimmed) ──
+    // ── 3 · declined / turned off ──
+    // Both get the Credit switch. A turned-off buyer keeps their old arrangement,
+    // so the switch simply turns it back on. A declined buyer has no limit yet,
+    // so switching on opens the limit dialog and approves them straight away
+    // (no cooldown wait) — this is the "I declined by mistake" escape hatch.
     const off = credit.status === "revoked";
     return (
         <article id={`credit-${credit.id}`} className="flex items-center gap-3 bg-white px-3 py-3 sm:px-4">
@@ -581,10 +587,10 @@ function RequestRow({ item, busy, onApprove, onDecline, onUpdateLimit, onDecline
             <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-bold leading-tight tracking-wide" style={{ color: C.muted }}>{name}</p>
                 <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                    {off ? "Credit turned off" : cooling ? `Declined · can retry after ${shortDate(credit.cooldown_until)}` : "Declined · can send a new request"}
+                    {off ? "Credit turned off" : "Declined · switch on if this was a mistake"}
                 </p>
             </div>
-            {off ? <CreditSwitch on={false} busy={busy} onChange={onToggle} /> : <Pill tone="muted" icon={X}>Declined</Pill>}
+            <CreditSwitch on={false} busy={busy} onChange={off ? onToggle : onReenable} />
         </article>
     );
 }
@@ -719,7 +725,11 @@ export default function CreditPage() {
     const [historyOpen, setHistoryOpen] = useState(false);
     const [historyRole, setHistoryRole] = useState("all");
     const [query, setQuery] = useState("");
-    const [dialog, setDialog] = useState(null); // { kind, credit, label }
+    // { kind: "approve" | "update", credit, label } for existing rows,
+    // { kind: "grant", buyerId, label } for a buyer approved directly — picked from
+    // the search dialog, or a previously declined buyer being re-enabled.
+    const [dialog, setDialog] = useState(null);
+    const [buyerSearchOpen, setBuyerSearchOpen] = useState(false);
 
     // Sellers land on Requests; everyone else lands on Approved.
     const tab = tabState === "requests" && !isSeller ? "approved" : tabState ?? (isSeller ? "requests" : "approved");
@@ -866,8 +876,38 @@ export default function CreditPage() {
 
     const confirmDialog = async (limit) => {
         if (!dialog) return;
-        const res = dialog.kind === "approve" ? await c.approve(dialog.credit, limit) : await c.setLimit(dialog.credit, limit);
-        if (res?.success) setDialog(null);
+        let res;
+        if (dialog.kind === "grant") res = await c.grantCredit(dialog.buyerId, limit);
+        else if (dialog.kind === "approve") res = await c.approve(dialog.credit, limit);
+        else res = await c.setLimit(dialog.credit, limit);
+
+        if (res?.success) {
+            // A buyer approved directly (from search, or a declined buyer re-enabled):
+            // jump to their row so the change is visible.
+            if (dialog.kind === "grant" && res.creditId) {
+                setTabState("requests");
+                setFilter("all");
+                setQuery("");
+                setPendingHighlight(res.creditId);
+            }
+            setDialog(null);
+        }
+    };
+
+    const dialogBusy = dialog
+        ? dialog.kind === "grant"
+            ? !!c.busy[`b:${dialog.buyerId}`]
+            : !!c.busy[`c:${dialog.credit.id}`]
+        : false;
+
+    const pickBuyer = (buyer) => {
+        setBuyerSearchOpen(false);
+        setDialog({
+            kind: "grant",
+            buyerId: buyer.buyerId,
+            label: buyer.businessName || buyer.name || "this buyer",
+            credit: buyer.credit || null,
+        });
     };
 
     const labelOf = (item) => item.buyerInfo?.businessName || item.buyerInfo?.name || "this buyer";
@@ -943,11 +983,16 @@ export default function CreditPage() {
                 <>
                     <div className="flex flex-col gap-2 pb-2.5 sm:flex-row sm:items-center sm:justify-between">
                         <PillTabs fill layoutId="credit-tab-pill" value={tab} onChange={switchTab} options={tabOptions} />
-                        <SearchField
-                            value={query} onChange={setQuery}
-                            placeholder={tab === "requests" ? "Search buyers…" : "Search sellers…"}
-                            className="w-full sm:w-[260px]"
-                        />
+                        <div className="flex w-full items-center gap-2 sm:w-auto">
+                            <SearchField
+                                value={query} onChange={setQuery}
+                                placeholder={tab === "requests" ? "Search buyers…" : "Search sellers…"}
+                                className="min-w-0 flex-1 sm:w-[260px] sm:flex-none"
+                            />
+                            {tab === "requests" && isSeller && (
+                                <Btn icon={UserPlus} onClick={() => setBuyerSearchOpen(true)} className="shrink-0">Add buyer</Btn>
+                            )}
+                        </div>
                     </div>
 
                     <FilterBar options={filterConfig.options} value={filter} onChange={setFilter} summary={filterConfig.summary} />
@@ -956,7 +1001,11 @@ export default function CreditPage() {
                     {tab === "requests" && isSeller && (
                         <Shell>
                             {!c.incomingLoaded ? <SkeletonList /> : c.incoming.length === 0 ? (
-                                <Empty icon={CreditCard} title="No credit requests yet" hint="When a buyer asks to buy on credit from your shop, it shows up here instantly." />
+                                <Empty
+                                    icon={CreditCard} title="No credit requests yet"
+                                    hint="When a buyer asks to buy on credit from your shop, it shows up here instantly. You can also approve a buyer directly."
+                                    action={<Btn size="sm" icon={UserPlus} onClick={() => setBuyerSearchOpen(true)}>Add buyer</Btn>}
+                                />
                             ) : sections.length === 0 ? (
                                 <Empty icon={Search} title="No matching buyers" hint={filter !== "all" ? "Tap the active filter again to clear it." : undefined} />
                             ) : (
@@ -968,12 +1017,14 @@ export default function CreditPage() {
                                                 <RequestRow
                                                     key={item.credit.id}
                                                     item={item}
-                                                    busy={!!c.busy[`c:${item.credit.id}`]}
+                                                    busy={!!(c.busy[`c:${item.credit.id}`] || c.busy[`b:${item.credit.buyer_id}`])}
                                                     onApprove={() => setDialog({ kind: "approve", credit: item.credit, label: labelOf(item) })}
                                                     onDecline={() => c.decline(item.credit)}
                                                     onUpdateLimit={() => setDialog({ kind: "update", credit: item.credit, label: labelOf(item) })}
                                                     onDeclineIncrease={() => c.declineIncrease(item.credit)}
                                                     onToggle={(enabled) => c.setEnabled(item.credit, enabled)}
+                                                    // Declined by mistake: approve directly with a fresh limit (no cooldown wait).
+                                                    onReenable={() => setDialog({ kind: "grant", buyerId: item.credit.buyer_id, label: labelOf(item), credit: null })}
                                                 />
                                             ))}
                                         </CardList>
@@ -1033,12 +1084,19 @@ export default function CreditPage() {
                 </>
             )}
 
+            <BuyerSearchDialog
+                open={buyerSearchOpen}
+                onClose={() => setBuyerSearchOpen(false)}
+                onSearch={c.searchBuyers}
+                onPick={pickBuyer}
+            />
+
             <LimitDialog
                 open={!!dialog}
-                mode={dialog?.kind}
+                mode={dialog?.kind === "grant" ? "approve" : dialog?.kind}
                 buyerLabel={dialog?.label}
                 currentLimit={dialog?.credit?.credit_limit}
-                confirming={!!(dialog && c.busy[`c:${dialog.credit.id}`])}
+                confirming={dialogBusy}
                 onClose={() => setDialog(null)}
                 onConfirm={confirmDialog}
             />

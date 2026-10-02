@@ -1080,6 +1080,22 @@ export async function toggleCredit(token, buyerId, enabled) {
   return res.json();
 }
 
+export async function searchCreditBuyers(token, q) {
+  const res = await fetch(`${API_BASE}/credit/buyers/search?q=${encodeURIComponent(q)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+
+export async function grantCreditToBuyer(token, { buyerId, creditLimit }) {
+  const res = await fetch(`${API_BASE}/credit/grant`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ buyerId, creditLimit }),
+  });
+  return res.json();
+}
+
 // APPEND these three functions to utils/api.js (next to the other credit calls).
 
 export async function fetchCreditSellers(token) {

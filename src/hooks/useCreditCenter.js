@@ -14,6 +14,7 @@ import {
     fetchCreditSellers, fetchCreditIncoming, fetchCreditHistory,
     requestCredit, decideCredit, toggleCredit, updateCreditLimit,
     requestCreditIncrease, declineCreditIncrease,
+    searchCreditBuyers, grantCreditToBuyer,
 } from "../utils/api.js";
 
 const HISTORY_PAGE = 30;
@@ -201,11 +202,22 @@ export default function useCreditCenter({ isSeller, historyOpen, historyRole }) 
         return run(`c:${credit.id}`, () => toggleCredit(token, credit.buyer_id, enabled));
     }, [run, token]);
 
+    // seller side: proactive approval of a buyer who never asked.
+    // No optimistic patch — the row doesn't exist locally yet; the refetch
+    // that `run` triggers brings it in.
+    const searchBuyers = useCallback((q) => searchCreditBuyers(token, q), [token]);
+
+    const grantCredit = useCallback(
+        (buyerId, limit) => run(`b:${buyerId}`, () => grantCreditToBuyer(token, { buyerId, creditLimit: limit })),
+        [run, token]
+    );
+
     return {
         sellers, sellersLoaded, incoming, incomingLoaded,
         history, historyHasMore, historyLoading, historyLoadingMore,
         loadMoreHistory: () => loadHistory({ more: true }),
         busy, error, clearError: () => setError(null),
         requestFrom, askIncrease, approve, decline, setLimit, declineIncrease, setEnabled,
+        searchBuyers, grantCredit,
     };
 }
