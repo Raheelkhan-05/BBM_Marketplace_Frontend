@@ -1365,20 +1365,38 @@ function ProductNameWithInfo({ name, onInfo }) {
     );
 }
 
-// Looping "finger taps" icon: rises in, presses down (squash) and sends out a ripple.
+// Looping "finger taps" icon: rises in, presses down (squash) and sends out ONE ripple.
 function TapHand({ light = false, size = 26 }) {
     const reduce = useReducedMotion();
     const color = light ? "#fff" : C.brand;
+    const box = size + 10;
     return (
-        <span className="relative flex shrink-0 items-center justify-center" style={{ width: size + 10, height: size + 10 }}>
+        <span className="relative flex shrink-0 items-end justify-center" style={{ width: box, height: box }}>
             {!reduce && (
                 <motion.span
                     aria-hidden
-                    className="absolute rounded-full"
-                    style={{ width: 18, height: 18, left: "13%", top: "0%", border: `2px solid ${color}` }}
-                    animate={{ opacity: [0, 0, 0.8, 0, 0], scale: [0.3, 0.3, 0.6, 1.7, 1.7] }}
-                    transition={{ duration: 2.4, times: [0, 0.5, 0.55, 0.85, 1], repeat: Infinity, ease: "easeOut" }}
+                    className="pointer-events-none absolute rounded-full"
+                    style={{
+                        // centred on the fingertip of the lucide "Pointer" icon
+                        left: box * 0.41 - 12,
+                        top: box * 0.38 - 12,
+                        width: 22,
+                        height: 22,
+                        border: `2px solid ${light ? "rgba(255,255,255,0.95)" : C.brand}`,
+                        background: light ? "rgba(255,255,255,0.22)" : "rgba(222,83,7,0.15)",
+                    }}
+                    animate={{
+                        opacity: [0, 0, 1, 1, 0, 0],
+                        scale: [0.3, 0.3, 0.5, 2.8, 4.2, 4.2],
+                    }}
+                    transition={{
+                        duration: 2.4,
+                        times: [0, 0.45, 0.5, 0.72, 0.85, 1],
+                        repeat: Infinity,
+                        ease: "easeOut",
+                    }}
                 />
+
             )}
             <motion.span
                 className="flex"
@@ -1408,7 +1426,8 @@ function HintRing() {
     );
 }
 
-// Orange call-to-action strip under the first row. Tapping it behaves exactly like tapping the row.
+// Horizontal centre of the TapHand icon inside the strip:
+// pl-2.5 (10px) + chevrons (18px) + gap-2 (8px) + half of the hand box (~16px).
 function TapHintStrip({ onClick }) {
     const reduce = useReducedMotion();
     return (
@@ -1431,15 +1450,7 @@ function TapHintStrip({ onClick }) {
                         boxShadow: "0 8px 18px -10px rgba(222, 72, 7, 0.75)",
                     }}
                 >
-                    {!reduce && (
-                        <motion.span
-                            aria-hidden
-                            className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3"
-                            style={{ background: "linear-gradient(100deg, transparent, rgba(255,255,255,0.28), transparent)" }}
-                            animate={{ x: ["0%", "450%"] }}
-                            transition={{ duration: 1.6, ease: "easeInOut", repeat: Infinity, repeatDelay: 1.4 }}
-                        />
-                    )}
+
                     <motion.span
                         className="flex shrink-0"
                         animate={reduce ? undefined : { y: [0, -3, 0], opacity: [0.65, 1, 0.65] }}

@@ -962,8 +962,8 @@ export default function CreditPage() {
 
             <header className="flex items-center justify-between gap-3 pb-3">
                 <div className="min-w-0">
-                    <h1 className="text-[20px] font-extrabold leading-tight tracking-tight" style={{ color: C.ink }}>Credit</h1>
-                    <p className="mt-0.5 truncate text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>
+                    <h1 className="text-[20px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>Credit</h1>
+                    <p className="mt-0.5 truncate text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
                         {isSeller ? "Manage buyer requests and your credit with sellers." : "Request credit from sellers and track your limits."}
                     </p>
                 </div>
