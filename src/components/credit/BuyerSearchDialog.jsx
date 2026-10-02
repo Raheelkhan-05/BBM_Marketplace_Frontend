@@ -104,8 +104,8 @@ export default function BuyerSearchDialog({ open, onClose, onSearch, onPick }) {
                     >
                         <div className="flex items-start justify-between gap-3 px-4 pb-2 pt-4">
                             <div className="min-w-0">
-                                <h2 className="text-[16px] font-extrabold tracking-wide" style={{ color: C.ink }}>Add a buyer</h2>
-                                <p className="mt-0.5 text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>
+                                <h2 className="text-[16px] font-extrabold capitalize tracking-wide" style={{ color: C.ink }}>Add a buyer</h2>
+                                <p className="mt-0.5 text-[12.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
                                     Find them by phone, email or shop name and approve credit directly.
                                 </p>
                             </div>
@@ -200,8 +200,8 @@ function Hint({ icon: Icon, title, hint }) {
             <span className="flex h-10 w-10 items-center justify-center rounded-full" style={{ background: C.hairSoft }}>
                 <Icon className="h-[18px] w-[18px]" style={{ color: C.muted }} />
             </span>
-            <p className="text-[13px] font-bold" style={{ color: C.ink }}>{title}</p>
-            <p className="max-w-[260px] text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>{hint}</p>
+            <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>{title}</p>
+            <p className="max-w-[260px] text-[12.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>{hint}</p>
         </div>
     );
 }
