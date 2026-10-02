@@ -1366,43 +1366,83 @@ function ProductNameWithInfo({ name, onInfo }) {
 }
 
 // Looping "finger taps" icon: rises in, presses down (squash) and sends out ONE ripple.
+const RING = 12; // ring diameter before scaling
+
 function TapHand({ light = false, size = 26 }) {
     const reduce = useReducedMotion();
     const color = light ? "#fff" : C.brand;
     const box = size + 10;
+    const rgb = light ? "255,255,255" : "222,83,7";
+
+    const tipX = (box - size) / 2 + (8 / 24) * size + 0.20;
+    const tipY = (box - size) + (2 / 24) * size - 3;
+
+    // 7 keyframes = 7 times = 7 opacity values = 7 scale values (6 eases)
+    //        start  arrive  hover  CLICK  burst  gone  rest
+    const times = [0, 0.22, 0.45, 0.55, 0.68, 0.78, 1];
+
     return (
-        <span className="relative flex shrink-0 items-end justify-center" style={{ width: box, height: box }}>
+        <span
+            className="relative flex shrink-0 items-end justify-center"
+            style={{ width: box, height: box }}
+        >
             {!reduce && (
                 <motion.span
                     aria-hidden
-                    className="pointer-events-none absolute rounded-full"
+                    className="pointer-events-none absolute"
                     style={{
-                        // centred on the fingertip of the lucide "Pointer" icon
-                        left: box * 0.41 - 12,
-                        top: box * 0.38 - 12,
-                        width: 22,
-                        height: 22,
-                        border: `2px solid ${light ? "rgba(255,255,255,0.95)" : C.brand}`,
-                        background: light ? "rgba(255,255,255,0.22)" : "rgba(222,83,7,0.15)",
+                        left: tipX - RING / 2,
+                        top: tipY - RING / 2,
+                        width: RING,
+                        height: RING,
                     }}
-                    animate={{
-                        opacity: [0, 0, 1, 1, 0, 0],
-                        scale: [0.3, 0.3, 0.5, 2.8, 4.2, 4.2],
-                    }}
+                    animate={{ y: [8, 0, 0, 4.7, 0, 0] }}
                     transition={{
                         duration: 2.4,
-                        times: [0, 0.45, 0.5, 0.72, 0.85, 1],
+                        times: [0, 0.22, 0.45, 0.55, 0.7, 1],
                         repeat: Infinity,
-                        ease: "easeOut",
+                        ease: "easeInOut",
                     }}
-                />
-
+                >
+                    <motion.span
+                        className="block h-full w-full rounded-full"
+                        style={{
+                            border: `1px solid rgba(${rgb},0.95)`,
+                            background: `rgba(${rgb},0.16)`,
+                        }}
+                        animate={{
+                            opacity: [0, 0.55, 0.85, 0.45, 0.9, 0, 0],
+                            scale: [0.3, 0.7, 0.9, 0.45, 3.2, 8.5, 0.3],
+                        }}
+                        transition={{
+                            duration: 2.4,
+                            times,
+                            // easeOut on the burst = fast start right at the click, then it slows as it fades
+                            ease: ["easeOut", "easeInOut", "easeIn", "easeOut", "easeOut", "linear"],
+                            repeat: Infinity,
+                        }}
+                    />
+                </motion.span>
             )}
+
             <motion.span
-                className="flex"
+                className="relative flex"
                 style={{ color }}
-                animate={reduce ? undefined : { y: [8, 0, 0, 3, 0, 0], scale: [1, 1, 1, 0.84, 1, 1], opacity: [0, 1, 1, 1, 1, 0] }}
-                transition={{ duration: 2.4, times: [0, 0.22, 0.45, 0.55, 0.7, 1], repeat: Infinity, ease: "easeInOut" }}
+                animate={
+                    reduce
+                        ? undefined
+                        : {
+                            y: [8, 0, 0, 3, 0, 0],
+                            scale: [1, 1, 1, 0.84, 1, 1],
+                            opacity: [0, 1, 1, 1, 1, 0],
+                        }
+                }
+                transition={{
+                    duration: 2.4,
+                    times: [0, 0.22, 0.45, 0.55, 0.7, 1],
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                }}
             >
                 <Pointer size={size} strokeWidth={2.2} />
             </motion.span>
