@@ -1036,21 +1036,10 @@ function GstToggle({ includeGst, onChange }) {
             </span>
 
             {/* Label */}
-            <span className="flex min-w-[60px] flex-col items-start leading-none">
-                <span
-                    className="text-[11px] font-bold tracking-[0.02em]"
-                    style={{ color: C.ink }}
-                >
+            <span className="flex min-w-[44px] flex-col items-start leading-none">
+                <span className="text-[9.5px] font-medium tracking-wider" style={{ color: C.ink }}>{includeGst ? "With" : "Without"}</span>
+                <span className="mt-0 text-[11.5px] font-bold tracking-[0.02em] " style={{ color: includeGst ? C.secondary : "#7B858C" }}>
                     GST
-                </span>
-
-                <span
-                    className="mt-0.5 text-[10px] font-medium tracking-wide"
-                    style={{
-                        color: includeGst ? C.secondary : "#7B858C",
-                    }}
-                >
-                    {includeGst ? "With GST" : "Without GST"}
                 </span>
             </span>
         </button>
