@@ -158,7 +158,7 @@ const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)", imgBg: "#F4F5F6",
     // RAL 2009 traffic orange
-    brand: "#DE5307", brandDeep: "#C44705", brandInk: "#8F3200",
+    brand: "#de3207ff", brandDeep: "#C44705", brandInk: "#8F3200",
     brandTint: "#FFF3EB", brandTint2: "#FFE2D1", brandHair: "rgba(222,83,7,0.25)",
 };
 const EASE = [0.16, 1, 0.3, 1];
@@ -1392,44 +1392,6 @@ function TapHand({ light = false, size = 26 }) {
     );
 }
 
-// One-time info banner above the list.
-function TapHintBanner({ onDismiss }) {
-    return (
-        <motion.div
-            initial={{ opacity: 0, height: 0, y: -6 }}
-            animate={{ opacity: 1, height: "auto", y: 0 }}
-            exit={{ opacity: 0, height: 0, y: -6 }}
-            transition={{ duration: 0.28, ease: EASE }}
-            className="overflow-hidden"
-        >
-            <div className="px-1 pb-2">
-                <div
-                    className="flex items-center gap-2.5 rounded-2xl border px-3 py-2.5"
-                    style={{ background: C.brandTint, borderColor: C.brandHair }}
-                >
-                    <TapHand size={26} />
-                    <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] font-extrabold leading-tight tracking-wide" style={{ color: C.ink }}>Tap a product</p>
-                        <p className="mt-0.5 text-[11.5px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
-                            to see pricing, suppliers and buy options.
-                        </p>
-                    </div>
-                    <motion.button
-                        type="button"
-                        onClick={onDismiss}
-                        whileTap={{ scale: 0.92 }}
-                        whileHover={{ scale: 1.03 }}
-                        className="shrink-0 rounded-full px-4 py-2 text-[12.5px] font-extrabold tracking-wide"
-                        style={{ background: C.brandTint2, color: C.brandInk }}
-                    >
-                        Got it
-                    </motion.button>
-                </div>
-            </div>
-        </motion.div>
-    );
-}
-
 // Pulsing orange ring around the first product row.
 function HintRing() {
     const reduce = useReducedMotion();
@@ -1466,7 +1428,7 @@ function TapHintStrip({ onClick }) {
                     className="relative flex w-full items-center gap-2 overflow-hidden rounded-xl py-2 pl-2.5 pr-3 text-left text-white"
                     style={{
                         background: `linear-gradient(100deg, ${C.brand} 0%, ${C.brandDeep} 100%)`,
-                        boxShadow: "0 8px 18px -10px rgba(222,83,7,0.75)",
+                        boxShadow: "0 8px 18px -10px rgba(222, 72, 7, 0.75)",
                     }}
                 >
                     {!reduce && (
@@ -3334,10 +3296,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                 />
                 <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
             </div>
-
-            <AnimatePresence>
-                {showHint && <TapHintBanner key="tap-hint" onDismiss={dismissHint} />}
-            </AnimatePresence>
 
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
                 (-mx-3 cancels a parent's assumed px-3 padding; tweak to match your
