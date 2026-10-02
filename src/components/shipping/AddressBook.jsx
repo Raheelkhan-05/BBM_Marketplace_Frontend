@@ -5,8 +5,8 @@
 //   ref:   openChange(), ensureSavedAddress()
 //
 // - "bar":  the Home-page selector. A whole-bar tap target with an "aura" ring (a soft
-//           light travelling around the border), a pin badge that drops in with a
-//           ripple whenever the address changes, and a black "Change" pill.
+//           traffic-orange light travelling around the border), a pin badge that drops in
+//           with a ripple whenever the address changes, and a black "Change" pill.
 // - "card": full address card, used inside Buy Now / Cart / Transport modal.
 // - The change/add modal renders in a portal (never clipped) above every other modal.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -20,9 +20,13 @@ import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
 const EMPTY_ADDRESS = { label: "", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 const stopBubble = (e) => e.stopPropagation();
 
-// Comet-style sweep: transparent for most of the turn, then a teal -> light-teal head.
+// RAL 2009 "Traffic orange" = #DE5307 (222, 83, 7). The head of the comet is a lighter tint
+// of the same hue (#FF9A5C = 255, 154, 92) so it reads as a glowing leading edge.
+// Comet-style sweep: transparent for roughly half the turn, then a long, eased fade up
+// through traffic orange to the light head, and back to fully transparent at 360deg so
+// the loop seam is invisible.
 const AURA_CONIC =
-    "conic-gradient(from 0deg, rgba(0,111,131,0) 0deg, rgba(0,111,131,0) 200deg, rgba(0,111,131,0.85) 290deg, #5cc8d8 332deg, rgba(255,255,255,0) 360deg)";
+    "conic-gradient(from 0deg, rgba(222,83,7,0) 0deg, rgba(222,83,7,0) 180deg, rgba(222,83,7,0.4) 245deg, rgba(222,83,7,0.9) 305deg, #ff9a5c 340deg, rgba(255,154,92,0) 360deg)";
 
 const AURA_CSS = `
 .bbm-aura-spin {
