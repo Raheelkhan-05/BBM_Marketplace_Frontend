@@ -184,12 +184,23 @@ export default function AuthPage() {
 
   const [identifier, setIdentifier] = useState("");
   const [loading, setLoading] = useState(false);
+  // True from the moment an existing, fully set-up user is verified until
+  // the navigation to their destination happens, so the OTP screen stays in
+  // its "Verifying…" state instead of flickering back to an editable form.
+  const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState(null);
   // const { setAuthSession, refreshProfile, profile } = useAuth();
   const { setAuthSession, refreshProfile, profile, session, needsOnboarding, initializing } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [isNewUser, setIsNewUser] = useState(null);
+
+  // Set while a fresh OTP login is being processed. During that window the
+  // auth context publishes a session BEFORE the profile has loaded, which
+  // made `needsOnboarding` briefly true for everyone — so the resume effect
+  // below must stay out of the way and let the server's `isNewUser` answer
+  // from verifyLoginOtp decide where to go.
+  const loginFlowRef = useRef(false);
 
   // Resolved once on mount (see resolveRedirect above): the full URL the
   // person came from — e.g. "/home/?shop=shiv-shakti-auto-center" — not just
@@ -201,20 +212,28 @@ export default function AuthPage() {
     navigate(redirectTo, { replace: true });
   }, [navigate, redirectTo]);
 
-  // If someone already has a valid session but never finished onboarding
-  // (verified OTP, then backed out before submitting GSTIN/company info),
-  // jump straight to that step using the session token we already have —
-  // instead of making them re-enter their phone/email and re-verify OTP,
-  // which is what happened before (this page always started fresh at
-  // "identifier" regardless of an existing partial session).
+  // Resume an abandoned onboarding: the page was opened with an existing
+  // session (e.g. user verified OTP, then closed the tab before submitting
+  // GSTIN/company info), so jump straight to that step instead of making
+  // them re-verify.
+  //
+  // This is strictly for that "opened with an existing session" case, so it:
+  //  - never runs during a fresh OTP login (loginFlowRef),
+  //  - only runs from the initial "identifier" step (so it can never yank
+  //    the user between steps or override the loginType set by the login),
+  //  - waits for the profile to actually be loaded, so a half-loaded
+  //    context can't be mistaken for an incomplete account.
   useEffect(() => {
     if (initializing) return;
-    if (needsOnboarding && session?.access_token) {
+    if (loginFlowRef.current) return;
+    if (step !== "identifier") return;
+    if (!session?.access_token || !profile) return;
+    if (needsOnboarding) {
       setToken(session.access_token);
-      setLoginType(profile?.email ? "email" : "phone");
+      setLoginType(profile.email ? "email" : "phone");
       setStep("onboarding");
     }
-  }, [initializing, needsOnboarding, session, profile]);
+  }, [initializing, needsOnboarding, session, profile, step]);
 
   // Avoid flashing the "enter phone/email" screen for a split second
   // while we're still figuring out whether this session needs resuming.
@@ -258,19 +277,37 @@ export default function AuthPage() {
 
   const handleOtpVerify = (code) =>
     withLoading(async () => {
-      const res = await verifyOtp(identifier, code);
-      if (!res.success) return setError(res.message || "That code didn't match. Check and try again.");
-      setToken(res.token);
-      // This is the fix: session must be set in the { access_token } shape
-      // AuthContext expects, or isLoggedIn (and every protected route) stays
-      // false even though the user is fully authenticated.
-      await setAuthSession?.(res.token);
-      setIsNewUser(res.isNewUser);
-      // setStep(res.isNewUser ? "onboarding" : "done");
-      if (res.isNewUser) {
-        setStep("onboarding");
-      } else {
-        finishAndRedirect();
+      // Block the resume effect for the whole login — see loginFlowRef.
+      loginFlowRef.current = true;
+      try {
+        const res = await verifyOtp(identifier, code);
+        if (!res.success) {
+          loginFlowRef.current = false;
+          return setError(res.message || "That code didn't match. Check and try again.");
+        }
+        setToken(res.token);
+        // Session must be set in the { access_token } shape AuthContext
+        // expects, or isLoggedIn (and every protected route) stays false
+        // even though the user is fully authenticated.
+        await setAuthSession?.(res.token);
+        setIsNewUser(res.isNewUser);
+
+        // `isNewUser` comes straight from the server (onboarding_step !==
+        // "done"), so it is the single source of truth here — no guessing
+        // from a context that may not have its profile yet.
+        if (res.isNewUser) {
+          setStep("onboarding");
+          loginFlowRef.current = false;
+        } else {
+          // Fully set-up user: never show the onboarding screen at all.
+          // Keep loginFlowRef true; we're leaving this page.
+          setRedirecting(true);
+          finishAndRedirect();
+        }
+      } catch (e) {
+        loginFlowRef.current = false;
+        setRedirecting(false);
+        setError("Something went wrong. Please try again.");
       }
     });
 
@@ -333,7 +370,7 @@ export default function AuthPage() {
         {step === "otp" && (
           <OtpPanel
             key="otp" identifier={identifier} onVerify={handleOtpVerify} onResend={handleResend}
-            onEditNumber={() => setStep("identifier")} loading={loading} serverError={error}
+            onEditNumber={() => setStep("identifier")} loading={loading || redirecting} serverError={error}
           />
         )}
         {step === "onboarding" && (
