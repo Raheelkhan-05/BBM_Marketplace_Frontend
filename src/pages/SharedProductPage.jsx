@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Loader2, PackageX, Lock } from "lucide-react";
 import BuyNowModal from "../components/BuyNowModal.jsx";
-import LandingPage from "./LandingPage.jsx";
+import HomePage from "./HomePage.jsx";
 import { fetchSharedProductLink, fetchBrandItemSellers } from "../utils/api.js";
 import { toBuyerSellerPayload } from "../utils/buyerSellerPayload";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -140,10 +140,10 @@ export default function SharedProductPage() {
         );
     }
 
-    // LandingPage is rendered once, in a stable position, so it never remounts between states.
+    // HomePage is rendered once, in a stable position, so it never remounts between states.
     return (
         <>
-            <LandingPage />
+            <HomePage />
             {overlay}
             {modal}
         </>

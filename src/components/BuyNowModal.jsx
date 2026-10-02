@@ -1359,7 +1359,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                 )}
 
                                 {(hasProductDetails || (product?.id && !detail)) && (
-                                    <Collapse icon={Info} title="Product details" hint={hasProductDetails ? "specs, description & more" : "loading…"}>
+                                    <Collapse icon={Info} title="Product details">
                                         {!detail && product?.id ? (
                                             <div className="flex flex-col gap-2">
                                                 <SkeletonBar width="60%" /><SkeletonBar width="90%" /><SkeletonBar width="75%" />
@@ -1385,22 +1385,22 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                 )}
                                                 {description && (
                                                     <div>
-                                                        <p className="mb-1 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Description</p>
-                                                        <p className="text-[12.5px] font-medium leading-relaxed" style={{ color: C.ink }}>{description}</p>
+                                                        <p className="mb-1 text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Description</p>
+                                                        <p className="text-[12.5px] font-medium leading-relaxed tracking-wide" style={{ color: C.ink }}>{description}</p>
                                                     </div>
                                                 )}
                                                 {manufacturingDetails && (
                                                     <div>
-                                                        <p className="mb-1 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Manufacturing</p>
-                                                        <p className="text-[12.5px] font-medium leading-relaxed" style={{ color: C.ink }}>{manufacturingDetails}</p>
+                                                        <p className="mb-1 text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Manufacturing</p>
+                                                        <p className="text-[12.5px] font-medium leading-relaxed tracking-wide" style={{ color: C.ink }}>{manufacturingDetails}</p>
                                                     </div>
                                                 )}
                                                 {specifications.length > 0 && (
                                                     <div>
-                                                        <p className="mb-1 text-[11px] font-extrabold uppercase tracking-wide" style={{ color: C.muted }}>Specifications</p>
+                                                        <p className="mb-1 text-[11px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Specifications</p>
                                                         <div className="overflow-hidden rounded-xl border" style={{ borderColor: C.hair }}>
                                                             {specifications.map((s, i) => (
-                                                                <div key={i} className="flex justify-between gap-3 px-3.5 py-2 text-[12px] font-semibold"
+                                                                <div key={i} className="flex justify-between gap-3 px-3.5 py-2 text-[12px] font-semibold tracking-wide"
                                                                     style={{ background: i % 2 === 0 ? "white" : C.hairSoft, color: C.ink }}>
                                                                     <span style={{ color: C.muted }}>{s.key}</span>
                                                                     <span className="text-right">{s.value}</span>
