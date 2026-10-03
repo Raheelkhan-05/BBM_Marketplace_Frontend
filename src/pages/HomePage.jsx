@@ -1,7 +1,9 @@
 // src/pages/HomePage.jsx
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import ShopBanner from "../components/home/ShopBanner.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
+import { X } from "lucide-react";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import CategoryStrip from "../components/home/CategoryStrip.jsx";
 import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
@@ -35,6 +37,17 @@ export default function HomePage() {
 
     const [searchParams, setSearchParams] = useSearchParams();
     const shopSlug = searchParams.get("shop")?.trim() || null;
+    const brandName = searchParams.get("brand")?.trim() || null;
+    const clearBrand = () => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("brand");
+        setSearchParams(next, { replace: true });
+    };
+
+    const { profile } = useAuth();
+    const isOwnShop = !!shopSlug && profile?.shop_slug === shopSlug;
+
+
     const clearShop = () => {
         const next = new URLSearchParams(searchParams);
         next.delete("shop");
@@ -63,7 +76,7 @@ export default function HomePage() {
                 <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20 pt-3">
 
                     {/* Delivery address — fetched once, reused by seller list, Buy Now and Cart */}
-                    <DeliverToBar />
+                    {!isOwnShop && <DeliverToBar />}
 
                     {shopSlug && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
 
@@ -87,7 +100,7 @@ export default function HomePage() {
 
                     <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
 
-                    <HomeProductFeed category={activeCategory} q={query} shopSlug={shopSlug} />
+                    <HomeProductFeed category={activeCategory} q={query} shopSlug={shopSlug} brandName={brandName} />
                 </main>
             </SmoothScrollProvider>
 

@@ -132,10 +132,10 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { useNavigate, useLocation, Link, useSearchParams } from "react-router-dom";
-import FeedQuickActions, { BrandFilterSheet } from "./FeedQuickActions.jsx";
+import FeedQuickActions from "./FeedQuickActions.jsx";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
-import { ChevronDown, Package, Info, Store, Pointer, ChevronsUp, X, FileText, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
+import { ChevronDown, Package, Info, Store, Share2, Pointer, ChevronsUp, X, FileText, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
 import useFollowedItems from "../../hooks/useFollowedItems";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, observePriceTrends, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints } from "../../utils/api";
 import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
@@ -145,6 +145,7 @@ import PromotionPlanModal, { PromotionRow, savePromotionPlan, saveResultMessage 
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
 import SellThisItemModal from "../catalog/SellThisItemModal";
 import BuyNowModal from "../BuyNowModal";
+import { shareProductLink } from "../../utils/share.js";
 import { useSocket } from "../../context/SocketContext.jsx";
 import { resizedImageUrl } from "../../utils/imageUrl";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -455,6 +456,21 @@ function OwnListingPriceModal({ seller, includeGst, submitting, token, onApply, 
         </motion.div>,
         document.body
     );
+}
+
+// Shares the public store link (same format the login-return note uses).
+async function shareShopLink({ shopSlug, shopName }) {
+    const url = `${window.location.origin}/home/?shop=${encodeURIComponent(shopSlug)}`;
+    try {
+        if (navigator.share) {
+            await navigator.share({ title: shopName || "My shop", text: `Check out ${shopName || "my shop"} on BBM`, url });
+            return "shared";
+        }
+        await navigator.clipboard.writeText(url);
+        return "copied";
+    } catch (e) {
+        return e?.name === "AbortError" ? "cancelled" : "failed";
+    }
 }
 
 // Compact trigger shown inline in the seller row — shows price breakdown
@@ -1147,7 +1163,7 @@ function isFeedRowOutOfStock(item) {
 // Aligned spec strip + Buy button, shown under each row in shop mode.
 // Aligned spec strip + buy action, shown under each row in shop mode.
 // Mobile: "Swipe to buy" slider (same as the seller dropdown). md+: "Buy now" button.
-function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, breakdown }) {
+function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, breakdown, isOwner = false, onShare }) {
     const [slideKey, setSlideKey] = useState(0);
     if (!offer) return null;
 
@@ -1202,6 +1218,18 @@ function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, bre
         </div>
     );
 
+    const ShareBtn = ({ className = "" }) => (
+        <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onShare?.(); }}
+            aria-label="Share product"
+            className={`inline-flex items-center justify-center gap-1.5 rounded-full border bg-white text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.97] ${className}`}
+            style={{ borderColor: C.hair, color: C.ink }}
+        >
+            <Share2 className="h-3.5 w-3.5" strokeWidth={2.3} /> Share
+        </button>
+    );
+
     return (
         <div className="px-3 pb-3 sm:px-4">
             {/* ── MOBILE: specs row, then [breakdown text | slider on the right] ── */}
@@ -1217,24 +1245,16 @@ function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, bre
                     </div>
 
                     <div className="w-[48%] max-w-[190px] shrink-0">
-                        {!outOfStock ? (
+                        {isOwner ? (
+                            <ShareBtn className="h-10 w-full" />
+                        ) : !outOfStock ? (
                             <div data-swipe-buy="" className="w-full" onClick={(e) => e.stopPropagation()}>
-                                <SlideToConfirm
-                                    compact
-                                    label="Swipe to buy"
-                                    busyLabel="Opening…"
-                                    doneLabel="Opening…"
-                                    resetKey={`${slideKey}`}
-                                    onConfirm={handleSlideConfirm}
-                                />
+                                <SlideToConfirm compact label="Swipe to buy" busyLabel="Opening…" doneLabel="Opening…"
+                                    resetKey={`${slideKey}`} onConfirm={handleSlideConfirm} />
                             </div>
                         ) : (
-                            <div
-                                className="flex h-10 w-full items-center justify-center rounded-full text-[11px] font-extrabold tracking-wide"
-                                style={{ background: "#f1f1f1", color: C.muted }}
-                            >
-                                OUT OF STOCK
-                            </div>
+                            <div className="flex h-10 w-full items-center justify-center rounded-full text-[11px] font-extrabold tracking-wide"
+                                style={{ background: "#f1f1f1", color: C.muted }}>OUT OF STOCK</div>
                         )}
                     </div>
                 </div>
@@ -1244,23 +1264,18 @@ function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, bre
             <div className="hidden items-center gap-2.5 md:flex">
                 <div className="min-w-0 flex-1">{specBlock}</div>
 
-                {!outOfStock ? (
-                    <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onBuy(); }}
+                {isOwner ? (
+                    <ShareBtn className="h-9 w-28 shrink-0" />
+                ) : !outOfStock ? (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onBuy(); }}
                         className="flex h-9 w-28 shrink-0 items-center justify-center gap-1.5 rounded-lg text-[12px] font-extrabold tracking-wide text-white transition-transform active:scale-95"
-                        style={{ background: C.primary }}
-                    >
+                        style={{ background: C.primary }}>
                         {opening && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                         Buy now
                     </button>
                 ) : (
-                    <div
-                        className="flex h-9 w-28 shrink-0 items-center justify-center rounded-lg text-[11px] font-extrabold tracking-wide"
-                        style={{ background: "#f1f1f1", color: C.muted }}
-                    >
-                        OUT OF STOCK
-                    </div>
+                    <div className="flex h-9 w-28 shrink-0 items-center justify-center rounded-lg text-[11px] font-extrabold tracking-wide"
+                        style={{ background: "#f1f1f1", color: C.muted }}>OUT OF STOCK</div>
                 )}
             </div>
         </div>
@@ -1480,7 +1495,7 @@ function TapHintStrip({ onClick }) {
     );
 }
 
-function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow, shopMode = false, isOpening = false, onPrefetch, showTapHint = false }) {
+function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow, shopMode = false, isOpening = false, onPrefetch, showTapHint = false, isOwnShop = false, onShareProduct }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
     const categoryLabel = isHiddenLabel(item.category_name) ? null : item.category_name;
     const subcategoryLabel = isHiddenLabel(item.subcategory_name) ? null : item.subcategory_name;
@@ -1497,6 +1512,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
 
     // In a store view on phones, the slider is the only way to buy (same as the seller list).
     const guardedToggle = () => {
+        if (isOwnShop) return;
         if (shopMode && typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) return;
         onToggle();
     };
@@ -1638,6 +1654,8 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     outOfStock={isOutOfStock}
                     opening={isOpening}
                     onBuy={onToggle}
+                    isOwner={isOwnShop}
+                    onShare={onShareProduct}
                 />
             )}
 
@@ -2462,7 +2480,7 @@ function RowSkeleton() {
 
 // `q` is optional — pages that don't pass it (or pass "") get the exact
 // same unfiltered behavior as before. Passing it wires up live search.
-export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
+export default function HomeProductFeed({ category, q = "", shopSlug = null, brandName = null }) {
     const navigate = useNavigate();
     const location = useLocation();
     const lenis = useLenis();
@@ -2486,6 +2504,12 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
     // Delivery address now comes from the shared context (same one shown at the top of Home),
     // so changing it there instantly updates delivery estimates in every seller list.
     const { selectedAddress: buyerAddress } = useBuyerAddress();
+
+    const clearBrand = () => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("brand");
+        setSearchParams(next, { replace: true });
+    };
 
     // If the buyer's address becomes unavailable (logged out, fetch
     // failed) while "Fastest delivery" was selected, fall back to a mode
@@ -2523,25 +2547,41 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
 
     const [followedOnly, setFollowedOnly] = useState(false);
 
-    const [, setSearchParams] = useSearchParams();
-    const [brandSel, setBrandSel] = useState({ scope: "", names: EMPTY });
-    const [brandsOpen, setBrandsOpen] = useState(false);
+    const [searchParams, setSearchParams] = useSearchParams();
 
-    const brandScope = `${category?.id || ""}|${shopSlug || ""}|${followedOnly ? 1 : 0}`;
-    const selectedBrands = brandSel.scope === brandScope ? brandSel.names : EMPTY;
-    const brandsKey = selectedBrands.join("|");
+    // Brand view comes from the URL (?brand=Name), set by the Brands page.
+    const selectedBrands = useMemo(() => (brandName ? [brandName] : EMPTY), [brandName]);
+    const brandsKey = brandName || "";
     const brandsRef = useRef(EMPTY);
     brandsRef.current = selectedBrands;
 
-
     const myShopSlug = profile?.shop_slug || null;
+    const myShopActive = !!shopSlug && shopSlug === myShopSlug;
+    // Only one quick-action view is active at a time.
+    const activeTile = brandName ? "brands" : myShopActive ? "shop" : followedOnly ? "quick" : null;
 
     const handleMyShop = () => {
         if (!isLoggedIn || !token) return requireLogin("Login to open your shop.");
         if (!isVerifiedSeller(profile) || !myShopSlug) return navigate("/seller/onboarding");
-        const next = new URLSearchParams(location.search);
-        if (shopSlug === myShopSlug) next.delete("shop"); else next.set("shop", myShopSlug);
-        setSearchParams(next);
+        const params = new URLSearchParams(location.search);
+        params.delete("brand");
+        if (shopSlug === myShopSlug) {
+            params.delete("shop");
+        } else {
+            params.set("shop", myShopSlug);
+            setFollowedOnly(false);
+        }
+        setSearchParams(params);
+    };
+
+    const handleBrands = () => {
+        if (brandName) {
+            const params = new URLSearchParams(location.search);
+            params.delete("brand");
+            setSearchParams(params);
+            return;
+        }
+        navigate("/brands");
     };
 
     const [followToast, setFollowToast] = useState(null); // { message, actionLabel?, onAction? }
@@ -3240,6 +3280,27 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
         setBuyState({ item, seller: res.offer });
     };
 
+    const handleShareShop = async () => {
+        const r = await shareShopLink({ shopSlug, shopName: profile?.shop_name || profile?.name });
+        if (r === "copied") showToast({ message: "Shop link copied" }, 2000);
+        else if (r === "failed") showToast({ message: "Couldn't share. Try again" }, 2200);
+    };
+
+    const handleShareProduct = async (item) => {
+        let submissionId = item.shop_offer?.submission_id;
+        if (!submissionId) {
+            const res = await getOffer(item.id);
+            submissionId = res?.offer?.submission_id;
+        }
+        if (!submissionId) { showToast({ message: "Couldn't share this product" }, 2200); return; }
+        const result = await shareProductLink({
+            submissionId,
+            productName: item.name,
+            sellerName: profile?.shop_name || profile?.name || "this seller",
+        });
+        if (result === "copied") showToast({ message: "Link copied to clipboard." }, 2000);
+    };
+
     const handleFollowedOnlyChange = (next) => {
         pendingRevealRef.current = null; // a manual tab change cancels any pending reveal
         if (next && (!isLoggedIn || !token)) {
@@ -3249,6 +3310,14 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
         if (next) {
             // Instant feedback: narrow what's on screen; the server list replaces it right after.
             setItems((prev) => prev.filter((it) => isFollowedNow(it.id)));
+            // One view at a time: leave the brand view / own-shop view.
+            const leavingOwnShop = !!shopSlug && shopSlug === myShopSlug;
+            if (brandName || leavingOwnShop) {
+                const params = new URLSearchParams(location.search);
+                params.delete("brand");
+                if (leavingOwnShop) params.delete("shop");
+                setSearchParams(params);
+            }
         }
         setFollowedOnly(next);
     };
@@ -3337,25 +3406,43 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
     return (
         <>
             <FeedQuickActions
-                quickBuyOn={followedOnly}
+                active={activeTile}
+                brandLabel={brandName}
                 onQuickBuy={() => handleFollowedOnlyChange(!followedOnly)}
-                brandCount={selectedBrands.length}
-                onOpenBrands={() => setBrandsOpen(true)}
-                myShopActive={!!shopSlug && shopSlug === myShopSlug}
+                onBrands={handleBrands}
                 onMyShop={handleMyShop}
             />
 
-            <div className="flex items-center justify-end px-1 pb-2">
+
+
+            {brandName && (
+                <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#EEE6EC", borderColor: "#D6C5D2" }}>
+                    <p className="min-w-0 truncate text-[11.5px] font-bold tracking-wide" style={{ color: "#53344D" }}>
+                        Brand: <span className="font-extrabold capitalize text-[13.5px] ">{brandName}</span>
+                    </p>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <Link to="/brands" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wide text-white" style={{ background: "#53344D" }}>Change</Link>
+                        <button type="button" onClick={clearBrand} aria-label="Clear brand" className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]">
+                            <X className="h-3.5 w-3.5" style={{ color: "#53344D" }} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+
+            <div className="flex items-center justify-between px-1 pb-2">
+                {myShopActive ? (
+                    <button
+                        type="button"
+                        onClick={handleShareShop}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-full border bg-white px-3 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98]"
+                        style={{ borderColor: C.hair, color: C.ink }}
+                    >
+                        <Share2 className="h-3.5 w-3.5" strokeWidth={2.3} /> Share shop
+                    </button>
+                ) : <span />}
                 <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
             </div>
-
-            <BrandFilterSheet
-                open={brandsOpen}
-                onClose={() => setBrandsOpen(false)}
-                selected={selectedBrands}
-                onApply={(names) => setBrandSel({ scope: brandScope, names })}
-                scope={{ categoryId: category?.id || null, q, followedOnly, shopSlug, token }}
-            />
 
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
                 (-mx-3 cancels a parent's assumed px-3 padding; tweak to match your
@@ -3441,6 +3528,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                                                     onToggleFollow={() => handleToggleFollow(item)}
                                                     includeGst={includeGst}
                                                     isLoggedIn={isLoggedIn}
+                                                    isOwnShop={myShopActive}
+                                                    onShareProduct={() => handleShareProduct(item)}
                                                     // onToggle={() => (shopSlug ? handleShopBuy(item) : toggleDropdown(item))}
                                                     onToggle={() => {
                                                         dismissHint(); // tapping any record ends the hint for today
