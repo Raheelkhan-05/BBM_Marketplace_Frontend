@@ -3416,14 +3416,14 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
 
             {brandName && (
-                <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#ede6ffff", borderColor: "#D6C5D2" }}>
-                    <p className="min-w-0 truncate text-[11.5px] font-bold tracking-wide" style={{ color: "#53344D" }}>
+                <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#c9d2dfff", borderColor: "#D6C5D2" }}>
+                    <p className="min-w-0 truncate text-[11.5px] font-bold tracking-wide" style={{ color: "#384A62" }}>
                         Brand: <span className="font-extrabold capitalize text-[13.5px] ">{brandName}</span>
                     </p>
                     <div className="flex shrink-0 items-center gap-1">
-                        <Link to="/brands" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wide text-white" style={{ background: "#53344D" }}>Change</Link>
+                        <Link to="/brands" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wide text-white" style={{ background: "#384A62" }}>Change</Link>
                         <button type="button" onClick={clearBrand} aria-label="Clear brand" className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]">
-                            <X className="h-3.5 w-3.5" style={{ color: "#53344D" }} />
+                            <X className="h-3.5 w-3.5" style={{ color: "#384A62" }} />
                         </button>
                     </div>
                 </div>
