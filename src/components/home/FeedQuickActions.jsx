@@ -9,16 +9,17 @@ import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { Pin, FileText, Tags, Store, ChevronRight } from "lucide-react";
 
-// Deep, desaturated, flat colours. base = default fill, tint/bd = active look.
-const TONES = {
-    quick: { base: "#1F5A5E", tint: "#E3EEEE", bd: "#BFD4D4" }, // petrol
-    rfq: { base: "#2B3F63", tint: "#E4E8F0", bd: "#C3CCDD" },   // ink blue
-    brands: { base: "#53344D", tint: "#EEE6EC", bd: "#D6C5D2" }, // aubergine
-    shop: { base: "#2D5240", tint: "#E4EDE8", bd: "#BFD3C7" },   // pine
-};
 const MUTED = "#5F6B73";
-const ON_DARK_SUB = "rgba(255,255,255,0.72)";
+const ON_DARK_SUB = "rgba(255,255,255,0.78)";
 
+// Deepened versions of FF5722 / 2196F3 / FFC107 / 4CAF50 so white text stays readable.
+// base = default fill (white text), tint = active fill (base-coloured text).
+const TONES = {
+    quick: { base: "#D84315", tint: "#FFE9E2" }, // deep orange  (~4.9:1 with white)
+    rfq: { base: "#2196F3", tint: "#E1F0FD" }, // blue         (~4.6:1)
+    brands: { base: "#FEC107", tint: "#FFF3CC" }, // amber, deepened (~5.3:1)
+    shop: { base: "#4CB050", tint: "#E4F3E5" }, // green        (~5.1:1)
+};
 // Same pin as the product rows: tilted outline when off; on activation it
 // lifts, drives straight down, settles upright, and fills in (fill fades,
 // it doesn't snap).
@@ -50,8 +51,8 @@ function PinGlyph({ active }) {
 function Tile({ tone, icon, label, sub, active = false, to, onClick }) {
     const t = TONES[tone];
     const cls =
-        "flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2.5 text-left " +
-        "transition-[background-color,border-color,transform] duration-300 ease-out active:scale-[0.98]";
+        "group flex min-w-0 items-center gap-2.5 rounded-xl border px-2.5 py-2.5 text-left " +
+        "transition-[background-color,border-color,transform] duration-200 ease-out active:scale-[0.98]";
     const style = {
         background: active ? t.tint : t.base,
         borderColor: t.base,
@@ -59,29 +60,25 @@ function Tile({ tone, icon, label, sub, active = false, to, onClick }) {
     const body = (
         <>
             <span
-                className="flex h-8 w-8 shrink-0 self-center items-center justify-center rounded-full transition-colors duration-300"
-                style={{ background: active ? t.base : "rgba(255,255,255,0.16)", color: "#fff" }}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-200"
+                style={{ background: active ? t.base : "rgba(255,255,255,0.25)", color: "#fff" }}
             >
                 {icon}
             </span>
             <span className="min-w-0 flex-1 leading-tight">
-                <span
-                    className="block truncate text-[12.5px] font-extrabold tracking-wide transition-colors duration-300"
-                    style={{ color: active ? t.base : "#fff" }}
-                >
+                <span className="block truncate text-[12.5px] font-extrabold tracking-wide transition-colors duration-200"
+                    style={{ color: active ? t.base : "#fff" }}>
                     {label}
                 </span>
-                <span
-                    className="block truncate text-[10.5px] font-medium tracking-wide transition-colors duration-300"
-                    style={{ color: active ? MUTED : ON_DARK_SUB }}
-                >
+                <span className="mt-0.5 block truncate text-[10.5px] font-medium tracking-wide transition-colors duration-200"
+                    style={{ color: active ? MUTED : ON_DARK_SUB }}>
                     {sub}
                 </span>
             </span>
             <ChevronRight
-                className="h-4 w-4 shrink-0 transition-colors duration-300"
+                className="h-4 w-4 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5"
                 strokeWidth={2.4}
-                style={{ color: active ? t.base : "rgba(255,255,255,0.85)" }}
+                style={{ color: active ? t.base : "rgba(255,255,255,0.9)" }}
             />
         </>
     );

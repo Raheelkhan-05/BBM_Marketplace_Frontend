@@ -2503,7 +2503,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     // Delivery address now comes from the shared context (same one shown at the top of Home),
     // so changing it there instantly updates delivery estimates in every seller list.
-    const { selectedAddress: buyerAddress } = useBuyerAddress();
+    const { selectedAddress: buyerAddress, shopName: myShopName } = useBuyerAddress();
 
     const clearBrand = () => {
         const next = new URLSearchParams(searchParams);
@@ -3281,7 +3281,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     };
 
     const handleShareShop = async () => {
-        const r = await shareShopLink({ shopSlug, shopName: profile?.shop_name || profile?.name });
+        const r = await shareShopLink({ shopSlug, shopName: myShopName });
         if (r === "copied") showToast({ message: "Shop link copied" }, 2000);
         else if (r === "failed") showToast({ message: "Couldn't share. Try again" }, 2200);
     };
@@ -3296,7 +3296,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         const result = await shareProductLink({
             submissionId,
             productName: item.name,
-            sellerName: profile?.shop_name || profile?.name || "this seller",
+            sellerName: myShopName || "this seller",
         });
         if (result === "copied") showToast({ message: "Link copied to clipboard." }, 2000);
     };
