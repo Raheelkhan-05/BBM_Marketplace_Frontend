@@ -6,7 +6,7 @@ const DISMISS_KEY = "pwa_install_dismissed_at";
 const TEST_MODE = false;
 const DEBUG_LOGS = false;
 
-const DELAY_MS = TEST_MODE ? 10 * 1000 : 60 * 1000;                      // time before prompt appears
+const DELAY_MS = TEST_MODE ? 10 * 1000 : 10 * 1000;                      // time before prompt appears
 const DISMISS_COOLDOWN_MS = TEST_MODE ? 10 * 1000 : 24 * 60 * 60 * 1000; // 1 min (test) / 1 day (prod)
 
 /* ------------------------------------------------------------------
