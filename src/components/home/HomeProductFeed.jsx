@@ -149,6 +149,7 @@ import { shareProductLink } from "../../utils/share.js";
 import { useSocket } from "../../context/SocketContext.jsx";
 import { resizedImageUrl } from "../../utils/imageUrl";
 import { useAuth } from "../../context/AuthContext.jsx";
+import DeliverToBar from "../shipping/DeliverToBar.jsx";
 import { round2 } from "../../shared/packUnits.js";
 import { checkLocationServiceable } from "../../shared/orderConstraints.js";
 import { InlineWheelField } from "../seller/listingForm/PriceWheelPicker.jsx";
@@ -3430,18 +3431,24 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             )}
 
 
-            <div className="flex items-center justify-between px-1 pb-2">
-                {myShopActive ? (
-                    <button
-                        type="button"
-                        onClick={handleShareShop}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-full border bg-white px-3 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98]"
-                        style={{ borderColor: C.hair, color: C.ink }}
-                    >
-                        <Share2 className="h-3.5 w-3.5" strokeWidth={2.3} /> Share shop
-                    </button>
-                ) : <span />}
-                <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+            <div className="flex items-center justify-between gap-3 px-1">
+                <div className="min-w-0">
+                    {myShopActive ? (
+                        <button
+                            type="button"
+                            onClick={handleShareShop}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-full border bg-white px-3 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98]"
+                            style={{ borderColor: C.hair, color: C.ink }}
+                        >
+                            <Share2 className="h-3.5 w-3.5" strokeWidth={2.3} /> Share shop
+                        </button>
+                    ) : (
+                        <DeliverToBar />
+                    )}
+                </div>
+                <div className="shrink-0">
+                    <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+                </div>
             </div>
 
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge

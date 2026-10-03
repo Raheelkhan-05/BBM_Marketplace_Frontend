@@ -200,6 +200,45 @@ function SelectedAddressBar({ address, shopName, onChangeClick, disabled }) {
     );
 }
 
+// One-line pill: pin + "Deliver to" + pincode + chevron. Used beside the GST toggle.
+function CompactAddressPill({ address, onClick, disabled }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={`Delivering to ${address.pincode}. Change delivery address`}
+            className="inline-flex h-9 items-center gap-1.5 bg-white text-[11.5px] tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98] disabled:opacity-60"
+            style={{ borderColor: C.hair }}
+        >
+            <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: "#006F83" }} strokeWidth={2.4} />
+            <span className="shrink-0 font-semibold capitalize" style={{ color: C.muted }}>Deliver to</span>
+            <span className="truncate font-extrabold tabular-nums" style={{ color: C.ink }}>{address.pincode}</span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} strokeWidth={2.4} />
+        </button>
+    );
+}
+
+function CompactEmptyPill({ onClick, disabled }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            disabled={disabled}
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed bg-white pl-2.5 pr-2 text-[11.5px] font-bold tracking-wide disabled:opacity-60"
+            style={{ borderColor: "#006F8366", color: "#006F83" }}
+        >
+            <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
+            Add delivery address
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
+        </button>
+    );
+}
+
+function CompactSkeleton() {
+    return <span className="block h-9 w-40 animate-pulse rounded-full" style={{ background: C.hairSoft }} />;
+}
+
 // No address yet: same frame, but an invitation instead of a value.
 function EmptyAddressBar({ onAddClick, disabled }) {
     return (
@@ -387,7 +426,12 @@ const AddressBook = forwardRef(function AddressBook({ onChange, disabled, varian
 
     return (
         <div className="flex flex-col gap-2.5">
-            {busy ? (
+            {variant === "compact" ? (
+                busy ? <CompactSkeleton />
+                    : selectedAddress
+                        ? <CompactAddressPill address={selectedAddress} onClick={openChangeModal} disabled={disabled} />
+                        : <CompactEmptyPill onClick={openChangeModal} disabled={disabled} />
+            ) : busy ? (
                 variant === "bar" ? (
                     <BarSkeleton seeding={seeding} />
                 ) : (

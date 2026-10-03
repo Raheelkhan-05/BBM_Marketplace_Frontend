@@ -6,5 +6,5 @@ import { useAuth } from "../../context/AuthContext.jsx";
 export default function DeliverToBar() {
     const { token, effectiveLoggedIn } = useAuth();
     if (!effectiveLoggedIn || !token) return null;
-    return <AddressBook variant="bar" />;
+    return <AddressBook variant="compact" />;
 }

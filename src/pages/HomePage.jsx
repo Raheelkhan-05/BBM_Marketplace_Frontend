@@ -44,8 +44,8 @@ export default function HomePage() {
         setSearchParams(next, { replace: true });
     };
 
-    const { profile } = useAuth();
-    const isOwnShop = !!shopSlug && profile?.shop_slug === shopSlug;
+    // const { profile } = useAuth();
+    // const isOwnShop = !!shopSlug && profile?.shop_slug === shopSlug;
 
 
     const clearShop = () => {
@@ -76,7 +76,7 @@ export default function HomePage() {
                 <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20 pt-3">
 
                     {/* Delivery address — fetched once, reused by seller list, Buy Now and Cart */}
-                    {!isOwnShop && <DeliverToBar />}
+                    {/* {!isOwnShop && <DeliverToBar />} */}
 
                     {shopSlug && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
 
