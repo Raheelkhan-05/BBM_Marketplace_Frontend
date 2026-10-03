@@ -5,8 +5,10 @@
 //   ref:   openChange(), ensureSavedAddress()
 //
 // - "bar":  the Home-page selector. A whole-bar tap target with an "aura" ring (a soft
-//           traffic-orange light travelling around the border), a pin badge that drops in
-//           with a ripple whenever the address changes, and a black "Change" pill.
+//           traffic-orange light travelling around the border), a small pin badge on the
+//           top line that drops in with a ripple whenever the address changes, and a
+//           black "Change" pill. Hero line is "Shop Name · City" (shop name comes from
+//           the business profile via the context).
 // - "card": full address card, used inside Buy Now / Cart / Transport modal.
 // - The change/add modal renders in a portal (never clipped) above every other modal.
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -19,6 +21,16 @@ import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
 
 const EMPTY_ADDRESS = { label: "", contact_name: "", contact_phone: "", address_line1: "", address_line2: "", city: "", state: "", pincode: "" };
 const stopBubble = (e) => e.stopPropagation();
+
+// "SHIV-SHAKTI AUTO CENTER" -> "Shiv-Shakti Auto Center"
+// Capitalizes the first letter after a start, space, hyphen, slash, bracket, comma or dot.
+// Display only: the stored data is never changed.
+function toTitleCase(value) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/(^|[\s\-/(.,])([a-z])/g, (_, sep, ch) => sep + ch.toUpperCase());
+}
 
 // RAL 2009 "Traffic orange" = #DE5307 (222, 83, 7). The head of the comet is a lighter tint
 // of the same hue (#FF9A5C = 255, 154, 92) so it reads as a glowing leading edge.
@@ -68,29 +80,33 @@ function AuraFrame({ children }) {
 
 // Black pin badge (same language as the Follow pin): drops in, squashes, settles, and
 // sends out a single ripple. Re-plays whenever the address changes (keyed by id).
-function PinBadge({ addressKey, outlined = false }) {
+// `small` is the inline version used on the bar's top line.
+function PinBadge({ addressKey, outlined = false, small = false }) {
+    const box = small ? "h-5 w-5" : "h-9 w-9";
+    const icon = small ? "h-3 w-3" : "h-4 w-4";
+    const drop = small ? 6 : 12;
     return (
-        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+        <span className={`relative flex ${box} shrink-0 items-center justify-center`}>
             <motion.span
                 key={`ripple-${addressKey}`}
                 aria-hidden
                 className="pointer-events-none absolute inset-0 rounded-full"
                 style={{ background: outlined ? "#006F83" : "#000" }}
                 initial={{ opacity: 0.28, scale: 0.6 }}
-                animate={{ opacity: 0, scale: 2.1 }}
+                animate={{ opacity: 0, scale: small ? 2.6 : 2.1 }}
                 transition={{ duration: 0.7, ease: "easeOut", delay: 0.28 }}
             />
             <motion.span
                 key={`pin-${addressKey}`}
-                className="relative flex h-9 w-9 items-center justify-center rounded-full"
+                className={`relative flex ${box} items-center justify-center rounded-full`}
                 style={outlined
                     ? { background: "#006F831A", color: "#006F83", originY: 1 }
                     : { background: "#000", color: "#fff", originY: 1 }}
-                initial={{ y: -12, opacity: 0, scaleY: 1.15 }}
-                animate={{ y: [-12, 3, 0], opacity: 1, scaleY: [1.15, 0.88, 1] }}
+                initial={{ y: -drop, opacity: 0, scaleY: 1.15 }}
+                animate={{ y: [-drop, drop / 4, 0], opacity: 1, scaleY: [1.15, 0.88, 1] }}
                 transition={{ duration: 0.5, times: [0, 0.6, 1], ease: "easeOut" }}
             >
-                <MapPin className="h-4 w-4" strokeWidth={2.4} />
+                <MapPin className={icon} strokeWidth={2.4} />
             </motion.span>
         </span>
     );
@@ -124,11 +140,30 @@ function SelectedAddressCard({ address, onChangeClick, disabled }) {
     );
 }
 
-// Home-page bar. The city + pincode is the hero (that's what a buyer scans for),
-// the recipient and street are secondary, the whole bar is one big tap target.
-function SelectedAddressBar({ address, onChangeClick, disabled }) {
+// Home-page bar. The top line holds the small pin badge, the small pincode and the optional
+// label chip. Below it: "Shop Name · City" as the hero line, then the street address and
+// state (no city, it is already in the hero line). Everything is shown in Title Case so
+// the text looks uniform. The whole bar is one big tap target.
+//
+// `shopName` comes from the business profile (BuyerAddressContext). While it is still loading
+// (or if the profile has none) the hero line falls back to the contact name.
+function SelectedAddressBar({ address, shopName, onChangeClick, disabled }) {
     const label = (address.label || "").trim();
-    const showLabel = label && label.toLowerCase() !== (address.contact_name || "").trim().toLowerCase();
+    const contact = (address.contact_name || "").trim();
+    const heroName = toTitleCase((shopName || "").trim() || contact);
+    const city = toTitleCase(address.city);
+
+    // Hide the label chip when it just repeats the contact name or the hero name.
+    const showLabel = label
+        && label.toLowerCase() !== contact.toLowerCase()
+        && label.toLowerCase() !== heroName.toLowerCase();
+
+    // "Line 1, Line 2, State" (skips empty parts, city is intentionally left out)
+    const addressLine = [address.address_line1, address.address_line2, address.city, address.state]
+        .map((part) => toTitleCase(part))
+        .filter(Boolean)
+        .join(", ");
+
     return (
         <AuraFrame>
             <button
@@ -138,23 +173,22 @@ function SelectedAddressBar({ address, onChangeClick, disabled }) {
                 aria-label="Change delivery address"
                 className="group flex w-full items-center gap-3 rounded-[14.5px] px-3 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.02] active:bg-black/[0.04] disabled:opacity-60"
             >
-                <PinBadge addressKey={address.id} />
-
                 <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5 text-[9.5px] font-extrabold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
-                        Deliver to
+                    <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.12em]" style={{ color: C.muted }}>
+                        <PinBadge small addressKey={address.id} />
+                        {address.pincode}
                         {showLabel && (
-                            <span className="rounded-full px-1.5 py-[1px] text-[9px] font-bold tracking-wider" style={{ background: "#006F8314", color: "#006F83" }}>
+                            <span className="rounded-full px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-wider" style={{ background: "#006F8314", color: "#006F83" }}>
                                 {label}
                             </span>
                         )}
                     </span>
-                    <span className="mt-0.5 block truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
-                        {address.city} {address.pincode}
-                        <span className="font-semibold" style={{ color: C.muted }}> · {address.contact_name}</span>
+                    <span className="mt-1 block truncate text-[13.5px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                        {heroName}
+                        {/* {city && <span className="font-semibold" style={{ color: C.muted }}> · {city}</span>} */}
                     </span>
-                    <span className="block truncate text-[11px] font-medium tracking-wide" style={{ color: C.muted }}>
-                        {address.address_line1}{address.address_line2 ? `, ${address.address_line2}` : ""}, {address.state}
+                    <span className="mt-0.5 line-clamp-1 text-[11px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                        {addressLine}
                     </span>
                 </span>
 
@@ -194,10 +228,10 @@ function EmptyAddressBar({ onAddClick, disabled }) {
 function BarSkeleton({ seeding }) {
     return (
         <div className="flex items-center gap-3 rounded-2xl border bg-white px-3 py-2.5" style={{ borderColor: C.hair }}>
-            <span className="h-9 w-9 shrink-0 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
             <span className="min-w-0 flex-1 space-y-1.5">
                 <span className="block h-2 w-16 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
                 <span className="block h-3 w-40 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+                <span className="block h-2.5 w-52 max-w-full animate-pulse rounded-full" style={{ background: C.hairSoft }} />
             </span>
             <span className="flex items-center gap-1.5 text-[11px] font-semibold" style={{ color: C.muted }}>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> {seeding ? "Setting up…" : ""}
@@ -285,7 +319,7 @@ function AddressForm({ value, onField, onCancel, onSave, showCancel, saving, err
 }
 
 const AddressBook = forwardRef(function AddressBook({ onChange, disabled, variant = "card" }, ref) {
-    const { addresses, selectedAddress, loading, seeding, selectAddress, saveAddress } = useBuyerAddress();
+    const { addresses, selectedAddress, loading, seeding, shopName, selectAddress, saveAddress } = useBuyerAddress();
 
     const [modalOpen, setModalOpen] = useState(false);
     const [expandedId, setExpandedId] = useState(null);
@@ -363,7 +397,7 @@ const AddressBook = forwardRef(function AddressBook({ onChange, disabled, varian
                 )
             ) : selectedAddress ? (
                 variant === "bar"
-                    ? <SelectedAddressBar address={selectedAddress} onChangeClick={openChangeModal} disabled={disabled} />
+                    ? <SelectedAddressBar address={selectedAddress} shopName={shopName} onChangeClick={openChangeModal} disabled={disabled} />
                     : <SelectedAddressCard address={selectedAddress} onChangeClick={openChangeModal} disabled={disabled} />
             ) : variant === "bar" ? (
                 <EmptyAddressBar onAddClick={openChangeModal} disabled={disabled} />

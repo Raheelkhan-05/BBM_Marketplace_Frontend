@@ -131,7 +131,8 @@
 //   the seller row in place and the open dropdown silently re-syncs.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
-import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link, useSearchParams } from "react-router-dom";
+import FeedQuickActions, { BrandFilterSheet } from "./FeedQuickActions.jsx";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
 import { ChevronDown, Package, Info, Store, Pointer, ChevronsUp, X, FileText, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
@@ -182,6 +183,12 @@ const OFFER_CACHE_MS = 15000;
 const SHOP_REFRESH_DELAY_MS = 400;
 
 const FOLLOW_TIP_KEY = "bbm_follow_tip_dismissed_v1";
+
+const EMPTY = [];
+
+// Single place that decides "is this user a verified seller".
+// Currently: having a shop_slug. Tighten here if you have a stricter flag.
+const isVerifiedSeller = (profile) => !!profile?.shop_slug;
 
 function readFlag(k) { try { return localStorage.getItem(k) === "1"; } catch { return false; } }
 function writeFlag(k) { try { localStorage.setItem(k, "1"); } catch { /* private mode */ } }
@@ -1057,83 +1064,6 @@ function GstToggle({ includeGst, onChange }) {
     );
 }
 
-// Header tab switch: "All products | Following (n)".
-// Tabs read as "two views of the same list", which is the mental model we want.
-function FeedViewTabs({ followedOnly, onChange }) {
-    const tabs = [
-        { followed: false, aria: "All products", Icon: LayoutGrid },
-        { followed: true, aria: "Following", Icon: Pin },
-    ];
-    return (
-        <div
-            role="tablist"
-            aria-label="Product view"
-            className="relative inline-flex rounded-full p-0.5"
-            style={{ background: C.hairSoft }}
-        >
-            {tabs.map(({ followed, aria, Icon }) => {
-                const active = followedOnly === followed;
-                return (
-                    <button
-                        key={String(followed)}
-                        type="button"
-                        role="tab"
-                        aria-selected={active}
-                        aria-label={aria}
-                        title={aria}
-                        onClick={() => onChange(followed)}
-                        className="relative rounded-full px-4 py-1.5 transition-colors duration-150"
-                        style={{ color: active ? "#fff" : C.muted }}
-                    >
-                        {active && (
-                            <motion.span
-                                layoutId="feed-view-pill"
-                                className="absolute inset-0 rounded-full"
-                                style={{ background: C.primary }}
-                                transition={{ type: "spring", stiffness: 500, damping: 38 }}
-                            />
-                        )}
-                        <span className="relative flex items-center justify-center">
-                            <Icon
-                                className="h-3.5 w-3.5"
-                                strokeWidth={2.4}
-                                fill={followed && active ? "currentColor" : "none"}
-                            />
-                        </span>
-                    </button>
-                );
-            })}
-        </div>
-    );
-}
-
-// Compact RFQ entry card: black icon badge, title + subtitle, chevron.
-function RfqLink() {
-    return (
-        <Link
-            to="/rfq"
-            aria-label="RFQ, get multiple quotes"
-            className="flex min-w-0 items-center gap-2 rounded-md border bg-white py-2.5 pl-2 pr-2 transition-all duration-150 hover:shadow-sm active:scale-[0.98]"
-            style={{ borderColor: C.hairSoft }}
-        >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black">
-                <FileText className="h-4 w-4 text-white" strokeWidth={2} />
-            </span>
-
-            <span className="min-w-0 leading-tight">
-                <span className="block text-[12.5px] font-extrabold" style={{ color: "#0B1116" }}>
-                    RFQ
-                </span>
-                <span className="block truncate text-[10.5px] font-medium" style={{ color: C.muted }}>
-                    Get multiple quotes
-                </span>
-            </span>
-
-            <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={2.4} style={{ color: "#0B1116" }} />
-        </Link>
-    );
-}
-
 // Labeled per-row pill. Words + icon + filled/outlined state = unmistakably a toggle.
 function FollowButton({ following, onToggle }) {
     return (
@@ -1393,7 +1323,8 @@ function ProductNameWithInfo({ name, onInfo }) {
 }
 
 // Looping "finger taps" icon: rises in, presses down (squash) and sends out ONE ripple.
-const RING = 12; // ring diameter before scaling
+// Ripple: a ring closes in from 60% -> 20% (fading in 0 -> 1) as the finger lands,
+// then on the click it bursts out to 110% and vanishes almost instantly.
 
 function TapHand({ light = false, size = 26 }) {
     const reduce = useReducedMotion();
@@ -1401,12 +1332,14 @@ function TapHand({ light = false, size = 26 }) {
     const box = size + 10;
     const rgb = light ? "255,255,255" : "222,83,7";
 
+    // 100% ring size = the icon box, so 110% just slightly overshoots it
+    const ring = box;
+
     const tipX = (box - size) / 2 + (8 / 24) * size + 0.20;
     const tipY = (box - size) + (2 / 24) * size - 3;
 
-    // 7 keyframes = 7 times = 7 opacity values = 7 scale values (6 eases)
-    //        start  arrive  hover  CLICK  burst  gone  rest
-    const times = [0, 0.22, 0.45, 0.55, 0.68, 0.78, 1];
+    // Shared timeline: the click lands at 0.55 of the 2.4s loop
+    const CLICK = 0.55;
 
     return (
         <span
@@ -1418,15 +1351,15 @@ function TapHand({ light = false, size = 26 }) {
                     aria-hidden
                     className="pointer-events-none absolute"
                     style={{
-                        left: tipX - RING / 2,
-                        top: tipY - RING / 2,
-                        width: RING,
-                        height: RING,
+                        left: tipX - ring / 2,
+                        top: tipY - ring / 2,
+                        width: ring,
+                        height: ring,
                     }}
                     animate={{ y: [8, 0, 0, 4.7, 0, 0] }}
                     transition={{
                         duration: 2.4,
-                        times: [0, 0.22, 0.45, 0.55, 0.7, 1],
+                        times: [0, 0.22, 0.45, CLICK, 0.7, 1],
                         repeat: Infinity,
                         ease: "easeInOut",
                     }}
@@ -1438,15 +1371,26 @@ function TapHand({ light = false, size = 26 }) {
                             background: `rgba(${rgb},0.16)`,
                         }}
                         animate={{
-                            opacity: [0, 0.55, 0.85, 0.45, 0.9, 0, 0],
-                            scale: [0.3, 0.7, 0.9, 0.45, 3.2, 8.5, 0.3],
+                            // 60% -> 20% while the finger comes down, then burst out to 110%
+                            scale: [0.6, 0.2, 1.1, 0.6],
+                            // fades in 0 -> 1 on approach, then drops to 0 fast after the click
+                            opacity: [0, 1, 0.7, 0, 0],
                         }}
                         transition={{
-                            duration: 2.4,
-                            times,
-                            // easeOut on the burst = fast start right at the click, then it slows as it fades
-                            ease: ["easeOut", "easeInOut", "easeIn", "easeOut", "easeOut", "linear"],
                             repeat: Infinity,
+                            duration: 2.4,
+                            scale: {
+                                duration: 2.4,
+                                repeat: Infinity,
+                                times: [0, CLICK, 0.66, 1],
+                                ease: ["easeInOut", "easeOut", "linear"],
+                            },
+                            opacity: {
+                                duration: 2.4,
+                                repeat: Infinity,
+                                times: [0, CLICK, 0.6, 0.66, 1],
+                                ease: ["linear", "easeOut", "easeOut", "linear"],
+                            },
                         }}
                     />
                 </motion.span>
@@ -1466,7 +1410,7 @@ function TapHand({ light = false, size = 26 }) {
                 }
                 transition={{
                     duration: 2.4,
-                    times: [0, 0.22, 0.45, 0.55, 0.7, 1],
+                    times: [0, 0.22, 0.45, CLICK, 0.7, 1],
                     repeat: Infinity,
                     ease: "easeInOut",
                 }}
@@ -2578,6 +2522,28 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
     }, [openItemId, dismissHint]);
 
     const [followedOnly, setFollowedOnly] = useState(false);
+
+    const [, setSearchParams] = useSearchParams();
+    const [brandSel, setBrandSel] = useState({ scope: "", names: EMPTY });
+    const [brandsOpen, setBrandsOpen] = useState(false);
+
+    const brandScope = `${category?.id || ""}|${shopSlug || ""}|${followedOnly ? 1 : 0}`;
+    const selectedBrands = brandSel.scope === brandScope ? brandSel.names : EMPTY;
+    const brandsKey = selectedBrands.join("|");
+    const brandsRef = useRef(EMPTY);
+    brandsRef.current = selectedBrands;
+
+
+    const myShopSlug = profile?.shop_slug || null;
+
+    const handleMyShop = () => {
+        if (!isLoggedIn || !token) return requireLogin("Login to open your shop.");
+        if (!isVerifiedSeller(profile) || !myShopSlug) return navigate("/seller/onboarding");
+        const next = new URLSearchParams(location.search);
+        if (shopSlug === myShopSlug) next.delete("shop"); else next.set("shop", myShopSlug);
+        setSearchParams(next);
+    };
+
     const [followToast, setFollowToast] = useState(null); // { message, actionLabel?, onAction? }
     const [tipDismissed, setTipDismissed] = useState(() => readFlag(FOLLOW_TIP_KEY));
     const runQueryRef = useRef(null);
@@ -2626,6 +2592,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
         clearTimeout(shopRefreshTimerRef.current);
         shopRefreshTimerRef.current = setTimeout(async () => {
             const shop = shopSlugRef.current;
+
             if (!shop) return;
             const seq = ++shopRefreshSeqRef.current;
             const queryToken = queryTokenRef.current;
@@ -2637,6 +2604,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                     limit: Math.min(Math.max(itemsRef.current.length, PAGE_SIZE), 96),
                     offset: 0, token, shopSlug: shop,
                     followedOnly: followedOnlyRef.current,
+                    brands: brandsRef.current,
                     destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
                 });
                 if (seq !== shopRefreshSeqRef.current) return;
@@ -3129,12 +3097,13 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
         (append ? setLoadingMore : setLoading)(true);
 
         const trimmed = q.trim();
-        const useFeedRpc = followedOnly || !!shopSlug;
+        const useFeedRpc = followedOnly || !!shopSlug || selectedBrands.length > 0;
         const addr = buyerAddressRef.current;
         const request = useFeedRpc
             ? fetchBrandItemsFeed({
                 categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset,
                 signal: controller.signal, token, followedOnly, shopSlug,
+                brands: selectedBrands,
                 destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
             })
             : trimmed
@@ -3164,13 +3133,13 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [category?.id, q, token, followedOnly, shopSlug, isLoggedIn, verifyLowestFor]);
+    }, [category?.id, q, token, followedOnly, shopSlug, brandsKey, isLoggedIn, verifyLowestFor]);
 
 
     runQueryRef.current = runQuery;
 
     useEffect(() => {
-        const key = `${category?.id || ""}::${q}::${token || ""}::${followedOnly ? 1 : 0}::${shopSlug || ""}::${shopDestKey}`;
+        const key = `${category?.id || ""}::${q}::${token || ""}::${followedOnly ? 1 : 0}::${shopSlug || ""}::${shopDestKey}::${brandsKey};`
         const now = Date.now();
         const isDuplicateInvocation =
             lastRunRef.current.key === key &&
@@ -3201,7 +3170,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
         );
         return () => clearTimeout(debounceRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [category?.id, q, token, followedOnly, shopSlug, shopDestKey]);
+    }, [category?.id, q, token, followedOnly, shopSlug, shopDestKey, brandsKey]);
 
     useEffect(() => () => sellerAbortRef.current?.abort(), []);
 
@@ -3367,16 +3336,26 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
 
     return (
         <>
-            <div className="flex items-center justify-between gap-2 px-1 pb-2">
-                <FeedViewTabs
-                    followedOnly={followedOnly}
-                    onChange={handleFollowedOnlyChange}
-                />
-                <div className="flex min-w-0 items-center gap-2">
-                    <RfqLink />
-                    <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
-                </div>
+            <FeedQuickActions
+                quickBuyOn={followedOnly}
+                onQuickBuy={() => handleFollowedOnlyChange(!followedOnly)}
+                brandCount={selectedBrands.length}
+                onOpenBrands={() => setBrandsOpen(true)}
+                myShopActive={!!shopSlug && shopSlug === myShopSlug}
+                onMyShop={handleMyShop}
+            />
+
+            <div className="flex items-center justify-end px-1 pb-2">
+                <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
             </div>
+
+            <BrandFilterSheet
+                open={brandsOpen}
+                onClose={() => setBrandsOpen(false)}
+                selected={selectedBrands}
+                onApply={(names) => setBrandSel({ scope: brandScope, names })}
+                scope={{ categoryId: category?.id || null, q, followedOnly, shopSlug, token }}
+            />
 
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
                 (-mx-3 cancels a parent's assumed px-3 padding; tweak to match your

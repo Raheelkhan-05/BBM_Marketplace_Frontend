@@ -5,6 +5,9 @@
 // modal and the seller-list delivery estimates. Selecting an address here
 // also persists it as the buyer's default on the server.
 //
+// Also exposes `shopName` (from the business profile) so the Home bar can show
+// "Shop name · City".
+//
 // BuyerAddressProvider is safe to nest: if a parent provider already exists
 // it just renders its children, so you may wrap a page locally AND (optionally)
 // mount it once at the app root under <AuthProvider> for cross-page caching.
@@ -55,6 +58,13 @@ function seedFromBusinessProfile(bp, phone) {
     };
 }
 
+// Shop name shown to the buyer: trade name first (what people know the shop as),
+// then the registered legal name.
+function shopNameFromProfile(bp) {
+    if (!bp) return "";
+    return String(bp.trade_name || bp.legal_name || "").trim();
+}
+
 // Only for addresses the buyer explicitly saves via the form — never for the
 // auto-seeded one (it would produce "Company · Company").
 export function fallbackLabel(addr, existingCount) {
@@ -71,12 +81,29 @@ function Inner({ children }) {
     const [selectedId, setSelectedId] = useState(null);
     const [loading, setLoading] = useState(!!token);
     const [seeding, setSeeding] = useState(false);
+    const [shopName, setShopName] = useState("");
 
     const tokenRef = useRef(token);
     tokenRef.current = token;
     const addressesRef = useRef([]);
     addressesRef.current = addresses;
     const seedInFlightRef = useRef(false);
+
+    // Shop name from the business profile (independent of address loading/seeding).
+    useEffect(() => {
+        if (!token) { setShopName(""); return; }
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await fetchBusinessProfile(token);
+                if (cancelled) return;
+                setShopName(res?.success ? shopNameFromProfile(res.profile) : "");
+            } catch {
+                if (!cancelled) setShopName("");
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [token]);
 
     useEffect(() => {
         if (!token) {
@@ -163,8 +190,8 @@ function Inner({ children }) {
     );
 
     const value = useMemo(
-        () => ({ addresses, selectedAddress, loading: loading || seeding, seeding, selectAddress, saveAddress }),
-        [addresses, selectedAddress, loading, seeding, selectAddress, saveAddress]
+        () => ({ addresses, selectedAddress, loading: loading || seeding, seeding, shopName, selectAddress, saveAddress }),
+        [addresses, selectedAddress, loading, seeding, shopName, selectAddress, saveAddress]
     );
 
     return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
