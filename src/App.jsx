@@ -169,8 +169,8 @@ function App() {
                 <Route path="/credit" element={<RequireAuth><CreditPage /></RequireAuth>} />
                 <Route path="/seller/marketing" element={<RequireAuth><SellerMarketingPage /></RequireAuth>} />
 
-                <Route path="/rfq" element={<RequireAuth><RFQPage_ComingSoon /></RequireAuth>} />
-                <Route path="/rfq_underprocess" element={<RequireAuth><RFQPage /></RequireAuth>} />
+                {/* <Route path="/rfq" element={<RequireAuth><RFQPage_ComingSoon /></RequireAuth>} /> */}
+                <Route path="/rfq" element={<RequireAuth><RFQPage /></RequireAuth>} />
                 <Route path="/admin/rfq" element={<AdminRfqPage />} />
 
                 <Route path="/brands" element={<BrandsPage />} />
