@@ -3416,7 +3416,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
 
             {brandName && (
-                <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#EEE6EC", borderColor: "#D6C5D2" }}>
+                <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#ede6ffff", borderColor: "#D6C5D2" }}>
                     <p className="min-w-0 truncate text-[11.5px] font-bold tracking-wide" style={{ color: "#53344D" }}>
                         Brand: <span className="font-extrabold capitalize text-[13.5px] ">{brandName}</span>
                     </p>

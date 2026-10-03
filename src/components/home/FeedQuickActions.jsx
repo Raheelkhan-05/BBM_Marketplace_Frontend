@@ -17,7 +17,7 @@ const ON_DARK_SUB = "rgba(255,255,255,0.78)";
 const TONES = {
     quick: { base: "#D84315", tint: "#FFE9E2" }, // deep orange  (~4.9:1 with white)
     rfq: { base: "#2196F3", tint: "#E1F0FD" }, // blue         (~4.6:1)
-    brands: { base: "#FEC107", tint: "#FFF3CC" }, // amber, deepened (~5.3:1)
+    brands: { base: "#7C4DFF", tint: "#ede6ffff" }, // amber, deepened (~5.3:1)
     shop: { base: "#4CB050", tint: "#E4F3E5" }, // green        (~5.1:1)
 };
 // Same pin as the product rows: tilted outline when off; on activation it
