@@ -131,10 +131,10 @@
 //   the seller row in place and the open dropdown silently re-syncs.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
-import { ChevronDown, Package, Info, Store, Pointer, ChevronsUp, X, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
+import { ChevronDown, Package, Info, Store, Pointer, ChevronsUp, X, FileText, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
 import useFollowedItems from "../../hooks/useFollowedItems";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, observePriceTrends, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints } from "../../utils/api";
 import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
@@ -1104,6 +1104,33 @@ function FeedViewTabs({ followedOnly, onChange }) {
                 );
             })}
         </div>
+    );
+}
+
+// Compact RFQ entry card: black icon badge, title + subtitle, chevron.
+function RfqLink() {
+    return (
+        <Link
+            to="/rfq"
+            aria-label="RFQ, get multiple quotes"
+            className="flex min-w-0 items-center gap-2 rounded-md border bg-white py-2.5 pl-2 pr-2 transition-all duration-150 hover:shadow-sm active:scale-[0.98]"
+            style={{ borderColor: C.hairSoft }}
+        >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-black">
+                <FileText className="h-4 w-4 text-white" strokeWidth={2} />
+            </span>
+
+            <span className="min-w-0 leading-tight">
+                <span className="block text-[12.5px] font-extrabold" style={{ color: "#0B1116" }}>
+                    RFQ
+                </span>
+                <span className="block truncate text-[10.5px] font-medium" style={{ color: C.muted }}>
+                    Get multiple quotes
+                </span>
+            </span>
+
+            <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={2.4} style={{ color: "#0B1116" }} />
+        </Link>
     );
 }
 
@@ -3345,7 +3372,10 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null }) {
                     followedOnly={followedOnly}
                     onChange={handleFollowedOnlyChange}
                 />
-                <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+                <div className="flex min-w-0 items-center gap-2">
+                    <RfqLink />
+                    <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+                </div>
             </div>
 
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
