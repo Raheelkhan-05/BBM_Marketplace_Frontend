@@ -73,6 +73,7 @@ const CreditPage = lazy(() => import("./pages/CreditPage.jsx"));
 const SellerMarketingPage = lazy(() => import("./pages/SellerMarketingPage.jsx"));
 const RFQPage = lazy(() => import("./pages/RFQPage.jsx"));
 const BrandsPage = lazy(() => import("./pages/BrandsPage.jsx"));
+const SellersPage = lazy(() => import("./pages/SellersPage.jsx"));
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -169,6 +170,8 @@ function App() {
                 <Route path="/rfq" element={<RequireAuth><RFQPage /></RequireAuth>} />
 
                 <Route path="/brands" element={<BrandsPage />} />
+
+                <Route path="/sellers" element={<SellersPage />} />
 
                 <Route path="/seller/sell" element={<SellPublishProductPage />} />
                 <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />

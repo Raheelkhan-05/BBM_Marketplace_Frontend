@@ -44,6 +44,8 @@ export default function HomePage() {
         setSearchParams(next, { replace: true });
     };
 
+    const viaSellers = new URLSearchParams(location.search).get("via") === "sellers";
+
     // const { profile } = useAuth();
     // const isOwnShop = !!shopSlug && profile?.shop_slug === shopSlug;
 
@@ -78,7 +80,7 @@ export default function HomePage() {
                     {/* Delivery address — fetched once, reused by seller list, Buy Now and Cart */}
                     {/* {!isOwnShop && <DeliverToBar />} */}
 
-                    {shopSlug && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
+                    {shopSlug && !viaSellers && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
 
                     {/* Mobile: pinned to the bottom of the screen. Desktop: normal flow. */}
                     <div

@@ -137,7 +137,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
 import { ChevronDown, Package, Info, Store, Share2, Pointer, ChevronsUp, X, FileText, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
 import useFollowedItems from "../../hooks/useFollowedItems";
-import { fetchBrandItemsFeed, fetchBrandItemSellers, observePriceTrends, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints } from "../../utils/api";
+import { fetchBrandItemsFeed, fetchBrandItemSellers, observePriceTrends, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints, fetchShopInfo } from "../../utils/api";
 import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import ImageLightbox from "../ImageLightbox.jsx";
@@ -187,10 +187,6 @@ const SHOP_REFRESH_DELAY_MS = 400;
 const FOLLOW_TIP_KEY = "bbm_follow_tip_dismissed_v1";
 
 const EMPTY = [];
-
-// Single place that decides "is this user a verified seller".
-// Currently: having a shop_slug. Tighten here if you have a stricter flag.
-const isVerifiedSeller = (profile) => !!profile?.shop_slug;
 
 function readFlag(k) { try { return localStorage.getItem(k) === "1"; } catch { return false; } }
 function writeFlag(k) { try { localStorage.setItem(k, "1"); } catch { /* private mode */ } }
@@ -2558,22 +2554,34 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     const myShopSlug = profile?.shop_slug || null;
     const myShopActive = !!shopSlug && shopSlug === myShopSlug;
-    // Only one quick-action view is active at a time.
-    const activeTile = brandName ? "brands" : myShopActive ? "shop" : followedOnly ? "quick" : null;
+    const fromSellers = searchParams.get("via") === "sellers";
+    // Only one quick-action view is active at a time. Any store view lights up the Sellers tile.
+    const activeTile = brandName ? "brands" : followedOnly ? "quick" : shopSlug ? "shop" : null;
 
-    const handleMyShop = () => {
-        if (!isLoggedIn || !token) return requireLogin("Login to open your shop.");
-        if (!isVerifiedSeller(profile) || !myShopSlug) return navigate("/seller/onboarding");
+    const clearShop = () => {
         const params = new URLSearchParams(location.search);
-        params.delete("brand");
-        if (shopSlug === myShopSlug) {
-            params.delete("shop");
-        } else {
-            params.set("shop", myShopSlug);
-            setFollowedOnly(false);
-        }
+        params.delete("shop");
+        params.delete("via");
         setSearchParams(params);
     };
+
+    // Sellers tile: inside a store -> back to all products; otherwise open the Sellers page.
+    const handleSellers = () => {
+        if (shopSlug) { clearShop(); return; }
+        navigate("/sellers");
+    };
+
+    // Store name for the banner.
+    const [shopInfo, setShopInfo] = useState(null);
+    useEffect(() => {
+        if (!shopSlug) { setShopInfo(null); return; }
+        const c = new AbortController();
+        setShopInfo(null);
+        fetchShopInfo(shopSlug, c.signal)
+            .then((r) => { if (r?.success) setShopInfo(r.shop); })
+            .catch(() => { /* banner falls back to the slug */ });
+        return () => c.abort();
+    }, [shopSlug]);
 
     const handleBrands = () => {
         if (brandName) {
@@ -3316,7 +3324,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             if (brandName || leavingOwnShop) {
                 const params = new URLSearchParams(location.search);
                 params.delete("brand");
-                if (leavingOwnShop) params.delete("shop");
+                if (leavingOwnShop) { params.delete("shop"); params.delete("via"); }
                 setSearchParams(params);
             }
         }
@@ -3411,7 +3419,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 brandLabel={brandName}
                 onQuickBuy={() => handleFollowedOnlyChange(!followedOnly)}
                 onBrands={handleBrands}
-                onMyShop={handleMyShop}
+                onMyShop={handleSellers}
             />
 
 
@@ -3422,9 +3430,23 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                         Brand: <span className="font-extrabold capitalize text-[13.5px] ">{brandName}</span>
                     </p>
                     <div className="flex shrink-0 items-center gap-1">
-                        <Link to="/brands" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wide text-white" style={{ background: "#384A62" }}>Change</Link>
+                        <Link to="/brands" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wider text-white" style={{ background: "#384A62" }}>Change</Link>
                         <button type="button" onClick={clearBrand} aria-label="Clear brand" className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]">
                             <X className="h-3.5 w-3.5" style={{ color: "#384A62" }} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {shopSlug && fromSellers && (
+                <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#dcefe3", borderColor: "#b9d9c6" }}>
+                    <p className="min-w-0 truncate text-[11.5px] font-bold tracking-wide" style={{ color: "#1f6b42" }}>
+                        {myShopActive ? "Your shop" : "Seller"}: <span className="font-extrabold capitalize text-[13.5px]">{shopInfo?.display_name || shopSlug}</span>
+                    </p>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <Link to="/sellers" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wider text-white" style={{ background: "#298C56" }}>Change</Link>
+                        <button type="button" onClick={clearShop} aria-label="Clear seller" className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]">
+                            <X className="h-3.5 w-3.5" style={{ color: "#1f6b42" }} />
                         </button>
                     </div>
                 </div>

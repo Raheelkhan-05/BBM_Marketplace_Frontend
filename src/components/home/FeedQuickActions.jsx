@@ -15,10 +15,10 @@ const ON_DARK_SUB = "rgba(255,255,255,0.78)";
 // Deepened versions of FF5722 / 2196F3 / FFC107 / 4CAF50 so white text stays readable.
 // base = default fill (white text), tint = active fill (base-coloured text).
 const TONES = {
-    quick: { base: "#D84315", tint: "#FFE9E2" }, // deep orange  (~4.9:1 with white)
-    rfq: { base: "#0A5FB0", tint: "#3C7FC6" }, // blue         (~4.6:1)
-    brands: { base: "#384A62", tint: "#bbc3ceff" }, // amber, deepened (~5.3:1)
-    shop: { base: "#298C56", tint: "#e9ffeaff" }, // green        (~5.1:1)
+    quick: { base: "#D84315", tint: "#FFE9E2" },
+    rfq: { base: "#0A5FB0", tint: "#3C7FC6" },
+    brands: { base: "#384A62", tint: "#bbc3ceff" },
+    shop: { base: "#298C56", tint: "#e9ffeaff" },
 };
 // Same pin as the product rows: tilted outline when off; on activation it
 // lifts, drives straight down, settles upright, and fills in (fill fades,
@@ -119,8 +119,8 @@ export default function FeedQuickActions({ active = null, brandLabel, onQuickBuy
             <Tile
                 tone="shop"
                 icon={<Store className="h-4 w-4" strokeWidth={2} />}
-                label="My Shop"
-                sub={active === "shop" ? "Viewing" : "Open your store"}
+                label="Sellers"
+                sub={active === "shop" ? "Viewing store" : "Browse all sellers"}
                 active={active === "shop"}
                 onClick={onMyShop}
             />
