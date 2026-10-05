@@ -1177,8 +1177,8 @@ function FollowButton({ following, onToggle }) {
                 <Pin
                     className="h-4 w-4"
                     strokeWidth={2.4}
-                    style={{ color: following ? "#000000" : C.muted }}
-                    fill={following ? "#000000" : "none"}
+                    style={{ color: following ? "#FF9900 " : C.muted }}
+                    fill={following ? "#FF9900 " : "none"}
                 />
             </motion.span>
         </motion.button>
