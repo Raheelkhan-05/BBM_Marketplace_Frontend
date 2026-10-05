@@ -63,7 +63,7 @@ export default function HomePage() {
     return (
         // overflow-x-clip (NOT hidden): overflow-x-hidden turns this div into a
         // scroll container and silently breaks `position: sticky` for everything inside.
-        <div className="min-h-screen bg-[#FFFFFF] text-slate-900 antialiased overflow-x-clip" style={{ fontFamily: FONT_BODY }}>
+        <div className="min-h-screen bg-[#FFFFFF] pt-3 text-slate-900 antialiased overflow-x-clip" style={{ fontFamily: FONT_BODY }}>
 
             <SmoothScrollProvider>
                 {/* bottom padding so the last feed items clear the floating buttons (BottomNavStrip) */}
