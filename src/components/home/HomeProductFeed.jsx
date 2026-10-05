@@ -2240,6 +2240,9 @@ function SellerDropdown({
         [sortedItems]
     );
 
+    // Feed rows carry has_own_listing from the RPC. Search rows don't, so also
+    // check the loaded sellers list for the signed-in user's own row.
+    const ownRowInList = items.some((s) => isOwnSellerRow(s, currentUserId));
     const alreadySelling = item?.has_own_listing === true;
 
     const [savingOwnPriceId, setSavingOwnPriceId] = useState(null);
@@ -3117,24 +3120,33 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 if (requestToken !== queryTokenRef.current) return;
                 let best;
                 let ok = false;
+                let hasOwn = false;
                 try {
                     const addr = buyerAddressRef.current;
                     const res = await fetchBrandItemSellers(it.id, {
                         sort: "price_asc", limit: LOWEST_PROBE_SIZE, offset: 0, token,
                         destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
                     });
-                    if (res?.success) { best = computeListingLowestFromSellers(res.items || []); ok = true; }
+                    if (res?.success) {
+                        best = computeListingLowestFromSellers(res.items || []);
+                        hasOwn = (res.items || []).some((r) => isOwnSellerRow(r, currentUserId));
+                        ok = true;
+                    }
                 } catch { /* keep the row's own value below */ }
                 if (requestToken !== queryTokenRef.current) return;
                 setItems((prev) => prev.map((row) => {
                     if (String(row.id) !== String(it.id)) return row;
-                    // On failure keep the original numbers, just stop showing the skeleton.
-                    return ok ? { ...applyLowestToItem(row, best), _priceVerified: true } : { ...row, _priceVerified: true };
+                    if (!ok) return { ...row, _priceVerified: true };
+                    return {
+                        ...applyLowestToItem(row, best),
+                        has_own_listing: row.has_own_listing === true || hasOwn,
+                        _priceVerified: true,
+                    };
                 }));
             }
         };
         await Promise.all([worker(), worker(), worker(), worker()]);
-    }, [token]);
+    }, [token, currentUserId]);
 
     // Single runQuery — the primary feed fetch, with tiered fallback
     // (subcategory, then category) when a live search comes up empty.
