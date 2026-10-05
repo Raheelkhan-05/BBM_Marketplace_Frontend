@@ -153,10 +153,10 @@ export default function GrowPage() {
                     </div>
 
                     <h1 className="mt-3 text-[26px] font-extrabold leading-tight tracking-wide" style={{ color: INK }}>
-                        Grow your business
+                        Turn Your Product Into Business
                     </h1>
                     <p className="mt-2 max-w-sm text-[13.5px] font-medium leading-relaxed tracking-wide" style={{ color: MUTED }}>
-                        Soon you will be able to promote your products, track how they perform and reach more buyers, all from here. We are putting the finishing touches on it.
+                        GROW puts your products in front of the right buyers, helping you get more inquiries, win more orders and grow your business.
                     </p>
 
                     <div className="mt-8 grid w-full gap-2.5 text-left">
