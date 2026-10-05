@@ -1096,7 +1096,7 @@ function GstToggle({ includeGst, onChange }) {
             aria-checked={includeGst}
             aria-label={`GST ${includeGst ? "included" : "excluded"} `}
             onClick={() => onChange(!includeGst)}
-            className="group inline-flex items-center gap-2.5 rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer"
+            className="group inline-flex items-center gap-2.5 rounded-full transition-all duration-200 cursor-pointer"
 
         >
             {/* Label */}
