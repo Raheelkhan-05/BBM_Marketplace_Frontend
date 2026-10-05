@@ -1,54 +1,27 @@
 // components/home/FeedQuickActions.jsx
 //
-// Four quick-action tiles above the feed: Quick Buy, RFQ, Brands, My Shop.
+// Two quick-action tiles above the feed: Brands and Sellers.
+// (Quick Buy is gone — pinned products are now always listed first in the
+// feed itself — and RFQ moved to the fixed bottom bar on HomePage.)
+//
 // Default = deep matte fill with white text. Active = light tint of the same
 // hue with dark text. Only ONE tile is ever active (the parent passes `active`).
+// Colors are the ones the old Quick Buy (orange) and RFQ (blue) tiles used:
+//   Brands  -> orange   Sellers -> blue
 // Pure UI: the feed owns all state and navigation.
 
-import { Link } from "react-router-dom";
-import { motion, useReducedMotion } from "framer-motion";
-import { Pin, FileText, Tags, Store, ChevronRight } from "lucide-react";
+import { Tags, Store, ChevronRight } from "lucide-react";
 
 const MUTED = "#5F6B73";
 const ON_DARK_SUB = "rgba(255,255,255,0.78)";
 
-// Deepened versions of FF5722 / 2196F3 / FFC107 / 4CAF50 so white text stays readable.
 // base = default fill (white text), tint = active fill (base-coloured text).
 const TONES = {
-    quick: { base: "#D84315", tint: "#FFE9E2" },
-    rfq: { base: "#0A5FB0", tint: "#3C7FC6" },
-    brands: { base: "#384A62", tint: "#bbc3ceff" },
-    shop: { base: "#298C56", tint: "#e9ffeaff" },
+    brands: { base: "#D84315", tint: "#FFE9E2" },
+    shop: { base: "#0A5FB0", tint: "#E3EEFA" },
 };
-// Same pin as the product rows: tilted outline when off; on activation it
-// lifts, drives straight down, settles upright, and fills in (fill fades,
-// it doesn't snap).
-function PinGlyph({ active }) {
-    const reduce = useReducedMotion();
-    const animateTo = active
-        ? (reduce ? { rotate: 0, y: 0, scaleY: 1 } : { rotate: [45, 20, 0, 0], y: [0, -5, 1.5, 0], scaleY: [1, 1.06, 0.9, 1] })
-        : { rotate: 45, y: 0, scaleY: 1 };
-    return (
-        <motion.span
-            className="flex items-center justify-center"
-            style={{ originX: 0.5, originY: 0.5 }}
-            initial={false}
-            animate={animateTo}
-            transition={active
-                ? { duration: 0.42, times: [0, 0.35, 0.7, 1], ease: "easeOut" }
-                : { type: "spring", stiffness: 420, damping: 30 }}
-        >
-            <Pin
-                className="h-4 w-4"
-                strokeWidth={2}
-                fill="currentColor"
-                style={{ fillOpacity: active ? 1 : 0, transition: "fill-opacity 250ms ease" }}
-            />
-        </motion.span>
-    );
-}
 
-function Tile({ tone, icon, label, sub, active = false, to, onClick }) {
+function Tile({ tone, icon, label, sub, active = false, onClick }) {
     const t = TONES[tone];
     const cls =
         "group flex min-w-0 items-center gap-2.5 rounded-xl border px-2.5 py-2.5 text-left " +
@@ -57,8 +30,8 @@ function Tile({ tone, icon, label, sub, active = false, to, onClick }) {
         background: active ? t.tint : t.base,
         borderColor: t.base,
     };
-    const body = (
-        <>
+    return (
+        <button type="button" onClick={onClick} aria-pressed={active} className={cls} style={style}>
             <span
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors duration-200"
                 style={{ background: active ? t.base : "rgba(255,255,255,0.25)", color: "#fff" }}
@@ -80,34 +53,14 @@ function Tile({ tone, icon, label, sub, active = false, to, onClick }) {
                 strokeWidth={2.4}
                 style={{ color: active ? t.base : "rgba(255,255,255,0.9)" }}
             />
-        </>
-    );
-    return to ? (
-        <Link to={to} className={cls} style={style} aria-label={label}>{body}</Link>
-    ) : (
-        <button type="button" onClick={onClick} aria-pressed={active} className={cls} style={style}>{body}</button>
+        </button>
     );
 }
 
-// active: "quick" | "brands" | "shop" | null
-export default function FeedQuickActions({ active = null, brandLabel, onQuickBuy, onBrands, onMyShop }) {
+// active: "brands" | "shop" | null
+export default function FeedQuickActions({ active = null, brandLabel, onBrands, onMyShop }) {
     return (
-        <div className="grid grid-cols-2 gap-2 px-1 pb-2.5 md:grid-cols-4">
-            <Tile
-                tone="quick"
-                icon={<PinGlyph active={active === "quick"} />}
-                label="Quick Buy"
-                sub={active === "quick" ? "Showing pinned" : "Pinned items"}
-                active={active === "quick"}
-                onClick={onQuickBuy}
-            />
-            <Tile
-                tone="rfq"
-                icon={<FileText className="h-4 w-4" strokeWidth={2} />}
-                label="RFQ"
-                sub="Get multiple quotes"
-                to="/rfq"
-            />
+        <div className="grid grid-cols-2 gap-2 px-1 pb-2.5">
             <Tile
                 tone="brands"
                 icon={<Tags className="h-4 w-4" strokeWidth={2} />}

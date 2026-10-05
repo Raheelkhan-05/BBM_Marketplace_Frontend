@@ -129,6 +129,23 @@
 //   then saves price and/or promotion together — there is no second
 //   confirm step. Nothing is saved before the slide. Saved changes patch
 //   the seller row in place and the open dropdown silently re-syncs.
+//
+// PINNED-FIRST FEED + STICKY TOOLBAR (this revision):
+// - The Quick Buy tile and its "Following only" view are gone. Pinned
+//   (followed) products are now ALWAYS listed first. That ordering is done
+//   SERVER-SIDE (catalog_browse_feed for the feed, products-merged for
+//   search) so it stays correct across pages — see
+//   pinned_first_catalog_browse_feed.sql. Pinning/unpinning does NOT move
+//   rows under the user's finger; the new order shows on the next
+//   load / search / category change.
+// - The `toolbar` prop (Category strip + search bar, rendered by HomePage)
+//   and this component's own Deliver-to / GST row form ONE sticky block
+//   right under the quick actions, so all four stay visible while the page
+//   scrolls. Requirements for sticky to work: no ancestor may have
+//   overflow-x:hidden (HomePage uses overflow-x-clip), and the block's `top`
+//   is offset by the site header's height when that header is
+//   fixed/sticky (useHeaderStickyOffset).
+// - The GST toggle shows its label first and the switch on the right.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { useNavigate, useLocation, Link, useSearchParams } from "react-router-dom";
@@ -626,6 +643,32 @@ function useResponsiveColumnCount() {
     return count;
 }
 
+// How far down the sticky toolbar must stick so it doesn't slide UNDER the
+// site header. If the page's <header> is position:fixed/sticky we stick right
+// below it (its live height); otherwise the offset is 0. Re-measured on
+// resize and whenever the header changes size.
+function useHeaderStickyOffset() {
+    const [offset, setOffset] = useState(0);
+    useLayoutEffect(() => {
+        const header = document.querySelector("header");
+        if (!header) return undefined;
+        const measure = () => {
+            const pos = window.getComputedStyle(header).position;
+            const pinned = pos === "fixed" || pos === "sticky";
+            setOffset(pinned ? Math.round(header.getBoundingClientRect().height) : 0);
+        };
+        measure();
+        const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+        ro?.observe(header);
+        window.addEventListener("resize", measure);
+        return () => {
+            ro?.disconnect();
+            window.removeEventListener("resize", measure);
+        };
+    }, []);
+    return offset;
+}
+
 // Distributes items round-robin (item 0 → col 1, item 1 → col 2, item 2 →
 // col 3, item 3 → col 1, ...) so reading order goes left-to-right across
 // a row before wrapping — matches how a normal grid reads — while each
@@ -727,13 +770,19 @@ function SellerPriceBlock({ pricing, unit }) {
 // fetches. React requires unique keys regardless of why a dup shows
 // up, so this is the actual fix rather than a workaround.
 function mergeUnique(prev, incoming) {
-    const seen = new Set(prev.map((it) => it.id));
-    const deduped = incoming.filter((it) => {
-        if (seen.has(it.id)) return false;
+    const incomingById = new Map(incoming.map((it) => [it.id, it]));
+    const seen = new Set();
+    const merged = prev.map((it) => {
         seen.add(it.id);
-        return true;
+        const fresh = incomingById.get(it.id);
+        return fresh ? { ...it, is_pinned: fresh.is_pinned, default_rank: fresh.default_rank } : it;
     });
-    return [...prev, ...deduped];
+    for (const it of incoming) {
+        if (seen.has(it.id)) continue;
+        seen.add(it.id);
+        merged.push(it);
+    }
+    return merged;
 }
 
 // Whether this listing's price is priced per Pack or per Master Pack.
@@ -1038,6 +1087,7 @@ function ProductImage({ src, alt, onOpen, priority = false }) {
 // GST toggle — replaces the old static "X products" label at the top of
 // the feed. Purely a local UI switch; all price math it drives is
 // recomputed client-side (useMemo), so flipping it is instant.
+// Layout: label FIRST, switch on the right.
 function GstToggle({ includeGst, onChange }) {
     return (
         <button
@@ -1049,6 +1099,14 @@ function GstToggle({ includeGst, onChange }) {
             className="group inline-flex items-center gap-2.5 rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer"
 
         >
+            {/* Label */}
+            <span className="flex min-w-[44px] flex-col items-end text-right leading-none">
+                <span className="text-[9.5px] font-medium tracking-wider" style={{ color: C.ink }}>{includeGst ? "With" : "Without"}</span>
+                <span className="mt-0 text-[11.5px] font-bold tracking-[0.02em] " style={{ color: includeGst ? C.secondary : "#7B858C" }}>
+                    GST
+                </span>
+            </span>
+
             {/* Switch */}
             <span
                 className="relative flex h-5 w-10 shrink-0 items-center rounded-full p-0.5 transition-all duration-200"
@@ -1065,14 +1123,6 @@ function GstToggle({ includeGst, onChange }) {
                     }}
                 />
             </span>
-
-            {/* Label */}
-            <span className="flex min-w-[44px] flex-col items-start leading-none">
-                <span className="text-[9.5px] font-medium tracking-wider" style={{ color: C.ink }}>{includeGst ? "With" : "Without"}</span>
-                <span className="mt-0 text-[11.5px] font-bold tracking-[0.02em] " style={{ color: includeGst ? C.secondary : "#7B858C" }}>
-                    GST
-                </span>
-            </span>
         </button>
     );
 }
@@ -1083,8 +1133,8 @@ function FollowButton({ following, onToggle }) {
         <motion.button
             type="button"
             aria-pressed={following}
-            aria-label={following ? "Following. Tap to unfollow" : "Follow this product"}
-            title={following ? "Tap to unfollow" : "Follow to find this product later in your Following tab"}
+            aria-label={following ? "Pinned. Tap to unpin" : "Pin this product to the top"}
+            title={following ? "Tap to unpin" : "Pin to keep this product at the top of your feed"}
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
             onKeyDown={(e) => e.stopPropagation()}
             className="relative inline-flex h-7 w-7 items-center justify-center bg-transparent p-0 outline-none"
@@ -2240,9 +2290,6 @@ function SellerDropdown({
         [sortedItems]
     );
 
-    // Feed rows carry has_own_listing from the RPC. Search rows don't, so also
-    // check the loaded sellers list for the signed-in user's own row.
-    const ownRowInList = items.some((s) => isOwnSellerRow(s, currentUserId));
     const alreadySelling = item?.has_own_listing === true;
 
     const [savingOwnPriceId, setSavingOwnPriceId] = useState(null);
@@ -2480,10 +2527,11 @@ function RowSkeleton() {
 
 // `q` is optional — pages that don't pass it (or pass "") get the exact
 // same unfiltered behavior as before. Passing it wires up live search.
-export default function HomeProductFeed({ category, q = "", shopSlug = null, brandName = null }) {
+// `toolbar` is optional too: HomePage passes the Category strip + search bar,
+// which this component renders inside its sticky block (see header note).
+export default function HomeProductFeed({ category, q = "", shopSlug = null, brandName = null, toolbar = null }) {
     const navigate = useNavigate();
     const location = useLocation();
-    const lenis = useLenis();
     const { profile, token, effectiveLoggedIn, needsOnboarding } = useAuth();
     const currentUserId = profile?.shop_slug ?? null;
     const [items, setItems] = useState([]);
@@ -2500,6 +2548,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const [sellerSortMode, setSellerSortMode] = useState("best_price");
 
     const [includeGst, setIncludeGst] = useState(true);
+
+    const stickyTop = useHeaderStickyOffset();
 
     // Delivery address now comes from the shared context (same one shown at the top of Home),
     // so changing it there instantly updates delivery estimates in every seller list.
@@ -2545,8 +2595,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         if (openItemId) dismissHint();
     }, [openItemId, dismissHint]);
 
-    const [followedOnly, setFollowedOnly] = useState(false);
-
     const [searchParams, setSearchParams] = useSearchParams();
 
     // Brand view comes from the URL (?brand=Name), set by the Brands page.
@@ -2559,7 +2607,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const myShopActive = !!shopSlug && shopSlug === myShopSlug;
     const fromSellers = searchParams.get("via") === "sellers";
     // Only one quick-action view is active at a time. Any store view lights up the Sellers tile.
-    const activeTile = brandName ? "brands" : followedOnly ? "quick" : shopSlug ? "shop" : null;
+    const activeTile = brandName ? "brands" : shopSlug ? "shop" : null;
 
     const clearShop = () => {
         const params = new URLSearchParams(location.search);
@@ -2598,7 +2646,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     const [followToast, setFollowToast] = useState(null); // { message, actionLabel?, onAction? }
     const [tipDismissed, setTipDismissed] = useState(() => readFlag(FOLLOW_TIP_KEY));
-    const runQueryRef = useRef(null);
     const shopSlugRef = useRef(null);
     const categoryRef = useRef(null);
     const qRef = useRef("");
@@ -2613,11 +2660,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     useEffect(() => { offerCacheRef.current.clear(); }, [shopSlug, token]);
     useEffect(() => () => clearTimeout(shopRefreshTimerRef.current), []);
-    const pendingRevealRef = useRef(null);      // product to scroll to + highlight once the Following list loads
-    const [revealTick, setRevealTick] = useState(0);
     const followToastTimerRef = useRef(null);
-    const followedOnlyRef = useRef(false);
-    followedOnlyRef.current = followedOnly;
 
     const showToast = useCallback((toast, ms = 3000) => {
         clearTimeout(followToastTimerRef.current);
@@ -2655,7 +2698,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                     q: qRef.current.trim(),
                     limit: Math.min(Math.max(itemsRef.current.length, PAGE_SIZE), 96),
                     offset: 0, token, shopSlug: shop,
-                    followedOnly: followedOnlyRef.current,
                     brands: brandsRef.current,
                     destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
                 });
@@ -2670,39 +2712,12 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         }, SHOP_REFRESH_DELAY_MS);
     }, [token]);
 
-    const { isFollowed, isFollowedNow, settle, toggle: toggleFollow, count: followCount } = useFollowedItems(isLoggedIn ? token : null, {
+    const { isFollowed, toggle: toggleFollow } = useFollowedItems(isLoggedIn ? token : null, {
         onRevert: () => {
             showToast({ message: "Couldn't update." }, 2200);
-            // Keep the Following list truthful after a failed unfollow.
-            if (followedOnlyRef.current) runQueryRef.current?.(0, { append: false });
         },
     });
 
-    const [shopFollowCount, setShopFollowCount] = useState(null);
-    const shopCountSeqRef = useRef(0);
-
-    // Followed products that THIS store sells and this buyer can see (matches the Following tab list).
-    const refreshShopFollowCount = useCallback(async () => {
-        const shop = shopSlugRef.current;
-        if (!shop || !token) { setShopFollowCount(null); return; }
-        const seq = ++shopCountSeqRef.current;
-        try {
-            await settle(); // make sure pending follow/unfollow requests reached the server first
-            const res = await fetchBrandItemsFeed({
-                limit: 1, offset: 0, token, shopSlug: shop, followedOnly: true,
-            });
-            if (seq !== shopCountSeqRef.current || shopSlugRef.current !== shop) return;
-            if (res?.success) setShopFollowCount(res.total ?? 0);
-        } catch { /* keep the previous number */ }
-    }, [token, settle]);
-
-    useEffect(() => {
-        if (!shopSlug || !token) { setShopFollowCount(null); return; }
-        const t = setTimeout(refreshShopFollowCount, 250); // coalesces rapid taps
-        return () => clearTimeout(t);
-    }, [shopSlug, token, followCount, refreshShopFollowCount]);
-
-    useEffect(() => { if (!isLoggedIn || !token) setFollowedOnly(false); }, [isLoggedIn, token]);
     useEffect(() => () => clearTimeout(followToastTimerRef.current), []);
 
     const dismissTip = () => { setTipDismissed(true); writeFlag(FOLLOW_TIP_KEY); };
@@ -3057,57 +3072,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     useEffect(() => () => clearTimeout(highlightTimeoutRef.current), []);
 
-    // Scrolls only if the row isn't already comfortably on screen.
-    // The bottom inset keeps it clear of the fixed mobile search bar.
-    // Scrolls only if the row isn't already comfortably on screen.
-    // Uses Lenis when present (native smooth scroll fights it).
-    const revealRow = useCallback((id) => {
-        const el = rowRefs.current[id];
-        if (!el || !el.isConnected) return false;
-        const r = el.getBoundingClientRect();
-        const bottomInset = window.innerWidth < 768 ? 96 : 16;
-        const inView = r.top >= 8 && r.bottom <= window.innerHeight - bottomInset;
-        if (!inView) {
-            if (lenis && typeof lenis.scrollTo === "function") {
-                const offset = -Math.max(24, (window.innerHeight - r.height) / 2 - 40);
-                lenis.scrollTo(el, { offset, duration: 0.7 });
-            } else {
-                el.scrollIntoView({ behavior: "smooth", block: "center" });
-            }
-        }
-        return true;
-    }, [lenis]);
-
-    // Runs only once the Following list has FINISHED loading (loading === false),
-    // then retries for a few frames until the row is actually mounted.
-    useEffect(() => {
-        const id = pendingRevealRef.current;
-        if (!id || loading || revealTick === 0) return;
-
-        let cancelled = false;
-        let tries = 0;
-        let raf = 0;
-
-        const attempt = () => {
-            if (cancelled) return;
-            if (!revealRow(id)) {
-                if (++tries < 20) { raf = requestAnimationFrame(attempt); return; }
-                pendingRevealRef.current = null; // not on the first page: give up quietly
-                return;
-            }
-            pendingRevealRef.current = null;
-            clearTimeout(highlightTimeoutRef.current);
-            setHighlightedItemId(id);
-            highlightTimeoutRef.current = setTimeout(() => {
-                setHighlightedItemId((cur) => (cur === id ? null : cur));
-            }, 2200);
-        };
-
-        // Small delay so the row's layout animation (0.24s) has settled first.
-        const t = setTimeout(() => { raf = requestAnimationFrame(attempt); }, 80);
-        return () => { cancelled = true; clearTimeout(t); cancelAnimationFrame(raf); };
-    }, [revealTick, loading, revealRow]);
-
     // Search results come from a source that doesn't apply wallet / custom-visibility
     // rules, so their header price can belong to a seller this buyer can't see.
     // Re-resolve each row's lowest price through the SAME filtered endpoint the
@@ -3120,36 +3084,29 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 if (requestToken !== queryTokenRef.current) return;
                 let best;
                 let ok = false;
-                let hasOwn = false;
                 try {
                     const addr = buyerAddressRef.current;
                     const res = await fetchBrandItemSellers(it.id, {
                         sort: "price_asc", limit: LOWEST_PROBE_SIZE, offset: 0, token,
                         destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
                     });
-                    if (res?.success) {
-                        best = computeListingLowestFromSellers(res.items || []);
-                        hasOwn = (res.items || []).some((r) => isOwnSellerRow(r, currentUserId));
-                        ok = true;
-                    }
+                    if (res?.success) { best = computeListingLowestFromSellers(res.items || []); ok = true; }
                 } catch { /* keep the row's own value below */ }
                 if (requestToken !== queryTokenRef.current) return;
                 setItems((prev) => prev.map((row) => {
                     if (String(row.id) !== String(it.id)) return row;
-                    if (!ok) return { ...row, _priceVerified: true };
-                    return {
-                        ...applyLowestToItem(row, best),
-                        has_own_listing: row.has_own_listing === true || hasOwn,
-                        _priceVerified: true,
-                    };
+                    // On failure keep the original numbers, just stop showing the skeleton.
+                    return ok ? { ...applyLowestToItem(row, best), _priceVerified: true } : { ...row, _priceVerified: true };
                 }));
             }
         };
         await Promise.all([worker(), worker(), worker(), worker()]);
-    }, [token, currentUserId]);
+    }, [token]);
 
     // Single runQuery — the primary feed fetch, with tiered fallback
     // (subcategory, then category) when a live search comes up empty.
+    // Pinned products come back FIRST from the server in both paths
+    // (catalog_browse_feed / products-merged), so nothing is re-ordered here.
     const runQuery = useCallback((offset, { append }) => {
         abortRef.current?.abort();
         const controller = new AbortController();
@@ -3158,12 +3115,12 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         (append ? setLoadingMore : setLoading)(true);
 
         const trimmed = q.trim();
-        const useFeedRpc = followedOnly || !!shopSlug || selectedBrands.length > 0;
+        const useFeedRpc = !!shopSlug || selectedBrands.length > 0;
         const addr = buyerAddressRef.current;
         const request = useFeedRpc
             ? fetchBrandItemsFeed({
                 categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset,
-                signal: controller.signal, token, followedOnly, shopSlug,
+                signal: controller.signal, token, shopSlug,
                 brands: selectedBrands,
                 destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
             })
@@ -3185,7 +3142,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 setItems((prev) => (append ? mergeUnique(prev, incoming) : incoming));
                 setTotal(res.total ?? incoming.length ?? null);
                 setHasMore(!!res.hasMore);
-                if (!append && pendingRevealRef.current) setRevealTick((t) => t + 1);
                 if (needsVerify) verifyLowestFor(incoming, requestToken);
             })
             .catch((err) => { if (err?.name !== "AbortError") setHasMore(false); })
@@ -3194,13 +3150,10 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [category?.id, q, token, followedOnly, shopSlug, brandsKey, isLoggedIn, verifyLowestFor]);
-
-
-    runQueryRef.current = runQuery;
+    }, [category?.id, q, token, shopSlug, brandsKey, isLoggedIn, verifyLowestFor]);
 
     useEffect(() => {
-        const key = `${category?.id || ""}::${q}::${token || ""}::${followedOnly ? 1 : 0}::${shopSlug || ""}::${shopDestKey}::${brandsKey};`
+        const key = `${category?.id || ""}::${q}::${token || ""}::${shopSlug || ""}::${shopDestKey}::${brandsKey};`
         const now = Date.now();
         const isDuplicateInvocation =
             lastRunRef.current.key === key &&
@@ -3231,12 +3184,33 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         );
         return () => clearTimeout(debounceRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [category?.id, q, token, followedOnly, shopSlug, shopDestKey, brandsKey]);
+    }, [category?.id, q, token, shopSlug, shopDestKey, brandsKey]);
 
     useEffect(() => () => sellerAbortRef.current?.abort(), []);
 
+    // Live order: pinned group on top, everyone else in their DEFAULT order.
+    // Derived from isFollowed(), so pin/unpin reorders instantly, and a failed
+    // pin (onRevert) fixes itself.
+    // An unpinned product whose default position is beyond what has been loaded
+    // is hidden; it shows up in its right place when that page loads.
+    const displayItems = (() => {
+        if (!items.length || items.some((it) => it.default_rank == null)) return items; // e.g. search results
+        let frontier = -1;
+        for (const it of items) {
+            if (it.is_pinned === false && it.default_rank > frontier) frontier = it.default_rank;
+        }
+        const visible = items.filter(
+            (it) => hasMore === false || isFollowed(it.id) || it.default_rank <= frontier
+        );
+        return [...visible].sort(
+            (a, b) =>
+                (Number(isFollowed(b.id)) - Number(isFollowed(a.id))) ||
+                (a.default_rank - b.default_rank)
+        );
+    })();
+
     const sentinelRef = useInfiniteScrollSentinel(
-        () => !loadingMore && hasMore && runQuery(items.length, { append: true }),
+        () => !loadingMore && hasMore && runQuery(displayItems.length, { append: true }),
         { lookahead: 800, disabled: loading || loadingMore || !hasMore }
     );
 
@@ -3322,75 +3296,17 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         if (result === "copied") showToast({ message: "Link copied to clipboard." }, 2000);
     };
 
-    const handleFollowedOnlyChange = (next) => {
-        pendingRevealRef.current = null; // a manual tab change cancels any pending reveal
-        if (next && (!isLoggedIn || !token)) {
-            requireLogin("Login to see the products you follow.");
-            return;
-        }
-        if (next) {
-            // Instant feedback: narrow what's on screen; the server list replaces it right after.
-            setItems((prev) => prev.filter((it) => isFollowedNow(it.id)));
-            // One view at a time: leave the brand view / own-shop view.
-            const leavingOwnShop = !!shopSlug && shopSlug === myShopSlug;
-            if (brandName || leavingOwnShop) {
-                const params = new URLSearchParams(location.search);
-                params.delete("brand");
-                if (leavingOwnShop) { params.delete("shop"); params.delete("via"); }
-                setSearchParams(params);
-            }
-        }
-        setFollowedOnly(next);
-    };
-
+    // Pin / unpin. Pinned products are listed first by the server, so the new
+    // order appears on the next load or search; the row the user just tapped
+    // deliberately stays where it is instead of jumping away under their finger.
     const handleToggleFollow = (item) => {
         if (!isLoggedIn || !token) {
-            requireLogin("Login to follow products and find them later in your Following tab.");
+            requireLogin("Login to pin products and keep them at the top of your feed.");
             return;
         }
-        const inFollowedView = followedOnlyRef.current;
-        const prevIndex = itemsRef.current.findIndex((it) => String(it.id) === String(item.id));
         const willFollow = toggleFollow(item.id);
         if (willFollow === null) return;
-
-        if (willFollow) {
-            showToast(
-                {
-                    message: "Added to Following",
-                    actionLabel: inFollowedView ? null : "View",
-                    onAction: async () => {
-                        await settle(); // make sure the server knows about this follow before we fetch the list
-                        handleFollowedOnlyChange(true);
-                        pendingRevealRef.current = item.id; // set after, because the call above clears it
-                    },
-                },
-                2500
-            );
-            return;
-        }
-
-        // Unfollowed
-        if (inFollowedView) {
-            if (String(openItemId) === String(item.id)) closeDropdown();
-            setItems((prev) => prev.filter((it) => String(it.id) !== String(item.id)));
-            showToast(
-                {
-                    message: "Removed",
-                    actionLabel: "Undo",
-                    onAction: () => {
-                        toggleFollow(item.id); // now unfollowed, so this re-follows
-                        setItems((prev) => {
-                            if (prev.some((it) => String(it.id) === String(item.id))) return prev;
-                            const at = Math.min(Math.max(prevIndex, 0), prev.length);
-                            return [...prev.slice(0, at), item, ...prev.slice(at)];
-                        });
-                    },
-                },
-                3500
-            );
-        } else {
-            showToast({ message: "Removed from Following" }, 1800);
-        }
+        showToast({ message: willFollow ? "Pinned. It stays at the top of your feed" : "Unpinned" }, willFollow ? 2500 : 1800);
     };
 
     const buyerSellerPayload = buyState ? toBuyerSellerPayload(buyState.seller) : null;
@@ -3422,14 +3338,13 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     }, []);
 
     const columnCount = useResponsiveColumnCount();
-    const columns = useMemo(() => bucketItemsByColumn(items, columnCount), [items, columnCount]);
+    const columns = bucketItemsByColumn(displayItems, columnCount);
 
     return (
         <>
             <FeedQuickActions
                 active={activeTile}
                 brandLabel={brandName}
-                onQuickBuy={() => handleFollowedOnlyChange(!followedOnly)}
                 onBrands={handleBrands}
                 onMyShop={handleSellers}
             />
@@ -3464,24 +3379,35 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 </div>
             )}
 
+            {/* STICKY TOOLBAR: Category strip + search bar (the `toolbar` prop from
+                HomePage) + Deliver-to / GST row. Everything above it scrolls away;
+                this block stays pinned (below the site header when that header is
+                fixed/sticky). The negative margins + matching padding bleed it to the
+                edges of <main> so list rows never show through beside it. */}
+            <div
+                className="sticky z-30 -mx-3 border-b bg-white px-3 pb-1 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+                style={{ top: stickyTop, borderColor: C.hairSoft }}
+            >
+                {toolbar}
 
-            <div className="flex items-center justify-between gap-3 px-1">
-                <div className="min-w-0">
-                    {myShopActive ? (
-                        <button
-                            type="button"
-                            onClick={handleShareShop}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-full border bg-white px-3 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98]"
-                            style={{ borderColor: C.hair, color: C.ink }}
-                        >
-                            <Share2 className="h-3.5 w-3.5" strokeWidth={2.3} /> Share shop
-                        </button>
-                    ) : (
-                        <DeliverToBar />
-                    )}
-                </div>
-                <div className="shrink-0">
-                    <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+                <div className="flex items-center justify-between gap-3 px-1 pb-1.5 pt-2">
+                    <div className="min-w-0">
+                        {myShopActive ? (
+                            <button
+                                type="button"
+                                onClick={handleShareShop}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-full border bg-white px-3 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98]"
+                                style={{ borderColor: C.hair, color: C.ink }}
+                            >
+                                <Share2 className="h-3.5 w-3.5" strokeWidth={2.3} /> Share shop
+                            </button>
+                        ) : (
+                            <DeliverToBar />
+                        )}
+                    </div>
+                    <div className="shrink-0">
+                        <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+                    </div>
                 </div>
             </div>
 
@@ -3509,35 +3435,15 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                     )
                     : items.length === 0 ? (
                         <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
-                            {followedOnly ? (
-                                <span className="flex h-11 w-11 items-center justify-center rounded-full" style={{ background: C.hairSoft }}>
-                                    <Pin className="h-5 w-5" style={{ color: C.muted }} />
-                                </span>
-                            ) : (
-                                <Package className="h-6 w-6" style={{ color: C.hair }} />
-                            )}
+                            <Package className="h-6 w-6" style={{ color: C.hair }} />
                             <p className="text-[13px] font-bold" style={{ color: C.ink }}>
-                                {followedOnly
-                                    ? (q ? "None of your followed products match" : "You're not following anything yet")
-                                    : shopSlug
-                                        ? (q ? "No products from this store match" : "No products from this store are available to you")
-                                        : (q ? "No products match that search" : "No products here yet")}
+                                {shopSlug
+                                    ? (q ? "No products from this store match" : "No products from this store are available to you")
+                                    : (q ? "No products match that search" : "No products here yet")}
                             </p>
                             <p className="max-w-[260px] text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>
-                                {followedOnly && !q
-                                    ? "Tap Follow on any product you buy often. It will show up here with live seller prices."
-                                    : q ? "Try a different search term." : shopSlug ? "Try a different category, or see all products." : "Try a different category."}
+                                {q ? "Try a different search term." : shopSlug ? "Try a different category, or see all products." : "Try a different category."}
                             </p>
-                            {followedOnly && (
-                                <button
-                                    type="button"
-                                    onClick={() => handleFollowedOnlyChange(false)}
-                                    className="mt-2 rounded-full px-4 py-2 text-[12px] font-extrabold tracking-wide text-white"
-                                    style={{ background: C.primary }}
-                                >
-                                    {shopSlug ? "Show store products" : "Browse all products"}.
-                                </button>
-                            )}
                         </div>
                     ) : (
                         <div
@@ -3549,7 +3455,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                 <div key={colIdx} className="min-w-0 flex-1" style={{ borderColor: C.hairSoft }}>
                                     {colItems.map((item) => {
                                         const isOpen = openItemId === item.id;
-                                        const i = items.indexOf(item);
+                                        const i = displayItems.indexOf(item);
                                         return (
                                             <motion.div
                                                 key={item.id}
