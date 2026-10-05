@@ -291,7 +291,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 >
                     {isLoggedIn ? (
                         <div
-                            className={`flex items-center justify-center gap-2.5 rounded-full p-1.5 transition-[background-color,box-shadow] duration-200 md:gap-3 ${pageOpen
+                            className={`flex items-center justify-center gap-2.5 rounded-full p-2.5 transition-[background-color,box-shadow] duration-200 md:gap-3 ${pageOpen
                                 ? "bg-transparent"
                                 : "bg-black/90 shadow-[0_10px_30px_-8px_rgba(0,0,0,0.35)] ring-1 ring-white/5 backdrop-blur-md"
                                 }`}
