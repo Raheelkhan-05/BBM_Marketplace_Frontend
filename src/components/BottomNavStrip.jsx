@@ -57,7 +57,7 @@ const DOCK_FAB_CLASS =
 
 // Flat, earthy tones. No gradients, no glow.
 const FAB_THEME = {
-    grow: { bg: "#1F7A4D", fg: "#FFFFFF" },   // deep green: growth
+    grow: { bg: "#1F7A4D", fg: "#FFFFFF" },    // deep green: growth
     save: { bg: "#E9A82B", fg: "#141B22" },   // saffron/amber: money, with a dark icon
     menu: { bg: "#0B7285", fg: "#FFFFFF" },   // teal (your existing secondary)
 };
@@ -293,7 +293,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         <div
                             className={`flex items-center justify-center gap-2.5 rounded-full p-1.5 transition-[background-color,box-shadow] duration-200 md:gap-3 ${pageOpen
                                 ? "bg-transparent"
-                                : "bg-white/90 shadow-[0_10px_30px_-8px_rgba(20,27,34,0.35)] ring-1 ring-black/5 backdrop-blur-md"
+                                : "bg-black/90 shadow-[0_10px_30px_-8px_rgba(0,0,0,0.35)] ring-1 ring-white/5 backdrop-blur-md"
                                 }`}
                         >
                             {[
