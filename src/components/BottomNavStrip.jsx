@@ -43,7 +43,7 @@ const FAB_BOTTOM_DEFAULT = 16;
 // On /home nothing else is pinned to the bottom any more, so same as default.
 const FAB_BOTTOM_HOME = 12;
 
-const DOCK_HEIGHT = 44 + 16; // buttons + 8px padding top and bottom
+const DOCK_HEIGHT = 44 + 16 + 4; // buttons + p-2 top/bottom + 2px ring top/bottom
 
 // TODO: set the real destinations for Grow and Save.
 const GROW_TO = "/grow";
@@ -58,9 +58,51 @@ const DOCK_FAB_CLASS =
 // Flat, earthy tones. No gradients, no glow.
 const FAB_THEME = {
     grow: { bg: "#1F7A4D", fg: "#FFFFFF" },    // deep green: growth
-    save: { bg: "#E9A82B", fg: "#141B22" },   // saffron/amber: money, with a dark icon
-    menu: { bg: "#0B7285", fg: "#FFFFFF" },   // teal (your existing secondary)
+    save: { bg: "#FED813", fg: "#141B22" },   // saffron/amber: money, with a dark icon
+    menu: { bg: "#F4F1EA", fg: "#141B22" },   // warm cream, stands out on the petrol dock   // teal (your existing secondary)
 };
+
+// Dock surface colours (change here to re-theme the dock).
+const DOCK_BG = "#0B4F5C";      // petrol blue
+const DOCK_RING = "#1F6F7D";    // the ring colour where the comet isn't passing
+const DOCK_SHADOW = "rgba(11,79,92,0.5)";
+
+// Dock animation: a bright comet travelling around a dark pill, plus a shine sweep,
+// a ping on Save and a nudge on Grow. All CSS, no JS, and all switched off for
+// reduced-motion users.
+const DOCK_CONIC =
+    "conic-gradient(from 0deg, rgba(31,122,77,0) 0deg, rgba(31,122,77,0) 110deg, rgba(31,122,77,0.55) 200deg, #34C77B 275deg, #F5C75A 325deg, #FFFFFF 350deg, rgba(255,255,255,0) 360deg)";
+
+const DOCK_AURA_CSS = `
+.bbm-dock-spin {
+    transform: translate(-50%, -50%);
+    animation: bbm-dock-spin 6s linear infinite;
+    will-change: transform;
+}
+@keyframes bbm-dock-spin {
+    from { transform: translate(-50%, -50%) rotate(0deg); }
+    to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+.bbm-dock-ping {
+    animation: bbm-dock-ping 3.5s ease-out infinite;
+}
+@keyframes bbm-dock-ping {
+    0%, 55% { transform: scale(1);   opacity: 0; }
+    60%     { transform: scale(1);   opacity: 0.8; }
+    100%    { transform: scale(1.75); opacity: 0; }
+}
+.bbm-dock-nudge {
+    animation: bbm-dock-nudge 3.5s ease-in-out infinite;
+}
+@keyframes bbm-dock-nudge {
+    0%, 60%, 100% { transform: translate(0, 0); }
+    78%           { transform: translate(2.5px, -2.5px); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .bbm-dock-spin, .bbm-dock-ping, .bbm-dock-nudge { animation: none; }
+    , .bbm-dock-ping { display: none; }
+}
+`;
 
 // Grow: the arrow from the image (the FAB itself is the black circle).
 function GrowIcon({ size = 56 }) {
@@ -290,34 +332,75 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
                 >
                     {isLoggedIn ? (
-                        <div
-                            className={`flex items-center justify-center gap-2.5 rounded-full p-2.5 transition-[background-color,box-shadow] duration-200 md:gap-3 ${pageOpen
-                                ? "bg-transparent"
-                                : "bg-black/90 shadow-[0_10px_30px_-8px_rgba(0,0,0,0.35)] ring-1 ring-white/5 backdrop-blur-md"
-                                }`}
-                        >
-                            {[
-                                { key: "grow", label: "Grow", Icon: GrowIcon, to: GROW_TO },
-                                { key: "save", label: "Save", Icon: SaveIcon, to: SAVE_TO },
-                            ].map(({ key, label, Icon, to }, i) => (
-                                <motion.button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => navigate(to)}
-                                    aria-label={label}
-                                    title={label}
-                                    initial={{ opacity: 0, y: 14, scale: 0.85 }}
-                                    animate={{ opacity: pageOpen ? 0 : 1, y: 0, scale: 1 }}
-                                    transition={{ type: "spring", stiffness: 380, damping: 22, delay: 0.05 + i * 0.05 }}
-                                    whileTap={{ scale: 0.92 }}
-                                    whileHover={{ scale: 1.06 }}
-                                    style={{ background: FAB_THEME[key].bg, color: FAB_THEME[key].fg, "--fab-bg": FAB_THEME[key].bg }}
-                                    className={`${DOCK_FAB_CLASS} ${pageOpen ? "pointer-events-none" : ""}`}
-                                >
-                                    <Icon size={38} />
-                                </motion.button>
-                            ))}
-                            <div className="contents md:hidden">{menuButton}</div>
+                        <div className="relative isolate rounded-full">
+                            <style>{DOCK_AURA_CSS}</style>
+
+                            {/* coloured halo: visible on a white page, fades out while the menu is open */}
+                            <span
+                                aria-hidden
+                                className={`pointer-events-none absolute -inset-[4px] -z-10 overflow-hidden rounded-full blur-[8px] transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-70"}`}
+                            >
+                                <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
+                            </span>
+
+                            {/* ring: dark hairline + the travelling comet */}
+                            <span
+                                aria-hidden
+                                className={`pointer-events-none absolute inset-0 overflow-hidden rounded-full transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-100"}`}
+                                style={{ background: DOCK_RING }}
+                            >
+                                <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
+                            </span>
+
+                            {/* inner surface: dark ink pill, leaves a 2px ring visible around it */}
+                            <div
+                                className="relative m-[2px] flex items-center justify-center gap-2.5 rounded-full p-2 transition-[background-color,box-shadow] duration-200 md:gap-3"
+                                style={{
+                                    background: pageOpen ? "transparent" : DOCK_BG,
+                                    boxShadow: pageOpen ? "none" : `0 14px 30px -10px ${DOCK_SHADOW}`,
+                                }}
+                            >
+                                {/* glass shine sweeping across the dark surface */}
+                                {!pageOpen && (
+                                    <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-full">
+                                        <span className="bbm-dock-shine absolute inset-0" />
+                                    </span>
+                                )}
+
+                                {[
+                                    { key: "grow", label: "Grow", Icon: GrowIcon, to: GROW_TO },
+                                    { key: "save", label: "Save", Icon: SaveIcon, to: SAVE_TO },
+                                ].map(({ key, label, Icon, to }, i) => (
+                                    <motion.button
+                                        key={key}
+                                        type="button"
+                                        onClick={() => navigate(to)}
+                                        aria-label={label}
+                                        title={label}
+                                        initial={{ opacity: 0, y: 14, scale: 0.85 }}
+                                        animate={{ opacity: pageOpen ? 0 : 1, y: 0, scale: 1 }}
+                                        transition={{ type: "spring", stiffness: 380, damping: 22, delay: 0.05 + i * 0.05 }}
+                                        whileTap={{ scale: 0.92 }}
+                                        whileHover={{ scale: 1.06 }}
+                                        style={{ background: FAB_THEME[key].bg, color: FAB_THEME[key].fg, "--fab-bg": FAB_THEME[key].bg }}
+                                        className={`${DOCK_FAB_CLASS} ${pageOpen ? "pointer-events-none" : ""}`}
+                                    >
+                                        {/* amber ping ring, Save only */}
+                                        {key === "save" && (
+                                            <span
+                                                aria-hidden
+                                                className="bbm-dock-ping pointer-events-none absolute inset-0 rounded-full border-2"
+                                                style={{ borderColor: FAB_THEME.save.bg }}
+                                            />
+                                        )}
+                                        {/* Grow arrow gets a small up-right nudge */}
+                                        <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}>
+                                            <Icon size={38} />
+                                        </span>
+                                    </motion.button>
+                                ))}
+                                <div className="contents md:hidden">{menuButton}</div>
+                            </div>
                         </div>
                     ) : (
                         <div className="flex justify-center">{signInButton}</div>
