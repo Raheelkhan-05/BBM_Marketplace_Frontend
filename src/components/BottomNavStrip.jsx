@@ -50,6 +50,12 @@ const SAVE_TO = "/save";
 const FAB_CLASS =
     "relative flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-[0_8px_22px_-6px_rgba(0,0,0,0.5)]";
 
+// Flat, earthy tones. No gradients, no glow.
+const FAB_THEME = {
+    grow: { bg: "#1F7A4D", fg: "#FFFFFF" },   // deep green: growth
+    save: { bg: "#E9A82B", fg: "#141B22" },   // saffron/amber: money, with a dark icon
+};
+
 // Grow: the arrow from the image (the FAB itself is the black circle).
 function GrowIcon({ size = 56 }) {
     return (
@@ -63,7 +69,7 @@ function GrowIcon({ size = 56 }) {
 }
 
 // Save: the money bag from the image.
-function SaveIcon({ size = 56 }) {
+function SaveIcon({ size = 36 }) {
     return (
         <svg width={size} height={size} viewBox="150 90 440 590" fill="none" aria-hidden="true">
             {/* knot / neck */}
@@ -78,10 +84,10 @@ function SaveIcon({ size = 56 }) {
             />
             {/* slits in the neck and the tie line */}
             <path d="M312 130 L332 195 M440 140 L425 180 M405 215 L385 250 M330 300 L352 266 M335 262 L405 252"
-                stroke="#000" strokeWidth="9" strokeLinecap="round" />
+                stroke="var(--fab-bg, #000)" strokeWidth="9" strokeLinecap="round" />
             {/* dollar sign */}
             {/* rupee sign */}
-            <g stroke="#000" strokeWidth="20" fill="none" strokeLinejoin="miter">
+            <g stroke="var(--fab-bg, #000)" strokeWidth="20" fill="none" strokeLinejoin="miter">
                 {/* two horizontal bars, same length, ending flush with the bowl's outer edge */}
                 <path d="M322 372 H445" />
                 <path d="M322 412 H445" />
@@ -273,11 +279,11 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 /* HOME: 5-column grid; the buttons use the middle 3 columns, so the
                    group is centred. Hidden while the keyboard is up. */
                 <div
-                    className={`fixed inset-x-0 z-40 grid grid-cols-5 px-2.5 transition-opacity duration-150 md:flex md:justify-center md:px-0 ${typing ? "pointer-events-none opacity-0" : ""}`}
+                    className={`fixed inset-x-0 z-40 flex justify-center transition-opacity duration-150 ${typing ? "pointer-events-none opacity-0" : ""}`}
                     style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
                 >
                     {isLoggedIn ? (
-                        <div className="col-span-3 col-start-2 grid grid-cols-3 place-items-center md:flex md:gap-6">
+                        <div className="flex items-center justify-center gap-3 md:gap-4">
                             {[
                                 { key: "grow", label: "Grow", Icon: GrowIcon, to: GROW_TO },
                                 { key: "save", label: "Save", Icon: SaveIcon, to: SAVE_TO },
@@ -293,15 +299,16 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                     transition={{ type: "spring", stiffness: 380, damping: 22, delay: 0.05 + i * 0.05 }}
                                     whileTap={{ scale: 0.92 }}
                                     whileHover={{ scale: 1.06 }}
+                                    style={{ background: FAB_THEME[key].bg, color: FAB_THEME[key].fg, "--fab-bg": FAB_THEME[key].bg }}
                                     className={`${FAB_CLASS} ${pageOpen ? "pointer-events-none" : ""}`}
                                 >
-                                    <Icon size={36} />
+                                    <Icon size={38} />
                                 </motion.button>
                             ))}
                             <div className="contents md:hidden">{menuButton}</div>
                         </div>
                     ) : (
-                        <div className="col-span-3 col-start-2 flex justify-center">{signInButton}</div>
+                        <div className="flex justify-center">{signInButton}</div>
                     )}
                 </div>
             ) : (
