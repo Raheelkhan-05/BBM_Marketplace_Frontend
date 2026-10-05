@@ -1096,7 +1096,7 @@ function GstToggle({ includeGst, onChange }) {
             aria-checked={includeGst}
             aria-label={`GST ${includeGst ? "included" : "excluded"}`}
             onClick={() => onChange(!includeGst)}
-            className="group inline-flex h-7 items-center gap-2 rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer"
+            className="group inline-flex h-7 items-center gap-2 rounded-full transition-all duration-200 cursor-pointer"
         >
             {/* Label: one line. Fixed min-width so the switch never shifts
                 between "With GST" and "Without GST". */}
