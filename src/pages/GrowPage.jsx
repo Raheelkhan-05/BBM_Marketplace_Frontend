@@ -5,6 +5,7 @@ import { Link, useLocation } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, TrendingUp, Rocket, BarChart3, Users, Home, Boxes, FileText } from "lucide-react";
 import { MENU_ROUTES } from "../components/menuItems.js";
+import growLogo from "../assets/grow-logo.svg";
 
 const GREEN = "#1F7A4D";
 const GREEN_DARK = "#14573A";
@@ -65,40 +66,91 @@ function FooterDock() {
     );
 }
 
+function GrowTitle() {
+    return (
+        <h1
+            aria-label="Grow"
+            className="flex items-center select-none font-black uppercase leading-none"
+            style={{
+                color: INK,
+                fontSize: "clamp(56px, 20vw, 88px)", // scales with screen width
+                letterSpacing: "-0.02em",
+            }}
+        >
+            <span aria-hidden>GR</span>
+            <img
+                src={growO}
+                alt=""
+                aria-hidden
+                draggable={false}
+                style={{ height: "0.8em", width: "auto", margin: "0 0.02em" }}
+            />
+            <span aria-hidden>W</span>
+        </h1>
+    );
+}
+
 export default function GrowPage() {
     const reduce = useReducedMotion();
 
     return (
         <div className="min-h-screen bg-white text-slate-900 antialiased">
             {/* pb-28 keeps the content clear of the fixed footer dock */}
-            <main className="mx-auto flex min-h-screen max-w-xl flex-col px-4 pb-28 pt-4">
-                <div className="flex flex-1 flex-col items-center justify-center py-10 text-center">
-                    <motion.div
-                        initial={reduce ? false : { opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.35, ease: EASE }}
-                        className="relative flex h-20 w-20 items-center justify-center rounded-full"
-                        style={{ background: GREEN }}
+            <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-28 pt-4">
+                <div className="flex flex-1 flex-col max-w-xl mx-auto items-center justify-center py-10 text-center">
+                    {/* GROW wordmark: the pulsing circle is the "O" */}
+                    <div
+                        role="img"
+                        aria-label="Grow"
+                        className="flex select-none items-center justify-center font-black uppercase leading-none"
+                        style={{
+                            color: INK,
+                            fontSize: "clamp(48px, 16vw, 72px)", // everything below scales from this
+                            letterSpacing: "-0.02em",
+                        }}
                     >
-                        {!reduce && (
-                            <motion.span
-                                aria-hidden
-                                className="absolute inset-0 rounded-full"
-                                style={{ background: GREEN }}
-                                initial={{ opacity: 0.35, scale: 1 }}
-                                animate={{ opacity: 0, scale: 1.6 }}
-                                transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
-                            />
-                        )}
-                        <TrendingUp className="relative h-9 w-9 text-white" strokeWidth={2} />
-                    </motion.div>
+                        <span aria-hidden>GR</span>
 
-                    <span
-                        className="mt-5 rounded-full border px-3 py-1 text-[10.5px] font-extrabold uppercase tracking-wider"
-                        style={{ background: GREEN_TINT, borderColor: GREEN_BORDER, color: GREEN_DARK }}
-                    >
-                        Coming soon
-                    </span>
+                        <motion.div
+                            aria-hidden
+                            initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.35, ease: EASE }}
+                            className="relative flex items-center justify-center rounded-full"
+                            style={{
+                                background: GREEN,
+                                width: "0.76em",
+                                height: "0.76em",
+                                margin: "0 0.05em",
+                            }}
+                        >
+                            {!reduce &&
+                                [0, 1].map((i) => (
+                                    <motion.span
+                                        key={i}
+                                        aria-hidden
+                                        className="absolute inset-0 rounded-full"
+                                        style={{ background: GREEN }}
+                                        initial={{ opacity: 0, scale: 1 }}
+                                        animate={{ opacity: [0, 0.35, 0], scale: [1, 1.35, 1.8] }}
+                                        transition={{
+                                            duration: 4,
+                                            times: [0, 0.1, 1],
+                                            ease: "easeOut",
+                                            repeat: Infinity,
+                                            delay: i * 2, // half of duration
+                                        }}
+                                    />
+                                ))}
+                            <TrendingUp
+                                className="relative text-white"
+                                style={{ width: "0.4em", height: "0.4em" }}
+                                strokeWidth={2.2}
+                            />
+                        </motion.div>
+
+                        <span aria-hidden>W</span>
+                    </div>
 
                     <h1 className="mt-3 text-[26px] font-extrabold leading-tight tracking-wide" style={{ color: INK }}>
                         Grow your business

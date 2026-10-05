@@ -331,7 +331,7 @@ export default function Header({ onOpenRfq }) {
     <>
       <header
         ref={headerRef}
-        className="relative top-0 z-50 bg-white md:pt-3 md:mt-3 transition-all duration-300"
+        className="relative top-0 z-50 bg-white md:pt-3 md:mt-3 mb-3 transition-all duration-300"
         style={{
           paddingTop: "calc(env(safe-area-inset-top, 0px))", // 0.75rem = mt-3's 12px, now folded into safe-area padding
           backdropFilter: "blur(8px)",

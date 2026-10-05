@@ -67,7 +67,7 @@ export default function HomePage() {
 
             <SmoothScrollProvider>
                 {/* bottom padding so the last feed items clear the floating buttons (BottomNavStrip) */}
-                <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20 pt-3">
+                <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20">
 
                     {shopSlug && !viaSellers && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
 
