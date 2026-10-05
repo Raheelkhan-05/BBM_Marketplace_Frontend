@@ -14,6 +14,23 @@ const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public San
 // Same blue the RFQ tile always used.
 const RFQ_BLUE = "#0A5FB0";
 
+function useTypingActive() {
+    const [active, setActive] = useState(false);
+    useEffect(() => {
+        const isField = (el) =>
+            !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+        const onIn = (e) => { if (isField(e.target)) setActive(true); };
+        const onOut = () => setTimeout(() => { if (!isField(document.activeElement)) setActive(false); }, 50);
+        document.addEventListener("focusin", onIn);
+        document.addEventListener("focusout", onOut);
+        return () => {
+            document.removeEventListener("focusin", onIn);
+            document.removeEventListener("focusout", onOut);
+        };
+    }, []);
+    return active;
+}
+
 // Matches Tailwind's `md` breakpoint
 function useIsMobile() {
     const query = "(max-width: 767px)";
@@ -75,6 +92,8 @@ export default function HomePage() {
     const brandName = searchParams.get("brand")?.trim() || null;
     const viaSellers = searchParams.get("via") === "sellers";
 
+    const typing = useTypingActive();
+
     const clearShop = () => {
         const next = new URLSearchParams(searchParams);
         next.delete("shop");
@@ -127,7 +146,7 @@ export default function HomePage() {
                     {shopSlug && !viaSellers && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
 
                     {/* Mobile: pinned to the bottom of the screen. Desktop: normal flow. */}
-                    <RfqBar isMobile={isMobile} />
+                    {!(isMobile && typing) && <RfqBar isMobile={isMobile} />}
 
                     <HomeProductFeed
                         category={activeCategory}

@@ -3208,6 +3208,29 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         );
     })();
 
+    const lenis = useLenis();
+    const stickyRef = useRef(null);
+    const listWrapRef = useRef(null);
+    const firstScrollRef = useRef(true);
+
+    // Scroll so the first result sits just under the sticky toolbar.
+    // If the user is already above that point, do nothing.
+    const scrollListToTop = useCallback(() => {
+        const list = listWrapRef.current;
+        if (!list) return;
+        const barH = stickyRef.current?.getBoundingClientRect().height || 0;
+        const target = Math.max(0, list.getBoundingClientRect().top + window.scrollY - stickyTop - barH);
+        if (window.scrollY <= target + 1) return;
+        if (lenis && typeof lenis.scrollTo === "function") lenis.scrollTo(target, { immediate: true });
+        else window.scrollTo(0, target);
+    }, [lenis, stickyTop]);
+
+    useEffect(() => {
+        if (firstScrollRef.current) { firstScrollRef.current = false; return; }
+        scrollListToTop();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [q, category?.id, shopSlug, brandsKey]);
+
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && runQuery(displayItems.length, { append: true }),
         { lookahead: 800, disabled: loading || loadingMore || !hasMore }
@@ -3384,6 +3407,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             )}
 
             <div
+                ref={stickyRef}
                 className="sticky z-30 -mx-3 border-b bg-white px-3 pb-1 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
                 style={{ top: stickyTop, borderColor: C.hairSoft }}
             >
@@ -3418,6 +3442,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             <div
                 // className="-mx-3 bg-white sm:mx-0 sm:rounded-2xl sm:border"
                 className="-mx-3 bg-white sm:mx-0 sm:rounded-2xl"
+                ref={listWrapRef}
             >
 
                 {showFullSkeleton
