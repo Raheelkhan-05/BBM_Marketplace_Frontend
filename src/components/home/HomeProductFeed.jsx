@@ -3193,6 +3193,11 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // pin (onRevert) fixes itself.
     // An unpinned product whose default position is beyond what has been loaded
     // is hidden; it shows up in its right place when that page loads.
+
+    const [unpinnedIds, setUnpinnedIds] = useState(() => new Set());
+    const pinnedNow = (it) =>
+        isFollowed(it.id) || (it.is_pinned === true && !unpinnedIds.has(it.id));
+
     const displayItems = (() => {
         if (!items.length || items.some((it) => it.default_rank == null)) return items; // e.g. search results
         let frontier = -1;
@@ -3200,11 +3205,11 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             if (it.is_pinned === false && it.default_rank > frontier) frontier = it.default_rank;
         }
         const visible = items.filter(
-            (it) => hasMore === false || isFollowed(it.id) || it.default_rank <= frontier
+            (it) => hasMore === false || pinnedNow(it) || it.default_rank <= frontier
         );
-        return [...visible].sort(
+        return visible.sort(
             (a, b) =>
-                (Number(isFollowed(b.id)) - Number(isFollowed(a.id))) ||
+                (Number(pinnedNow(b)) - Number(pinnedNow(a))) ||
                 (a.default_rank - b.default_rank)
         );
     })();
@@ -3306,6 +3311,11 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         }
         const willFollow = toggleFollow(item.id);
         if (willFollow === null) return;
+        setUnpinnedIds((prev) => {
+            const n = new Set(prev);
+            if (willFollow) n.delete(item.id); else n.add(item.id);
+            return n;
+        });
         showToast({ message: willFollow ? "Pinned. It stays at the top of your feed" : "Unpinned" }, willFollow ? 2500 : 1800);
     };
 
@@ -3379,18 +3389,11 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 </div>
             )}
 
-            {/* STICKY TOOLBAR: Category strip + search bar (the `toolbar` prop from
-                HomePage) + Deliver-to / GST row. Everything above it scrolls away;
-                this block stays pinned (below the site header when that header is
-                fixed/sticky). The negative margins + matching padding bleed it to the
-                edges of <main> so list rows never show through beside it. */}
             <div
                 className="sticky z-30 -mx-3 border-b bg-white px-3 pb-1 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
                 style={{ top: stickyTop, borderColor: C.hairSoft }}
             >
-                {toolbar}
-
-                <div className="flex items-center justify-between gap-3 px-1 pb-1.5 pt-2">
+                <div className="flex items-center justify-between gap-3 px-1 pb-1 pt-2">
                     <div className="min-w-0">
                         {myShopActive ? (
                             <button
@@ -3409,6 +3412,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                         <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
                     </div>
                 </div>
+
+                {toolbar}
             </div>
 
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
@@ -3425,7 +3430,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                     ? (
                         <div className="flex divide-x" style={{ borderColor: C.hair }}>
                             {Array.from({ length: columnCount }).map((_, colIdx) => (
-                                <div key={colIdx} className="min-w-0 flex-1 divide-y" style={{ borderColor: C.hairSoft }}>
+                                <div key={colIdx} className="min-w-0 flex-1 divide-y pt-3" style={{ borderColor: C.hairSoft }}>
                                     {Array.from({ length: Math.ceil(8 / columnCount) }).map((_, i) => (
                                         <RowSkeleton key={i} />
                                     ))}
@@ -3447,7 +3452,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                         </div>
                     ) : (
                         <div
-                            className="flex divide-x"
+                            className="flex divide-x pt-3"
                             style={{ borderColor: C.hair, opacity: loading ? 0.55 : 1, transition: "opacity 0.15s ease" }}
                         >
                             {columns.map((colItems, colIdx) => (
@@ -3471,7 +3476,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                                     // onToggle={() => toggleDropdown(item)}
                                                     onInfo={() => setInfoItemId(item.id)}
                                                     onImageOpen={setLightboxSrc}
-                                                    isFollowed={isFollowed(item.id)}
+                                                    isFollowed={pinnedNow(item)}
                                                     onToggleFollow={() => handleToggleFollow(item)}
                                                     includeGst={includeGst}
                                                     isLoggedIn={isLoggedIn}

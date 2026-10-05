@@ -100,7 +100,6 @@ export default function HomePage() {
     // visible while the page scrolls.
     const toolbar = (
         <>
-            <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
             <MarketplaceSearchBar
                 value={query}
                 onChange={setQuery}
@@ -112,6 +111,7 @@ export default function HomePage() {
                 clearOnSubmit={false}
                 suggestionsDirection="down"
             />
+            <CategoryStrip activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
         </>
     );
 

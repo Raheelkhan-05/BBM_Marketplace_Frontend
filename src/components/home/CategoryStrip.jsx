@@ -162,7 +162,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
     const allActive = !activeCategoryId;
 
     return (
-        <div className="mb-2 flex gap-1 overflow-x-auto px-0.5 py-1 md:mt-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="pt-2.5 flex gap-1 overflow-x-auto px-0.5 py-1 md:mt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <StripButton active={allActive} onClick={() => onSelect(null)}>
                 All
             </StripButton>

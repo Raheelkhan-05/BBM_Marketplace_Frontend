@@ -230,7 +230,7 @@ export default function MarketplaceSearchBar({
     };
 
     return (
-        <div className="w-full relative mt-3 sm:mt-1" ref={containerRef}>
+        <div className="w-full relative mt-2 sm:mt-1" ref={containerRef}>
             <style>{`
                 @property --bbm-angle {
                     syntax: '<angle>';
