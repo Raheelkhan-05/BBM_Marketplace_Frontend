@@ -1094,33 +1094,27 @@ function GstToggle({ includeGst, onChange }) {
             type="button"
             role="switch"
             aria-checked={includeGst}
-            aria-label={`GST ${includeGst ? "included" : "excluded"} `}
+            aria-label={`GST ${includeGst ? "included" : "excluded"}`}
             onClick={() => onChange(!includeGst)}
-            className="group inline-flex items-center gap-2.5 rounded-full transition-all duration-200 cursor-pointer"
-
+            className="group inline-flex h-7 items-center gap-2 rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer"
         >
-            {/* Label */}
-            <span className="flex min-w-[44px] flex-col items-end text-right leading-none">
-                <span className="text-[9.5px] font-medium tracking-wider" style={{ color: C.ink }}>{includeGst ? "With" : "Without"}</span>
-                <span className="mt-0 text-[11.5px] font-bold tracking-[0.02em] " style={{ color: includeGst ? C.secondary : "#7B858C" }}>
-                    GST
-                </span>
+            {/* Label: one line. Fixed min-width so the switch never shifts
+                between "With GST" and "Without GST". */}
+            <span
+                className="min-w-[66px] whitespace-nowrap text-right text-[11px] font-bold leading-none tracking-wide"
+                style={{ color: includeGst ? C.secondary : "#7B858C" }}
+            >
+                {includeGst ? "With GST" : "Without GST"}
             </span>
 
-            {/* Switch */}
+            {/* Switch (h-4 w-8, knob h-3 w-3, travel 16px) */}
             <span
-                className="relative flex h-5 w-10 shrink-0 items-center rounded-full p-0.5 transition-all duration-200"
-                style={{
-                    backgroundColor: includeGst ? C.secondary : "#D9DEE2",
-                }}
+                className="relative flex h-4 w-8 shrink-0 items-center rounded-full p-0.5 transition-all duration-200"
+                style={{ backgroundColor: includeGst ? C.secondary : "#D9DEE2" }}
             >
                 <span
-                    className="h-4 w-4 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-transform duration-200"
-                    style={{
-                        transform: includeGst
-                            ? "translateX(20px)"
-                            : "translateX(0px)",
-                    }}
+                    className="h-3 w-3 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-transform duration-200"
+                    style={{ transform: includeGst ? "translateX(16px)" : "translateX(0px)" }}
                 />
             </span>
         </button>
@@ -3393,16 +3387,16 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 className="sticky z-30 -mx-3 border-b bg-white px-3 pb-1 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
                 style={{ top: stickyTop, borderColor: C.hairSoft }}
             >
-                <div className="flex items-center justify-between gap-3 px-1 pb-1 pt-2">
+                <div className="flex items-center justify-between gap-3 px-1 pt-0 mt-1.5">
                     <div className="min-w-0">
                         {myShopActive ? (
                             <button
                                 type="button"
                                 onClick={handleShareShop}
-                                className="inline-flex h-9 items-center gap-1.5 rounded-full border bg-white px-3 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98]"
+                                className="inline-flex h-7 items-center gap-1.5 rounded-full border bg-white px-2.5 text-[11px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98]"
                                 style={{ borderColor: C.hair, color: C.ink }}
                             >
-                                <Share2 className="h-3.5 w-3.5" strokeWidth={2.3} /> Share shop
+                                <Share2 className="h-3 w-3" strokeWidth={2.3} /> Share shop
                             </button>
                         ) : (
                             <DeliverToBar />

@@ -60,7 +60,7 @@ function Tile({ tone, icon, label, sub, active = false, onClick }) {
 // active: "brands" | "shop" | null
 export default function FeedQuickActions({ active = null, brandLabel, onBrands, onMyShop }) {
     return (
-        <div className="grid grid-cols-2 gap-2 px-1 pb-2.5">
+        <div className="grid grid-cols-2 gap-1 pb-0">
             <Tile
                 tone="brands"
                 icon={<Tags className="h-4 w-4" strokeWidth={2} />}
