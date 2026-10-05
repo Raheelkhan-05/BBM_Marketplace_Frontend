@@ -59,13 +59,13 @@ const DOCK_FAB_CLASS =
 const FAB_THEME = {
     grow: { bg: "#1F7A4D", fg: "#FFFFFF" },    // deep green: growth
     save: { bg: "#FED813", fg: "#141B22" },   // saffron/amber: money, with a dark icon
-    menu: { bg: "#F4F1EA", fg: "#141B22" },   // warm cream, stands out on the petrol dock   // teal (your existing secondary)
+    menu: { bg: "#0B4F5C", fg: "#FFFFFF" },   // warm cream, stands out on the petrol dock   // teal (your existing secondary)
 };
 
 // Dock surface colours (change here to re-theme the dock).
-const DOCK_BG = "#0B4F5C";      // petrol blue
-const DOCK_RING = "#1F6F7D";    // the ring colour where the comet isn't passing
-const DOCK_SHADOW = "rgba(11,79,92,0.5)";
+const DOCK_BG = "#ffffff";      // petrol blue
+const DOCK_RING = "#ffffff";    // the ring colour where the comet isn't passing
+const DOCK_SHADOW = "rgba(255,255,255)";
 
 // Dock animation: a bright comet travelling around a dark pill, plus a shine sweep,
 // a ping on Save and a nudge on Grow. All CSS, no JS, and all switched off for
