@@ -329,7 +329,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                    and never shifts the Menu button itself. */
                 <div
                     className="fixed right-4 z-40 flex flex-col items-center gap-3 md:hidden"
-                    style={{ bottom: `calc(${fabBottom}px + env(safe - area - inset - bottom, 0px))` }}
+                    style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
                 >
                     {/* Quick-access Home — only while the menu is open */}
                     <AnimatePresence>
@@ -367,14 +367,14 @@ export default function BottomNavStrip({ onOpenRfq }) {
             <div
                 aria-hidden="true"
                 onClick={() => setPageOpen(false)}
-                className={`fixed inset - 0 z - [38] bg - black / 35 transition - opacity duration - 300 ${isHome ? "" : "md:hidden"} ${pageOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+                className={`fixed inset-0 z-[38] bg-black/35 transition-opacity duration-300 ${isHome ? "" : "md:hidden"} ${pageOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
             />
 
             {/* Bottom sheet — height follows its content, capped at SHEET_MAX_HEIGHT.
                 Past the cap, the list inside scrolls.
                 Desktop (Home only): a centred floating panel sitting above the FAB row. */}
             <div
-                className={`fixed inset - x - 0 bottom - 0 z - [39] mx - auto flex flex - col overflow - hidden rounded - t - 3xl bg - white transition - [transform, box - shadow] duration - 300 ease - out ${isHome ? "md:bottom-[96px] md:max-h-[70dvh] md:max-w-[420px] md:rounded-3xl" : "md:hidden"} ${pageOpen ? "shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.35)]" : "pointer-events-none"}`}
+                className={`fixed inset-x-0 bottom-0 z-[39] mx-auto flex flex-col overflow-hidden rounded-t-3xl bg-white transition-[transform,box-shadow] duration-300 ease-out ${isHome ? "md:bottom-[96px] md:max-h-[70dvh] md:max-w-[420px] md:rounded-3xl" : "md:hidden"} ${pageOpen ? "shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.35)]" : "pointer-events-none"}`}
                 style={{
                     maxHeight: SHEET_MAX_HEIGHT,
                     transform: pageOpen ? "translateY(0)" : "translateY(calc(100% + 140px))",
@@ -394,7 +394,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 {/* List — min-h-0 lets it shrink and scroll when the sheet hits its max height.
                     Bottom padding clears the floating buttons. */}
                 <div
-                    className={`min - h - 0 flex - 1 overflow - y - auto px - 5 pt - 3 pb - [var(--sheet-pb)] ${isHome ? "md:pb-5" : ""}`}
+                    className={`min-h-0 flex-1 overflow-y-auto px-5 pt-3 pb-[var(--sheet-pb)] ${isHome ? "md:pb-5" : ""}`}
                     style={{
                         overscrollBehavior: "contain",
                         "--sheet-pb": `calc(${fabBottom + (isHome ? DOCK_HEIGHT + 12 : FAB_STACK_HEIGHT)}px + env(safe-area-inset-bottom, 0px))`,
