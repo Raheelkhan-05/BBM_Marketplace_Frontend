@@ -41,19 +41,25 @@ const FAB_STACK_HEIGHT = 12;
 const FAB_SIZE = 56;
 const FAB_BOTTOM_DEFAULT = 16;
 // On /home nothing else is pinned to the bottom any more, so same as default.
-const FAB_BOTTOM_HOME = 16;
+const FAB_BOTTOM_HOME = 12;
+
+const DOCK_HEIGHT = 44 + 16; // buttons + 8px padding top and bottom
 
 // TODO: set the real destinations for Grow and Save.
 const GROW_TO = "/grow";
 const SAVE_TO = "/save";
 
 const FAB_CLASS =
-    "relative flex h-14 w-14 items-center justify-center rounded-full bg-black text-white shadow-[0_8px_22px_-6px_rgba(0,0,0,0.5)]";
+    "relative flex h-11 w-11 items-center justify-center rounded-full bg-black text-white shadow-[0_8px_22px_-6px_rgba(0,0,0,0.5)]";
+
+const DOCK_FAB_CLASS =
+    "relative flex h-11 w-11 items-center justify-center rounded-full shadow-[0_4px_12px_-4px_rgba(0,0,0,0.4)]";
 
 // Flat, earthy tones. No gradients, no glow.
 const FAB_THEME = {
     grow: { bg: "#1F7A4D", fg: "#FFFFFF" },   // deep green: growth
     save: { bg: "#E9A82B", fg: "#141B22" },   // saffron/amber: money, with a dark icon
+    menu: { bg: "#0B7285", fg: "#FFFFFF" },   // teal (your existing secondary)
 };
 
 // Grow: the arrow from the image (the FAB itself is the black circle).
@@ -236,6 +242,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
             transition={{ type: "spring", stiffness: 380, damping: 22, delay: 0.15 }}
             whileTap={{ scale: 0.92 }}
             className={FAB_CLASS}
+            style={{ background: FAB_THEME.menu.bg, color: FAB_THEME.menu.fg }}
         >
             <AnimatePresence mode="wait" initial={false}>
                 <motion.span
@@ -251,7 +258,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
             </AnimatePresence>
 
             {badgeDisplay != null && !pageOpen && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#d2462b] px-1 text-[9px] font-bold text-white">
+                <span className="absolute -right-0.5 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#d2462b] px-1 text-[9px] font-bold text-white">
                     {badgeDisplay}
                 </span>
             )}
@@ -283,7 +290,12 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
                 >
                     {isLoggedIn ? (
-                        <div className="flex items-center justify-center gap-3 md:gap-4">
+                        <div
+                            className={`flex items-center justify-center gap-2.5 rounded-full p-1.5 transition-[background-color,box-shadow] duration-200 md:gap-3 ${pageOpen
+                                ? "bg-transparent"
+                                : "bg-white/90 shadow-[0_10px_30px_-8px_rgba(20,27,34,0.35)] ring-1 ring-black/5 backdrop-blur-md"
+                                }`}
+                        >
                             {[
                                 { key: "grow", label: "Grow", Icon: GrowIcon, to: GROW_TO },
                                 { key: "save", label: "Save", Icon: SaveIcon, to: SAVE_TO },
@@ -300,7 +312,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                     whileTap={{ scale: 0.92 }}
                                     whileHover={{ scale: 1.06 }}
                                     style={{ background: FAB_THEME[key].bg, color: FAB_THEME[key].fg, "--fab-bg": FAB_THEME[key].bg }}
-                                    className={`${FAB_CLASS} ${pageOpen ? "pointer-events-none" : ""}`}
+                                    className={`${DOCK_FAB_CLASS} ${pageOpen ? "pointer-events-none" : ""}`}
                                 >
                                     <Icon size={38} />
                                 </motion.button>
@@ -317,7 +329,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                    and never shifts the Menu button itself. */
                 <div
                     className="fixed right-4 z-40 flex flex-col items-center gap-3 md:hidden"
-                    style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
+                    style={{ bottom: `calc(${fabBottom}px + env(safe - area - inset - bottom, 0px))` }}
                 >
                     {/* Quick-access Home — only while the menu is open */}
                     <AnimatePresence>
@@ -355,14 +367,14 @@ export default function BottomNavStrip({ onOpenRfq }) {
             <div
                 aria-hidden="true"
                 onClick={() => setPageOpen(false)}
-                className={`fixed inset-0 z-[38] bg-black/35 transition-opacity duration-300 ${isHome ? "" : "md:hidden"} ${pageOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
+                className={`fixed inset - 0 z - [38] bg - black / 35 transition - opacity duration - 300 ${isHome ? "" : "md:hidden"} ${pageOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
             />
 
             {/* Bottom sheet — height follows its content, capped at SHEET_MAX_HEIGHT.
                 Past the cap, the list inside scrolls.
                 Desktop (Home only): a centred floating panel sitting above the FAB row. */}
             <div
-                className={`fixed inset-x-0 bottom-0 z-[39] mx-auto flex flex-col overflow-hidden rounded-t-3xl bg-white transition-[transform,box-shadow] duration-300 ease-out ${isHome ? "md:bottom-[96px] md:max-h-[70dvh] md:max-w-[420px] md:rounded-3xl" : "md:hidden"} ${pageOpen ? "shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.35)]" : "pointer-events-none"}`}
+                className={`fixed inset - x - 0 bottom - 0 z - [39] mx - auto flex flex - col overflow - hidden rounded - t - 3xl bg - white transition - [transform, box - shadow] duration - 300 ease - out ${isHome ? "md:bottom-[96px] md:max-h-[70dvh] md:max-w-[420px] md:rounded-3xl" : "md:hidden"} ${pageOpen ? "shadow-[0_-12px_40px_-12px_rgba(0,0,0,0.35)]" : "pointer-events-none"}`}
                 style={{
                     maxHeight: SHEET_MAX_HEIGHT,
                     transform: pageOpen ? "translateY(0)" : "translateY(calc(100% + 140px))",
@@ -382,10 +394,10 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 {/* List — min-h-0 lets it shrink and scroll when the sheet hits its max height.
                     Bottom padding clears the floating buttons. */}
                 <div
-                    className={`min-h-0 flex-1 overflow-y-auto px-5 pt-3 pb-[var(--sheet-pb)] ${isHome ? "md:pb-5" : ""}`}
+                    className={`min - h - 0 flex - 1 overflow - y - auto px - 5 pt - 3 pb - [var(--sheet-pb)] ${isHome ? "md:pb-5" : ""}`}
                     style={{
                         overscrollBehavior: "contain",
-                        "--sheet-pb": `calc(${fabBottom + (isHome ? FAB_SIZE + 12 : FAB_STACK_HEIGHT)}px + env(safe-area-inset-bottom, 0px))`,
+                        "--sheet-pb": `calc(${fabBottom + (isHome ? DOCK_HEIGHT + 12 : FAB_STACK_HEIGHT)}px + env(safe-area-inset-bottom, 0px))`,
                     }}
                     data-lenis-prevent=""
                     onWheel={stopScrollPropagation}
