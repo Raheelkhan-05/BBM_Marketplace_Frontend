@@ -100,7 +100,7 @@ const DOCK_AURA_CSS = `
 }
 @media (prefers-reduced-motion: reduce) {
     .bbm-dock-spin, .bbm-dock-ping, .bbm-dock-nudge { animation: none; }
-    , .bbm-dock-ping { display: none; }
+    .bbm-dock-ping { display: none; }
 }
 `;
 
@@ -264,6 +264,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const badgeDisplay = badgeTotal > 0 ? (badgeTotal > 9 ? "9+" : badgeTotal) : null;
 
     const isHome = pathname === "/home" || pathname === "/home/";
+    const isGrow = pathname === "/grow" || pathname.startsWith("/grow/");
     const fabBottom = isHome ? FAB_BOTTOM_HOME : FAB_BOTTOM_DEFAULT;
 
     const goHome = () => {
@@ -360,13 +361,6 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                     boxShadow: pageOpen ? "none" : `0 14px 30px -10px ${DOCK_SHADOW}`,
                                 }}
                             >
-                                {/* glass shine sweeping across the dark surface */}
-                                {!pageOpen && (
-                                    <span aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden rounded-full">
-                                        <span className="bbm-dock-shine absolute inset-0" />
-                                    </span>
-                                )}
-
                                 {[
                                     { key: "grow", label: "Grow", Icon: GrowIcon, to: GROW_TO },
                                     { key: "save", label: "Save", Icon: SaveIcon, to: SAVE_TO },
@@ -406,7 +400,8 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         <div className="flex justify-center">{signInButton}</div>
                     )}
                 </div>
-            ) : (
+            ) : isGrow && isLoggedIn ? null : (
+                /* EVERYWHERE ELSE — z-40 sits ABOVE the sheet (z-[39]).
                 /* EVERYWHERE ELSE — z-40 sits ABOVE the sheet (z-[39]).
                    Bottom-anchored, so anything added above the Menu button grows upward
                    and never shifts the Menu button itself. */
