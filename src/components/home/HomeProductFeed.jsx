@@ -3376,36 +3376,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 onMyShop={handleSellers}
             />
 
-
-
-            {brandName && (
-                <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#c9d2dfff", borderColor: "#D6C5D2" }}>
-                    <p className="min-w-0 truncate text-[11.5px] font-bold tracking-wide" style={{ color: "#384A62" }}>
-                        Brand: <span className="font-extrabold capitalize text-[13.5px] ">{brandName}</span>
-                    </p>
-                    <div className="flex shrink-0 items-center gap-1">
-                        <Link to="/brands" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wider text-white" style={{ background: "#384A62" }}>Change</Link>
-                        <button type="button" onClick={clearBrand} aria-label="Clear brand" className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]">
-                            <X className="h-3.5 w-3.5" style={{ color: "#384A62" }} />
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {shopSlug && fromSellers && (
-                <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#dcefe3", borderColor: "#b9d9c6" }}>
-                    <p className="min-w-0 truncate text-[11.5px] font-bold tracking-wide" style={{ color: "#1f6b42" }}>
-                        {myShopActive ? "Your shop" : "Seller"}: <span className="font-extrabold capitalize text-[13.5px]">{shopInfo?.display_name || shopSlug}</span>
-                    </p>
-                    <div className="flex shrink-0 items-center gap-1">
-                        <Link to="/sellers" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wider text-white" style={{ background: "#298C56" }}>Change</Link>
-                        <button type="button" onClick={clearShop} aria-label="Clear seller" className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]">
-                            <X className="h-3.5 w-3.5" style={{ color: "#1f6b42" }} />
-                        </button>
-                    </div>
-                </div>
-            )}
-
             <div
                 ref={stickyRef}
                 className="sticky z-30 -mx-3 border-b bg-white px-3 pb-1 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
@@ -3432,6 +3402,35 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 </div>
 
                 {toolbar}
+
+                {brandName && (
+                    <div className="my-1 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#c9d2dfff", borderColor: "#D6C5D2" }}>
+                        <p className="min-w-0 truncate text-[11.5px] font-bold tracking-wide" style={{ color: "#384A62" }}>
+                            Brand: <span className="font-extrabold capitalize text-[13.5px] ">{brandName}</span>
+                        </p>
+                        <div className="flex shrink-0 items-center gap-1">
+                            <Link to="/brands" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wider text-white" style={{ background: "#384A62" }}>Change</Link>
+                            <button type="button" onClick={clearBrand} aria-label="Clear brand" className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]">
+                                <X className="h-3.5 w-3.5" style={{ color: "#384A62" }} />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {shopSlug && fromSellers && (
+                    <div className="my-1 flex items-center justify-between gap-2 rounded-xl border px-3 py-2" style={{ background: "#dcefe3", borderColor: "#b9d9c6" }}>
+                        <p className="min-w-0 truncate text-[11.5px] font-bold tracking-wide" style={{ color: "#1f6b42" }}>
+                            {myShopActive ? "Your shop" : "Seller"}: <span className="font-extrabold capitalize text-[13.5px]">{shopInfo?.display_name || shopSlug}</span>
+                        </p>
+                        <div className="flex shrink-0 items-center gap-1">
+                            <Link to="/sellers" className="rounded-full px-2.5 py-1 text-[11px] font-extrabold tracking-wider text-white" style={{ background: "#298C56" }}>Change</Link>
+                            <button type="button" onClick={clearShop} aria-label="Clear seller" className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-black/[0.06]">
+                                <X className="h-3.5 w-3.5" style={{ color: "#1f6b42" }} />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
             </div>
 
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
