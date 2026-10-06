@@ -271,7 +271,7 @@ export default function GrowPage() {
                             Reach beyond your network, get requirements relevant to what you sell, and turn opportunities into orders.
                         </p>
                         <div>
-                            <Link className="btn" to={MENU_ROUTES.manageProducts}>Add your products</Link>
+                            <Link className="btn" to={'/grow?start=1'}>Add your products</Link>
                             <a className="btn ghost mt-3" href="#grow-pricing" onClick={goTo("grow-pricing")}>See how pricing works</a>
                         </div>
                         <div className="trio">
@@ -353,7 +353,7 @@ export default function GrowPage() {
                     </div>
                     <p>Add your products. Set your terms. Reach buyers. Manage orders. Build repeat business.</p>
                     <div className="button-grid flex items-center justify-center">
-                        <Link className="btn" to={MENU_ROUTES.manageProducts}>
+                        <Link className="btn" to={'/grow?start=1'}>
                             Add your products
                         </Link>
 

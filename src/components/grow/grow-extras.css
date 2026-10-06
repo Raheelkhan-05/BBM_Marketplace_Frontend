@@ -128,7 +128,6 @@
     font-size: 12.5px;
     font-weight: 700;
     color: #0F63B5;
-    letter-spacing: 0.5px;
 }
 
 .gs .gx-act:hover {
@@ -550,4 +549,47 @@
 
 .gs .cap.err {
     color: #C23A0B;
+}
+
+/* ---------- loading skeleton (replaces the "Checking your account…" text screen) ---------- */
+.gs .gx-skel {
+    height: 16px;
+    margin: 0 0 14px;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #EEF0F3 25%, #F7F8FA 50%, #EEF0F3 75%);
+    background-size: 200% 100%;
+    animation: gx-sh 1.2s linear infinite;
+}
+
+.gs .gx-skel.h30 {
+    height: 30px;
+}
+
+.gs .gx-skel.h56 {
+    height: 56px;
+    border-radius: 14px;
+}
+
+.gs .gx-skel.w40 {
+    width: 40%;
+}
+
+.gs .gx-skel.w60 {
+    width: 60%;
+}
+
+.gs .gx-skel.w80 {
+    width: 80%;
+}
+
+@keyframes gx-sh {
+    to {
+        background-position: -200% 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gs .gx-skel {
+        animation: none;
+    }
 }

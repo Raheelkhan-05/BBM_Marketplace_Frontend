@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
-    fetchSellerAccessStatus, saveSellerProgress, submitSellerOnboarding, saveSellerBankDetails,
+    saveSellerProgress, submitSellerOnboarding, saveSellerBankDetails,
     uploadSellerFile, createSellerSubmission, createListingForExistingBrand,
 } from "../utils/api.js";
 import {
@@ -23,6 +23,7 @@ import GrowAuthFlow, { toTop } from "../components/grow/GrowAuthFlow.jsx";
 import GrowBrandField from "../components/grow/GrowBrandField.jsx";
 import GrowDeliveryPicker, { blankDelivery, validateDelivery, buildDispatching, summarizeDelivery } from "../components/grow/GrowDeliveryPicker.jsx";
 import { useDrop, useDropGuard } from "../components/grow/growUi.js";
+import { peekAccess, loadAccess, setAccess } from "../components/grow/growAccess.js";
 import "../components/grow/grow-start.css";
 import "../components/grow/grow-extras.css"; // keep AFTER grow-start.css
 
@@ -56,22 +57,24 @@ export default function GrowStartPage() {
     const { token, isLoggedIn, profile, needsOnboarding, initializing, refreshProfile } = useAuth();
     const nav = useNavigate();
     const [sp] = useSearchParams();
-    const [view, setView] = useState("land"); // land | auth | check | onb | prod | pdone
+    // land | auth | check | onb | prod | pdone
+    // Coming from "Add your products" (?start=1): never flash the landing screen. If the access check was
+    // already warmed up by the details page, open the wizard on the very first render.
+    const [view, setView] = useState(() => {
+        if (sp.get("start") !== "1") return "land";
+        if (!initializing && isLoggedIn && !needsOnboarding && peekAccess(token)?.canPublish) return "prod";
+        return "check";
+    });
     const [toast, setToast] = useState("");
     const [last, setLast] = useState(null);
-    const access = useRef(null), auto = useRef(false), pend = useRef(false), startRef = useRef(null), tt = useRef(null);
+    const auto = useRef(false), pend = useRef(false), startRef = useRef(null), tt = useRef(null);
     useDropGuard(); // a file dropped just outside a drop zone must not navigate the tab away
 
     const say = (m) => { setToast(m); clearTimeout(tt.current); tt.current = setTimeout(() => setToast(""), 2800); };
     useEffect(() => { toTop(); }, [view]);
 
     // Prefetch access status so "Start selling" resolves instantly.
-    useEffect(() => {
-        if (!token || needsOnboarding) { access.current = null; return; }
-        let live = true;
-        fetchSellerAccessStatus(token).then((r) => { if (live) access.current = r?.success ? r : { canPublish: false, reason: "NOT_AUTHENTICATED" }; });
-        return () => { live = false; };
-    }, [token, needsOnboarding]);
+    useEffect(() => { if (token && !needsOnboarding) loadAccess(token); }, [token, needsOnboarding]);
 
     const route = (a) => {
         if (a?.canPublish) return setView("prod");
@@ -80,15 +83,14 @@ export default function GrowStartPage() {
         setView("auth");
     };
     const proceed = async (tk) => {
+        const hit = peekAccess(tk);
+        if (hit) return route(hit); // already known: no waiting screen at all
         setView("check");
-        const r = await fetchSellerAccessStatus(tk);
-        const a = r?.success ? r : { canPublish: false, reason: "NOT_AUTHENTICATED" };
-        access.current = a; route(a);
+        route(await loadAccess(tk)); // joins the in-flight prefetch if there is one
     };
     const start = () => {
         if (initializing) { pend.current = true; setView("check"); return; } // wait for the profile to load
         if (!isLoggedIn || needsOnboarding) return setView("auth");     // sign in / finish sign-up right here
-        if (access.current) return route(access.current);
         proceed(token);
     };
     startRef.current = start;
@@ -104,10 +106,15 @@ export default function GrowStartPage() {
             <div className={`app${view === "land" ? " wide" : ""}${hasBar ? " hb" : ""}`}>
                 {view === "land" && <Landing onStart={start} />}
                 {view === "auth" && <GrowAuthFlow onAuthed={proceed} say={say} />}
-                {view === "check" && <section className="scr"><h2>Checking your account…</h2></section>}
+                {view === "check" && (
+                    <section className="scr" aria-busy="true" aria-label="Loading">
+                        <div className="gx-skel w40" /><div className="gx-skel h30 w80" /><div className="gx-skel w60" />
+                        <div className="gx-skel h56" /><div className="gx-skel h56" /><div className="gx-skel h56" />
+                    </section>
+                )}
                 {view === "onb" && (
                     <Onboarding token={token} profile={profile} refreshProfile={refreshProfile} say={say}
-                        onDone={() => { access.current = { canPublish: true, success: true }; setView("prod"); }} />
+                        onDone={() => { setAccess(token, { canPublish: true, success: true }); setView("prod"); }} />
                 )}
                 {view === "prod" && (
                     <Wizard token={token} say={say} onExit={() => setView("land")}
