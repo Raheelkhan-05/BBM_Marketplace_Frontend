@@ -6,6 +6,7 @@ import { AuthProvider } from "./context/AuthContext.jsx";
 import { RequireAuth, RequireGuest, RequireAdmin } from "./components/RouteGuards.jsx";
 import ScrollToTop from "./lib/ScrollToTop.jsx";
 import Layout from "./components/Layout.jsx";
+import GrowLayout from "./components/grow/GrowLayout.jsx";
 import AuthLayout from "./components/AuthLayout.jsx";
 import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
 import PendingSubmissionWatcher from "./components/PendingSubmissionWatcher.jsx";
@@ -76,6 +77,7 @@ const RFQPage = lazy(() => import("./pages/RFQPage.jsx"));
 const BrandsPage = lazy(() => import("./pages/BrandsPage.jsx"));
 const SellersPage = lazy(() => import("./pages/SellersPage.jsx"));
 const AdminRfqPage = lazy(() => import("./pages/admin/AdminRfqPage.jsx"));
+
 const GrowPage = lazy(() => import("./pages/GrowPage.jsx"));
 
 
@@ -169,7 +171,6 @@ function App() {
                 <Route path="/seller/store" element={<RequireAuth><SellerStorePage /></RequireAuth>} />
                 <Route path="/credit" element={<RequireAuth><CreditPage /></RequireAuth>} />
                 <Route path="/seller/marketing" element={<RequireAuth><SellerMarketingPage /></RequireAuth>} />
-                <Route path="/grow" element={<RequireAuth><GrowPage /></RequireAuth>} />
 
                 {/* <Route path="/rfq" element={<RequireAuth><RFQPage_ComingSoon /></RequireAuth>} /> */}
                 <Route path="/rfq" element={<RequireAuth><RFQPage /></RequireAuth>} />
@@ -217,6 +218,10 @@ function App() {
                 <Route path="/p/:submissionId" element={<SharedProductPage />} />
 
                 <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              </Route>
+
+              <Route element={<GrowLayout />}>
+                <Route path="/grow" element={<GrowPage />} />
               </Route>
             </Routes>
           </Suspense>
