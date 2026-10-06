@@ -79,6 +79,7 @@ const SellersPage = lazy(() => import("./pages/SellersPage.jsx"));
 const AdminRfqPage = lazy(() => import("./pages/admin/AdminRfqPage.jsx"));
 
 const GrowPage = lazy(() => import("./pages/GrowPage.jsx"));
+const GrowStartPage = lazy(() => import("./pages/GrowStartPage.jsx"));
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -221,7 +222,8 @@ function App() {
               </Route>
 
               <Route element={<GrowLayout />}>
-                <Route path="/grow" element={<GrowPage />} />
+                <Route path="/grow" element={<GrowStartPage />} />
+                <Route path="/grow/details" element={<GrowPage />} />
               </Route>
             </Routes>
           </Suspense>

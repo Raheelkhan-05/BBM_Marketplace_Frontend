@@ -913,10 +913,6 @@
     -webkit-tap-highlight-color: transparent
 }
 
-.gl .dock a:hover {
-    transform: translateY(-3px)
-}
-
 .gl .dock svg {
     width: 24px;
     height: 24px;

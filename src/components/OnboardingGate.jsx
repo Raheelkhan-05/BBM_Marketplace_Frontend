@@ -13,9 +13,20 @@ export default function OnboardingGate() {
     useEffect(() => {
         if (initializing) return;       // profile still loading — don't guess
         if (!needsOnboarding) return;
-        if (ALLOWED_PATHS.includes(pathname)) return;
 
-        navigate("/login", { replace: true, state: { from: pathname } });
+        // Allow login, legal pages, and the grow/onboarding flow.
+        if (
+            ALLOWED_PATHS.includes(pathname) ||
+            pathname === "/grow" ||
+            pathname.startsWith("/grow/")
+        ) {
+            return;
+        }
+
+        navigate("/login", {
+            replace: true,
+            state: { from: pathname },
+        });
     }, [needsOnboarding, initializing, pathname, navigate]);
 
     return null;
