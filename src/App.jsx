@@ -7,6 +7,7 @@ import { RequireAuth, RequireGuest, RequireAdmin } from "./components/RouteGuard
 import ScrollToTop from "./lib/ScrollToTop.jsx";
 import Layout from "./components/Layout.jsx";
 import GrowLayout from "./components/grow/GrowLayout.jsx";
+import GrowSellerRoot from "./components/growSeller/GrowSellerRoot.jsx";
 import AuthLayout from "./components/AuthLayout.jsx";
 import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
 import PendingSubmissionWatcher from "./components/PendingSubmissionWatcher.jsx";
@@ -79,7 +80,12 @@ const SellersPage = lazy(() => import("./pages/SellersPage.jsx"));
 const AdminRfqPage = lazy(() => import("./pages/admin/AdminRfqPage.jsx"));
 
 const GrowPage = lazy(() => import("./pages/GrowPage.jsx"));
-const GrowStartPage = lazy(() => import("./pages/GrowStartPage.jsx"));
+const GrowEntry = lazy(() => import("./pages/GrowEntry.jsx"));
+const GrowEnquiriesPage = lazy(() => import("./pages/GrowEnquiriesPage.jsx"));
+const GrowProductsPage = lazy(() => import("./pages/GrowProductsPage.jsx"));
+const GrowOrdersPage = lazy(() => import("./pages/GrowOrdersPage.jsx"));
+const GrowOrderDetailPage = lazy(() => import("./pages/GrowOrderDetailPage.jsx"));
+const GrowWalletPage = lazy(() => import("./pages/GrowWalletPage.jsx"));
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -222,8 +228,17 @@ function App() {
               </Route>
 
               <Route element={<GrowLayout />}>
-                <Route path="/grow" element={<GrowStartPage />} />
+                <Route path="/grow" element={<GrowEntry />} />
                 <Route path="/grow/details" element={<GrowPage />} />
+              </Route>
+
+              {/* New seller area: own shell (header, dock, wallet, theme), contexts and access guard */}
+              <Route element={<GrowSellerRoot />}>
+                <Route path="/grow/enquiries" element={<GrowEnquiriesPage />} />
+                <Route path="/grow/products" element={<GrowProductsPage />} />
+                <Route path="/grow/orders" element={<GrowOrdersPage />} />
+                <Route path="/grow/orders/:id" element={<GrowOrderDetailPage />} />
+                <Route path="/grow/wallet" element={<GrowWalletPage />} />
               </Route>
             </Routes>
           </Suspense>
