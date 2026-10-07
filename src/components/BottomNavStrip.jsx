@@ -21,7 +21,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, LogOut, ArrowUpRight, Home } from "lucide-react";
+import { Menu, X, LogOut, ArrowUpRight, Home, LogIn, Megaphone, Boxes, Receipt } from "lucide-react";
+
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import { useCart } from "../context/CartContext.jsx";
@@ -43,24 +44,37 @@ const FAB_BOTTOM_DEFAULT = 16;
 // On /home nothing else is pinned to the bottom any more, so same as default.
 const FAB_BOTTOM_HOME = 12;
 
-const DOCK_HEIGHT = 44 + 16 + 4; // buttons + p-2 top/bottom + 2px ring top/bottom
+const DOCK_HEIGHT = 84; // 60 (tallest button) + 18 padding + 3 border + 4 ring
 
-// TODO: set the real destinations for Grow and Save.
-const GROW_TO = "/grow";
-const SAVE_TO = "/save";
-
-const FAB_CLASS =
-    "relative flex h-11 w-11 items-center justify-center rounded-full bg-black text-white shadow-[0_8px_22px_-6px_rgba(0,0,0,0.5)]";
-
-const DOCK_FAB_CLASS =
-    "relative flex h-11 w-11 items-center justify-center rounded-full shadow-[0_4px_12px_-4px_rgba(0,0,0,0.4)]";
-
-// Flat, earthy tones. No gradients, no glow.
+// Same colours as .gl .dock in grow.css
 const FAB_THEME = {
-    grow: { bg: "#1F7A4D", fg: "#FFFFFF" },    // deep green: growth
-    save: { bg: "#FED813", fg: "#141B22" },   // saffron/amber: money, with a dark icon
-    menu: { bg: "#0B4F5C", fg: "#FFFFFF" },   // warm cream, stands out on the petrol dock   // teal (your existing secondary)
+    grow: { bg: "#22A06B", fg: "#FFFFFF" },
+    save: { bg: "#FFD60A", fg: "#06161C" },
+    home: { bg: "#0B5563", fg: "#FFFFFF" },
+    menu: { bg: "#0B5563", fg: "#FFFFFF" },
+    login: { bg: "#08222B", fg: "#FFFFFF" }, // dark, so it never looks like Save
 };
+
+const svgBase = { viewBox: "0 0 24 24", width: 24, height: 24, fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
+const GrowIcon = () => <svg {...svgBase}><path d="M3 17l6-6 4 4 8-8M15 7h6v6" /></svg>;
+const SaveIcon = () => <span style={{ font: "900 1.5rem 'Figtree', system-ui, sans-serif", lineHeight: 1 }}>₹</span>;
+const HomeIcon = () => <Home size={22} strokeWidth={1.8} aria-hidden="true" />;
+
+// size 52 / 60 and the raised Save button match .dock a / .dock .dy
+const TILES = {
+    home: { key: "home", label: "Home", Icon: HomeIcon, to: "/home", theme: FAB_THEME.home, size: 52 },
+    grow: { key: "grow", label: "Grow", Icon: GrowIcon, to: "/grow", theme: FAB_THEME.grow, size: 52 },
+    save: { key: "save", label: "Save", Icon: SaveIcon, to: "/save", theme: FAB_THEME.save, size: 60 },
+};
+
+const DOCK_BTN = "relative grid shrink-0 place-items-center rounded-full";
+
+
+const SELLER_TILES = [
+    { key: "enq", label: "Enquiries", Icon: Megaphone, to: "/grow/enquiries", bg: "#F4511E", fg: "#FFFFFF" },
+    { key: "prod", label: "Products", Icon: Boxes, to: "/grow/products", bg: "#FFD60A", fg: "#06161C" },
+    { key: "ord", label: "Orders", Icon: Receipt, to: "/grow/orders", bg: "#22A06B", fg: "#FFFFFF" },
+];
 
 // Dock surface colours (change here to re-theme the dock).
 const DOCK_BG = "#ffffff";      // petrol blue
@@ -102,52 +116,8 @@ const DOCK_AURA_CSS = `
     .bbm-dock-spin, .bbm-dock-ping, .bbm-dock-nudge { animation: none; }
     .bbm-dock-ping { display: none; }
 }
+body:has(.gs .bar) .bbm-dock { bottom: calc(84px + env(safe-area-inset-bottom, 0px)) !important; }
 `;
-
-// Grow: the arrow from the image (the FAB itself is the black circle).
-function GrowIcon({ size = 56 }) {
-    return (
-        <svg width={size} height={size} viewBox="168 168 400 400" fill="none" aria-hidden="true">
-            <path
-                d="M238 466 L305 348 L378 385 L415 312 L376 291 L484 248 L497 362 L455 341 L395 446 L322 408 L277 488 Z"
-                fill="currentColor"
-            />
-        </svg>
-    );
-}
-
-// Save: the money bag from the image.
-function SaveIcon({ size = 36 }) {
-    return (
-        <svg width={size} height={size} viewBox="150 90 440 590" fill="none" aria-hidden="true">
-            {/* knot / neck */}
-            <path
-                d="M313 120 Q377 108 441 128 L430 175 Q470 160 465 195 Q455 225 408 255 L345 255 Q285 215 272 185 Q275 150 310 150 Z"
-                fill="currentColor"
-            />
-            {/* body */}
-            <path
-                d="M330 265 Q377 245 410 262 C500 330 570 450 563 530 C560 590 520 605 380 612 C250 612 185 595 177 535 C175 450 260 330 330 265 Z"
-                fill="currentColor"
-            />
-            {/* slits in the neck and the tie line */}
-            <path d="M312 130 L332 195 M440 140 L425 180 M405 215 L385 250 M330 300 L352 266 M335 262 L405 252"
-                stroke="var(--fab-bg, #000)" strokeWidth="9" strokeLinecap="round" />
-            {/* dollar sign */}
-            {/* rupee sign */}
-            <g stroke="var(--fab-bg, #000)" strokeWidth="20" fill="none" strokeLinejoin="miter">
-                {/* two horizontal bars, same length, ending flush with the bowl's outer edge */}
-                <path d="M322 372 H445" />
-                <path d="M322 412 H445" />
-                {/* bowl: starts on the top bar, semicircle, returns left */}
-                <path d="M342 372 H370 A44 44 0 0 1 370 460 H338" />
-                {/* diagonal leg from the bowl's bottom-left to the bottom right */}
-                <path d="M338 460 L406 560" />
-            </g>
-
-        </svg>
-    );
-}
 
 function formatShopName(slug) {
     if (!slug) return "";
@@ -223,7 +193,7 @@ function Divider() {
 export default function BottomNavStrip({ onOpenRfq }) {
     const navigate = useNavigate();
     const { pathname, search } = useLocation();
-    const { isLoggedIn, profile, signOut } = useAuth();
+    const { isLoggedIn, effectiveLoggedIn, profile, signOut } = useAuth();
     const { purchaseUnreadCount, salesUnreadCount, creditUnreadCount } = useNotifications();
     const { cartCount } = useCart();
     const { unreadTotal: chatUnreadTotal } = useChatContext();
@@ -242,9 +212,20 @@ export default function BottomNavStrip({ onOpenRfq }) {
         creditUnread: creditUnreadCount,
     });
 
-    // Home lives in the quick-access FAB now, so it's dropped from the list
-    // to avoid showing it twice. (Desktop nav still uses the full list.)
-    const items = allItems.filter((it) => it.id !== "home");
+
+    const isHome = pathname === "/home" || pathname === "/home/";
+    const inGrow = pathname === "/grow" || pathname.startsWith("/grow/");
+    const inSave = pathname === "/save" || pathname.startsWith("/save/");
+    const inSellerArea = /^\/grow\/(enquiries|products|orders|wallet)(\/|$)/.test(pathname);
+    const showSellerTabs = inSellerArea && effectiveLoggedIn;
+    const sellerBadge = { prod: productsBadgeCount, ord: salesUnreadCount };
+    const fabBottom = FAB_BOTTOM_HOME;
+
+    // The module you're in swaps its FAB for Home.
+    const dockTiles = [inGrow ? TILES.home : TILES.grow, inSave ? TILES.home : TILES.save];
+
+    // Home is in the dock on module pages and is pointless on /home itself.
+    const items = allItems.filter((it) => !(it.id === "home" && (isHome || inGrow || inSave)));
 
     const [pageOpen, setPageOpen] = useState(false);
     const typing = useTypingActive();
@@ -263,10 +244,6 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const badgeTotal = items.reduce((sum, it) => sum + (it.rawBadge || 0), 0);
     const badgeDisplay = badgeTotal > 0 ? (badgeTotal > 9 ? "9+" : badgeTotal) : null;
 
-    const isHome = pathname === "/home" || pathname === "/home/";
-    const isGrow = pathname === "/grow" || pathname.startsWith("/grow/");
-    const fabBottom = isHome ? FAB_BOTTOM_HOME : FAB_BOTTOM_DEFAULT;
-
     const goHome = () => {
         setPageOpen(false);
         // Already on Home: just close the menu, no redundant navigation.
@@ -280,12 +257,10 @@ export default function BottomNavStrip({ onOpenRfq }) {
             onClick={() => setPageOpen((v) => !v)}
             aria-label={badgeDisplay ? `${pageOpen ? "Close" : "Open"} menu, ${badgeTotal} unread` : `${pageOpen ? "Close" : "Open"} menu`}
             aria-expanded={pageOpen}
-            initial={{ opacity: 0, y: 14, scale: 0.85 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ type: "spring", stiffness: 380, damping: 22, delay: 0.15 }}
+            animate={{ opacity: 1 }}
             whileTap={{ scale: 0.92 }}
-            className={FAB_CLASS}
-            style={{ background: FAB_THEME.menu.bg, color: FAB_THEME.menu.fg }}
+            className={DOCK_BTN}
+            style={{ width: 52, height: 52, background: FAB_THEME.menu.bg, color: FAB_THEME.menu.fg }}
         >
             <AnimatePresence mode="wait" initial={false}>
                 <motion.span
@@ -296,7 +271,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     transition={{ duration: 0.18 }}
                     className="flex"
                 >
-                    {pageOpen ? <X size={24} strokeWidth={2.5} /> : <Menu size={24} strokeWidth={2.5} />}
+                    {pageOpen ? <X size={22} strokeWidth={2.4} /> : <Menu size={22} strokeWidth={2.4} />}
                 </motion.span>
             </AnimatePresence>
 
@@ -312,134 +287,81 @@ export default function BottomNavStrip({ onOpenRfq }) {
         <motion.button
             type="button"
             onClick={() => navigate("/login")}
-            initial={{ opacity: 0, y: 14, scale: 0.85 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ type: "spring", stiffness: 380, damping: 22, delay: 0.15 }}
-            whileTap={{ scale: 0.94 }}
-            className="flex h-12 items-center gap-1.5 rounded-full bg-black px-5 text-[13px] font-bold text-white shadow-[0_8px_22px_-6px_rgba(0,0,0,0.5)]"
+            aria-label="Sign in"
+            title="Sign in"
+            animate={{ opacity: 1 }}
+            whileTap={{ scale: 0.92 }}
+            className={DOCK_BTN}
+            style={{ width: 52, height: 52, background: FAB_THEME.login.bg, color: FAB_THEME.login.fg }}
         >
-            Sign In
-            <ArrowUpRight className="h-3.5 w-3.5" />
+            <LogIn size={22} strokeWidth={2.4} />
         </motion.button>
     );
 
     return (
         <>
-            {isHome ? (
-                /* HOME: 5-column grid; the buttons use the middle 3 columns, so the
-                   group is centred. Hidden while the keyboard is up. */
-                <div
-                    className={`fixed inset-x-0 z-40 flex justify-center transition-opacity duration-150 ${typing ? "pointer-events-none opacity-0" : ""}`}
-                    style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
-                >
-                    {isLoggedIn ? (
-                        <div className="relative isolate rounded-full">
-                            <style>{DOCK_AURA_CSS}</style>
+            <div
+                className={`bbm-dock pointer-events-none fixed inset-x-0 z-40 flex justify-center transition-opacity duration-150 ${typing ? "opacity-0" : ""}`}
+                style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
+            >
+                <div className={`${typing ? "pointer-events-none" : "pointer-events-auto"} relative isolate rounded-full`}>
+                    <style>{DOCK_AURA_CSS}</style>
 
-                            {/* coloured halo: visible on a white page, fades out while the menu is open */}
-                            <span
-                                aria-hidden
-                                className={`pointer-events-none absolute -inset-[4px] -z-10 overflow-hidden rounded-full blur-[8px] transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-70"}`}
-                            >
-                                <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
-                            </span>
+                    {/* aura: blurred halo */}
+                    <span aria-hidden className={`pointer-events-none absolute -inset-[4px] -z-10 overflow-hidden rounded-full blur-[8px] transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-70"}`}>
+                        <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
+                    </span>
 
-                            {/* ring: dark hairline + the travelling comet */}
-                            <span
-                                aria-hidden
-                                className={`pointer-events-none absolute inset-0 overflow-hidden rounded-full transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-100"}`}
-                                style={{ background: DOCK_RING }}
-                            >
-                                <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
-                            </span>
+                    {/* aura: comet ring */}
+                    <span aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden rounded-full transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-100"}`} style={{ background: DOCK_RING }}>
+                        <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
+                    </span>
 
-                            {/* inner surface: dark ink pill, leaves a 2px ring visible around it */}
-                            <div
-                                className="relative m-[2px] flex items-center justify-center gap-2.5 rounded-full p-2 transition-[background-color,box-shadow] duration-200 md:gap-3"
-                                style={{
-                                    background: pageOpen ? "transparent" : DOCK_BG,
-                                    boxShadow: pageOpen ? "none" : `0 14px 30px -10px ${DOCK_SHADOW}`,
-                                }}
-                            >
-                                {[
-                                    { key: "grow", label: "Grow", Icon: GrowIcon, to: GROW_TO },
-                                    { key: "save", label: "Save", Icon: SaveIcon, to: SAVE_TO },
-                                ].map(({ key, label, Icon, to }, i) => (
-                                    <motion.button
-                                        key={key}
-                                        type="button"
-                                        onClick={() => navigate(to)}
-                                        aria-label={label}
-                                        title={label}
-                                        initial={{ opacity: 0, y: 14, scale: 0.85 }}
-                                        animate={{ opacity: pageOpen ? 0 : 1, y: 0, scale: 1 }}
-                                        transition={{ type: "spring", stiffness: 380, damping: 22, delay: 0.05 + i * 0.05 }}
-                                        whileTap={{ scale: 0.92 }}
-                                        whileHover={{ scale: 1.06 }}
-                                        style={{ background: FAB_THEME[key].bg, color: FAB_THEME[key].fg, "--fab-bg": FAB_THEME[key].bg }}
-                                        className={`${DOCK_FAB_CLASS} ${pageOpen ? "pointer-events-none" : ""}`}
-                                    >
-                                        {/* amber ping ring, Save only */}
-                                        {key === "save" && (
-                                            <span
-                                                aria-hidden
-                                                className="bbm-dock-ping pointer-events-none absolute inset-0 rounded-full border-2"
-                                                style={{ borderColor: FAB_THEME.save.bg }}
-                                            />
-                                        )}
-                                        {/* Grow arrow gets a small up-right nudge */}
-                                        <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}>
-                                            <Icon size={38} />
-                                        </span>
-                                    </motion.button>
-                                ))}
-                                <div className="contents md:hidden">{menuButton}</div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="flex justify-center">{signInButton}</div>
-                    )}
+                    {/* the dock itself: exactly .gl .dock */}
+                    <div
+                        className={`relative m-[2px] flex items-center justify-center rounded-full border-[1.5px] p-[9px] backdrop-blur-[14px] transition-[background-color,box-shadow,gap] duration-200 ${showSellerTabs ? "gap-2" : "gap-3"}`}
+                        style={{
+                            background: pageOpen ? "transparent" : "rgba(255,255,255,.92)",
+                            borderColor: pageOpen ? "transparent" : "#DFE7EA",
+                            boxShadow: pageOpen ? "none" : "0 18px 40px -12px rgba(8,34,43,.4)",
+                        }}
+                    >
+                        <AnimatePresence mode="popLayout" initial={false}>
+                            {dockTiles.map(({ key, label, Icon, to, theme, size }) => (
+                                <motion.button
+                                    key={key}
+                                    layout
+                                    type="button"
+                                    onClick={() => navigate(to)}
+                                    aria-label={label}
+                                    title={label}
+                                    initial={{ opacity: 0, scale: 0.6 }}
+                                    animate={{ opacity: pageOpen ? 0 : 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.6 }}
+                                    transition={{ type: "spring", stiffness: 500, damping: 32 }}
+                                    whileTap={{ scale: 0.92 }}
+                                    style={{ width: size, height: size, marginTop: key === "save" ? -4 : 0, background: theme.bg, color: theme.fg }}
+                                    className={`${DOCK_BTN} ${pageOpen ? "pointer-events-none" : ""}`}
+                                >
+                                    {key === "save" && (
+                                        <span aria-hidden className="bbm-dock-ping pointer-events-none absolute inset-0 rounded-full border-2" style={{ borderColor: FAB_THEME.save.bg }} />
+                                    )}
+                                    <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon /></span>
+                                </motion.button>
+                            ))}
+                        </AnimatePresence>
+
+                        {/* seller tabs: keep the AnimatePresence block exactly as you have it */}
+
+                        <AnimatePresence mode="wait" initial={false}>
+                            <motion.div key={effectiveLoggedIn ? "menu" : "login"} className="contents"
+                                initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}>
+                                {effectiveLoggedIn ? menuButton : signInButton}
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
                 </div>
-            ) : isGrow && isLoggedIn ? null : (
-                /* EVERYWHERE ELSE — z-40 sits ABOVE the sheet (z-[39]).
-                /* EVERYWHERE ELSE — z-40 sits ABOVE the sheet (z-[39]).
-                   Bottom-anchored, so anything added above the Menu button grows upward
-                   and never shifts the Menu button itself. */
-                <div
-                    className="fixed right-4 z-40 flex flex-col items-center gap-3 md:hidden"
-                    style={{ bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
-                >
-                    {/* Quick-access Home — only while the menu is open */}
-                    <AnimatePresence>
-                        {isLoggedIn && pageOpen && (
-                            <motion.button
-                                key="home-fab"
-                                type="button"
-                                onClick={goHome}
-                                aria-label="Go to Home"
-                                initial={{ opacity: 0, y: 28, scale: 0.5 }}
-                                animate={{
-                                    opacity: 1, y: 0, scale: 1,
-                                    transition: { type: "spring", stiffness: 420, damping: 26, delay: 0.06 },
-                                }}
-                                exit={{
-                                    opacity: 0, y: 20, scale: 0.6,
-                                    transition: { duration: 0.16, ease: "easeIn" },
-                                }}
-                                whileTap={{ scale: 0.92 }}
-                                className="flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-2xl bg-black text-white shadow-[0_8px_22px_-8px_rgba(0,0,0,0.5)]"
-                            >
-                                <Home size={19} strokeWidth={2.4} />
-                                <span className="text-[9.5px] font-bold uppercase leading-none tracking-wider">
-                                    Home
-                                </span>
-                            </motion.button>
-                        )}
-                    </AnimatePresence>
-
-                    {isLoggedIn ? menuButton : signInButton}
-                </div>
-            )}
+            </div>
 
             {/* Backdrop — dims the page behind the sheet; tap to close */}
             <div
@@ -464,18 +386,18 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 {/* Grab handle + title */}
                 <div className="shrink-0 px-5 pt-2.5">
                     <div className="mx-auto h-1 w-10 rounded-full" style={{ background: C.hair }} />
-                    <h1 className="mt-3 truncate text-[20px] font-extrabold leading-tight tracking-tight" style={{ color: C.ink }}>
+                    <div role="heading" aria-level={2} className="mt-3 truncate text-[20px] font-extrabold leading-tight tracking-tight" style={{ color: C.ink }}>
                         {profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
-                    </h1>
+                    </div>
                 </div>
 
                 {/* List — min-h-0 lets it shrink and scroll when the sheet hits its max height.
                     Bottom padding clears the floating buttons. */}
                 <div
-                    className={`min-h-0 flex-1 overflow-y-auto px-5 pt-3 pb-[var(--sheet-pb)] ${isHome ? "md:pb-5" : ""}`}
+                    className={`min-h-0 flex-1 overflow-y-auto px-5 pt-3 pb-[var(--sheet-pb)] md:pb-5 ${isHome ? "md:pb-5" : ""}`}
                     style={{
                         overscrollBehavior: "contain",
-                        "--sheet-pb": `calc(${fabBottom + (isHome ? DOCK_HEIGHT + 12 : FAB_STACK_HEIGHT)}px + env(safe-area-inset-bottom, 0px))`,
+                        "--sheet-pb": `calc(${fabBottom + DOCK_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))`,
                     }}
                     data-lenis-prevent=""
                     onWheel={stopScrollPropagation}
@@ -502,7 +424,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             );
                         })}
 
-                        {isLoggedIn && (
+                        {effectiveLoggedIn && (
                             <>
                                 {items.length > 0 && items[items.length - 1].group !== 2 && <Divider />}
 

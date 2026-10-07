@@ -7,6 +7,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { House } from "lucide-react";
 import { goTo } from "./scrollTo.js";
 import "./grow.css";
+// import BottomNavStrip from "../BottomNavStrip.jsx";
 
 const NAV = [
     ["Buyers", "grow-buyers"],
@@ -53,24 +54,14 @@ export default function GrowLayout() {
                 <Outlet />
             </main>
 
-            <footer className="ft">
+            <footer className="ft" style={{ paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))" }}>
                 <div className="wrap">
                     <span><b>GROW</b> · More buyers. More business. Less selling effort.</span>
                     <span>People • Product • Partnership</span>
                 </div>
             </footer>
 
-            {!isStart && (
-                <nav className="dock" aria-label="Quick links">
-                    <a className="dg" href="#grow-credit" onClick={goTo("grow-credit")} aria-label="Growth">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M15 7h6v6" /></svg>
-                    </a>
-                    <a className="dy" href="#grow-pricing" onClick={goTo("grow-pricing")} aria-label="Pricing">₹</a>
-                    <Link className="dm" to="/home" aria-label="Home">
-                        <House size={22} strokeWidth={1.8} aria-hidden="true" />
-                    </Link>
-                </nav>
-            )}
+            {/* <BottomNavStrip /> */}
         </div>
     );
 }

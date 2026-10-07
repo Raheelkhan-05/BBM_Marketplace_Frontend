@@ -6,11 +6,12 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight, Loader2, Mail, Phone, CheckCircle2, Pencil, RotateCw,
   Building2, User, Check, Lock, Zap, ShieldCheck, Tag, Send,
-  FileText, Truck,
+  FileText, Truck, ArrowUpRight,
 } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext.jsx";
 import { AUTH_THEME_CSS, AuthHeader, useAuthTheme } from "../components/authTheme.jsx";
+import SmartLink from "../components/SmartLink.jsx";
 import {
   requestOtp, verifyOtp, completeProfile,
   requestContactOtp, verifyContactOtp, lookupGstin,
@@ -667,7 +668,7 @@ function IdentifierCard({ initialValue, onSubmit, onClearError, loading, serverE
       </button>
 
       <p className="fi">
-        By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy-policy">Privacy Policy</a>.
+        By continuing, you agree to our <span className="sm:hidden"><br /></span> <a href="/terms">Terms</a> and <a href="/privacy-policy">Privacy Policy</a>.
       </p>
       <div className="tr">
         <span><Lock className="ic" />No password needed</span>
@@ -1094,7 +1095,13 @@ export default function AuthPage() {
         theme={theme} onToggleTheme={toggleTheme}
         onBack={onboarding ? undefined : handleBack}
         actions={!onboarding && (
-          <button type="button" className="bt go" onClick={focusSignIn}>Sign in</button>
+          // <button type="button" className="bt go" onClick={focusSignIn}>Sign in</button>
+          <SmartLink
+            to="/login"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#FFD60A] bg-[#FFD60A] px-5 text-[13px] font-extrabold text-[#06161C] transition hover:brightness-105 active:scale-[.985]"
+          >
+            Sign In <ArrowUpRight className="h-3.5 w-3.5" />
+          </SmartLink>
         )}
       />
 

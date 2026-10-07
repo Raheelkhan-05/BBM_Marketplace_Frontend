@@ -16,9 +16,9 @@ import PendingPaymentGate from './components/PendingPaymentGate.jsx';
 import ContactsBootstrapper from "./components/ContactsBootstrapper.jsx";
 import DeferredMount from "./components/DeferredMount.jsx";
 import { routeImports, preloadRoutesWhenIdle } from "./routePreload.js";
+import GrowProviders from "./components/grow/GrowProviders.jsx";
 import OnboardingGate from "./components/OnboardingGate.jsx";
-
-
+import AppShell from "./components/AppShell.jsx";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -141,104 +141,106 @@ function App() {
 
           <Suspense fallback={<RouteFallback />}>
             <Routes>
-              <Route element={<AuthLayout />}>
-                <Route path="/login" element={<AuthPage />} />
-              </Route>
-              <Route path="/terms" element={<TermsPage />} />
-              <Route path="/privacy-policy" element={<PrivacyPage />} />
-              <Route element={<Layout />}>
-                <Route path="/" element={<Navigate to="/home" replace />} />
+              <Route element={<AppShell />}>
+                <Route element={<AuthLayout />}>
+                  <Route path="/login" element={<AuthPage />} />
+                </Route>
+                <Route path="/terms" element={<TermsPage />} />
+                <Route path="/privacy-policy" element={<PrivacyPage />} />
+                <Route element={<Layout />}>
+                  <Route path="/" element={<Navigate to="/home" replace />} />
 
 
-                <Route path="/search" element={<SearchResultsPage />} />
-                <Route path="/home" element={<HomePage />} />
-                <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
-                <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
+                  <Route path="/search" element={<SearchResultsPage />} />
+                  <Route path="/home" element={<HomePage />} />
+                  <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
+                  <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
 
-                <Route path="/category/:idOrSlug/browse" element={<BrowsePage />} />
-                <Route path="/browse" element={<BrowsePage />} />
+                  <Route path="/category/:idOrSlug/browse" element={<BrowsePage />} />
+                  <Route path="/browse" element={<BrowsePage />} />
 
-                <Route path="/category/:idOrSlug/products" element={<CategoryProductsPage />} />
-                <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
-                <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
+                  <Route path="/category/:idOrSlug/products" element={<CategoryProductsPage />} />
+                  <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
+                  <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
 
-                <Route path="/orders" element={<OrdersPage />} />
-                <Route path="/seller/orders" element={<SalesOrdersPage />} />
-                <Route path="/orders/:id" element={<OrderDetailPage />} />
-                <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
-                <Route path="/seller/products" element={<SellerManageListingsPage />} />
+                  <Route path="/orders" element={<OrdersPage />} />
+                  <Route path="/seller/orders" element={<SalesOrdersPage />} />
+                  <Route path="/orders/:id" element={<OrderDetailPage />} />
+                  <Route path="/seller/orders/:id" element={<SellerOrderDetailPage />} />
+                  <Route path="/seller/products" element={<SellerManageListingsPage />} />
 
-                <Route path="/admin/payments" element={<PaymentVerificationPage />} />
+                  <Route path="/admin/payments" element={<PaymentVerificationPage />} />
 
-                <Route path="/chat" element={<ChatPage />} />
-                <Route path="/chat/:conversationId" element={<ChatPage />} />
+                  <Route path="/chat" element={<ChatPage />} />
+                  <Route path="/chat/:conversationId" element={<ChatPage />} />
 
-                <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
-                <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
-                <Route path="/seller/store" element={<RequireAuth><SellerStorePage /></RequireAuth>} />
-                <Route path="/credit" element={<RequireAuth><CreditPage /></RequireAuth>} />
-                <Route path="/seller/marketing" element={<RequireAuth><SellerMarketingPage /></RequireAuth>} />
+                  <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
+                  <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
+                  <Route path="/seller/store" element={<RequireAuth><SellerStorePage /></RequireAuth>} />
+                  <Route path="/credit" element={<RequireAuth><CreditPage /></RequireAuth>} />
+                  <Route path="/seller/marketing" element={<RequireAuth><SellerMarketingPage /></RequireAuth>} />
 
-                {/* <Route path="/rfq" element={<RequireAuth><RFQPage_ComingSoon /></RequireAuth>} /> */}
-                <Route path="/rfq" element={<RequireAuth><RFQPage /></RequireAuth>} />
-                <Route path="/admin/rfq" element={<AdminRfqPage />} />
+                  {/* <Route path="/rfq" element={<RequireAuth><RFQPage_ComingSoon /></RequireAuth>} /> */}
+                  <Route path="/rfq" element={<RequireAuth><RFQPage /></RequireAuth>} />
+                  <Route path="/admin/rfq" element={<AdminRfqPage />} />
 
-                <Route path="/brands" element={<BrandsPage />} />
+                  <Route path="/brands" element={<BrandsPage />} />
 
-                <Route path="/sellers" element={<SellersPage />} />
+                  <Route path="/sellers" element={<SellersPage />} />
 
-                <Route path="/seller/sell" element={<SellPublishProductPage />} />
-                <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />
+                  <Route path="/seller/sell" element={<SellPublishProductPage />} />
+                  <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />
 
-                <Route path="/cart" element={<CartPage />} />
+                  <Route path="/cart" element={<CartPage />} />
 
-                <Route path="/transport-library" element={<TransportLibraryPage />} />
+                  <Route path="/transport-library" element={<TransportLibraryPage />} />
 
-                <Route path="/admin/wallets" element={<AdminWalletSellersPage />} />
+                  <Route path="/admin/wallets" element={<AdminWalletSellersPage />} />
 
-                <Route path="/seller/wallet" element={<SellerWalletPage />} />
+                  <Route path="/seller/wallet" element={<SellerWalletPage />} />
 
-                <Route path="/admin/database" element={<AdminDatabasePanel />} />
+                  <Route path="/admin/database" element={<AdminDatabasePanel />} />
 
-                <Route path="/admin/product-commisions" element={<AdminProductCommissionsPage />} />
+                  <Route path="/admin/product-commisions" element={<AdminProductCommissionsPage />} />
 
-                <Route path="/admin/catalog/bulk-upload" element={<AdminFullCatalogUploadPage />} />
+                  <Route path="/admin/catalog/bulk-upload" element={<AdminFullCatalogUploadPage />} />
 
-                <Route path="/admin/listings" element={<RequireAdmin><AdminSellerSubmissionsPage /></RequireAdmin>} />
-                <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
-                <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
-                <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
+                  <Route path="/admin/listings" element={<RequireAdmin><AdminSellerSubmissionsPage /></RequireAdmin>} />
+                  <Route path="/admin/sellers" element={<RequireAdmin><AdminSellersPage /></RequireAdmin>} />
+                  <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
+                  <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
 
-                <Route path="/admin/support" element={<RequireAdmin><AdminHelpRequestsPage /></RequireAdmin>} />
+                  <Route path="/admin/support" element={<RequireAdmin><AdminHelpRequestsPage /></RequireAdmin>} />
 
-                <Route path="/shop/:slug" element={<ShopRoute />} />
-                <Route path="/product/:id" element={<ProductDetailPage />} />
+                  <Route path="/shop/:slug" element={<ShopRoute />} />
+                  <Route path="/product/:id" element={<ProductDetailPage />} />
 
-                <Route path="/admin/catalog" element={<RequireAdmin><AdminCatalogReviewPage /></RequireAdmin>} />
-                <Route path="/admin/catalog/:level/:id" element={<RequireAdmin><AdminCatalogDetailPage /></RequireAdmin>} />
+                  <Route path="/admin/catalog" element={<RequireAdmin><AdminCatalogReviewPage /></RequireAdmin>} />
+                  <Route path="/admin/catalog/:level/:id" element={<RequireAdmin><AdminCatalogDetailPage /></RequireAdmin>} />
 
-                <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
-                <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
-                <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
-                <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} />
+                  <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
+                  <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
+                  <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
+                  <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} />
 
-                <Route path="/p/:submissionId" element={<SharedProductPage />} />
+                  <Route path="/p/:submissionId" element={<SharedProductPage />} />
 
-                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-              </Route>
+                  <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                </Route>
 
-              <Route element={<GrowLayout />}>
-                <Route path="/grow" element={<GrowEntry />} />
-                <Route path="/grow/details" element={<GrowPage />} />
-              </Route>
-
-              {/* New seller area: own shell (header, dock, wallet, theme), contexts and access guard */}
-              <Route element={<GrowSellerRoot />}>
-                <Route path="/grow/enquiries" element={<GrowEnquiriesPage />} />
-                <Route path="/grow/products" element={<GrowProductsPage />} />
-                <Route path="/grow/orders" element={<GrowOrdersPage />} />
-                <Route path="/grow/orders/:id" element={<GrowOrderDetailPage />} />
-                <Route path="/grow/wallet" element={<GrowWalletPage />} />
+                <Route element={<GrowProviders />}>
+                  <Route element={<GrowLayout />}>
+                    <Route path="/grow" element={<GrowEntry />} />
+                    <Route path="/grow/details" element={<GrowPage />} />
+                  </Route>
+                  <Route element={<GrowSellerRoot />}>
+                    <Route path="/grow/enquiries" element={<GrowEnquiriesPage />} />
+                    <Route path="/grow/products" element={<GrowProductsPage />} />
+                    <Route path="/grow/orders" element={<GrowOrdersPage />} />
+                    <Route path="/grow/orders/:id" element={<GrowOrderDetailPage />} />
+                    <Route path="/grow/wallet" element={<GrowWalletPage />} />
+                  </Route>
+                </Route>
               </Route>
             </Routes>
           </Suspense>

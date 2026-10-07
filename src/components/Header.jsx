@@ -194,6 +194,35 @@ function ScrollableNav({ navItems, pathname, navMaxWidth }) {
   );
 }
 
+function GuestHeader() {
+  return (
+    <header
+      className="z-50 border-b border-[#DCE6E9] bg-white/85 backdrop-blur-[14px]"
+      style={{ top: "env(safe-area-inset-top, 0px)" }}
+    >
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 md:px-7">
+        <SmartLink to="/" aria-label="BBM home" className="flex min-w-0 items-center gap-2">
+          <img src="/Logo.png" alt="BBM" className="block h-7 w-auto object-contain" />
+          <span
+            className="whitespace-nowrap text-[18px] font-extrabold leading-none tracking-[.02em] text-[#08222B]"
+            style={{ fontFamily: "'Bricolage Grotesque','Figtree',system-ui,sans-serif" }}
+          >
+            BBM
+          </span>
+        </SmartLink>
+        <span className="flex-1" />
+        {/* On mobile the Sign In lives in the FAB dock */}
+        <SmartLink
+          to="/login"
+          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#FFD60A] bg-[#FFD60A] px-5 text-[13px] font-extrabold text-[#06161C] transition hover:brightness-105 active:scale-[.985]"
+        >
+          Sign In <ArrowUpRight className="h-3.5 w-3.5" />
+        </SmartLink>
+      </div>
+    </header>
+  );
+}
+
 export default function Header({ onOpenRfq }) {
   const [open, setOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -325,7 +354,7 @@ export default function Header({ onOpenRfq }) {
     })
     : [];
 
-
+  if (!effectiveLoggedIn) return <GuestHeader />;
 
   return (
     <>

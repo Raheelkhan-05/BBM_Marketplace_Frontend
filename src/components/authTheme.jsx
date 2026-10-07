@@ -90,7 +90,7 @@ font:500 17px/1.55 var(--f);color:var(--ink);background-color:var(--bg);backgrou
 .ba .spin{animation:bbm-spin 1s linear infinite}
 @keyframes bbm-spin{to{transform:rotate(360deg)}}
 
-.ba .w{max-width:1080px;margin:0 auto;padding:0 20px}
+.ba .w{max-width:1280px;margin:0 auto;padding:0 20px}
 .ba .hd{position:sticky;top:env(safe-area-inset-top,0px);z-index:6;background:color-mix(in srgb,var(--bg) 84%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
 .ba .hd .w{display:flex;align-items:center;gap:12px;height:64px}
 .ba .lg{display:flex;align-items:center;gap:8px;min-width:0;text-decoration:none;color:var(--ink)}

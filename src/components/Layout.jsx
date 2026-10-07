@@ -3,7 +3,7 @@ import { createContext, useContext, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Header from "./Header.jsx";
 import Footer from "./Footer.jsx";
-import BottomNavStrip from "./BottomNavStrip.jsx";
+// import BottomNavStrip from "./BottomNavStrip.jsx";
 import BackgroundAmbience from "./landing/BackgroundAmbience.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { NotificationsProvider } from "../context/NotificationsContext.jsx";
@@ -51,7 +51,9 @@ export default function Layout() {
   // const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step !== "done";
   const onboardingIncomplete = isLoggedIn && profile && profile.onboarding_step != null && profile.onboarding_step !== "done";
 
-  const showBottomNav = !isAdminPage && !isWalletPage && !isChatDetailPage && !isSalesOrdersPage && !isOrdersPage && !lightboxOpen && !onboardingIncomplete;
+  // const showBottomNav = !isAdminPage && !isWalletPage && !isChatDetailPage && !isSalesOrdersPage && !isOrdersPage && !lightboxOpen && !onboardingIncomplete;
+  const showBottomNav = !isAdminPage && !isWalletPage && !isChatDetailPage
+    && !isSalesOrdersPage && !isOrdersPage && !lightboxOpen;
 
   return (
     <NotificationsProvider>
@@ -78,7 +80,7 @@ export default function Layout() {
                             <Footer />
                           </div>
 
-                          {showBottomNav && <BottomNavStrip onOpenRfq={() => setRfqOpen(true)} />}
+                          {/* {showBottomNav && <BottomNavStrip onOpenRfq={() => setRfqOpen(true)} />} */}
                         </div>
 
                         {/* Center-screen popup for order (purchase + sales) notifications.

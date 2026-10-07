@@ -13,6 +13,7 @@ import { toTop } from "../grow/GrowAuthFlow.jsx";
 import Ic from "./Ic.jsx";
 import { GrowSellerCtx } from "../../context/GrowSellerContext.js";
 import "./grow-seller.css";
+// import BottomNavStrip from "../BottomNavStrip.jsx";
 
 const TABS = [
     { to: "/grow/enquiries", label: "Enquiries", icon: "mega", a: "var(--or)", c: "#fff", badge: null },
@@ -109,7 +110,8 @@ export default function GrowSellerLayout() {
                     </div>
                 </header>
                 {body}
-                <nav className="dock" aria-label="Main">{TABS.map(tabLink)}</nav>
+                {/* <nav className="dock" aria-label="Main">{TABS.map(tabLink)}</nav> */}
+                {/* <BottomNavStrip /> */}
                 <div className={`toast${toast ? " on" : ""}`} role="status">{toast}</div>
             </div>
         </GrowSellerCtx.Provider>
