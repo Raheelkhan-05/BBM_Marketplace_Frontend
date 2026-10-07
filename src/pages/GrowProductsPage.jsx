@@ -120,7 +120,7 @@ function ProductCard({
 
             {rejected && (
                 <div className="rej">
-                    <b style={{ display: "block" }}>Rejected, not visible to buyers</b>
+                    <p className="tracking-wide" style={{ display: "block" }}>Rejected, not visible to buyers</p>
                     {it.rejection_reason || "Update the listing and submit it again for review."}
                 </div>
             )}

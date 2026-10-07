@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useNotifications } from "../context/NotificationsContext.jsx";
+import { useListings } from "../context/ListingsContext.jsx";
 import RfqFormModal from "../components/rfq/RfqFormModal.jsx";
 import RfqBulkUploadModal from "../components/rfq/RfqBulkUploadModal.jsx";
 import RfqQuoteModal from "../components/rfq/RfqQuoteModal.jsx";
@@ -34,6 +36,11 @@ const mergeUnique = (prev, incoming) => {
 
 // Last result per (token, tab, search, status): switching tabs paints instantly, then revalidates silently.
 const CACHE = new Map();
+
+// Unread count in the corner of a summary tile (styles live in grow-seller.css: .kp .nb).
+const KpBadge = ({ n }) => (n > 0 ? (
+    <i className="nb">{n > 99 ? "99+" : n}<em className="vh"> unread</em></i>
+) : null);
 
 function EnquiryCard({ item, quoted, onQuote, onEdit, onClose }) {
     const mine = item.isMine;
@@ -86,11 +93,14 @@ function EnquiryCard({ item, quoted, onQuote, onEdit, onClose }) {
     );
 }
 
+
 export default function GrowEnquiriesPage() {
     const nav = useNavigate();
     const { token, profile } = useAuth();
     const { say } = useGrowSeller();
     const stats = useSellerStats();
+    const { salesUnreadCount } = useNotifications();
+    const { totalBadgeCount: productsBadgeCount } = useListings();
     const [params, setParams] = useSearchParams();
 
     const tab = params.get("tab") === "mine" ? "mine" : "all";
@@ -200,9 +210,15 @@ export default function GrowEnquiriesPage() {
             <p className="sub2">Here is what needs you today.</p>
 
             <div className="kp">
-                <button type="button" style={{ "--a": "var(--or)" }} onClick={() => listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}><b>{kp(stats.enq)}</b><span>Open enquiries</span></button>
-                <button type="button" style={{ "--a": "var(--bl)" }} onClick={() => nav("/grow/orders")}><b>{kp(stats.ord)}</b><span>New orders</span></button>
-                <button type="button" style={{ "--a": "var(--gr)" }} onClick={() => nav("/grow/products")}><b>{kp(stats.prod)}</b><span>Live products</span></button>
+                <button type="button" style={{ "--a": "var(--or)", position: "relative" }} onClick={() => {
+                    if (listRef.current) {
+                        listRef.current.style.scrollMarginTop = "180px";
+                        listRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }
+                }}
+                ><b>{kp(stats.enq)}</b><span>Open enquiries</span></button>
+                <button type="button" style={{ "--a": "var(--bl)" }} onClick={() => nav("/grow/orders")}><b>{kp(stats.ord)}</b><span>New orders</span><KpBadge n={salesUnreadCount} /></button>
+                <button type="button" style={{ "--a": "var(--gr)" }} onClick={() => nav("/grow/products")}><b>{kp(stats.prod)}</b><span>Live products</span><KpBadge n={productsBadgeCount} /></button>
             </div>
 
             <div className="sh" ref={listRef}>

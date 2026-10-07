@@ -15,11 +15,6 @@ import { GrowSellerCtx } from "../../context/GrowSellerContext.js";
 import "./grow-seller.css";
 // import BottomNavStrip from "../BottomNavStrip.jsx";
 
-const TABS = [
-    { to: "/grow/enquiries", label: "Enquiries", icon: "mega", a: "var(--or)", c: "#fff", badge: null },
-    { to: "/grow/products", label: "Products", icon: "box", a: "var(--go)", c: "#06161C", badge: "prod" },
-    { to: "/grow/orders", label: "Orders", icon: "receipt", a: "var(--gr)", c: "#fff", badge: "ord" },
-];
 const fm = (n) => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
 
 export default function GrowSellerLayout() {
@@ -101,7 +96,7 @@ export default function GrowSellerLayout() {
                 <header className="hd">
                     <div className="hd-in">
                         <Link className="logo" to="/grow/enquiries" aria-label="GROW seller home">GR<i>O</i>W</Link>
-                        <nav className="tabs" aria-label="Main">{TABS.map(tabLink)}</nav>
+                        {/* <nav className="tabs" aria-label="Main">{TABS.map(tabLink)}</nav> */}
                         <span className="sp" />
                         <button className={`wl${blocked ? " neg" : ""}`} type="button" aria-label="Open wallet" onClick={openWallet}>
                             <span className="wi"><Ic n="wallet" /></span>

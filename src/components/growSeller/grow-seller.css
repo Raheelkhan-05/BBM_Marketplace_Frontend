@@ -318,6 +318,64 @@
     display: block
 }
 
+/* ===== Unread count badge on the summary tiles ===== */
+.gsl .kp button {
+    position: relative
+}
+
+.gsl .kp .nb {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 7px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: var(--red);
+    color: #fff;
+    border: 2px solid var(--s);
+    font: 900 .74rem/1 var(--f);
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .01em;
+    box-shadow: 0 6px 14px -6px rgba(192, 52, 29, .7);
+    pointer-events: none;
+    animation: gsl-nb-pop .35s cubic-bezier(.3, 1.6, .5, 1) both
+}
+
+/* screen-reader only text ("unread") */
+.gsl .kp .nb .vh {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0
+}
+
+@keyframes gsl-nb-pop {
+    from {
+        transform: scale(.4);
+        opacity: 0
+    }
+
+    to {
+        transform: none;
+        opacity: 1
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gsl .kp .nb {
+        animation: none
+    }
+}
+
 /* ===== Buttons ===== */
 .gsl .bt {
     display: inline-flex;

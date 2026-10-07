@@ -15,13 +15,16 @@
 // Dock, backdrop and sheet are rendered through a portal on document.body.
 // Only ONE instance ever renders (an extra copy renders nothing).
 //
-// Seller area (/grow/enquiries, /grow/products, /grow/orders, /grow/wallet):
-// the dock shows Home, Enquiries, Products, Orders, then Menu.
+// Dock layout is the SAME on every page: [Grow] [Save] [Menu or Home].
+//  - outside the Grow / Save modules the third button is Menu
+//  - inside the Grow / Save modules the third button is Home (same position)
+// Enquiries / Products / Orders are no longer in the dock; their counts are shown
+// on the Grow page's own summary tiles.
 import { Fragment, useEffect, useId, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, LogOut, Home, LogIn, Megaphone, Boxes, Receipt } from "lucide-react";
+import { Menu, X, LogOut, Home, LogIn } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
@@ -63,9 +66,6 @@ const SLOT = [
     { size: 52, icon: 22 },
     { size: 60, icon: 26, raised: true }, // the "Save" slot: bigger, raised, with the ping ring
 ];
-const SLOT_PLAIN = { size: 52, icon: 22 };
-// Seller tiles: same size and lift as the Save button, but no ping ring (`lift`, not `raised`).
-const SLOT_SELLER = { size: 56, icon: 26, lift: true };
 
 const svgBase = { viewBox: "0 0 24 24", width: 24, height: 24, fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
 const GrowIcon = () => <svg {...svgBase}><path d="M3 17l6-6 4 4 8-8M15 7h6v6" /></svg>;
@@ -79,12 +79,6 @@ const TILES = {
 };
 
 const DOCK_BTN = "relative grid shrink-0 place-items-center rounded-full";
-
-const SELLER_TILES = [
-    { key: "enq", label: "Enquiries", Icon: Megaphone, to: "/grow/enquiries", bg: "#F4511E", fg: "#FFFFFF" },
-    { key: "prod", label: "Products", Icon: Boxes, to: "/grow/products", bg: "#FFD60A", fg: "#06161C" },
-    { key: "ord", label: "Orders", Icon: Receipt, to: "/grow/orders", bg: "#22A06B", fg: "#FFFFFF" },
-];
 
 const DOCK_RING = "#ffffff"; // ring colour where the comet isn't passing
 
@@ -299,36 +293,20 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const isHome = pathname === "/home" || pathname === "/home/";
     const inGrow = pathname === "/grow" || pathname.startsWith("/grow/");
     const inSave = pathname === "/save" || pathname.startsWith("/save/");
-    const inSellerArea = /^\/grow\/(enquiries|products|orders|wallet)(\/|$)/.test(pathname);
-    const showSellerTabs = inSellerArea && effectiveLoggedIn;
-    const sellerBadge = { prod: productsBadgeCount, ord: salesUnreadCount };
+    const inModule = inGrow || inSave; // third slot is Home inside Grow / Save, Menu everywhere else
     const fabBottom = FAB_BOTTOM_HOME;
     const shopName = profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM";
-    const tileGap = showSellerTabs ? 8 : 12;
+    const tileGap = 12;
 
     // Total of everything that used to show on the removed menu rows
     // (Manage products + Sales orders). Shown on the Grow button.
     const growBadgeTotal = (productsBadgeCount || 0) + (salesUnreadCount || 0);
 
-    // Only ONE seller tile can be the current one (first match), so only one ring is ever drawn.
-    const activeSellerKey = showSellerTabs
-        ? (SELLER_TILES.find((t) => pathname === t.to || pathname.startsWith(t.to + "/"))?.key ?? null)
-        : null;
-
-    // Tiles in the dock:
-    //  - seller area: Home, Enquiries, Products, Orders
-    //  - elsewhere:   Grow / Save (the module you are in swaps its FAB for Home)
-    const tiles = showSellerTabs
-        ? [
-            { ...TILES.home, slot: SLOT_PLAIN, badge: 0 },
-            ...SELLER_TILES.map((t) => ({
-                key: t.key, label: t.label, Icon: t.Icon, to: t.to,
-                theme: { bg: t.bg, fg: t.fg }, slot: SLOT_SELLER,
-                badge: sellerBadge[t.key] || 0,
-            })),
-        ]
-        : [inGrow ? TILES.home : TILES.grow, inSave ? TILES.home : TILES.save]
-            .map((t, i) => ({ ...t, slot: SLOT[i], badge: t.key === "grow" ? growBadgeTotal : 0 }));
+    // Always the same two tiles, in the same order: Grow, Save.
+    // (Grow's badge is hidden inside the Grow module, where the page shows the counts itself.)
+    const tiles = [TILES.grow, TILES.save].map((t, i) => ({
+        ...t, slot: SLOT[i], badge: t.key === "grow" && !inGrow ? growBadgeTotal : 0,
+    }));
 
     // Menu rows: drop the seller rows that now live in Grow, and Home while already on Home.
     const items = allItems.filter(
@@ -356,7 +334,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     useEffect(() => {
         if (!pageOpen && pillRef.current) setPillH(pillRef.current.offsetHeight);
-    }, [pageOpen, primary, tiles.length, showSellerTabs]);
+    }, [pageOpen, primary, tiles.length, inModule]);
 
     useEffect(() => { if (pageOpen) setClipTiles(true); }, [pageOpen]);
 
@@ -412,6 +390,21 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     {badgeDisplay}
                 </span>
             )}
+        </motion.button>
+    );
+
+    const homeButton = (
+        <motion.button
+            type="button"
+            onClick={() => navigate("/home")}
+            aria-label="Home"
+            title="Home"
+            animate={{ opacity: 1 }}
+            whileTap={{ scale: 0.92 }}
+            className={DOCK_BTN}
+            style={{ width: 52, height: 52, background: FAB_THEME.home.bg, color: FAB_THEME.home.fg, outline: "none", WebkitTapHighlightColor: "transparent" }}
+        >
+            <HomeIcon size={22} />
         </motion.button>
     );
 
@@ -485,7 +478,6 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             <div ref={tilesInnerRef} className="relative flex w-max items-center" style={{ gap: tileGap }}>
                                 <AnimatePresence mode="popLayout" initial={false}>
                                     {tiles.map(({ key, label, Icon, to, theme, slot, badge }) => {
-                                        const current = key === activeSellerKey; // at most one tile
                                         return (
                                             <motion.button
                                                 key={key}
@@ -493,7 +485,6 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                                 type="button"
                                                 onClick={() => navigate(to)}
                                                 aria-label={badge > 0 ? `${label}, ${badge} unread` : label}
-                                                aria-current={current ? "page" : undefined}
                                                 tabIndex={pageOpen ? -1 : 0}
                                                 title={label}
                                                 initial={{ opacity: 0, scale: 0.6 }}
@@ -504,7 +495,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                                 style={{
                                                     width: slot.size, height: slot.size, marginTop: slot.raised || slot.lift ? -4 : 0,
                                                     background: theme.bg, color: theme.fg, "--fab-bg": theme.bg,
-                                                    boxShadow: current ? `0 0 0 2px #fff, 0 0 0 4px ${theme.bg}` : "none",
+                                                    boxShadow: "none",
                                                 }}
                                                 className={`${DOCK_BTN} bbm-tile ${pageOpen ? "pointer-events-none" : ""}`}
                                             >
@@ -526,9 +517,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         </motion.div>
 
                         <AnimatePresence mode="wait" initial={false}>
-                            <motion.div key={effectiveLoggedIn ? "menu" : "login"} className="contents"
+                            <motion.div key={inModule ? "home" : effectiveLoggedIn ? "menu" : "login"} className="contents"
                                 initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}>
-                                {effectiveLoggedIn ? menuButton : signInButton}
+                                {inModule ? homeButton : effectiveLoggedIn ? menuButton : signInButton}
                             </motion.div>
                         </AnimatePresence>
                     </div>
