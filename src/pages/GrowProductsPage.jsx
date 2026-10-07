@@ -177,6 +177,8 @@ export default function GrowProductsPage() {
     const location = useLocation();
     const { say, setBadge } = useGrowSeller();
     const { reportRestockCount, markListingsViewed } = useListings();
+    // Remember this page so Cancel in the Add Product flow brings the seller back here (keeps the active filter).
+    const addProduct = () => nav("/grow?start=1", { state: { from: location.pathname + location.search } });
 
     const warm = CACHE.token === token && CACHE.items;
     const [items, setItems] = useState(() => (warm ? CACHE.items : []));
@@ -343,7 +345,7 @@ export default function GrowProductsPage() {
                         {stats.rejected > 0 && <> · <span style={{ color: "var(--red)" }}>{stats.rejected} rejected</span></>}
                     </p>
                 </div>
-                <button className="bt go" type="button" onClick={() => nav("/grow?start=1")}><Ic n="plus" />Add product</button>
+                <button className="bt go" type="button" onClick={addProduct}><Ic n="plus" />Add product</button>
             </div>
 
             <label className="srch" style={{ marginBottom: 12 }}>
@@ -376,7 +378,7 @@ export default function GrowProductsPage() {
                     {!filtered.length && (
                         <Empty title={items.length === 0 ? "You have not listed anything yet" : "Nothing here"}
                             text={items.length === 0 ? "List your first product to start selling." : "No listings match this filter."}>
-                            {items.length === 0 && (<><br /><button className="bt go" type="button" onClick={() => nav("/grow?start=1")}><Ic n="plus" />Add product</button></>)}
+                            {items.length === 0 && (<><br /><button className="bt go" type="button" onClick={addProduct}><Ic n="plus" />Add product</button></>)}
                         </Empty>
                     )}
                 </div>

@@ -2,7 +2,7 @@
 // New default /grow experience (the compact HTML design) wired to the existing backend.
 // land -> Start selling -> (login | seller onboarding | add-product wizard)
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
     saveSellerProgress, submitSellerOnboarding, saveSellerBankDetails,
@@ -57,6 +57,14 @@ export default function GrowStartPage() {
     const { token, isLoggedIn, profile, needsOnboarding, initializing, refreshProfile } = useAuth();
     const nav = useNavigate();
     const [sp] = useSearchParams();
+
+    const location = useLocation();
+    // Page the seller came from (e.g. "/grow/products"). Captured once, because the ?start=1 redirect below drops it.
+    const [returnTo] = useState(() => {
+        const from = location.state?.from;
+        return typeof from === "string" && from.startsWith("/") ? from : null;
+    });
+
     // land | auth | check | onb | prod | pdone
     // Coming from "Add your products" (?start=1): never flash the landing screen. If the access check was
     // already warmed up by the details page, open the wizard on the very first render.
@@ -105,6 +113,13 @@ export default function GrowStartPage() {
         auto.current = true; nav("/grow", { replace: true }); startRef.current();
     }, [sp]); // eslint-disable-line
 
+    // Cancel on the first Add Product step: go back where the seller came from, otherwise show the landing screen.
+    const exitWizard = () => {
+        if (!returnTo) return setView("land");
+        if (window.history.state?.idx > 0) nav(-1);        // the previous history entry is that page
+        else nav(returnTo, { replace: true });
+    };
+
     const hasBar = view === "onb" || view === "prod";
     return (
         <div className="gs">
@@ -122,7 +137,7 @@ export default function GrowStartPage() {
                         onDone={() => { setAccess(token, { canPublish: true, success: true }); setView("prod"); }} />
                 )}
                 {view === "prod" && (
-                    <Wizard token={token} say={say} onExit={() => setView("land")}
+                    <Wizard token={token} say={say} onExit={exitWizard}
                         onNeedOnboarding={() => setView("onb")} onNeedLogin={() => setView("auth")}
                         onSubmitted={(card) => { setLast(card); setView("pdone"); }} />
                 )}
