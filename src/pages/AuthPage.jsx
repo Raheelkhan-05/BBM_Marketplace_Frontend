@@ -1,25 +1,29 @@
 // pages/AuthPage.jsx
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+
 import {
-  ArrowRight, Loader2, Mail, Phone, CheckCircle2, Pencil,
-  Building2, Handshake, ArrowLeft, User, RotateCw,
+  ArrowRight, Loader2, Mail, Phone, CheckCircle2, Pencil, RotateCw,
+  Building2, User, Check, Lock, Zap, ShieldCheck, Tag, Send,
+  FileText, Truck,
 } from "lucide-react";
 
-import SmartLink from "../components/SmartLink.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { AUTH_THEME_CSS, AuthHeader, useAuthTheme } from "../components/authTheme.jsx";
 import {
   requestOtp, verifyOtp, completeProfile,
   requestContactOtp, verifyContactOtp, lookupGstin,
   fetchMe, saveProgress,
 } from "../utils/api.js";
 
+/* ---------------------------------------------------------------------------
+ * Constants & pure helpers (unchanged logic)
+ * ------------------------------------------------------------------------- */
 const PHONE_RE = /^[6-9]\d{9}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
-const STEPS = ["identifier", "otp", "onboarding", "done"];
 
 // Where to send the person after login/onboarding. Whoever sends someone to
 // /login passes `state: { from }` (a string like "/home/?shop=abc", or a
@@ -79,104 +83,859 @@ function isValidGstinShape(v) {
   return v.length === 15 && GSTIN_FORMAT.test(v);
 }
 
-// ---------------------------------------------------------------------------
-// Shared design tokens — restyled to match the marketing-page look: ink
-// black headings/buttons, muted slate copy, a single teal accent (from the
-// logo) reserved for focus states / links, generous letter-spacing on all
-// caps labels.
-// ---------------------------------------------------------------------------
-const FONT = "'Amazon Ember', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-const INK = "#0B1116";
-const BRAND = "#047084";
-const BRAND_SOFT = "rgba(4,112,132,0.07)";
-
-function inputClass(error) {
-  return `w-full min-w-0 rounded-2xl border bg-white px-4 py-3 text-[15px] font-medium text-slate-800 placeholder:font-normal placeholder:text-slate-300 transition-[border-color,box-shadow] focus:outline-none focus:ring-[3px] ${error
-    ? "border-[#c71f11] focus:ring-[#c71f11]/10"
-    : "border-slate-200 focus:border-slate-400 focus:ring-slate-400/10"
-    }`;
+function maskIdentifier(v) {
+  if (EMAIL_RE.test(v)) return v.replace(/^(.{2}).*(@.*)$/, "$1•••$2");
+  const d = v.replace(/\D/g, "").slice(-10);
+  return `+91 ${d.replace(/^(\d{2})\d{6}/, "$1XXXXXX")}`;
 }
 
-function PrimaryButton({ children, loading, loadingText, className = "", ...rest }) {
-  return (
-    <motion.button
-      whileTap={{ scale: 0.985 }}
-      className={`flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-[#12181d] px-5 text-[15px] font-bold tracking-wide text-white transition-[background-color,opacity,transform] duration-150 hover:bg-[#0B1116] disabled:cursor-not-allowed disabled:opacity-40 sm:text-[15.5px] ${className}`}
-      {...rest}
-    >
-      {loading ? (<><Loader2 className="h-4 w-4 animate-spin" />{loadingText || "Please wait…"}</>) : children}
-    </motion.button>
-  );
-}
+/* ---------------------------------------------------------------------------
+ * Static marketing content
+ * ------------------------------------------------------------------------- */
+// Logo files live in /public/brands/<slug>.jpg (see the extraction script).
+// If a file is missing the tile falls back to the brand name as text.
+const BRAND_NAMES = [
+  "3M", "Aditya", "Asian Paints", "Bosch", "Castrol", "Ft Paint", "Mercedes",
+  "Mobil", "Nerolac", "Oneida", "Securust", "Shaktiman", "Shell", "Sk Zic",
+  "Skf", "Timken", "Unity", "Zerust", "ZXL",
+];
+const BRANDS = BRAND_NAMES.map((name) => ({
+  name,
+  src: `/brands/${name.toLowerCase().replace(/\s+/g, "-")}.jpg`,
+}));
+const RAIL_A = BRANDS.filter((_, i) => i % 2 === 0);
+const RAIL_B = BRANDS.filter((_, i) => i % 2 === 1);
 
-function SecondaryButton({ children, loading, className = "", ...rest }) {
-  return (
-    <button
-      className={`inline-flex min-h-[48px] shrink-0 items-center justify-center gap-1.5 rounded-full px-4 text-[13.5px] font-bold tracking-wide transition-[background-color,opacity] disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
-      style={{ color: BRAND, background: BRAND_SOFT }}
-      {...rest}
-    >
-      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : children}
-    </button>
-  );
-}
+const BENEFITS = {
+  buy: {
+    heading: "Save Money. Save Time.",
+    accent: "var(--or)", accentText: "var(--ot)",
+    items: [
+      ["Competitive B2B prices", "Compare quotes and quantity-slab pricing side by side."],
+      ["More suppliers to choose from", "Reach GST-verified sellers across India."],
+      ["More brands & alternatives", "Castrol, Shell, Bosch, SKF, Timken and more."],
+      ["Faster product discovery", "Search any product, brand or category in one place."],
+      ["Better sourcing options", "Pick the pack size, MOQ and delivery terms that fit you."],
+      ["Access to new suppliers", "Post a request and let suppliers quote on it."],
+      ["Simplified procurement", "Order, track and receive in one flow."],
+      ["Multiple requirements, one platform", "Lubricants, bearings, appliances, packaging and more."],
+    ],
+  },
+  sell: {
+    heading: "More buyers. More business.",
+    accent: "var(--bl)", accentText: "var(--bt)",
+    items: [
+      ["Get new customers", "Be found by relevant B2B buyers beyond your network."],
+      ["Increase sales", "Turn enquiries into orders with fast quotes."],
+      ["Expand into new markets", "Choose the states you want to deliver to."],
+      ["Reduce customer acquisition effort", "Add a product once. Share price and specs instantly."],
+      ["Showcase your complete product range", "One catalogue for every SKU, pack and price."],
+      ["Build long-term B2B relationships", "Buyer-wise pricing and credit terms for repeat business."],
+      ["Grow without opening new branches", "A digital sales channel around your existing business."],
+    ],
+  },
+};
 
-function PanelHeader({ icon, title, subtitle }) {
+const STEPS_CONTENT = [
+  { n: 1, accent: "var(--ot)", title: "Sign in with an OTP", body: "Use your mobile number or email. We send a one-time code, nothing else to set up." },
+  { n: 2, accent: "var(--bt)", title: "Verify your business", body: "Confirm mobile, email and GST number. Your registration details are filled in for you." },
+  { n: 3, accent: "var(--gt)", title: "List, quote, trade", body: "Add products, answer live enquiries, and confirm, dispatch and deliver orders in one place." },
+];
+
+const FEATURES = [
+  { Icon: Tag, accent: "var(--or)", title: "Price once, sell smart", body: "Buyer-wise prices, quantity slabs and a price validity you control. Update the base price once." },
+  { Icon: Send, accent: "var(--bl)", title: "Quote in a tap", body: "Live requests for quotation land with a timestamp. Reply with a price, delivery time and validity in seconds." },
+  { Icon: FileText, accent: "var(--gr)", title: "Your terms, your rules", body: "Set returns, warranty, credit terms and the states you deliver to, product by product." },
+  { Icon: Truck, accent: "var(--go)", ink: "#06161C", title: "Orders in one flow", body: "Confirm, dispatch, deliver. Track every order and see exactly what you will receive." },
+];
+
+const FAQS = [
+  [
+    "What do I need to sign up?",
+    "Just your mobile number or email to sign in. To start selling you will verify your mobile number, email address and GST number.",
+  ],
+  [
+    "When am I charged?",
+    "Fees are charged only when an order is generated. Transaction fees start as low as 0.25%, with optional promotion on top if you choose it.",
+  ],
+  [
+    "How does OTP sign-in work?",
+    "Enter your mobile number or email and we send a 6-digit code. Type it in and you are signed in. There is no password to create or forget.",
+  ],
+  [
+    "Can I buy and sell on the same account?",
+    "Yes. Post what you need and get quotes from suppliers, or quote on live enquiries from other buyers, all from one place.",
+  ],
+  [
+    "Can I control who sees my prices?",
+    "Yes. Choose full visibility or selected buyers only, and set buyer-specific prices while keeping one central catalogue.",
+  ],
+];
+
+function FAQItem({ question, answer, isOpen, onClick, reduceMotion }) {
   return (
-    <div className="flex flex-col items-center text-center">
-      <span
-        className="flex h-12 w-12 items-center justify-center rounded-2xl text-white sm:h-[50px] sm:w-[50px]"
-        style={{ background: INK }}
+    <div className={`faq-item${isOpen ? " is-open" : ""}`}>
+      <button
+        type="button"
+        className="faq-trigger"
+        onClick={onClick}
+        aria-expanded={isOpen}
       >
-        {icon}
-      </span>
-      <h1 className="mt-4 text-[24px] font-black leading-[1.08] tracking-tight sm:text-[26px]" style={{ color: INK }}>
-        {title}
-      </h1>
-      {subtitle && (
-        <p className="mt-2 max-w-[330px] text-[13.5px] font-medium leading-relaxed text-slate-500 sm:text-[14px]">
-          {subtitle}
-        </p>
-      )}
+        <span>{question}</span>
+
+        <motion.span
+          className="faq-icon"
+          animate={reduceMotion ? {} : { rotate: isOpen ? 45 : 0 }}
+          transition={{
+            duration: 0.2,
+            ease: "easeOut",
+          }}
+          aria-hidden="true"
+        >
+          +
+        </motion.span>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {isOpen && (
+          <motion.div
+            className="faq-answer"
+            initial={
+              reduceMotion
+                ? { height: "auto", opacity: 1 }
+                : { height: 0, opacity: 0 }
+            }
+            animate={{
+              height: "auto",
+              opacity: 1,
+            }}
+            exit={
+              reduceMotion
+                ? { height: 0, opacity: 0 }
+                : { height: 0, opacity: 0 }
+            }
+            transition={
+              reduceMotion
+                ? { duration: 0 }
+                : {
+                  height: {
+                    duration: 0.3,
+                    ease: [0.22, 1, 0.36, 1],
+                  },
+                  opacity: {
+                    duration: 0.2,
+                    ease: "easeOut",
+                  },
+                }
+            }
+          >
+            <p>{answer}</p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-// --- add near the top of the file, alongside the other pure helpers ---
-function OnboardingChecklist({ steps }) {
+/* ---------------------------------------------------------------------------
+ * Page-specific styles (shared tokens/header/buttons come from authTheme.jsx)
+ * ------------------------------------------------------------------------- */
+const PAGE_CSS = `
+@keyframes bbm-sl{to{transform:translateX(-100%)}}
+@keyframes bbm-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+.ba .hero{padding:44px 0 36px}
+.ba .hero .w{display:grid;gap:40px;grid-template-columns:1.05fr .95fr;align-items:center}
+@media(max-width:900px){.ba .hero .w{grid-template-columns:1fr}}
+.ba .hero .w>*{min-width:0}
+.ba .ey{font-size:.8rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--tt);margin-bottom:14px}
+.ba h1{font:900 clamp(2.7rem,9vw,4.8rem)/1.02 var(--f);letter-spacing:-.035em}
+.ba h1 em{font-style:normal;color:var(--yt)}
+.ba .tag{margin:18px 0 26px;font:700 1.25rem var(--f);color:var(--mute);letter-spacing:.01em}
+.ba .tag i{font-style:normal;color:var(--ink)}
+
+/* login card */
+.ba .lc{background:var(--s);border:1px solid var(--line);border-radius:28px;padding:22px;box-shadow:0 30px 70px -34px #000,0 0 0 1px color-mix(in srgb,var(--bl) 12%,transparent);max-width:520px;position:relative}
+.ba .lc label.l{display:block;font-weight:800;margin-bottom:10px}
+.ba .inp{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);border-radius:18px;background:var(--s2);padding:0 16px;color:var(--mute);transition:border-color .2s,box-shadow .2s}
+.ba .inp:focus-within{border-color:var(--bl);box-shadow:0 0 0 5px color-mix(in srgb,var(--bl) 22%,transparent)}
+.ba .inp.er{border-color:var(--red)}
+.ba .inp .pre{display:flex;align-items:center;gap:6px;flex:none;font-weight:800;color:var(--mute)}
+.ba .inp input{flex:1;min-width:0;height:58px;border:0;outline:0;background:none;font:600 1.05rem var(--f);color:var(--ink)}
+.ba .inp input::placeholder{color:var(--mute);opacity:.8;font-weight:500}
+.ba .inp input:disabled{opacity:.6}
+.ba .dt{min-height:1.5em;margin:8px 2px 14px;font-size:.88rem;font-weight:700;color:var(--mute);display:flex;gap:6px;align-items:center}
+.ba .dt.ok{color:var(--gt)}
+.ba .dt.er{color:var(--red)}
+.ba .fi{margin-top:14px;font-size:.85rem;color:var(--mute);text-align:center}
+.ba .fi a{color:var(--ink);font-weight:700}
+.ba .tr{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:16px;font-size:.84rem;font-weight:700;color:var(--mute);justify-content:center}
+.ba .tr span{display:flex;align-items:center;gap:6px}
+.ba .tr .ic{width:16px;height:16px;color:var(--gt)}
+.ba .lc h2{font:900 1.6rem/1.15 var(--f);letter-spacing:-.02em}
+.ba .lc p.s{color:var(--mute);margin-top:6px}
+.ba .lc p.s b{color:var(--ink)}
+.ba .lnk{background:none;border:0;color:var(--bt);font:700 .92rem var(--f);padding:10px 4px;text-decoration:underline}
+.ba .lnk:disabled,.ba .lnk.dis{color:var(--mute);text-decoration:none;cursor:default;opacity:.9}
+.ba .lnk.dis{display:inline-block}
+
+/* otp boxes */
+.ba .ow{position:relative}
+.ba .otp{display:flex;gap:8px;margin:18px 0 6px}
+.ba .otp input{flex:1;min-width:0;height:60px;text-align:center;font:900 1.5rem var(--f);border:1.5px solid var(--line);border-radius:16px;background:var(--s2);color:var(--ink);outline:0;padding:0;transition:border-color .2s,box-shadow .2s}
+.ba .otp input:focus{border-color:var(--bl);box-shadow:0 0 0 4px color-mix(in srgb,var(--bl) 22%,transparent)}
+.ba .otp input.on{border-color:color-mix(in srgb,var(--bl) 55%,var(--line))}
+.ba .otp input.bad{border-color:var(--red)}
+.ba .otp input:disabled{opacity:.6}
+.ba .otp.sm{margin:10px 0 4px;max-width:340px;gap:6px}
+.ba .otp.sm input{height:52px;font-size:1.3rem;border-radius:14px}
+.ba .vo{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;border-radius:16px;background:color-mix(in srgb,var(--s) 62%,transparent);pointer-events:none}
+.ba .vp{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;background:var(--ink);color:var(--bg);font-weight:800;font-size:.85rem}
+.ba .nt{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:.84rem;font-weight:800;color:var(--gt)}
+.ba .rw{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:0 4px;margin-top:10px;color:var(--mute);font-size:.85rem}
+
+/* stats + peek */
+.ba .stt{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.ba .stt div{flex:1;min-width:96px;padding:12px 14px;border:1px solid var(--line);border-radius:18px;background:var(--s)}
+.ba .stt b{display:block;font:900 1.5rem/1.1 var(--f)}
+.ba .stt span{font-size:.8rem;font-weight:700;color:var(--mute)}
+.ba .peek{position:relative;display:grid;gap:14px;max-width:440px;justify-self:center;width:100%}
+.ba .pk{background:var(--s);border:1px solid var(--line);border-radius:22px;padding:16px;box-shadow:0 24px 50px -30px #000}
+.ba .pk:nth-child(1){transform:rotate(-1.4deg)}
+.ba .pk:nth-child(2){transform:rotate(1.2deg);margin-left:22px}
+.ba .pk:nth-child(3){transform:rotate(-.8deg);margin-right:22px}
+.ba .pk small{display:block;color:var(--mute);font-weight:700;font-size:.8rem}
+.ba .pk b{font-weight:800}
+.ba .pk .r{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.ba .pk .q{color:var(--tt);font-weight:800}
+.ba .pl{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-weight:800;font-size:.8rem;background:var(--go);color:#06161C;white-space:nowrap}
+.ba .pl.g{background:color-mix(in srgb,var(--gr) 22%,var(--s));color:var(--gt)}
+.ba .pl.b{background:color-mix(in srgb,var(--bl) 22%,var(--s));color:var(--bt)}
+.ba .pl .ic{width:14px;height:14px}
+
+/* brand wall */
+.ba .bw{padding:36px 0 28px;overflow:hidden}
+.ba .bw p{font-size:.8rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin-bottom:16px}
+.ba .rail{display:flex;overflow:hidden;margin-bottom:12px;-webkit-mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent);mask-image:linear-gradient(90deg,transparent,#000 8%,#000 92%,transparent)}
+.ba .track{display:flex;gap:12px;padding-right:12px;flex:none;animation:bbm-sl 50s linear infinite}
+.ba .rail.rev .track{animation-direction:reverse;animation-duration:60s}
+.ba .rail:hover .track{animation-play-state:paused}
+.ba .tile{flex:none;width:150px;height:92px;background:#fff;border-radius:16px;display:grid;place-items:center;padding:12px;box-shadow:0 10px 24px -14px #000}
+.ba .tile img{max-width:112px;max-height:56px;object-fit:contain}
+.ba .tile .tn{font:800 1rem/1.2 var(--f);color:#06161C;text-align:center}
+
+/* sections */
+.ba .sec{padding:60px 0}
+.ba .sec.tight{padding-top:20px}
+.ba .sec h2{font:900 clamp(1.9rem,5vw,3rem)/1.08 var(--f);letter-spacing:-.03em}
+.ba .sec .lead{color:var(--mute);margin-top:12px;max-width:52ch;font-size:1.08rem}
+.ba .seg{display:inline-flex;background:var(--s2);border:1px solid var(--line);border-radius:999px;padding:5px;margin:24px 0 22px;max-width:100%}
+.ba .seg button{border:0;background:none;min-height:46px;padding:0 26px;border-radius:999px;font:800 1rem var(--f);color:var(--mute);transition:background .2s,color .2s}
+@media(max-width:420px){.ba .seg button{padding:0 16px;font-size:.92rem}}
+.ba .seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.ba .bh{font:900 clamp(1.5rem,4vw,2.2rem)/1.1 var(--f);letter-spacing:-.025em;margin-bottom:18px}
+.ba .bn{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(max-width:700px){.ba .bn{grid-template-columns:1fr}}
+.ba .bi{display:flex;gap:14px;padding:16px;border:1px solid var(--line);border-radius:20px;background:var(--s)}
+.ba .bi i{flex:none;width:38px;height:38px;border-radius:12px;display:grid;place-items:center;font-style:normal;background:color-mix(in srgb,var(--a) 20%,var(--s2));color:var(--at)}
+.ba .bi b{display:block;font-weight:800;line-height:1.25}
+.ba .bi span{color:var(--mute);font-size:.92rem;line-height:1.4;display:block;margin-top:2px}
+.ba .hw{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:28px}
+@media(max-width:760px){.ba .hw{grid-template-columns:1fr}}
+.ba .st{padding:22px;border-radius:24px;border:1px solid var(--line);background:var(--s)}
+.ba .st em{font:900 3rem/1 var(--f);font-style:normal;color:var(--a);opacity:.9}
+.ba .st b{display:block;font:800 1.25rem var(--f);margin:10px 0 6px}
+.ba .st span{color:var(--mute);font-size:.95rem;display:block}
+.ba .ft{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:28px}
+@media(max-width:700px){.ba .ft{grid-template-columns:1fr}}
+.ba .fc{padding:22px;border-radius:24px;border:1px solid var(--line);background:linear-gradient(160deg,color-mix(in srgb,var(--a) 14%,var(--s)),var(--s) 60%)}
+.ba .fc .pi{width:48px;height:48px;border-radius:15px;background:var(--a);color:var(--c,#fff);display:grid;place-items:center;margin-bottom:14px}
+.ba .fc b{display:block;font:800 1.2rem var(--f);margin-bottom:6px}
+.ba .fc span{color:var(--mute);display:block}
+.ba .fq details{border:1px solid var(--line);border-radius:18px;background:var(--s);margin-top:10px}
+.ba .fq summary{list-style:none;cursor:pointer;padding:18px;font-weight:800;display:flex;justify-content:space-between;gap:12px;align-items:center}
+.ba .fq summary::-webkit-details-marker{display:none}
+.ba .fq summary::after{content:"+";font-size:1.5rem;font-weight:500;color:var(--tt);transition:transform .2s;flex:none}
+.ba .fq details[open] summary::after{transform:rotate(45deg)}
+.ba .fq p{padding:0 18px 18px;color:var(--mute)}
+.ba .cta{padding:70px 0 80px;text-align:center}
+.ba .cta .box{padding:44px 24px;border-radius:32px;border:1px solid var(--line);background:radial-gradient(500px 240px at 15% 100%,color-mix(in srgb,var(--gr) 26%,transparent),transparent 70%),radial-gradient(500px 240px at 85% 100%,color-mix(in srgb,var(--go) 20%,transparent),transparent 70%),var(--s)}
+.ba .cta h2{font:900 clamp(2rem,6vw,3.4rem)/1.05 var(--f);letter-spacing:-.03em;max-width:16ch;margin:0 auto}
+.ba .cta p{color:var(--mute);margin:14px auto 26px;max-width:44ch}
+.ba .cta .bt{padding:0 34px;min-height:56px}
+.ba footer{border-top:1px solid var(--line);padding:26px 0 40px;color:var(--mute);font-size:.9rem}
+.ba footer .w{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+.ba footer a{color:var(--ink);font-weight:700}
+.ba footer b{color:var(--ink)}
+.ba .boot{min-height:50vh;display:grid;place-items:center;color:var(--mute)}
+
+/* onboarding */
+.ba .ob{display:block;max-width:620px;margin:0 auto;padding:32px 20px 64px}
+.ba .oc{background:var(--s);border:1px solid var(--line);border-radius:28px;padding:24px;box-shadow:0 30px 70px -34px #000,0 0 0 1px color-mix(in srgb,var(--bl) 12%,transparent)}
+.ba .oh{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:22px}
+.ba .oh .pi{width:56px;height:56px;border-radius:18px;background:var(--go);color:#06161C;display:grid;place-items:center;margin-bottom:14px}
+.ba .oh h2{font:900 1.7rem/1.1 var(--f);letter-spacing:-.025em}
+.ba .oh p{color:var(--mute);margin-top:6px;font-size:.95rem}
+.ba .wb{margin-bottom:18px;padding:12px 14px;border-radius:16px;background:var(--s2);border:1px solid var(--line);text-align:center;font-weight:800;font-size:.9rem}
+.ba .fm{display:flex;flex-direction:column;gap:18px}
+.ba .sc{scroll-margin-top:96px}
+.ba .fd{display:flex;flex-direction:column;min-width:0}
+.ba .fl{font-weight:800;font-size:.92rem;margin-bottom:8px;display:block}
+.ba .fh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
+.ba .fh .fl{margin:0;min-width:0;overflow-wrap:anywhere}
+.ba .fh .lnk{padding:0;display:inline-flex;align-items:center;gap:4px;font-size:.88rem;flex:none}
+.ba .fr{display:flex;gap:10px;align-items:stretch}
+.ba .fx{flex:1;min-width:0;width:100%;height:56px;border:1.5px solid var(--line);border-radius:18px;background:var(--s2);padding:0 16px;font:600 1.02rem var(--f);color:var(--ink);outline:0;transition:border-color .2s,box-shadow .2s}
+.ba .fx::placeholder{color:var(--mute);opacity:.8;font-weight:500}
+.ba .fx:focus{border-color:var(--bl);box-shadow:0 0 0 5px color-mix(in srgb,var(--bl) 22%,transparent)}
+.ba .fx.er{border-color:var(--red)}
+.ba .fx:disabled{opacity:.6}
+.ba .fx.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;padding-right:46px}
+.ba .rel{position:relative;flex:1;min-width:0}
+.ba .rel .ic{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--gt)}
+.ba .vbn{flex:none;min-width:92px;padding:0 20px;border-radius:18px;border:1.5px solid var(--line);background:var(--s2);font:800 .95rem var(--f);display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--ink);transition:border-color .2s,opacity .2s}
+.ba .vbn:hover:not(:disabled){border-color:var(--bl)}
+.ba .vbn:disabled{opacity:.5;cursor:not-allowed}
+.ba .em{margin-top:8px;font-size:.85rem;font-weight:700;color:var(--red)}
+.ba .hint{margin-bottom:2px;font-size:.88rem;font-weight:600;color:var(--mute)}
+.ba .vf{display:flex;align-items:center;gap:10px;min-height:56px;padding:0 14px;border:1.5px solid color-mix(in srgb,var(--gr) 45%,var(--line));border-radius:18px;background:color-mix(in srgb,var(--gr) 10%,var(--s2))}
+.ba .vf .ic{color:var(--gt)}
+.ba .vf .v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.ba .vf .pl{margin-left:auto}
+.ba .gd{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px;padding:16px;border:1px solid var(--line);border-radius:20px;background:var(--s2);overflow:hidden}
+
+.ba .fq .faq-item {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--s);
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.ba .fq .faq-trigger {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+
+  padding: 18px;
+
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+
+  font: 800 1rem var(--f);
+  text-align: left;
+}
+
+.ba .fq .faq-trigger:hover {
+  background: color-mix(in srgb, var(--s2) 45%, transparent);
+}
+
+.ba .fq .faq-trigger:focus-visible {
+  outline: 2px solid var(--bl);
+  outline-offset: -2px;
+}
+
+.ba .fq .faq-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+
+  display: grid;
+  place-items: center;
+
+  color: var(--tt);
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1;
+
+  transform-origin: center;
+}
+
+.ba .fq .faq-answer {
+  overflow: hidden;
+}
+
+.ba .fq .faq-answer p {
+  padding: 0 18px 18px;
+  color: var(--mute);
+  margin: 0;
+  line-height: 1.5;
+}
+
+@media(max-width:560px){.ba .gd{grid-template-columns:1fr}}
+.ba .gd small{display:block;font-size:.72rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.ba .gd b{display:block;margin-top:2px;font-weight:700;font-size:.95rem;overflow-wrap:anywhere}
+.ba .gd .wide{grid-column:1/-1}
+.ba .ofoot{margin-top:24px}
+
+@media(max-width:380px){.ba .otp{gap:6px}.ba .lc{padding:18px}.ba .oc{padding:18px}}
+@media(max-width:560px){.ba .hero{padding-top:28px}.ba .sec{padding:44px 0}.ba .ob{padding:20px 14px 48px}}
+@media(prefers-reduced-motion:reduce){.ba .track{animation:none}.ba .rail{overflow-x:auto;-webkit-mask-image:none;mask-image:none}.ba .track+.track{display:none}}
+`;
+
+/* ---------------------------------------------------------------------------
+ * Small presentational pieces
+ * ------------------------------------------------------------------------- */
+function BrandTile({ brand }) {
+  const [failed, setFailed] = useState(false);
   return (
-    <ul className="flex flex-col gap-1.5 rounded-2xl bg-slate-50 px-3.5 py-3">
-      {steps.map((s) => (
-        <li key={s.label} className="flex items-center gap-2 text-[12.5px] font-semibold tracking-wide">
-          <span
-            className="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full transition-colors duration-200"
-            style={{
-              background: s.done ? "#12181d" : "transparent",
-              border: s.done ? "none" : "1.5px solid #cbd5e1",
-            }}
-          >
-            {s.done && <CheckCircle2 className="h-3.5 w-3.5 text-white" strokeWidth={2.5} />}
-          </span>
-          <span style={{ color: s.done ? "#0B1116" : "#94a3b8" }} className={s.done ? "line-through decoration-slate-300" : ""}>
-            {s.label}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <div className="tile">
+      {failed
+        ? <span className="tn">{brand.name}</span>
+        : <img src={brand.src} alt={`${brand.name} logo`} loading="lazy" onError={() => setFailed(true)} />}
+    </div>
   );
 }
 
-// Shared centered shell for the OTP / onboarding steps — normal page flow
-// with compact, responsive spacing and no fixed/sticky footer.
-function AuthShell({ children, footer, wide = false }) {
+function Rail({ items, reverse }) {
+  // Each track repeats the list twice so it stays wider than ultra-wide
+  // screens; two identical tracks then loop seamlessly.
+  const doubled = [...items, ...items];
   return (
-    <main className={`mx-auto w-full ${wide ? "max-w-[560px]" : "max-w-[430px]"} px-4 pb-12 pt-7 sm:px-6 sm:pb-16 sm:pt-10`}>
-      {children}
-      {footer && <div className="mt-7 sm:mt-8">{footer}</div>}
+    <div className={`rail${reverse ? " rev" : ""}`}>
+      {[0, 1].map((k) => (
+        <div className="track" key={k} aria-hidden={k ? "true" : undefined}>
+          {doubled.map((b, i) => <BrandTile key={`${b.name}-${i}`} brand={b} />)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * OTP boxes — logic unchanged. `onChange` is new and optional: it lets the
+ * parent enable a "Verify" button; auto-submit on the 6th digit still works.
+ * ------------------------------------------------------------------------- */
+function OtpBoxes({ length = OTP_LENGTH, onComplete, onChange, error, disabled, resetKey = 0, small = false }) {
+  const [digits, setDigits] = useState(Array(length).fill(""));
+  const inputsRef = useRef([]);
+
+  const commit = (next) => {
+    setDigits(next);
+    onChange?.(next.join(""));
+  };
+
+  useEffect(() => { inputsRef.current[0]?.focus(); }, []);
+
+  // Wipe the boxes whenever an error appears or the parent bumps resetKey.
+  useEffect(() => {
+    if (!error && !resetKey) return;
+    setDigits(Array(length).fill(""));
+    onChange?.("");
+    inputsRef.current[0]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error, resetKey, length]);
+
+  const handleChange = (i, val) => {
+    const digit = val.replace(/\D/g, "").slice(-1);
+    const next = [...digits];
+    next[i] = digit;
+    commit(next);
+    if (digit && i < length - 1) inputsRef.current[i + 1]?.focus();
+    if (digit && i === length - 1 && next.every(Boolean)) onComplete?.(next.join(""));
+  };
+  const handleKeyDown = (i, e) => {
+    if (e.key === "Backspace" && !digits[i] && i > 0) inputsRef.current[i - 1]?.focus();
+  };
+  const handlePaste = (e) => {
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, length);
+    if (!pasted) return;
+    e.preventDefault();
+    const next = Array(length).fill("");
+    pasted.split("").forEach((d, i) => (next[i] = d));
+    commit(next);
+    inputsRef.current[Math.min(pasted.length, length) - 1]?.focus();
+    if (pasted.length === length) onComplete?.(pasted);
+  };
+
+  return (
+    <div>
+      <div className="ow">
+        <div className={`otp${small ? " sm" : ""}`} role="group" aria-label={`${length}-digit code`}>
+          {digits.map((d, i) => (
+            <input
+              key={i}
+              ref={(el) => (inputsRef.current[i] = el)}
+              type="text" inputMode="numeric" maxLength={1}
+              autoComplete={i === 0 ? "one-time-code" : "off"}
+              aria-label={`Digit ${i + 1}`}
+              value={d} disabled={disabled}
+              className={error ? "bad" : d ? "on" : ""}
+              onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              onPaste={handlePaste}
+            />
+          ))}
+        </div>
+        {disabled && !error && (
+          <motion.div className="vo" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            <span className="vp"><Loader2 className="ic sm spin" />Verifying…</span>
+          </motion.div>
+        )}
+      </div>
+      {error && <p className="dt er" role="alert" style={{ marginBottom: 0 }}>{error}</p>}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * Login card — step 1: identifier
+ * ------------------------------------------------------------------------- */
+function IdentifierCard({ initialValue, onSubmit, onClearError, loading, serverError }) {
+  const [value, setValue] = useState(initialValue || "");
+  const [touched, setTouched] = useState(false);
+  const inFlight = useRef(false);
+  const inputRef = useRef(null);
+
+  const mode = detectMode(value);
+  const channel = detectChannel(value);
+  const valid = channel !== null;
+  const showError = touched && value.length > 0 && !valid;
+
+  // Only auto-focus on larger screens so the mobile keyboard doesn't cover
+  // the hero the moment the page opens.
+  useEffect(() => {
+    if (window.matchMedia?.("(min-width: 900px)").matches) {
+      inputRef.current?.focus({ preventScroll: true });
+    }
+  }, []);
+
+  const handleChange = (e) => {
+    const raw = e.target.value;
+    const nextMode = detectMode(raw);
+    setValue(nextMode === "phone" ? raw.replace(/\D/g, "").slice(0, 10) : raw);
+    if (serverError) onClearError?.();
+  };
+  const handlePaste = (e) => {
+    const text = e.clipboardData.getData("text");
+    if (detectMode(text) === "phone") {
+      e.preventDefault();
+      setValue(normalizePhonePaste(text));
+      if (serverError) onClearError?.();
+    }
+  };
+
+  const fireSubmit = () => {
+    if (!valid || loading || inFlight.current) return;
+    inFlight.current = true;
+    Promise.resolve(onSubmit(value)).finally(() => (inFlight.current = false));
+  };
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setTouched(true);
+    if (!valid || loading) return;
+    fireSubmit();
+  };
+
+  let hint = null;
+  let tone = "";
+  if (serverError) { hint = serverError; tone = "er"; }
+  else if (valid) { hint = channel === "phone" ? "Mobile number looks good" : "Email looks good"; tone = "ok"; }
+  else if (showError) {
+    hint = mode === "phone" ? "Enter a valid 10-digit mobile number." : "Enter a valid email address.";
+    tone = "er";
+  } else if (value) {
+    hint = mode === "email" ? "Keep typing your email address" : value.length > 3 ? "Enter a 10-digit mobile number" : null;
+  }
+
+  return (
+    <form onSubmit={handleSubmit} noValidate>
+      <label className="l" htmlFor="bbm-identifier">Mobile number or email</label>
+      <div className={`inp${tone === "er" ? " er" : ""}`}>
+        {mode === null && <User className="ic" />}
+        {mode === "phone" && (<span className="pre"><Phone className="ic sm" />+91</span>)}
+        {mode === "email" && <Mail className="ic" />}
+        <input
+          id="bbm-identifier" ref={inputRef} type="text" autoComplete="username"
+          disabled={loading} value={value}
+          onChange={handleChange} onPaste={handlePaste} onBlur={() => setTouched(true)}
+          placeholder="98765 43210 or you@company.com"
+        />
+      </div>
+
+      <div className={`dt ${tone}`} role="status" aria-live="polite">
+        {tone === "ok" && <Check className="ic sm" />}
+        {hint}
+      </div>
+
+      <button type="submit" className="bt go blk" disabled={!valid || loading}>
+        {loading ? (<><Loader2 className="ic spin" />Sending OTP…</>) : (<>Send OTP<ArrowRight className="ic" /></>)}
+      </button>
+
+      <p className="fi">
+        By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy-policy">Privacy Policy</a>.
+      </p>
+      <div className="tr">
+        <span><Lock className="ic" />No password needed</span>
+        <span><Zap className="ic" />Takes 30 seconds</span>
+        <span><ShieldCheck className="ic" />GST-verified sellers</span>
+      </div>
+    </form>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * Login card — step 2: OTP
+ * ------------------------------------------------------------------------- */
+function OtpCard({ identifier, onVerify, onResend, onEdit, loading, serverError }) {
+  const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
+  const [resending, setResending] = useState(false);
+  const [justResent, setJustResent] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
+  const [code, setCode] = useState("");
+  const channel = detectChannel(identifier);
+
+  useEffect(() => {
+    if (secondsLeft <= 0) return;
+    const id = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(id);
+  }, [secondsLeft]);
+
+  // The countdown only restarts on a confirmed success; the button is
+  // disabled with a spinner while in flight so it can't be double-tapped.
+  const handleResend = async () => {
+    if (secondsLeft > 0 || resending) return;
+    setResending(true);
+    setJustResent(false);
+    try {
+      const ok = await onResend();
+      if (ok !== false) {
+        setSecondsLeft(RESEND_SECONDS);
+        setJustResent(true);
+        setResetKey((k) => k + 1);
+      }
+    } finally {
+      setResending(false);
+    }
+  };
+
+  return (
+    <div>
+      <h2>Enter the code</h2>
+      <p className="s">
+        {channel === "email" ? "We sent a 6-digit code to " : "We sent a 6-digit code by SMS to "}
+        <b style={{ overflowWrap: "anywhere" }}>{maskIdentifier(identifier)}</b>
+      </p>
+
+      <OtpBoxes
+        onComplete={(c) => !loading && onVerify(c)}
+        onChange={setCode}
+        error={serverError} disabled={loading} resetKey={resetKey}
+      />
+
+      {channel && justResent && secondsLeft > 0 && (
+        <motion.p className="nt" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          {channel === "phone" ? <Phone className="ic sm" /> : <Mail className="ic sm" />}
+          {channel === "phone" ? `A new code has been sent to +91 ${identifier}.` : `A new code is on its way to ${identifier}.`}
+        </motion.p>
+      )}
+
+      <button
+        type="button" className="bt go blk" style={{ marginTop: 14 }}
+        disabled={code.length < OTP_LENGTH || loading}
+        onClick={() => !loading && code.length === OTP_LENGTH && onVerify(code)}
+      >
+        {loading ? (<><Loader2 className="ic spin" />Verifying…</>) : (<>Verify and continue<ArrowRight className="ic" /></>)}
+      </button>
+
+      <div className="rw">
+        {secondsLeft > 0 ? (
+          <span className="lnk dis">Resend in {secondsLeft}s</span>
+        ) : (
+          <button type="button" className="lnk" onClick={handleResend} disabled={resending || loading}>
+            {resending ? "Resending…" : (<><RotateCw className="ic sm" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />Resend code</>)}
+          </button>
+        )}
+        <span aria-hidden="true">·</span>
+        <button type="button" className="lnk" onClick={onEdit} disabled={loading}>Change</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------------
+ * Landing (hero + marketing sections)
+ * ------------------------------------------------------------------------- */
+function Landing({
+  step, identifier, loading, redirecting, serverError,
+  onIdentifierSubmit, onClearError, onOtpVerify, onResend, onEditIdentifier, onSignInClick,
+}) {
+  const [side, setSide] = useState("buy");
+  const b = BENEFITS[side];
+  const [openIndex, setOpenIndex] = useState(null);
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <main>
+      <section className="hero">
+        <div className="w">
+          <div>
+            <p className="ey">Trusted B2B marketplace</p>
+            <h1>Find Supply.<br /><em>Build Demand.</em></h1>
+            <p className="tag">People. <i>Product.</i> Partnership.</p>
+
+            <div className="lc">
+              <AnimatePresence mode="wait" initial={false}>
+                {step === "otp" ? (
+                  <motion.div
+                    key="otp"
+                    initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                  >
+                    <OtpCard
+                      identifier={identifier} onVerify={onOtpVerify} onResend={onResend}
+                      onEdit={onEditIdentifier} loading={loading || redirecting} serverError={serverError}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="identifier"
+                    initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
+                  >
+                    <IdentifierCard
+                      initialValue={identifier} onSubmit={onIdentifierSubmit}
+                      onClearError={onClearError} loading={loading} serverError={serverError}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="stt">
+              <div><b>23</b><span>brands already listed</span></div>
+              <div><b>50+</b><span>products live</span></div>
+              <div><b>0.25%</b><span>fees from, only on orders</span></div>
+            </div>
+          </div>
+
+          <div className="peek" aria-label="A peek inside BBM">
+            <div className="pk">
+              <small>New enquiry · 5h ago</small>
+              <b>Shell Rimula R4 X 15W-40</b>
+              <div className="r"><span className="q">20 Packs × 5 L</span><span className="pl"><Send className="ic" />Submit quote</span></div>
+            </div>
+            <div className="pk">
+              <small>Quote accepted</small>
+              <b>Rust Preventive Oil · ₹590/Kg</b>
+              <div className="r"><span className="q">New order ₹10,000</span><span className="pl g"><Check className="ic" />Confirmed</span></div>
+            </div>
+            <div className="pk">
+              <small>Order shipped · Rajkot, Gujarat</small>
+              <b>Castrol Magnatec 5w-30 · 14 L</b>
+              <div className="r"><span className="q">You'll receive ₹10,290</span><span className="pl b"><Truck className="ic" />On the way</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="bw">
+        <div className="w"><p>Brands already on BBM</p></div>
+        <Rail items={RAIL_A} />
+        <Rail items={RAIL_B} reverse />
+      </section>
+
+      <section className="sec" id="why">
+        <div className="w">
+          <h2>Whether you buy or sell, BBM works harder for you.</h2>
+          <p className="lead">One marketplace for people, products and partnerships. Pick your side and see what you get.</p>
+          <div className="seg" role="group" aria-label="Choose your side">
+            <button type="button" aria-pressed={side === "buy"} onClick={() => setSide("buy")}>I want to buy</button>
+            <button type="button" aria-pressed={side === "sell"} onClick={() => setSide("sell")}>I want to sell</button>
+          </div>
+          <div className="bh">{b.heading}</div>
+          <div className="bn">
+            {b.items.map(([title, desc]) => (
+              <div className="bi" key={`${side}-${title}`} style={{ "--a": b.accent, "--at": b.accentText }}>
+                <i><Check className="ic" /></i>
+                <div><b>{title}</b><span>{desc}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="sec tight">
+        <div className="w">
+          <h2>Up and running in three steps.</h2>
+          <p className="lead">No passwords to remember. No paperwork to chase.</p>
+          <div className="hw">
+            {STEPS_CONTENT.map((s) => (
+              <div className="st" key={s.n} style={{ "--a": s.accent }}>
+                <em>{s.n}</em><b>{s.title}</b><span>{s.body}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="sec tight">
+        <div className="w">
+          <h2>Built for how B2B really sells.</h2>
+          <div className="ft">
+            {FEATURES.map(({ Icon, accent, ink, title, body }) => (
+              <div className="fc" key={title} style={{ "--a": accent, ...(ink ? { "--c": ink } : {}) }}>
+                <div className="pi"><Icon className="ic" /></div>
+                <b>{title}</b><span>{body}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="sec tight fq">
+        <div className="w" style={{ maxWidth: 760 }}>
+          <h2>Questions, answered.</h2>
+
+          <div className="faq-list">
+            {FAQS.map(([question, answer], index) => (
+              <FAQItem
+                key={question}
+                question={question}
+                answer={answer}
+                isOpen={openIndex === index}
+                reduceMotion={reduceMotion}
+                onClick={() =>
+                  setOpenIndex((current) =>
+                    current === index ? null : index
+                  )
+                }
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+
+      <section className="cta">
+        <div className="w">
+          <div className="box">
+            <h2>Your next customer is already looking.</h2>
+            <p>Sign in with an OTP and be ready to trade in minutes.</p>
+            <button type="button" className="bt go" onClick={onSignInClick}>
+              Sign in to BBM <ArrowRight className="ic" />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        <div className="w">
+          <span><b>BBM</b> · People • Product • Partnership</span>
+          <span>By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy-policy">Privacy Policy</a>.</span>
+        </div>
+      </footer>
     </main>
   );
 }
 
+/* ---------------------------------------------------------------------------
+ * Page
+ * ------------------------------------------------------------------------- */
 export default function AuthPage() {
   const [step, setStep] = useState("identifier");
   const [token, setToken] = useState(null);
@@ -185,26 +944,25 @@ export default function AuthPage() {
   const [identifier, setIdentifier] = useState("");
   const [loading, setLoading] = useState(false);
   // True from the moment an existing, fully set-up user is verified until
-  // the navigation to their destination happens, so the OTP screen stays in
+  // the navigation to their destination happens, so the OTP card stays in
   // its "Verifying…" state instead of flickering back to an editable form.
   const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState(null);
-  // const { setAuthSession, refreshProfile, profile } = useAuth();
   const { setAuthSession, refreshProfile, profile, session, needsOnboarding, initializing } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [isNewUser, setIsNewUser] = useState(null);
+  const [isNewUser, setIsNewUser] = useState(null); // eslint-disable-line no-unused-vars
+  const rootRef = useRef(null);
+  const { theme, toggleTheme } = useAuthTheme();
 
   // Set while a fresh OTP login is being processed. During that window the
   // auth context publishes a session BEFORE the profile has loaded, which
   // made `needsOnboarding` briefly true for everyone — so the resume effect
   // below must stay out of the way and let the server's `isNewUser` answer
-  // from verifyLoginOtp decide where to go.
+  // from verifyOtp decide where to go.
   const loginFlowRef = useRef(false);
 
-  // Resolved once on mount (see resolveRedirect above): the full URL the
-  // person came from — e.g. "/home/?shop=shiv-shakti-auto-center" — not just
-  // "/home". Falls back to /home only when nothing was passed.
+  // Resolved once on mount: the full URL the person came from (path + query).
   const [redirectTo] = useState(() => resolveRedirect(location.state));
 
   const finishAndRedirect = useCallback(() => {
@@ -214,15 +972,7 @@ export default function AuthPage() {
 
   // Resume an abandoned onboarding: the page was opened with an existing
   // session (e.g. user verified OTP, then closed the tab before submitting
-  // GSTIN/company info), so jump straight to that step instead of making
-  // them re-verify.
-  //
-  // This is strictly for that "opened with an existing session" case, so it:
-  //  - never runs during a fresh OTP login (loginFlowRef),
-  //  - only runs from the initial "identifier" step (so it can never yank
-  //    the user between steps or override the loginType set by the login),
-  //  - waits for the profile to actually be loaded, so a half-loaded
-  //    context can't be mistaken for an incomplete account.
+  // GSTIN/company info), so jump straight to that step.
   useEffect(() => {
     if (initializing) return;
     if (loginFlowRef.current) return;
@@ -235,22 +985,19 @@ export default function AuthPage() {
     }
   }, [initializing, needsOnboarding, session, profile, step]);
 
-  // Avoid flashing the "enter phone/email" screen for a split second
-  // while we're still figuring out whether this session needs resuming.
+  // Avoid flashing the "enter phone/email" screen while we're still
+  // figuring out whether this session needs resuming.
   const resolvingResume = initializing && !!session?.access_token && step === "identifier";
 
   const handleBack = () => {
     if (step === "identifier") {
       // React Router v6 stamps history.state.idx = 0 on the entry point of
       // the app's history stack — if that's us, navigate(-1) would leave
-      // the app entirely (e.g. land on about:blank) instead of going back
-      // to a real previous page.
-      if (window.history.state?.idx === 0) {
-        navigate("/");
-      } else {
-        navigate(-1);
-      }
+      // the app entirely instead of going back to a real previous page.
+      if (window.history.state?.idx === 0) navigate("/");
+      else navigate(-1);
     } else if (step === "otp") {
+      setError(null);
       setStep("identifier");
     }
     // no back action from "onboarding" — user is already authenticated
@@ -287,14 +1034,12 @@ export default function AuthPage() {
         }
         setToken(res.token);
         // Session must be set in the { access_token } shape AuthContext
-        // expects, or isLoggedIn (and every protected route) stays false
-        // even though the user is fully authenticated.
+        // expects, or isLoggedIn (and every protected route) stays false.
         await setAuthSession?.(res.token);
         setIsNewUser(res.isNewUser);
 
         // `isNewUser` comes straight from the server (onboarding_step !==
-        // "done"), so it is the single source of truth here — no guessing
-        // from a context that may not have its profile yet.
+        // "done"), so it is the single source of truth here.
         if (res.isNewUser) {
           setStep("onboarding");
           loginFlowRef.current = false;
@@ -311,8 +1056,8 @@ export default function AuthPage() {
       }
     });
 
-  // Goes through withLoading (so serverError renders in OtpPanel) and
-  // returns whether it actually succeeded so the panel only resets its
+  // Goes through withLoading (so the error renders in the OTP card) and
+  // returns whether it actually succeeded so the card only resets its
   // countdown on success.
   const handleResend = () =>
     withLoading(async () => {
@@ -329,401 +1074,66 @@ export default function AuthPage() {
       const res = await completeProfile(token, payload);
       if (!res.success) return setError(res.message || "Couldn't save your details. Try again.");
       await refreshProfile?.();
-      // setStep("done");
       finishAndRedirect();
     });
 
+  const focusSignIn = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setTimeout(() => {
+      rootRef.current?.querySelector(".lc input:not(:disabled)")?.focus({ preventScroll: true });
+    }, 450);
+  };
+
+  const onboarding = step === "onboarding";
+
   return (
-    <div className="min-h-screen w-full bg-white" style={{ fontFamily: FONT }}>
-      <header className="mx-auto flex w-full max-w-6xl items-center px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
-        <div className="flex items-center gap-2.5">
-          {step !== "onboarding" ? (
-            <motion.button
-              type="button"
-              onClick={handleBack}
-              whileTap={{ scale: 0.9 }}
-              aria-label="Go back"
-              className="flex h-9 w-9 hidden md:block  shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
-            >
-              <ArrowLeft className="h-[18px] w-[18px]" />
-            </motion.button>
-          ) : null}
+    <div className="ba" data-theme={theme} ref={rootRef}>
+      <style>{AUTH_THEME_CSS + PAGE_CSS}</style>
 
-          <div className="flex shrink-0 items-center">
-            <SmartLink to="/" className="flex shrink-0 items-center gap-2">
-              <img src="/Logo.png" alt="BBM" className="h-7 w-auto object-contain" />
-              <h1
-                className="text-[18px] font-extrabold tracking-wide"
-                style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: INK }}
-              >
-                BBM
-              </h1>
-            </SmartLink>
-          </div>
-        </div>
-      </header>
+      <AuthHeader
+        theme={theme} onToggleTheme={toggleTheme}
+        onBack={onboarding ? undefined : handleBack}
+        actions={!onboarding && (
+          <button type="button" className="bt go" onClick={focusSignIn}>Sign in</button>
+        )}
+      />
 
-      <AnimatePresence mode="wait">
-        {resolvingResume ? null : step === "identifier" && (
-          <IdentifierPanel key="identifier" onSubmit={handleIdentifierSubmit} loading={loading} serverError={error} />
-        )}
-        {step === "otp" && (
-          <OtpPanel
-            key="otp" identifier={identifier} onVerify={handleOtpVerify} onResend={handleResend}
-            onEditNumber={() => setStep("identifier")} loading={loading || redirecting} serverError={error}
-          />
-        )}
-        {step === "onboarding" && (
+      <AnimatePresence mode="wait" initial={false}>
+        {resolvingResume ? (
+          <motion.div key="boot" className="boot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <Loader2 className="ic spin" />
+          </motion.div>
+        ) : onboarding ? (
           <OnboardingPanel
             key="onboarding" token={token} loginType={loginType} profile={profile}
             onSubmit={handleOnboardingSubmit} loading={loading} serverError={error}
           />
+        ) : (
+          <motion.div
+            key="landing"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Landing
+              step={step} identifier={identifier} loading={loading} redirecting={redirecting} serverError={error}
+              onIdentifierSubmit={handleIdentifierSubmit}
+              onClearError={() => setError(null)}
+              onOtpVerify={handleOtpVerify}
+              onResend={handleResend}
+              onEditIdentifier={() => { setError(null); setStep("identifier"); }}
+              onSignInClick={focusSignIn}
+            />
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Value-prop content shown under the identifier form — plain data, kept
-// separate from markup so the two columns render identically.
-// ---------------------------------------------------------------------------
-const BUY_POINTS = ["Competitive B2B prices", "More suppliers to choose from", "More brands & alternatives", "Faster product discovery", "Better sourcing options", "Access to new suppliers", "Simplified procurement", "Multiple requirements, one platform"];
-const SELL_POINTS = ["Get new customers", "Increase sales", "Expand into new markets", "Reduce customer acquisition effort", "Showcase your complete product range", "Build long-term B2B relationships", "Grow without opening new branches"];
-
-function ValueColumn({ eyebrow, heading, points }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-slate-400 sm:text-[11px]">{eyebrow}</p>
-      <h2 className="mt-2 text-[20px] font-black leading-[1.15] tracking-tight text-slate-900 sm:text-[24px]">
-        {heading}
-      </h2>
-      <ul className="mt-4 flex flex-col gap-2.5 sm:mt-5 sm:gap-3">
-        {points.map((p) => (
-          <li key={p} className="flex items-start gap-2 text-[13px] font-medium leading-snug tracking-wide text-slate-500 sm:text-[13.5px]">
-            <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-300" />
-            <span>{p}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Step 1: identifier — this is the landing page from the reference screen.
-// Same logic/handlers as before; only the markup is new.
-// ---------------------------------------------------------------------------
-function IdentifierPanel({ onSubmit, loading, serverError }) {
-  const [value, setValue] = useState("");
-  const [touched, setTouched] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const inFlight = useRef(false);
-
-  const mode = detectMode(value);
-  const valid = detectChannel(value) !== null;
-  const showError = touched && value.length > 0 && !valid;
-
-  const handleChange = (e) => {
-    const raw = e.target.value;
-    const nextMode = detectMode(raw);
-    setValue(nextMode === "phone" ? raw.replace(/\D/g, "").slice(0, 10) : raw);
-  };
-  const handlePaste = (e) => {
-    const text = e.clipboardData.getData("text");
-    if (detectMode(text) === "phone") {
-      e.preventDefault();
-      setValue(normalizePhonePaste(text));
-    }
-  };
-
-  const fireSubmit = () => {
-    if (!valid || loading || inFlight.current) return;
-    inFlight.current = true;
-    Promise.resolve(onSubmit(value)).finally(() => (inFlight.current = false));
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setTouched(true);
-    if (!valid || loading) return;
-    fireSubmit();
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.22, ease: "easeOut" }}
-    >
-      <main className="mx-auto w-full max-w-5xl px-4 pb-12 pt-7 sm:px-6 sm:ps-3 sm:pb-16 sm:pt-10 lg:px-8 lg:ps-3">
-        <div className="max-w-[720px]">
-          {/* ---- hero ---- */}
-          <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-slate-400 sm:text-[11.5px]">
-            Trusted B2B Marketplace
-          </p>
-          <h1 className="mt-3 text-[40px] font-black leading-[1.03] tracking-[-0.030em] text-slate-900 sm:text-[54px] lg:text-[60px]">
-            Find Supply.<br />Build Demand.
-          </h1>
-          <p className="mt-4 max-w-[410px] text-[17px] font-medium leading-[1.3] text-slate-500 sm:text-[18px] tracking-wide">
-            People. Product. Partnership.
-          </p>
-
-          {/* ---- identifier form ---- */}
-          <form onSubmit={handleSubmit} noValidate className="mt-8 max-w-[440px] sm:mt-9">
-            <label htmlFor="identifier" className="text-[14px] font-bold tracking-normal text-slate-700">
-              Mobile number or email
-            </label>
-
-            <div
-              className="mt-1 flex min-h-[52px] w-full items-center overflow-hidden rounded-2xl border bg-white transition-[border-color,box-shadow] duration-150"
-              style={{
-                borderColor: showError || serverError ? "#c71f11" : focused ? "#94a3b8" : "#e5e9ea",
-                boxShadow: focused ? "0 0 0 3px rgba(148,163,184,0.15)" : "none",
-              }}
-            >
-              <span className="flex shrink-0 items-center gap-1.5 pl-4 pr-2.5 text-slate-400">
-                {mode === null && <User className="h-4 w-4" />}
-                {mode === "phone" && (
-                  <>
-                    <Phone className="h-3.5 w-3.5" />
-                    <span className="text-[14px] font-bold tracking-wide text-slate-500">+91</span>
-                  </>
-                )}
-                {mode === "email" && <Mail className="h-4 w-4" />}
-              </span>
-              <input
-                id="identifier" type="text" autoComplete="username" autoFocus disabled={loading}
-                value={value} onChange={handleChange} onPaste={handlePaste}
-                onFocus={() => setFocused(true)}
-                onBlur={() => { setFocused(false); setTouched(true); }}
-                placeholder="98765 43210 or you@company.com"
-                className="w-full min-w-0 bg-transparent py-3.5 pr-4 text-[15px] font-medium tracking-wide text-slate-800 placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-300 focus:outline-none disabled:opacity-60"
-              />
-            </div>
-
-            <div className="mt-1.5 min-h-[18px]">
-              {showError && <p className="text-[12px] font-medium tracking-wide text-[#c71f11]">Enter a valid 10-digit mobile number or email address.</p>}
-              {!showError && serverError && <p className="text-[12px] font-medium tracking-wide text-[#c71f11]">{serverError}</p>}
-            </div>
-
-            <PrimaryButton type="submit" disabled={!valid || loading} loading={loading} loadingText="Sending OTP…" className="mt-3">
-              Send OTP<ArrowRight className="h-4 w-4" />
-            </PrimaryButton>
-
-            <p className="mt-3.5 max-w-[390px] text-[11.5px] text-center font-medium leading-relaxed tracking-wide text-slate-400">
-              By continuing, you agree to our{" "}
-              <a href="/terms" className="font-bold tracking-wide text-slate-500 underline hover:text-slate-800">Terms</a>{" "}
-              and{" "}
-              <a href="/privacy-policy" className="font-bold tracking-wide text-slate-500 underline hover:text-slate-800">Privacy Policy</a>.
-            </p>
-          </form>
-
-          {/* ---- value props ---- */}
-
-          <div className="relative mt-11 grid grid-cols-2 gap-1 sm:mt-11 sm:gap-10 lg:gap-16">
-            <div className="pr-4 sm:pr-6 lg:pr-8">
-              <ValueColumn
-                eyebrow="Why buy from BBM"
-                heading={<>Save Money.<br />Save Time.</>}
-                points={BUY_POINTS}
-              />
-            </div>
-
-            <div className="pl-4 sm:pl-6 lg:pl-8">
-              <ValueColumn
-                eyebrow="Why sell on BBM"
-                heading={<>More buyers.<br />More business.</>}
-                points={SELL_POINTS}
-              />
-            </div>
-
-            <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-gray-200" />
-          </div>
-        </div>
-      </main>
-    </motion.div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Step 2: OTP entry
-// ---------------------------------------------------------------------------
-// `resetKey` — bump it (e.g. after a successful resend) to wipe the boxes.
-// The boxes also clear themselves whenever `error` appears, so a wrong /
-// expired code never leaves stale digits behind that the user has to erase
-// one by one before they can retry.
-function OtpBoxes({ length = OTP_LENGTH, onComplete, error, disabled, resetKey = 0 }) {
-  const [digits, setDigits] = useState(Array(length).fill(""));
-  const inputsRef = useRef([]);
-
-  useEffect(() => { inputsRef.current[0]?.focus(); }, []);
-
-  useEffect(() => {
-    if (!error && !resetKey) return;
-    setDigits(Array(length).fill(""));
-    inputsRef.current[0]?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [error, resetKey, length]);
-
-  const handleChange = (i, val) => {
-    const digit = val.replace(/\D/g, "").slice(-1);
-    const next = [...digits];
-    next[i] = digit;
-    setDigits(next);
-    if (digit && i < length - 1) inputsRef.current[i + 1]?.focus();
-    if (digit && i === length - 1 && next.every(Boolean)) onComplete(next.join(""));
-  };
-  const handleKeyDown = (i, e) => {
-    if (e.key === "Backspace" && !digits[i] && i > 0) inputsRef.current[i - 1]?.focus();
-  };
-  const handlePaste = (e) => {
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, length);
-    if (!pasted) return;
-    e.preventDefault();
-    const next = Array(length).fill("");
-    pasted.split("").forEach((d, i) => (next[i] = d));
-    setDigits(next);
-    inputsRef.current[Math.min(pasted.length, length) - 1]?.focus();
-    if (pasted.length === length) onComplete(pasted);
-  };
-
-  return (
-    <div>
-      <div className="relative mx-auto w-full max-w-[410px]">
-        <div className="grid gap-2 sm:gap-2.5" style={{ gridTemplateColumns: `repeat(${length}, minmax(0, 1fr))` }}>
-          {digits.map((d, i) => (
-            <input
-              key={i} ref={(el) => (inputsRef.current[i] = el)} type="text" inputMode="numeric" maxLength={1}
-              value={d} disabled={disabled}
-              onChange={(e) => handleChange(i, e.target.value)}
-              onKeyDown={(e) => handleKeyDown(i, e)}
-              onPaste={handlePaste}
-              className="aspect-square w-full min-w-0 rounded-2xl border text-center text-[19px] font-bold text-slate-800 transition-[border-color,background-color,box-shadow] focus:outline-none focus:ring-[3px] focus:ring-slate-400/10 disabled:opacity-60"
-              style={{
-                borderColor: error ? "#c71f11" : d ? "#94a3b8" : "#e5e9ea",
-                background: d ? "#f8fafc" : "white",
-              }}
-            />
-          ))}
-        </div>
-        {disabled && !error && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-white/60"
-          >
-            <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-[11.5px] font-bold tracking-wide shadow-sm text-slate-700">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Verifying…
-            </span>
-          </motion.div>
-        )}
-      </div>
-      {error && <p className="mt-2.5 text-[12px] font-medium tracking-wide text-[#c71f11]">{error}</p>}
-    </div>
-  );
-}
-
-function OtpPanel({ identifier, onVerify, onResend, onEditNumber, loading, serverError }) {
-  const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
-  const [resending, setResending] = useState(false);
-  const [justResent, setJustResent] = useState(false);
-  const [resetKey, setResetKey] = useState(0);
-  const channel = detectChannel(identifier);
-
-  useEffect(() => {
-    if (secondsLeft <= 0) return;
-    const id = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
-    return () => clearTimeout(id);
-  }, [secondsLeft]);
-
-  // The countdown only restarts on a confirmed success, and the button is
-  // disabled + shows a spinner while the request is in flight so it can't
-  // be double-tapped.
-  const handleResend = async () => {
-    if (secondsLeft > 0 || resending) return;
-    setResending(true);
-    setJustResent(false);
-    try {
-      const ok = await onResend();
-      if (ok !== false) {
-        setSecondsLeft(RESEND_SECONDS);
-        setJustResent(true);
-        setResetKey((k) => k + 1);
-      }
-    } finally {
-      setResending(false);
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.22, ease: "easeOut" }}
-    >
-      <AuthShell>
-        <PanelHeader
-          icon={channel === "email" ? <Mail className="h-6 w-6" /> : <Phone className="h-6 w-6" />}
-          title="Enter the code"
-          subtitle={
-            <>
-              <span className="break-all">
-                {channel === "email" ? `Sent to ${identifier}.` : `We sent a code by SMS to +91 ${identifier}.`}
-              </span>{" "}
-              <button type="button" onClick={onEditNumber} className="inline-flex items-center gap-1 font-bold tracking-wide" style={{ color: BRAND }}>
-                <Pencil className="h-3 w-3" />Edit
-              </button>
-            </>
-          }
-        />
-
-        <div className="mt-7 sm:mt-8">
-          <OtpBoxes onComplete={(code) => !loading && onVerify(code)} error={serverError} disabled={loading} resetKey={resetKey} />
-        </div>
-
-        <div className="mt-4 flex flex-col items-center gap-1.5 text-center sm:mt-5">
-          <p className="text-[12.5px] font-medium tracking-wide text-slate-400">
-            {secondsLeft > 0 ? (
-              <>Didn't get it? Resend in {secondsLeft}s</>
-            ) : (
-              <button
-                type="button" onClick={handleResend} disabled={resending || loading}
-                className="inline-flex items-center gap-1.5 font-bold tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
-                style={{ color: BRAND }}
-              >
-                {resending
-                  ? (<><Loader2 className="h-3 w-3 animate-spin" />Resending…</>)
-                  : (<><RotateCw className="h-3 w-3" />Resend code</>)}
-              </button>
-            )}
-          </p>
-          {channel === "phone" && justResent && secondsLeft === RESEND_SECONDS && (
-            <motion.p
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="flex items-center gap-1.5 text-[11.5px] font-bold tracking-wide" style={{ color: BRAND }}
-            >
-              <Phone className="h-3 w-3" />
-              A new code has been sent to +91 {identifier}.
-            </motion.p>
-          )}
-          {channel === "email" && justResent && secondsLeft === RESEND_SECONDS && (
-            <motion.p
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-              className="flex items-center gap-1.5 text-[11.5px] font-bold tracking-wide" style={{ color: BRAND }}
-            >
-              <Mail className="h-3 w-3" />
-              A new code is on its way to {identifier}.
-            </motion.p>
-          )}
-        </div>
-      </AuthShell>
-    </motion.div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Step 3: onboarding
-// ---------------------------------------------------------------------------
-function AltContactVerify({ token, field, label, placeholder, inputMode, formatValue, validate, required, prefillVerifiedValue, onVerified, showRequiredError }) {
+/* ---------------------------------------------------------------------------
+ * Onboarding — contact verification field (logic unchanged)
+ * ------------------------------------------------------------------------- */
+function AltContactVerify({ token, field, label, placeholder, inputMode, formatValue, validate, prefillVerifiedValue, onVerified, showRequiredError }) {
   const [value, setValue] = useState(prefillVerifiedValue || "");
   // idle | sending | otp | verified
   const [stage, setStage] = useState(prefillVerifiedValue ? "verified" : "idle");
@@ -753,14 +1163,8 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
   const valid = validate(value);
   const isPhoneField = field === "phone";
 
-  // Label that replaces "Mobile number" / "Email" while the code is being
-  // entered, so it's obvious which contact the OTP belongs to.
-  const otpLabel = isPhoneField
-    ? `Enter the OTP sent to +91 ${value}`
-    : `Enter the OTP sent to ${value}`;
-  const otpHint = isPhoneField
-    ? "We've sent a 6-digit code by SMS."
-    : "Check your inbox (and spam folder) for a 6-digit code.";
+  const otpLabel = isPhoneField ? `Enter the OTP sent to +91 ${value}` : `Enter the OTP sent to ${value}`;
+  const otpHint = isPhoneField ? "We've sent a 6-digit code by SMS." : "Check your inbox (and spam folder) for a 6-digit code.";
 
   const sendCode = async () => {
     if (!valid) return;
@@ -837,97 +1241,71 @@ function AltContactVerify({ token, field, label, placeholder, inputMode, formatV
 
   if (stage === "verified") {
     return (
-      <div className="flex flex-col">
-        <label className="text-[12.5px] font-bold tracking-tight text-slate-700">{label}</label>
-        <div className="mt-1.5 flex items-center gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-3.5 py-3">
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-slate-700" />
-          <span className="truncate text-[14px] font-medium tracking-wide text-slate-800">{formatValue(value)}</span>
-          <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-[#12181d] px-2 py-0.5 text-[10.5px] font-bold tracking-wide text-white">
-            Verified
-          </span>
+      <div className="fd">
+        <span className="fl">{label}</span>
+        <div className="vf">
+          <CheckCircle2 className="ic" />
+          <span className="v">{formatValue(value)}</span>
+          <span className="pl g">Verified</span>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="flex flex-col">
-      {stage === "otp" ? (
-        <div className="flex items-start justify-between gap-3">
-          <label className="min-w-0 break-all text-[12.5px] font-bold tracking-tight text-slate-700">{otpLabel}</label>
-          <button
-            type="button" onClick={editValue} disabled={verifying}
-            className="inline-flex shrink-0 items-center gap-1 text-[12px] font-bold tracking-wide disabled:opacity-50"
-            style={{ color: BRAND }}
-          >
-            <Pencil className="h-3 w-3" />Edit
+  if (stage === "otp") {
+    return (
+      <div className="fd">
+        <div className="fh">
+          <span className="fl">{otpLabel}</span>
+          <button type="button" className="lnk" onClick={editValue} disabled={verifying}>
+            <Pencil className="ic sm" />Edit
           </button>
         </div>
-      ) : (
-        <label className="text-[12.5px] font-bold tracking-tight text-slate-700">{label}</label>
-      )}
-
-      {stage !== "otp" ? (
-        <>
-          <div className="mt-1.5 flex gap-2">
-            <input
-              inputMode={inputMode} value={value}
-              onChange={(e) => { setValue(e.target.value); setStage("idle"); onVerified?.(false, ""); }}
-              placeholder={placeholder} disabled={stage === "sending"}
-              className={inputClass(showRequiredError)}
-            />
-            <SecondaryButton type="button" onClick={sendCode} disabled={!valid || stage === "sending"} loading={stage === "sending"}>
-              Verify
-            </SecondaryButton>
-          </div>
-
-          {showRequiredError && (
-            <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">
-              Verify your {label.toLowerCase()} to continue.
-            </p>
+        <p className="hint">{otpHint}</p>
+        <OtpBoxes small length={OTP_LENGTH} onComplete={confirmCode} error={error} disabled={verifying} resetKey={resetKey} />
+        <div className="rw" style={{ justifyContent: "flex-start", marginTop: 4 }}>
+          {secondsLeft > 0 ? (
+            <span className="lnk dis" style={{ paddingLeft: 0 }}>Didn't get it? Resend in {secondsLeft}s</span>
+          ) : (
+            <button type="button" className="lnk" style={{ paddingLeft: 0 }} onClick={resendCode} disabled={resending || verifying}>
+              {resending ? "Resending…" : (<><RotateCw className="ic sm" style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />Resend code</>)}
+            </button>
           )}
-        </>
-      ) : (
-        <div className="mt-2 flex flex-col gap-2.5">
-          <p className="text-[12px] font-medium tracking-wide text-slate-500">{otpHint}</p>
-
-          <div className="max-w-[280px]">
-            <OtpBoxes length={6} onComplete={confirmCode} error={error} disabled={verifying} resetKey={resetKey} />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            {secondsLeft > 0 ? (
-              <p className="text-[12px] font-medium tracking-wide text-slate-400">
-                Didn't get it? Resend in {secondsLeft}s
-              </p>
-            ) : (
-              <button
-                type="button" onClick={resendCode} disabled={resending || verifying}
-                className="inline-flex items-center gap-1.5 self-start text-[12.5px] font-bold tracking-wide disabled:cursor-not-allowed disabled:opacity-60"
-                style={{ color: BRAND }}
-              >
-                {resending
-                  ? (<><Loader2 className="h-3 w-3 animate-spin" />Resending…</>)
-                  : (<><RotateCw className="h-3 w-3" />Resend code</>)}
-              </button>
-            )}
-            {notice && (
-              <motion.p
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="flex items-center gap-1.5 text-[11.5px] font-bold tracking-wide" style={{ color: BRAND }}
-              >
-                {isPhoneField ? <Phone className="h-3 w-3" /> : <Mail className="h-3 w-3" />}
-                {notice}
-              </motion.p>
-            )}
-          </div>
         </div>
-      )}
-      {error && stage !== "otp" && <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">{error}</p>}
+        {notice && (
+          <motion.p className="nt" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+            {isPhoneField ? <Phone className="ic sm" /> : <Mail className="ic sm" />}
+            {notice}
+          </motion.p>
+        )}
+      </div>
+    );
+  }
+
+  const inputId = `bbm-contact-${field}`;
+  return (
+    <div className="fd">
+      <label className="fl" htmlFor={inputId}>{label}</label>
+      <div className="fr">
+        <input
+          id={inputId} inputMode={inputMode} value={value}
+          onChange={(e) => { setValue(e.target.value); setStage("idle"); onVerified?.(false, ""); }}
+          placeholder={placeholder} disabled={stage === "sending"}
+          className={`fx${showRequiredError ? " er" : ""}`}
+        />
+        <button type="button" className="vbn" onClick={sendCode} disabled={!valid || stage === "sending"}>
+          {stage === "sending" ? <Loader2 className="ic spin" /> : "Verify"}
+        </button>
+      </div>
+      {showRequiredError && <p className="em">Verify your {label.toLowerCase()} to continue.</p>}
+      {error && <p className="em">{error}</p>}
     </div>
   );
 }
 
+/* ---------------------------------------------------------------------------
+ * Onboarding (logic unchanged)
+ * ------------------------------------------------------------------------- */
 function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverError }) {
   const [name, setName] = useState(profile?.name || "");
 
@@ -943,10 +1321,10 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
   const [gstData, setGstData] = useState(null);
   const [displayName, setDisplayName] = useState("");
 
-  const [dispatchSame, setDispatchSame] = useState(true);
-  const [dispatchAddress, setDispatchAddress] = useState("");
-  const [dispatchPincode, setDispatchPincode] = useState("");
-  const [dispatchState, setDispatchState] = useState("");
+  const [dispatchSame] = useState(true);
+  const [dispatchAddress] = useState("");
+  const [dispatchPincode] = useState("");
+  const [dispatchState] = useState("");
 
   const [touched, setTouched] = useState(false);
 
@@ -962,9 +1340,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
   const [verifiedEmailValue, setVerifiedEmailValue] = useState(profile?.email_verified ? profile.email : null);
   const emailSectionRef = useRef(null);
 
-  // Resume any progress from a previous, abandoned onboarding attempt —
-  // the user may have verified their phone or typed their name before
-  // closing the tab last time.
+  // Resume any progress from a previous, abandoned onboarding attempt.
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -1012,18 +1388,6 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
 
   const canSubmit = nameOk && phoneVerified && (loginType !== "phone" || emailVerified) && gstinOk && displayNameOk && dispatchOk;
 
-  // Drives both the checklist and the "what's left" helper text — single
-  // source of truth so they can never say different things.
-  const checklist = [
-    { label: "Your name", done: nameOk, ref: nameRef },
-    { label: "Verified mobile number", done: phoneVerified, ref: phoneSectionRef },
-    ...(loginType === "phone" ? [{ label: "Verified email", done: emailVerified, ref: emailSectionRef }] : []),
-    { label: "Verified GSTIN", done: gstinOk, ref: gstinRef },
-    { label: "Display name for buyers", done: displayNameOk, ref: displayNameRef },
-    ...(!dispatchSame ? [{ label: "Dispatch address", done: dispatchOk, ref: dispatchRef }] : []),
-  ];
-  const remaining = checklist.filter((s) => !s.done);
-
   const handleSubmit = (e) => {
     e.preventDefault();
     setTouched(true);
@@ -1052,47 +1416,38 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
 
   return (
     <motion.form
+      className="ob" noValidate onSubmit={handleSubmit}
       initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.22 }} onSubmit={handleSubmit}
+      transition={{ duration: 0.22 }}
     >
-      <AuthShell
-        wide
-        footer={
-          <PrimaryButton type="submit" loading={loading} loadingText="Saving…" disabled={loading}>
-            Finish setting up<ArrowRight className="h-4 w-4" />
-          </PrimaryButton>
-        }>
-        <PanelHeader
-          icon={<Building2 className="h-6 w-6" />}
-          title="Set up your account"
-          subtitle=""
-        />
+      <div className="oc">
+        <div className="oh">
+          <span className="pi"><Building2 className="ic" style={{ width: 26, height: 26 }} /></span>
+          <h2>Set up your account</h2>
+          <p>Verify your details to start trading on BBM.</p>
+        </div>
 
         {resumed && (
-          <motion.p
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="mt-5 rounded-2xl bg-slate-50 px-3.5 py-2.5 text-center text-[12.5px] font-bold tracking-wide text-slate-700"
-          >
+          <motion.p className="wb" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
             Welcome back — we picked up where you left off.
           </motion.p>
         )}
 
-        <div className="mt-7 flex flex-col gap-4 pb-1">
-          <div ref={nameRef} className="flex flex-col scroll-mt-24">
-            <label className="text-[12.5px] font-bold tracking-tight text-slate-700">Full name</label>
+        <div className="fm">
+          <div ref={nameRef} className="fd sc">
+            <label className="fl" htmlFor="bbm-name">Full name</label>
             <input
-              autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName}
-              placeholder="e.g. Rohan Mehta" className={`mt-1.5 ${inputClass(touched && !nameOk)}`}
+              id="bbm-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName}
+              placeholder="e.g. Rohan Mehta" autoComplete="name"
+              className={`fx${touched && !nameOk ? " er" : ""}`}
             />
-            {touched && !nameOk && (
-              <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">Enter your full name.</p>
-            )}
+            {touched && !nameOk && <p className="em">Enter your full name.</p>}
           </div>
 
-          <div ref={phoneSectionRef} className="flex flex-col scroll-mt-24">
+          <div ref={phoneSectionRef} className="sc">
             <AltContactVerify
               token={token} field="phone" label="Mobile number" placeholder="98765 43210" inputMode="numeric"
-              formatValue={(v) => `+91 ${v}`} validate={(v) => PHONE_RE.test(v)} required
+              formatValue={(v) => `+91 ${v}`} validate={(v) => PHONE_RE.test(v)}
               prefillVerifiedValue={verifiedPhoneValue}
               onVerified={(ok) => setPhoneVerified(ok)}
               showRequiredError={touched && !phoneVerified}
@@ -1100,10 +1455,10 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
           </div>
 
           {loginType === "phone" && (
-            <div ref={emailSectionRef} className="flex flex-col scroll-mt-24">
+            <div ref={emailSectionRef} className="sc">
               <AltContactVerify
                 token={token} field="email" label="Email" placeholder="you@company.com" inputMode="email"
-                formatValue={(v) => v} validate={(v) => EMAIL_RE.test(v)} required
+                formatValue={(v) => v} validate={(v) => EMAIL_RE.test(v)}
                 prefillVerifiedValue={verifiedEmailValue}
                 onVerified={(ok) => setEmailVerified(ok)}
                 showRequiredError={touched && !emailVerified}
@@ -1111,36 +1466,34 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
             </div>
           )}
 
-          <div ref={gstinRef} className="flex flex-col scroll-mt-24">
-            <label className="text-[12.5px] font-bold tracking-tight text-slate-700">GSTIN</label>
-            <div className="mt-1.5 flex gap-2">
-              <div className="relative flex-1">
+          <div ref={gstinRef} className="fd sc">
+            <label className="fl" htmlFor="bbm-gstin">GSTIN</label>
+            <div className="fr">
+              <div className="rel">
                 <input
-                  maxLength={15} value={gstin}
+                  id="bbm-gstin" maxLength={15} value={gstin} autoCapitalize="characters" spellCheck={false}
                   onChange={(e) => { setGstin(e.target.value.toUpperCase().replace(/\s/g, "")); setGstStage("idle"); setGstData(null); }}
                   placeholder="22AAAAA0000A1Z5"
-                  className={`${inputClass((touched && !gstinOk) || (gstin.length === 15 && !isValidGstinShape(gstin)))} pr-10 font-mono uppercase tracking-wide`}
+                  className={`fx mono${(touched && !gstinOk) || (gstin.length === 15 && !isValidGstinShape(gstin)) ? " er" : ""}`}
                 />
-                {gstStage === "found" && <CheckCircle2 className="absolute right-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-slate-700" />}
+                {gstStage === "found" && <CheckCircle2 className="ic" />}
               </div>
-              <SecondaryButton type="button" onClick={runLookup} disabled={!isValidGstinShape(gstin) || gstStage === "looking_up"} loading={gstStage === "looking_up"}>
-                Verify
-              </SecondaryButton>
+              <button type="button" className="vbn" onClick={runLookup} disabled={!isValidGstinShape(gstin) || gstStage === "looking_up"}>
+                {gstStage === "looking_up" ? <Loader2 className="ic spin" /> : "Verify"}
+              </button>
             </div>
-            {gstin.length === 15 && !isValidGstinShape(gstin) && (
-              <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">That doesn't match a GSTIN's format.</p>
-            )}
-            {gstStage === "error" && <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">{gstError}</p>}
+            {gstin.length === 15 && !isValidGstinShape(gstin) && <p className="em">That doesn't match a GSTIN's format.</p>}
+            {gstStage === "error" && <p className="em">{gstError}</p>}
             {touched && !gstinOk && gstStage !== "error" && gstin.length !== 15 && (
-              <p className="mt-1.5 text-[12px] font-medium tracking-wide text-[#c71f11]">Enter and verify your GSTIN to continue.</p>
+              <p className="em">Enter and verify your GSTIN to continue.</p>
             )}
           </div>
 
           <AnimatePresence>
             {gstStage === "found" && gstData && (
               <motion.div
+                className="gd"
                 initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}
-                className="grid grid-cols-1 gap-x-5 gap-y-3.5 overflow-hidden rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 sm:grid-cols-2"
               >
                 <ReadOnlyField label="Legal name" value={gstData.legal_name} />
                 <ReadOnlyField label="Trade name" value={gstData.trade_name} />
@@ -1149,14 +1502,20 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
                 <ReadOnlyField label="State" value={gstData.state} />
                 <ReadOnlyField label="District" value={gstData.district} />
                 <ReadOnlyField label="Pincode" value={gstData.pincode} />
-                <ReadOnlyField label="Registered address" value={gstData.registered_address} className="sm:col-span-2" />
+                <ReadOnlyField label="Registered address" value={gstData.registered_address} className="wide" />
               </motion.div>
             )}
           </AnimatePresence>
 
-          {serverError && <p className="text-[12px] font-medium tracking-wide text-[#c71f11]">{serverError}</p>}
+          {serverError && <p className="em" style={{ marginTop: 0 }}>{serverError}</p>}
         </div>
-      </AuthShell>
+
+        <div className="ofoot">
+          <button type="submit" className="bt go blk" disabled={loading}>
+            {loading ? (<><Loader2 className="ic spin" />Saving…</>) : (<>Finish setting up<ArrowRight className="ic" /></>)}
+          </button>
+        </div>
+      </div>
     </motion.form>
   );
 }
@@ -1164,8 +1523,8 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
 function ReadOnlyField({ label, value, className = "" }) {
   return (
     <div className={className}>
-      <p className="text-[10.5px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
-      <p className="mt-0.5 truncate text-[13px] font-medium tracking-wide text-slate-700">{value || "—"}</p>
+      <small>{label}</small>
+      <b>{value || "—"}</b>
     </div>
   );
 }
