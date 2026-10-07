@@ -146,6 +146,14 @@
 //   is offset by the site header's height when that header is
 //   fixed/sticky (useHeaderStickyOffset).
 // - The GST toggle shows its label first and the switch on the right.
+//
+// ACTION COLOURS (this revision):
+// - The GST toggle, "Swipe to buy" / "Buy now" and "Sell this product" used
+//   to be solid black. They now use the Grow palette: green for the GST
+//   switch (ON state), traffic-orange for every purchase action (swipe knob,
+//   Buy now buttons) and blue for "Sell this product". Colour tokens live
+//   in the `C` object below (buy / buyDeep / sell / sellDeep / green /
+//   greenInk) so they can be tuned in one place.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { useNavigate, useLocation, Link, useSearchParams } from "react-router-dom";
@@ -180,6 +188,13 @@ const C = {
     // RAL 2009 traffic orange
     brand: "#de3207ff", brandDeep: "#C44705", brandInk: "#8F3200",
     brandTint: "#FFF3EB", brandTint2: "#FFE2D1", brandHair: "rgba(222,83,7,0.25)",
+    // Action colours (Grow palette)
+    buy: "#F4511E",        // Swipe to buy knob + Buy now buttons (--orange)
+    buyDeep: "#D83F0E",    // pressed / hover shade of buy
+    sell: "#1E78D6",       // "Sell this product" (--blue)
+    sellDeep: "#1666B8",   // hover shade of sell
+    green: "#22A06B",      // GST switch ON (--green)
+    greenInk: "#12794A",   // GST label ON (readable dark green)
 };
 const EASE = [0.16, 1, 0.3, 1];
 // Fewer rows per page means fewer images requested on first paint (each
@@ -1088,6 +1103,7 @@ function ProductImage({ src, alt, onOpen, priority = false }) {
 // the feed. Purely a local UI switch; all price math it drives is
 // recomputed client-side (useMemo), so flipping it is instant.
 // Layout: label FIRST, switch on the right.
+// Colours: ON = green track + dark-green label, OFF = soft grey track + grey label.
 function GstToggle({ includeGst, onChange }) {
     return (
         <button
@@ -1102,7 +1118,7 @@ function GstToggle({ includeGst, onChange }) {
                 between "With GST" and "Without GST". */}
             <span
                 className="min-w-[66px] whitespace-nowrap text-right text-[11px] font-bold leading-none tracking-wide"
-                style={{ color: includeGst ? C.secondary : "#7B858C" }}
+                style={{ color: includeGst ? C.greenInk : "#7B858C" }}
             >
                 {includeGst ? "With GST" : "Without GST"}
             </span>
@@ -1110,7 +1126,7 @@ function GstToggle({ includeGst, onChange }) {
             {/* Switch (h-4 w-8, knob h-3 w-3, travel 16px) */}
             <span
                 className="relative flex h-4 w-8 shrink-0 items-center rounded-full p-0.5 transition-all duration-200"
-                style={{ backgroundColor: includeGst ? C.secondary : "#D9DEE2" }}
+                style={{ backgroundColor: includeGst ? C.green : "#D9DEE2" }}
             >
                 <span
                     className="h-3 w-3 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-transform duration-200"
@@ -1309,8 +1325,7 @@ function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, bre
                     <ShareBtn className="h-9 w-28 shrink-0" />
                 ) : !outOfStock ? (
                     <button type="button" onClick={(e) => { e.stopPropagation(); onBuy(); }}
-                        className="flex h-9 w-28 shrink-0 items-center justify-center gap-1.5 rounded-lg text-[12px] font-extrabold tracking-wide text-white transition-transform active:scale-95"
-                        style={{ background: C.primary }}>
+                        className="flex h-9 w-28 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#F4511E] text-[12px] font-extrabold tracking-wide text-white shadow-[0_6px_14px_-8px_rgba(244,81,30,0.8)] transition hover:bg-[#D83F0E] active:scale-95">
                         {opening && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                         Buy now
                     </button>
@@ -1906,6 +1921,9 @@ const SLIDE_KNOB = 40;
 const SLIDE_KNOB_COMPACT = 32;
 const SLIDE_PAD = 4;
 
+// Slide-to-confirm. Used for "Swipe to buy" and for the own-listing
+// "Slide to confirm changes". Knob + progress fill use the buy colour (orange);
+// the track stays a soft neutral so the white chevron on the knob reads clearly.
 function SlideToConfirm({
     label, onConfirm, busy, resetKey, disabled = false,
     compact = false, busyLabel = "Updating…", doneLabel = "Updated",
@@ -1942,16 +1960,16 @@ function SlideToConfirm({
         <div
             ref={trackRef}
             className={`relative ${compact ? "h-10" : "h-12"} w-full overflow-hidden rounded-full select-none`}
-            style={{ background: C.hairSoft, opacity: disabled ? 0.5 : 1 }}
+            style={{ background: "#FDE9E2", opacity: disabled ? 0.5 : 1 }}
         >
             <motion.div
                 className="pointer-events-none absolute inset-y-0 left-0 rounded-full"
-                style={{ width: fillWidth, background: `${C.primary}14` }}
+                style={{ width: fillWidth, background: `${C.buy}33` }}
             />
             <motion.p
                 className={`pointer-events-none absolute inset-0 flex items-center justify-center text-center ${compact ? "text-[10px] whitespace-nowrap" : "text-[11px]"} font-bold tracking-wide`}
                 style={{
-                    color: C.muted,
+                    color: C.buyDeep,
                     paddingLeft: knob + SLIDE_PAD * 2,
                     paddingRight: compact ? SLIDE_PAD * 2 : knob + SLIDE_PAD * 2,
                     opacity: busy || confirmed ? 1 : labelOpacity,
@@ -1980,7 +1998,8 @@ function SlideToConfirm({
                     left: SLIDE_PAD,
                     width: knob,
                     height: knob,
-                    background: C.primary,
+                    background: C.buy,
+                    boxShadow: "0 4px 10px -4px rgba(244, 81, 30, 0.75)",
                     cursor: disabled ? "not-allowed" : "grab",
                     touchAction: "pan-y",
                 }}
@@ -2473,7 +2492,7 @@ function SellerDropdown({
                                                         {/* md and up: price + Buy now button */}
                                                         <div className="hidden flex-col items-end gap-1.5 md:flex">
                                                             <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                                            <span className="rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white" style={{ background: C.primary }}>
+                                                            <span className="rounded-lg bg-[#F4511E] px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white shadow-[0_6px_14px_-8px_rgba(244,81,30,0.8)] transition-colors group-hover:bg-[#D83F0E]">
                                                                 Buy now
                                                             </span>
                                                         </div>
@@ -2496,7 +2515,7 @@ function SellerDropdown({
                 {!showSkeleton && !alreadySelling && (
                     <button
                         onClick={onSell}
-                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-black bg-black px-3 py-2 text-[12.5px] font-bold tracking-wide text-white transition-colors duration-150 hover:bg-black/90"
+                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-[#1E78D6] bg-[#1E78D6] px-3 py-2 text-[12.5px] font-bold tracking-wide text-white shadow-[0_8px_16px_-10px_rgba(30,120,214,0.9)] transition-colors duration-150 hover:border-[#1666B8] hover:bg-[#1666B8] active:scale-[0.99]"
                     >
                         <Store className="h-3.5 w-3.5" /> Sell this product
                     </button>

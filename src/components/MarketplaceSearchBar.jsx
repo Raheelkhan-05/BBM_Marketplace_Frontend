@@ -16,6 +16,9 @@ const BAR_GRADIENT = "linear-gradient(90deg, #111111 0%, #666666 50%, #111111 10
 const RUNNING_BORDER_GRADIENT_STOPS =
     "#3B82F6 0%, #FF6A00 25%, #3B82F6 50%, #0B8A93 75%, #3B82F6 100%";
 
+// Search submit button colour (Grow palette --blue, with a darker hover/press shade).
+const SEARCH_BTN = "#1E78D6";
+const SEARCH_BTN_HOVER = "#1666B8";
 
 const BORDER_WIDTH_PX = 2;
 const SPIN_CYCLE_MS = 2000;
@@ -80,6 +83,7 @@ export default function MarketplaceSearchBar({
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [suggestionsLoading, setSuggestionsLoading] = useState(false);
     const [highlightIndex, setHighlightIndex] = useState(-1);
+    const [btnHover, setBtnHover] = useState(false);
     const debounceRef = useRef(null);
     const abortRef = useRef(null);
     const containerRef = useRef(null);
@@ -377,7 +381,14 @@ export default function MarketplaceSearchBar({
 
                     <button
                         type="submit"
-                        className="relative ml-2 lg:ml-3 flex h-9 w-9 lg:h-9 lg:w-9 shrink-0 items-center justify-center rounded-full bg-black text-white transition hover:scale-105"
+                        aria-label="Search"
+                        onMouseEnter={() => setBtnHover(true)}
+                        onMouseLeave={() => setBtnHover(false)}
+                        className="relative ml-2 lg:ml-3 flex h-9 w-9 lg:h-9 lg:w-9 shrink-0 items-center justify-center rounded-full text-white transition hover:scale-105 active:scale-95"
+                        style={{
+                            background: btnHover ? SEARCH_BTN_HOVER : SEARCH_BTN,
+                            boxShadow: "0 6px 14px -6px rgba(30, 120, 214, 0.75)",
+                        }}
                     >
                         <Search size={16} className="lg:!w-[16px] lg:!h-[16px]" />
                     </button>
