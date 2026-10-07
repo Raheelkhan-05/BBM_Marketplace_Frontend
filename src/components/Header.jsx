@@ -1,46 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Menu, X, ArrowUpRight, User, LogOut, ChevronDown, Store, ShieldCheck,
-  Clock3, ListChecks, BookOpen, Users, IndianRupee,
-  Skull,
-  Boxes, Lightbulb
-} from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { TAGLINE } from "../../data/content";
+// src/components/Header.jsx
+//
+// Header only shows the shop name (desktop) or the guest Sign In bar.
+// All navigation (Home, Cart, Orders, Chats ... and Sign out) lives in the menu
+// modal opened from the floating dock (BottomNavStrip), so it is NOT repeated here.
+import { useState, useEffect, useRef } from "react";
+import { ArrowUpRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { useNotifications } from "../context/NotificationsContext.jsx";
-import { useTransportLibrary } from "../context/TransportLibraryContext.jsx";
-import NotificationBell from "../components/NotificationBell.jsx";
 import SmartLink from "./SmartLink.jsx";
-import { NAV_ITEMS } from "./navItems.js";
-import { useCart } from "../context/CartContext.jsx";
-import { preloadRoute } from "../routePreload.js";
-import { useChatContext } from "../context/ChatContext.jsx";
-import { useListings } from "../context/ListingsContext.jsx";
-import { buildMenuItems } from "./menuItems.js";
-import DesktopNav from "./DesktopNav.jsx";
 
-const C = {
-  ink: "#141B22",
-  muted: "#5B6672",
-  primary: "#C2410C",
-  secondary: "#0B7285",
-  hair: "rgba(20,27,34,0.09)",
-};
+const C = { ink: "#141B22" };
 
-const DROPDOWN_ITEM =
-  "flex items-center gap-2 px-4 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-50";
-
-const MOBILE_ROW =
-  "flex min-h-[46px] items-center gap-3 rounded-lg px-3 text-[14.5px] font-semibold text-slate-700 transition-colors active:bg-slate-100";
-
-// Fixed-width box for the shop name/logo text. If the text fits, it just
-// renders normally. If it overflows the fixed width, it switches to a
-// smooth left-to-right (well, right-to-left scroll, left-to-right reading)
-// marquee loop instead of clipping or wrapping — measured via actual
-// pixel widths, not guessed off character count, so it's correct at any
-// font size/zoom level.
+// Fixed-width box for the shop name. If the text fits, it renders normally.
+// If it overflows, it switches to a marquee loop (measured by real pixel widths).
 function MarqueeText({ text, width = 96, className, style }) {
   const containerRef = useRef(null);
   const textRef = useRef(null);
@@ -72,7 +43,7 @@ function MarqueeText({ text, width = 96, className, style }) {
     ro.observe(container);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [text, isMobile]); // re-measure when switching mobile/desktop, since width mode changes
+  }, [text, isMobile]);
 
   const shouldScroll = isOverflowing && !isMobile;
   const duration = Math.max(4, singleWidth / 40);
@@ -102,96 +73,13 @@ function MarqueeText({ text, width = 96, className, style }) {
 
 function formatShopName(slug) {
   if (!slug) return "";
-  // Shop slugs get a numeric suffix appended when the base name is
-  // already taken (e.g. "acme-traders-2", "acme-traders-3") to keep the
-  // slug unique — that's a backend uniqueness detail, not something a
-  // user should see as part of their shop's display name.
-  const withoutDuplicateSuffix = slug.replace(/-\d+$/, "");
-
-  return withoutDuplicateSuffix
+  // Drop the numeric suffix added for slug uniqueness (e.g. "acme-traders-2").
+  return slug
+    .replace(/-\d+$/, "")
     .split("-")
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
-}
-
-function ScrollableNav({ navItems, pathname, navMaxWidth }) {
-  const scrollRef = useRef(null);
-  const [showLeftFade, setShowLeftFade] = useState(false);
-  const [showRightFade, setShowRightFade] = useState(false);
-
-  const updateFades = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setShowLeftFade(el.scrollLeft > 4);
-    setShowRightFade(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-  }, []);
-
-  useEffect(() => {
-    updateFades();
-    const el = scrollRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", updateFades, { passive: true });
-    const ro = new ResizeObserver(updateFades);
-    ro.observe(el);
-    return () => { el.removeEventListener("scroll", updateFades); ro.disconnect(); };
-  }, [updateFades, navMaxWidth, navItems.length]);
-
-  return (
-    <div
-      style={{ maxWidth: navMaxWidth != null ? `${navMaxWidth}px` : undefined }}
-      className="absolute left-1/2 hidden -translate-x-1/2 md:block"
-    >
-      <div className="relative">
-        {showLeftFade && (
-          <div className="pointer-events-none absolute left-0 top-0 z-10 h-full w-8 bg-gradient-to-r from-white/95 to-transparent" />
-        )}
-        {showRightFade && (
-          <div className="pointer-events-none absolute right-0 top-0 z-10 h-full w-8 bg-gradient-to-l from-white/95 to-transparent" />
-        )}
-        <nav
-          ref={scrollRef}
-          className="flex items-center gap-1 py-5 -my-2 [scrollbar-width:none] lg:gap-1.5 [&::-webkit-scrollbar]:hidden"
-        >
-          {navItems.map((it) => {
-            const Icon = it.icon;
-            const active = it.match(pathname);
-            return (
-              <button
-                key={it.id}
-                onClick={it.onClick}
-                // Prefetches this tab's page code the moment the cursor
-                // arrives (desktop) or the finger touches down (mobile) —
-                // typically 100-300ms before the click/tap itself actually
-                // registers. By the time onClick fires, the chunk is
-                // usually already cached, so the route switch renders
-                // immediately instead of waiting on a network fetch.
-                onMouseEnter={(e) => {
-                  if (it.to) preloadRoute(it.to);
-                  if (!active) e.currentTarget.style.background = "rgba(20,27,34,0.045)";
-                }}
-                onTouchStart={() => { if (it.to) preloadRoute(it.to); }}
-                className="relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12.5px] font-bold transition-colors duration-150 lg:px-4 lg:text-[13px]"
-                style={{
-                  color: active ? "#fff" : C.ink,
-                  background: active ? "#000000" : "transparent",
-                }}
-                onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
-              >
-                <Icon className="h-3.5 w-3.5 lg:h-4 lg:w-4" style={{ color: active ? "#fff" : C.muted }} />
-                {it.label}
-                {it.badge != null && (
-                  <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[10px] font-bold text-white ring-2 ring-white">
-                    {it.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-    </div>
-  );
 }
 
 function GuestHeader() {
@@ -211,7 +99,6 @@ function GuestHeader() {
           </span>
         </SmartLink>
         <span className="flex-1" />
-        {/* On mobile the Sign In lives in the FAB dock */}
         <SmartLink
           to="/login"
           className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#FFD60A] bg-[#FFD60A] px-5 text-[13px] font-extrabold text-[#06161C] transition hover:brightness-105 active:scale-[.985]"
@@ -223,281 +110,26 @@ function GuestHeader() {
   );
 }
 
-export default function Header({ onOpenRfq }) {
-  const [open, setOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
-  const [headerHeight, setHeaderHeight] = useState(49);
-  const [navMaxWidth, setNavMaxWidth] = useState(null);
-  const { isLoggedIn, profile, signOut, effectiveLoggedIn } = useAuth();
-
-  // console.log("effectiveLoggedIn", effectiveLoggedIn);
-  // console.log("profile", profile);
-  // console.log("signOut", signOut);
-  // console.log("isLoggedIn", isLoggedIn);
-
-  // DELETE these two lines — now sourced from context:
-  // const onboardingDone = !isLoggedIn || profile?.onboarding_step === "done";
-  // const effectiveLoggedIn = isLoggedIn && onboardingDone;
-  const { orderUnreadCount } = useNotifications();
-  const { cartCount } = useCart();
-  const { unreadTotal: chatUnreadTotal } = useChatContext();
-  const { totalBadgeCount: productsBadgeCount } = useListings();
-  const { pendingProposalsCount } = useTransportLibrary();
-
-  const navigate = useNavigate();
-  const { pathname, search } = useLocation();
-
-  const headerRef = useRef(null);
-  const rowRef = useRef(null);
-  const logoRef = useRef(null);
-  const rightRef = useRef(null);
-  const accountRef = useRef(null);
-
-  const { purchaseUnreadCount, salesUnreadCount, creditUnreadCount } = useNotifications(); // replaces orderUnreadCount
-
-
-  useEffect(() => {
-    if (!headerRef.current) return;
-    const update = () => {
-      const rect = headerRef.current.getBoundingClientRect();
-      setHeaderHeight(rect.bottom); // actual bottom edge, includes margins
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(headerRef.current);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, { passive: true }); // header position can shift with scroll if not fixed
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update);
-    };
-  }, []);
-
-  // Nav stays perfectly centered on the whole row, but its max-width is
-  // capped to whatever gap is smaller on either side of center — so it
-  // can shrink but never overlap the logo or the notification bell /
-  // account button, on either side. Recomputes on any resize: viewport
-  // changes, the icon cluster growing/shrinking (e.g. bell appearing
-  // after login), etc.
-  useEffect(() => {
-    if (!rowRef.current || !logoRef.current || !rightRef.current) return;
-    const GAP = 2; // breathing room against whichever side is closer
-
-    function recompute() {
-      const rowWidth = rowRef.current.offsetWidth;
-      const logoWidth = logoRef.current.offsetWidth;
-      const rightWidth = rightRef.current.offsetWidth;
-      const half = rowWidth / 2;
-      const leftSlack = half - logoWidth - GAP;
-      const rightSlack = half - rightWidth - GAP;
-      const maxWidth = Math.max(0, 1.9 * Math.min(leftSlack, rightSlack));
-      setNavMaxWidth(maxWidth);
-    }
-
-    recompute();
-    const ro = new ResizeObserver(recompute);
-    ro.observe(rowRef.current);
-    ro.observe(logoRef.current);
-    ro.observe(rightRef.current);
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!accountOpen) return;
-    function onClick(e) {
-      if (accountRef.current && !accountRef.current.contains(e.target)) setAccountOpen(false);
-    }
-    function onKey(e) {
-      if (e.key === "Escape") setAccountOpen(false);
-    }
-    document.addEventListener("mousedown", onClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onClick);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [accountOpen]);
-
-  useEffect(() => {
-    if (open) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => { document.body.style.overflow = prev; };
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e) { if (e.key === "Escape") setOpen(false); }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  const displayName =
-    formatShopName(profile?.shop_slug)
-    || profile?.name?.trim().split(" ")[0]
-    || "Account";
-
-  const isAdmin = effectiveLoggedIn && profile?.role === "admin";
-  const isApprovedSeller = effectiveLoggedIn && profile?.seller_status === "approved";
-
-  const navItems = effectiveLoggedIn
-    ? buildMenuItems({
-      isApprovedSeller, navigate,
-      cartCount,
-      chatUnread: chatUnreadTotal,
-      purchaseUnread: purchaseUnreadCount,
-      salesUnread: salesUnreadCount,
-      productsBadge: productsBadgeCount,
-      creditUnread: creditUnreadCount,
-    })
-    : [];
+export default function Header() {
+  const { profile, effectiveLoggedIn } = useAuth();
 
   if (!effectiveLoggedIn) return <GuestHeader />;
 
   return (
-    <>
-      <header
-        ref={headerRef}
-        className="relative top-0 z-50 bg-white md:pt-3 md:my-3 transition-all duration-300"
-        style={{
-          paddingTop: "calc(env(safe-area-inset-top, 0px))", // 0.75rem = mt-3's 12px, now folded into safe-area padding
-          backdropFilter: "blur(8px)",
-        }}
-      >
-
-        <div ref={rowRef} className="relative hidden md:flex mx-auto flex h-7 max-w-7xl items-center justify-between px-4 lg:px-8">
-          <div ref={logoRef} className="flex shrink-0 items-center">
-            <SmartLink to="/" className="flex shrink-0 items-center gap-2">
-              <MarqueeText
-                text={profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
-                width={256}
-                className="text-[16px] font-extrabold tracking-wide"
-                style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: C.ink }}
-              />
-            </SmartLink>
-          </div>
-
-          {/* <ScrollableNav navItems={navItems} pathname={pathname} navMaxWidth={navMaxWidth} /> */}
-          <DesktopNav items={navItems} pathname={pathname} search={search} maxWidth={navMaxWidth} />
-
-          <div ref={rightRef} className="flex shrink-0 items-center gap-3">
-            {effectiveLoggedIn ? (
-              <>
-                {/* Notification bell is admin-only — normal users neither see it nor get its toasts/sound (see NotificationsContext, which gates playback on role). */}
-
-                <div className="relative hidden md:block" ref={accountRef}>
-                  <button
-                    onClick={() => { setAccountOpen(false); signOut(); }}
-                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-[13px] font-semibold text-rose-600 hover:bg-slate-50"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    Sign out
-                  </button>
-
-                  <AnimatePresence>
-                    {accountOpen && (
-                      <motion.div
-                        initial={{ opacity: 0, y: -6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={{ duration: 0.15 }}
-                        className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-[rgba(20,27,34,0.08)] bg-white py-1.5 shadow-xl"
-                      >
-                        {/* {isApprovedSeller && (
-                          <SmartLink
-                            to={`/shop/${profile.shop_slug}`}
-                            onClick={() => setAccountOpen(false)}
-                            className={DROPDOWN_ITEM}
-                          >
-                            <Store className="h-3.5 w-3.5 text-[#0B7285]" />
-                            My Shop
-                          </SmartLink>
-                        )} */}
-
-                        <div className="my-1 border-t border-[rgba(20,27,34,0.08)]" />
-
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </>
-            ) : (
-              <SmartLink
-                to="/login"
-                className="hidden items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-bold text-white transition-transform duration-200 hover:-translate-y-0.5 md:inline-flex"
-                style={{ background: "linear-gradient(135deg, #2a2a2aff 0%, #000000 100%)" }}
-              >
-                Sign In
-                <ArrowUpRight className="h-3.5 w-3.5" />
-              </SmartLink>
-            )}
-
-            {/* <button
-              onClick={() => setOpen(!open)}
-              aria-label="Toggle menu"
-              aria-expanded={open}
-              className="rounded-lg border border-slate-200 bg-white p-1.5 text-slate-700 transition hover:border-[#7fb3bd] hover:text-[#0B7285] md:hidden"
-            >
-              {open ? <X size={18} /> : <Menu size={18} />}
-            </button> */}
-          </div>
-        </div>
-      </header>
-
-      <AnimatePresence>
-        {open && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setOpen(false)}
-              className="fixed inset-0 z-40 bg-slate-900/25 backdrop-blur-sm md:hidden"
-            />
-            <motion.div
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-              style={{ top: headerHeight }}
-              className="fixed left-0 right-0 z-50 max-h-[calc(100dvh-var(--h))] overflow-y-auto border-b border-[rgba(20,27,34,0.08)] bg-[#FFFFFF] shadow-xl backdrop-blur-xl md:hidden"
-            >
-              {/* Fills the gap between the true top of the viewport (incl. notch)
-      and wherever this panel's `top` happens to land, so there's never
-      a transparent sliver above it once the header has scrolled — this
-      is fixed positioned independent of `headerHeight`. */}
-              <div
-                className="fixed left-0 right-0 top-0 bg-white"
-                style={{ height: `calc(env(safe-area-inset-top, 0px) + ${headerHeight}px)` }}
-              />
-
-              <div className="relative mx-auto max-w-7xl px-5 py-4">
-
-
-                <nav className="flex flex-col gap-0.5">
-                  {!effectiveLoggedIn && (
-                    <SmartLink
-                      to="/login"
-                      onClick={() => setOpen(false)}
-                      className="mt-1 flex min-h-[46px] items-center justify-center gap-1.5 rounded-lg px-4 text-center text-sm font-bold text-white shadow-[0_6px_16px_-4px_rgba(194,65,12,0.35)]"
-                      style={{ background: "linear-gradient(135deg, #C2410C 0%, #9A2E0A 100%)" }}
-                    >
-                      Sign In
-                      <ArrowUpRight className="h-3.5 w-3.5" />
-                    </SmartLink>
-                  )}
-
-                  <p className="mt-3 border-t border-slate-200 pt-3 text-center text-xs font-medium text-slate-400">
-                    {TAGLINE}
-                  </p>
-                </nav>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-    </>
+    <header
+      className="relative top-0 z-50 bg-white md:my-3 md:pt-3"
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px))" }}
+    >
+      <div className="mx-auto hidden h-7 max-w-7xl items-center px-4 md:flex lg:px-8">
+        <SmartLink to="/" className="flex shrink-0 items-center gap-2">
+          <MarqueeText
+            text={profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
+            width={256}
+            className="text-[16px] font-extrabold tracking-wide"
+            style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: C.ink }}
+          />
+        </SmartLink>
+      </div>
+    </header>
   );
 }
