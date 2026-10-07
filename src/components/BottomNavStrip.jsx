@@ -33,6 +33,7 @@ import { useChatContext } from "../context/ChatContext.jsx";
 import { useListings } from "../context/ListingsContext.jsx";
 import HelpBulb from "./HelpBulb.jsx";
 import { buildMenuItems } from "./menuItems.js";
+import { isSellerReady } from "./growSeller/growSeller.js";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)", tile: "rgba(20,27,34,0.06)" };
 
@@ -175,6 +176,15 @@ const ROW_INTERACTIVE =
 const ICON_TILE = "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl md:h-11 md:w-11 md:rounded-2xl";
 const ROW_LABEL = "flex-1 text-[14px] tracking-wide md:flex-none md:text-[15px]";
 
+// Start loading the seller home page code as soon as a finger / cursor touches the Grow button,
+// so the page is usually ready by the time the tap completes (no blank flash while the chunk loads).
+let growWarmed = false;
+const warmGrow = () => {
+    if (growWarmed) return;
+    growWarmed = true;
+    import("../pages/GrowEnquiriesPage.jsx").catch(() => { growWarmed = false; });
+};
+
 function formatShopName(slug) {
     if (!slug) return "";
     // Drop the numeric suffix added for slug uniqueness (e.g. "acme-traders-2").
@@ -267,11 +277,26 @@ function Divider() {
 
 const countLabel = (n) => (n > 99 ? "99+" : n);
 
+// Dock badge: always in the DOM, absolutely positioned. It only fades/scales, so a count
+// appearing or disappearing never adds or removes anything from the dock layout.
+function DockBadge({ n }) {
+    const last = useRef(n);
+    if (n > 0) last.current = n; // keep the last number visible while it fades out
+    return (
+        <span
+            aria-hidden="true"
+            className={`pointer-events-none absolute -right-1 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#d2462b] px-1 text-[9px] font-bold text-white transition-[opacity,transform] duration-150 ${n > 0 ? "scale-100 opacity-100" : "scale-50 opacity-0"}`}
+        >
+            {countLabel(last.current)}
+        </span>
+    );
+}
+
 export default function BottomNavStrip({ onOpenRfq }) {
     const primary = useIsPrimaryInstance();
     const navigate = useNavigate();
     const { pathname, search } = useLocation();
-    const { effectiveLoggedIn, profile, signOut } = useAuth();
+    const { token, effectiveLoggedIn, profile, signOut } = useAuth();
     const { purchaseUnreadCount, salesUnreadCount, creditUnreadCount } = useNotifications();
     const { cartCount } = useCart();
     const { unreadTotal: chatUnreadTotal } = useChatContext();
@@ -302,10 +327,14 @@ export default function BottomNavStrip({ onOpenRfq }) {
     // (Manage products + Sales orders). Shown on the Grow button.
     const growBadgeTotal = (productsBadgeCount || 0) + (salesUnreadCount || 0);
 
+    // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
+    // (Going via /grow made the screen render the start layout first and then redirect = visible jump.)
+    const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/grow/enquiries" : "/grow";
+
     // Always the same two tiles, in the same order: Grow, Save.
     // (Grow's badge is hidden inside the Grow module, where the page shows the counts itself.)
     const tiles = [TILES.grow, TILES.save].map((t, i) => ({
-        ...t, slot: SLOT[i], badge: t.key === "grow" && !inGrow ? growBadgeTotal : 0,
+        ...t, to: t.key === "grow" ? growTo : t.to, slot: SLOT[i], badge: t.key === "grow" ? growBadgeTotal : 0,
     }));
 
     // Menu rows: drop the seller rows that now live in Grow, and Home while already on Home.
@@ -378,18 +407,14 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     initial={{ rotate: pageOpen ? -90 : 90, opacity: 0, scale: 0.6 }}
                     animate={{ rotate: 0, opacity: 1, scale: 1 }}
                     exit={{ rotate: pageOpen ? 90 : -90, opacity: 0, scale: 0.6 }}
-                    transition={{ duration: 0.18 }}
+                    transition={{ duration: 0.08 }}
                     className="flex"
                 >
                     {pageOpen ? <X size={22} strokeWidth={2.4} /> : <Menu size={22} strokeWidth={2.4} />}
                 </motion.span>
             </AnimatePresence>
 
-            {badgeDisplay != null && !pageOpen && (
-                <span className="absolute -right-0.5 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#d2462b] px-1 text-[9px] font-bold text-white">
-                    {badgeDisplay}
-                </span>
-            )}
+            <DockBadge n={pageOpen ? 0 : badgeTotal} />
         </motion.button>
     );
 
@@ -476,20 +501,18 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             style={{ overflow: clipTiles ? "hidden" : "visible" }}
                         >
                             <div ref={tilesInnerRef} className="relative flex w-max items-center" style={{ gap: tileGap }}>
-                                <AnimatePresence mode="popLayout" initial={false}>
+                                <>
                                     {tiles.map(({ key, label, Icon, to, theme, slot, badge }) => {
                                         return (
                                             <motion.button
                                                 key={key}
-                                                layout
                                                 type="button"
                                                 onClick={() => navigate(to)}
+                                                onPointerEnter={key === "grow" ? warmGrow : undefined}
+                                                onTouchStart={key === "grow" ? warmGrow : undefined}
                                                 aria-label={badge > 0 ? `${label}, ${badge} unread` : label}
                                                 tabIndex={pageOpen ? -1 : 0}
                                                 title={label}
-                                                initial={{ opacity: 0, scale: 0.6 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                exit={{ opacity: 0, scale: 0.6 }}
                                                 transition={{ type: "spring", stiffness: 500, damping: 32 }}
                                                 whileTap={{ scale: 0.92 }}
                                                 style={{
@@ -504,24 +527,18 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                                     <span aria-hidden className="bbm-dock-ping pointer-events-none absolute inset-0 rounded-full border-2" style={{ borderColor: theme.bg }} />
                                                 )}
                                                 <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon size={slot.icon} /></span>
-                                                {badge > 0 && (
-                                                    <span className="absolute -right-1 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-[#d2462b] px-1 text-[9px] font-bold text-white">
-                                                        {countLabel(badge)}
-                                                    </span>
-                                                )}
+                                                <DockBadge n={badge} />
                                             </motion.button>
                                         );
                                     })}
-                                </AnimatePresence>
+                                </>
                             </div>
                         </motion.div>
 
-                        <AnimatePresence mode="wait" initial={false}>
-                            <motion.div key={inModule ? "home" : effectiveLoggedIn ? "menu" : "login"} className="contents"
-                                initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}>
-                                {inModule ? homeButton : effectiveLoggedIn ? menuButton : signInButton}
-                            </motion.div>
-                        </AnimatePresence>
+                        {/* Instant swap (no exit/enter animation): the key makes React replace the button at once */}
+                        <Fragment key={inModule ? "home" : effectiveLoggedIn ? "menu" : "login"}>
+                            {inModule ? homeButton : effectiveLoggedIn ? menuButton : signInButton}
+                        </Fragment>
                     </div>
                 </motion.div>
             </div>

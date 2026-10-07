@@ -2,7 +2,7 @@
 
 /* ===== Root: all variables and base styles live on .gsl only (nothing global) ===== */
 .gsl {
-    --bg: #F4F8F9;
+    --bg: #FFFFFF;
     --s: #FFFFFF;
     --s2: #EDF3F5;
     --line: #DCE6E9;
@@ -94,7 +94,7 @@
     position: sticky;
     top: env(safe-area-inset-top, 0px);
     z-index: 40;
-    background: color-mix(in srgb, var(--bg) 86%, transparent);
+    background: color-mix(in srgb, var(--s) 86%, transparent);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--line)
@@ -202,7 +202,9 @@
 .gsl .wl b {
     display: block;
     font: 900 1.02rem var(--f);
-    line-height: 1.15
+    line-height: 1.15;
+    min-width: 4.5em;
+    font-variant-numeric: tabular-nums;
 }
 
 .gsl .wl.neg {
@@ -243,13 +245,11 @@
 
 @keyframes gsl-in {
     from {
-        opacity: 0;
-        transform: translateY(8px)
+        opacity: 0
     }
 
     to {
-        opacity: 1;
-        transform: none
+        opacity: 1
     }
 }
 
@@ -1970,13 +1970,13 @@
 
 @media (min-width: 1100px) {
     .gsl .app {
-        max-width: 1180px;
-        padding: 0 32px 60px
+        max-width: 1240px;
+        padding: 0 16px 60px
     }
 
     .gsl .hd-in {
-        max-width: 1180px;
-        padding: 12px 32px
+        max-width: 1240px;
+        padding: 8px 0px
     }
 
     .gsl .grid.c3 {

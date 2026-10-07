@@ -1,7 +1,7 @@
 // src/components/growSeller/GrowSellerLayout.jsx
 // Shell for the new seller area (/grow/enquiries, /grow/products, /grow/orders[/:id], /grow/wallet).
 // Header (logo, wallet), bottom dock (top tabs on desktop), toast, and the guard. Light theme only.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useNotifications } from "../../context/NotificationsContext.jsx";
@@ -71,13 +71,28 @@ export default function GrowSellerLayout() {
     const balance = wallet ? fm(wallet.balance_due) : "—";
     const badgeFor = (k) => (k === "ord" ? salesUnreadCount : k === "prod" ? badges.prod : 0);
 
+    const skeletonRows = (
+        <>
+            <div className="sk line" style={{ marginTop: 28, width: "55%" }} />
+            <div className="sk" style={{ marginTop: 18 }} />
+            <div className="sk" style={{ marginTop: 14 }} />
+        </>
+    );
+
     let body;
     if (initializing || (needProbe && probe !== "no")) {
-        body = <div className="app" aria-busy="true"><div className="sk line" style={{ marginTop: 28, width: "55%" }} /><div className="sk" style={{ marginTop: 18 }} /><div className="sk" style={{ marginTop: 14 }} /></div>;
+        body = <div className="app" aria-busy="true">{skeletonRows}</div>;
     } else if (!isLoggedIn || needsOnboarding || !allowed) {
         return <Navigate to="/grow" replace />;
     } else {
-        body = <main className="app"><Outlet /></main>;
+        // Suspense keeps the header in place and shows the same skeleton while the page's code loads
+        body = (
+            <main className="app">
+                <Suspense fallback={<div aria-busy="true">{skeletonRows}</div>}>
+                    <Outlet />
+                </Suspense>
+            </main>
+        );
     }
 
     const tabLink = (t) => {
