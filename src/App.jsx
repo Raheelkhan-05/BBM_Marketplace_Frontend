@@ -19,6 +19,7 @@ import { routeImports, preloadRoutesWhenIdle } from "./routePreload.js";
 import GrowProviders from "./components/grow/GrowProviders.jsx";
 import OnboardingGate from "./components/OnboardingGate.jsx";
 import AppShell from "./components/AppShell.jsx";
+import SaveLayout from "./components/save/SaveLayout.jsx";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -86,6 +87,8 @@ const GrowProductsPage = lazy(() => import("./pages/GrowProductsPage.jsx"));
 const GrowOrdersPage = lazy(() => import("./pages/GrowOrdersPage.jsx"));
 const GrowOrderDetailPage = lazy(() => import("./pages/GrowOrderDetailPage.jsx"));
 const GrowWalletPage = lazy(() => import("./pages/GrowWalletPage.jsx"));
+
+const SavePage = lazy(() => import("./pages/SavePage.jsx"));
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -233,12 +236,17 @@ function App() {
                     <Route path="/grow" element={<GrowEntry />} />
                     <Route path="/grow/details" element={<GrowPage />} />
                   </Route>
+
                   <Route element={<GrowSellerRoot />}>
                     <Route path="/grow/enquiries" element={<GrowEnquiriesPage />} />
                     <Route path="/grow/products" element={<GrowProductsPage />} />
                     <Route path="/grow/orders" element={<GrowOrdersPage />} />
                     <Route path="/grow/orders/:id" element={<GrowOrderDetailPage />} />
                     <Route path="/grow/wallet" element={<GrowWalletPage />} />
+                  </Route>
+
+                  <Route element={<SaveLayout />}>
+                    <Route path="/save" element={<SavePage />} />
                   </Route>
                 </Route>
               </Route>

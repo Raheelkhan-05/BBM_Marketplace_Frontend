@@ -55,10 +55,15 @@ const FAB_THEME = {
     login: { bg: "#08222B", fg: "#FFFFFF" }, // dark, so it never looks like Save
 };
 
+const SLOT = [
+    { size: 52, icon: 22 },
+    { size: 60, icon: 26, raised: true }, // the "Save" slot: bigger, raised, with the ring
+];
+
 const svgBase = { viewBox: "0 0 24 24", width: 24, height: 24, fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
 const GrowIcon = () => <svg {...svgBase}><path d="M3 17l6-6 4 4 8-8M15 7h6v6" /></svg>;
 const SaveIcon = () => <span style={{ font: "900 1.5rem 'Figtree', system-ui, sans-serif", lineHeight: 1 }}>₹</span>;
-const HomeIcon = () => <Home size={22} strokeWidth={1.8} aria-hidden="true" />;
+const HomeIcon = ({ size = 22 }) => <Home size={size} strokeWidth={1.8} aria-hidden="true" />;
 
 // size 52 / 60 and the raised Save button match .dock a / .dock .dy
 const TILES = {
@@ -327,28 +332,32 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         }}
                     >
                         <AnimatePresence mode="popLayout" initial={false}>
-                            {dockTiles.map(({ key, label, Icon, to, theme, size }) => (
-                                <motion.button
-                                    key={key}
-                                    layout
-                                    type="button"
-                                    onClick={() => navigate(to)}
-                                    aria-label={label}
-                                    title={label}
-                                    initial={{ opacity: 0, scale: 0.6 }}
-                                    animate={{ opacity: pageOpen ? 0 : 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.6 }}
-                                    transition={{ type: "spring", stiffness: 500, damping: 32 }}
-                                    whileTap={{ scale: 0.92 }}
-                                    style={{ width: size, height: size, marginTop: key === "save" ? -4 : 0, background: theme.bg, color: theme.fg }}
-                                    className={`${DOCK_BTN} ${pageOpen ? "pointer-events-none" : ""}`}
-                                >
-                                    {key === "save" && (
-                                        <span aria-hidden className="bbm-dock-ping pointer-events-none absolute inset-0 rounded-full border-2" style={{ borderColor: FAB_THEME.save.bg }} />
-                                    )}
-                                    <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon /></span>
-                                </motion.button>
-                            ))}
+                            {dockTiles.map(({ key, label, Icon, to, theme }, i) => {
+                                const slot = SLOT[i];
+                                return (
+                                    <motion.button
+                                        key={key}
+                                        layout
+                                        type="button"
+                                        onClick={() => navigate(to)}
+                                        aria-label={label}
+                                        title={label}
+                                        initial={{ opacity: 0, scale: 0.6 }}
+                                        animate={{ opacity: pageOpen ? 0 : 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.6 }}
+                                        transition={{ type: "spring", stiffness: 500, damping: 32 }}
+                                        whileTap={{ scale: 0.92 }}
+                                        style={{ width: slot.size, height: slot.size, marginTop: slot.raised ? -4 : 0, background: theme.bg, color: theme.fg, "--fab-bg": theme.bg }}
+                                        className={`${DOCK_BTN} ${pageOpen ? "pointer-events-none" : ""}`}
+                                    >
+                                        {/* ring belongs to the slot, so it stays when Save swaps to Home */}
+                                        {slot.raised && (
+                                            <span aria-hidden className="bbm-dock-ping pointer-events-none absolute inset-0 rounded-full border-2" style={{ borderColor: theme.bg }} />
+                                        )}
+                                        <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon size={slot.icon} /></span>
+                                    </motion.button>
+                                );
+                            })}
                         </AnimatePresence>
 
                         {/* seller tabs: keep the AnimatePresence block exactly as you have it */}
