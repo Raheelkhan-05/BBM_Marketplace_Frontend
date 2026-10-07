@@ -36,7 +36,7 @@ function baseUnitsToBasisQty(baseUnits, basis, packSize, masterPackSize) {
     return round2(units);
 }
 
-function submissionToInitialValues(s) {
+export function submissionToInitialValues(s) {
     const packSize = Number(s.pack_size) || 1;
     const masterPackSize = Number(s.units_per_master_pack) || 1;
     const hasOuterPackLocal = masterPackSize > 1;

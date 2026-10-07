@@ -125,10 +125,12 @@ body[data-bbm-menu="open"] .bbm-tile { opacity: 0 !important; pointer-events: no
 ${HIDE_WHEN_MENU_OPEN.map((s) => `body[data-bbm-menu="open"] ${s}`).join(",\n")} { visibility: hidden !important; }
 `;
 
-// Hide the dock while a GrowStartPage screen with its own sticky action bar is open
-// (.app.hb = seller onboarding + Add Product wizard).
+// Hide the dock while a screen with its own sticky action bar is open:
+//  - .gs .app.hb  = seller onboarding + Add Product wizard
+//  - .gax-edit    = the edit-listing sheet opened from My products
 const HIDE_DOCK_CSS = `
-body:has(.gs .app.hb) .bbm-dock { display: none !important; }
+body:has(.gs .app.hb) .bbm-dock,
+body:has(.gax-edit) .bbm-dock { display: none !important; }
 `;
 
 // Mobile: bottom sheet. Desktop (md+): a wide card above the dock.

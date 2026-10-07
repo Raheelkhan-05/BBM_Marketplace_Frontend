@@ -1750,6 +1750,27 @@
     color: #667077
 }
 
+/* Add to the GROW seller stylesheet (the .gsl one), next to the other .sheet rules.
+   "bare" sheet = just the grab handle; the content brings its own header, scroll area and footer. */
+.gsl .sheet.bare {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column
+}
+
+.gsl .sheet.bare .gp {
+    flex: none;
+    margin: 10px auto 2px
+}
+
+.gsl .sheet.bare .gax-edit {
+    flex: 1 1 auto;
+    min-height: min(520px, 70dvh);
+    /* stops the sheet jumping in height while the form loads */
+    max-height: none
+}
+
 .gsl .sheet.lt .ib {
     background: #F4F5F6;
     border-color: rgba(11, 17, 22, .1);

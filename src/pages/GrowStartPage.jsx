@@ -1,7 +1,9 @@
 // src/pages/GrowStartPage.jsx
 // New default /grow experience (the compact HTML design) wired to the existing backend.
 // land -> Start selling -> (login | seller onboarding | add-product wizard)
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";   // add useMemo
+import { derivePriceBreakdown } from "../../shared/customPricing.js";
+import { GrowBuyerAccessDraft } from "../components/grow/GrowBuyerAccess.jsx";
 import { Link, useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
@@ -26,6 +28,7 @@ import { useDrop, useDropGuard } from "../components/grow/growUi.js";
 import { peekAccess, loadAccess, setAccess } from "../components/grow/growAccess.js";
 import "../components/grow/grow-start.css";
 import "../components/grow/grow-extras.css"; // keep AFTER grow-start.css
+import "../components/grow/grow-access.css"; // after grow-extras.css
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Dozen", "Tons"]; // same list as SellerListingForm
 const GST = [0, 0.25, 3, 5, 12, 18, 28];
@@ -370,6 +373,7 @@ const blank = () => ({
     gst: "", price: "", basis: "", inc: null, fr: null, val: "", sl: [],
     ful: "", stock: "", lead: "", dp: "", dd: "", ds: "", dl: blankDelivery(),
     ret: "", war: "", ms: normalizeServiceKeys([]),
+    ba: { mode: "public", buyers: [] },
 });
 // when a catalogue match is lost, the fields it had locked go back to empty
 const unlock = (x) => (x.match ? { ...x, match: null, u: "", ps: "", op: null, mps: "", gst: "" } : x);
@@ -544,6 +548,17 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
         && !(Number(s.minQty) > 0 && Number(s.discountPercent) > 0 && Number(s.discountPercent) < 100));
     const delErr = validateDelivery(P.dl, states.length);
 
+    const buyerProduct = useMemo(() => {
+        const gstN = Number(P.gst) || 0;
+        const final = salePrice > 0 ? Math.round((P.inc ? salePrice : salePrice * (1 + gstN / 100)) * 100) / 100 : 0;
+        const mp = outer ? mpsN : 1, ps = packSz || 1;
+        return {
+            defaultPrice: final,
+            defaultBreakdown: final > 0 ? derivePriceBreakdown(final, ps, mp) : { perBaseUnit: 0, perPack: 0, perMasterPack: null },
+            gstPercent: gstN, packSize: ps, masterPackSize: mp, unit: P.u,
+        };
+    }, [salePrice, P.inc, P.gst, outer, mpsN, packSz, P.u]);
+
     const setOuter = (v) => setP((x) => (x.op === v ? x : {
         ...x, op: v, mps: "", moq: "", sl: [], stock: "", // these are all measured in the sale unit, which just changed
         basis: x.basis === "per_master_pack" ? "" : x.basis,
@@ -673,6 +688,12 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
         },
 
         {
+            t: "Who can buy, and at what price?", s: "Optional. Control who sees this listing and give chosen buyers their own price.",
+            ok: P.ba.mode === "public" || P.ba.buyers.length > 0,
+            h: () => <GrowBuyerAccessDraft token={token} product={buyerProduct} value={P.ba} onChange={(v) => set("ba", v)} />
+        },
+
+        {
             t: "Review and submit", s: "One last look. You can edit any section.", ok: true,
             h: () => {
                 const R = (i, l, v) => <div className="rv" key={i}><div><small>{l}</small><b>{v}</b></div><button type="button" className="lnk" onClick={() => setPs(i)}>Edit</button></div>;
@@ -684,6 +705,9 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
                     {R(3, "Delivery", `${P.ful === "ready_stock" ? "Ready stock" : "Made-to-order"} · from ${P.dp}${P.dd ? ` (${P.dd})` : ""} · ${summarizeDelivery(P.dl)}`)}
                     {R(4, "Terms", `${pol.ret.find((o) => o.key === P.ret)?.label || ""} · ${pol.war.find((o) => o.key === P.war)?.label || ""}`)}
                     {R(5, "Promotion", `${Array.isArray(P.ms) ? P.ms.length : 0} service(s) selected`)}
+                    {R(6, "Buyer access", P.ba.mode === "restricted"
+                        ? `Selected buyers only · ${P.ba.buyers.length} buyer(s)`
+                        : `Everyone · ${P.ba.buyers.filter((b) => b.override).length} custom price(s)`)}
                 </>);
             }
         },
@@ -712,7 +736,11 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
                 moq: String(Math.max(1, Math.round(Number(P.moq) || 0))),
                 dispatchDistrict: P.dd, dispatchState: P.ds, dispatchPincode: P.dp,
                 dispatchingLocations, returnPolicyKey: P.ret, warrantyKey: P.war,
-                buyerAccessDraft: { mode: "public", buyers: [] }, pricingTouched: true,
+                buyerAccessDraft: {
+                    mode: P.ba.mode,
+                    buyers: (P.ba.mode === "restricted" ? P.ba.buyers : P.ba.buyers.filter((b) => b.override))
+                        .map(({ pendingPricing, basedOnPrice, ...b }) => b),
+                },
             };
             const res = payload.genericProductBrandId ? await createListingForExistingBrand(token, payload) : await createSellerSubmission(token, payload);
             if (!res?.success) {

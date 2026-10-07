@@ -15,7 +15,7 @@ export function Portal({ children }) {
  * `light` = white panel for reused (Tailwind, light) content such as the edit form.
  * Omit `title` to render only the grab handle + close button.
  */
-export function Sheet({ title, sub, onClose, wide = false, light = false, children }) {
+export function Sheet({ title, sub, onClose, wide = false, light = false, bare = false, children }) {
     const closeRef = useRef(onClose);
     closeRef.current = onClose;
 
@@ -35,15 +35,18 @@ export function Sheet({ title, sub, onClose, wide = false, light = false, childr
     return (
         <Portal>
             <div className="shade" onMouseDown={(e) => { if (e.target === e.currentTarget) closeRef.current?.(); }}>
-                <div className={`sheet${wide ? " wide" : ""}${light ? " lt" : ""}`} role="dialog" aria-modal="true" aria-label={title || "Details"} data-lenis-prevent="">
+                <div className={`sheet${wide ? " wide" : ""}${light ? " lt" : ""}${bare ? " bare" : ""}`} role="dialog" aria-modal="true" aria-label={title || "Details"} data-lenis-prevent="">
                     <div className="gp" />
-                    <div className="shh">
-                        <div>
-                            {title && <h2 className="h2">{title}</h2>}
-                            {sub && <p className="sub2">{sub}</p>}
+                    {!bare && (
+                        <div className="shh">
+                            <div>
+                                {title && <h2 className="h2">{title}</h2>}
+                                {sub && <p className="sub2">{sub}</p>}
+                            </div>
+                            <button type="button" className="ib sm" aria-label="Close" onClick={() => closeRef.current?.()}><Ic n="x" /></button>
                         </div>
-                        <button type="button" className="ib sm" aria-label="Close" onClick={() => closeRef.current?.()}><Ic n="x" /></button>
-                    </div>
+                    )}
+
                     {children}
                 </div>
             </div>

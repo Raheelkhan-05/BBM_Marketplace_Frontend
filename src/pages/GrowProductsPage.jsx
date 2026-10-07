@@ -13,7 +13,7 @@ import {
     fetchMySellerSubmissions, updateSellerProductSubmission, setSellerSubmissionActive, refreshSellerSubmission,
 } from "../utils/api.js";
 import ImageLightbox from "../components/ImageLightbox.jsx";
-import EditListingModal from "../components/seller/listingForm/EditListingModal.jsx";
+import GrowEditListing from "../components/grow/GrowEditListing.jsx";
 import { savePromotionPlan, saveResultMessage } from "../components/seller/listingForm/PromotionPlanModal.jsx";
 import { getListingExpiry, formatTimeLeft, formatExpiryDate, validityLabel } from "../shared/listingValidity.js";
 import { saleUnitLabel } from "../shared/packUnits.js";
@@ -385,8 +385,8 @@ export default function GrowProductsPage() {
             )}
 
             {edit && editing && (
-                <Sheet light wide onClose={() => setEdit(null)}>
-                    <EditListingModal inline token={token} submissionId={edit.id} key={`${edit.id}-${edit.section || "all"}`}
+                <Sheet bare wide onClose={() => setEdit(null)}>
+                    <GrowEditListing token={token} submissionId={edit.id} key={`${edit.id}-${edit.section || "all"}`}
                         focusSection={edit.section} onClose={() => setEdit(null)} onSaved={handleEditSaved} />
                 </Sheet>
             )}
