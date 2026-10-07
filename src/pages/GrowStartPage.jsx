@@ -79,7 +79,12 @@ export default function GrowStartPage() {
     const route = (a) => {
         if (a?.canPublish) return setView("prod");
         if (a?.reason === "SELLER_NOT_ONBOARDED") return setView("onb");
-        if (a?.reason === "SELLER_NOT_APPROVED") { setView("land"); return say("Your shop is still under review. We will notify you once it is approved."); }
+        if (a?.reason === "SELLER_NOT_APPROVED") {
+
+            if (a.sellerStatus === "pending_review") { setView("land"); return say("Your shop is still under review. We will notify you once it is approved."); }
+            if (a.sellerStatus === "rejected") { setView("land"); return say("Your shop application was not approved. Please contact support."); }
+            return setView("onb"); // draft / not submitted: let them finish and submit properly
+        }
         setView("auth");
     };
     const proceed = async (tk) => {
