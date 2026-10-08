@@ -21,10 +21,32 @@ const ROW_2 = BRANDS.filter((_, i) => i % 2 === 1);
 
 // Demo offers. Each one wins a different sort, so the re-ordering is easy to see.
 const OFFERS = [
-    { seller: "Comet Tools Gujarat Pvt Ltd", city: "Rajkot, Gujarat", moq: 5, days: 4, freight: false, price: 5999 },
-    { seller: "Derk Industries", city: "Rajkot, Gujarat", moq: 1, days: 3, freight: true, price: 10000 },
-    { seller: "Chhaya Industries", city: "Ahmedabad, Gujarat", moq: 2, days: 1, freight: true, price: 60000 },
+    {
+        seller: "Vertex Industrial Supply",
+        city: "Rajkot, Gujarat",
+        moq: 5,
+        days: 4,
+        freight: false,
+        price: 5999,
+    },
+    {
+        seller: "Mehta Engineering Works",
+        city: "Rajkot, Gujarat",
+        moq: 1,
+        days: 3,
+        freight: true,
+        price: 10000,
+    },
+    {
+        seller: "Aarav Industrial Solutions",
+        city: "Ahmedabad, Gujarat",
+        moq: 2,
+        days: 1,
+        freight: true,
+        price: 60000,
+    },
 ];
+
 const SORTS = [
     { key: "moq", label: "Min MOQ", short: "Min MOQ", tag: "LOWEST MOQ", cmp: (a, b) => a.moq - b.moq },
     { key: "price", label: "Best price", short: "Best price", tag: "BEST PRICE", cmp: (a, b) => a.price - b.price },
@@ -90,7 +112,7 @@ const TOPICS = [
         title: "“Why should every purchase become a separate conversation?”",
         intro: ["B2B buying often involves:"],
         journey: ["Inquiry", "Quotation", "Negotiation", "Confirmation", "Payment", "Dispatch", "Delivery"],
-        after: "SAVE should make this journey easier to manage.",
+        after: "BBM Marketplace should make this journey easier to manage.",
         qa: [
             ["Can I buy directly instead of starting from zero every time?", "Once I know what I want, I want the buying process to be simple.", "Move from product discovery to purchase with less unnecessary back-and-forth."],
             ["Can I manage multiple products in one purchase?", "My requirements often include several products from different suppliers.", "Organise your buying requirements and manage your orders from one environment."],
@@ -162,8 +184,9 @@ function CompareCard() {
             <div className="cmp-top">
                 <ProductThumb />
                 <div>
-                    <h3>Ac 1.5 Ton White Colour</h3>
-                    <small>ONEIDA · Home Appliances · {OFFERS.length} sellers</small>
+                    <h3>1.5 Ton Split Air Conditioner</h3>
+                    <small>Home Appliances · Cooling · {OFFERS.length} sellers</small>
+
                 </div>
             </div>
 
@@ -256,7 +279,7 @@ function QA({ uid, open, onToggle, q, ctx, sol }) {
                 <div className="aw">
                     <div className="ans">
                         <p>{ctx}</p>
-                        <div className="sol"><b>SAVE</b><span>{sol}</span></div>
+                        <div className="sol"><b>BBM Marketplace</b><span>{sol}</span></div>
                     </div>
                 </div>
             </div>
@@ -356,7 +379,7 @@ export default function SavePage() {
                     <div className="pn">
                         {PAIN.map((x, i) => <span key={x} className={TONES[i % 4]}>{x}</span>)}
                     </div>
-                    <p className="cl"><b>SAVE</b> brings the buying process together, so you can spend less time sourcing and more time running your business.</p>
+                    <p className="cl"><b>BBM Marketplace</b> brings the buying process together, so you can spend less time sourcing and more time running your business.</p>
                 </div>
             </section>
 
@@ -377,7 +400,7 @@ export default function SavePage() {
             <section className="cta" id="save-start">
                 <div className="wrap">
                     <div className="box">
-                        <h2>You decide what to buy. SAVE helps you buy it better.</h2>
+                        <h2>You decide what to buy. BBM Marketplace helps you buy it better.</h2>
                         <p>Find products. Compare options. Choose suppliers. Buy smarter. Save more.</p>
                         <div className="cr">
                             <Link className="btn" to={BUY_TO}>Start buying</Link>
@@ -386,8 +409,8 @@ export default function SavePage() {
                         <small>More choice. Better decisions. Lower buying effort.</small>
                     </div>
                     <div className="xl">
-                        <div><b>Selling instead?</b><span>GROW: More buyers. More business. Less selling effort.</span></div>
-                        <Link className="btn green sm" to={GROW_TO}>Go to GROW</Link>
+                        <div><b>Selling instead?</b><span>BBM Marketplace: More buyers. More business. Less selling effort.</span></div>
+                        <Link className="btn green sm" to={GROW_TO}>Go to BBM Marketplace</Link>
                     </div>
                 </div>
             </section>

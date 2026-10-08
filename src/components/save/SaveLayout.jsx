@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { goTo } from "../grow/scrollTo.js";
+import SmartLink from "../SmartLink.jsx";
 import { MENU_ROUTES } from "../menuItems.js";
 import "./save.css";
 
@@ -26,7 +27,52 @@ export default function SaveLayout() {
         <div className="sv" id="save-top">
             <header className="hd">
                 <div className="wrap">
-                    <a className="logo" href="#save-top" onClick={goTo("save-top")} aria-label="SAVE home">S<i>A</i>VE</a>
+                    <SmartLink
+                        to="/"
+                        aria-label="BBM home"
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            minWidth: 0,
+                            textDecoration: "none",
+                            color: "#08222B",
+                        }}
+                    >
+                        <span
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                flexShrink: 0,
+                                background: "#FFFFFF",
+                                padding: "4px 0px",
+                            }}
+                        >
+                            <img
+                                src="/Logo.png"
+                                alt="BBM"
+                                style={{
+                                    display: "block",
+                                    height: "28px",
+                                    width: "auto",
+                                    objectFit: "contain",
+                                }}
+                            />
+                        </span>
+
+                        <span
+                            style={{
+                                fontFamily: '"Bricolage Grotesque", "Figtree", system-ui, sans-serif',
+                                fontWeight: 800,
+                                fontSize: "1.125rem",
+                                lineHeight: 1,
+                                letterSpacing: "0.02em",
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            BBM
+                        </span>
+                    </SmartLink>
                     <nav aria-label="Page sections">
                         {NAV.map(([label, id]) => (
                             <a key={id} href={`#${id}`} onClick={goTo(id)}>{label}</a>
@@ -42,7 +88,7 @@ export default function SaveLayout() {
 
             <footer className="ft">
                 <div className="wrap">
-                    <span><b>SAVE</b> · Better buying. Better choices. Better savings.</span>
+                    <span><b>BBM Marketplace</b> · Better buying. Better choices. Better savings.</span>
                     <span>People • Product • Partnership</span>
                 </div>
             </footer>

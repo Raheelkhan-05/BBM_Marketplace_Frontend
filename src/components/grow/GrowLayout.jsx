@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { House } from "lucide-react";
 import { goTo } from "./scrollTo.js";
+import SmartLink from "../SmartLink.jsx";
 import "./grow.css";
 // import BottomNavStrip from "../BottomNavStrip.jsx";
 
@@ -31,9 +32,102 @@ export default function GrowLayout() {
             <header className="hd">
                 <div className="wrap">
                     {isStart ? (
-                        <Link className="logo" to="/grow" aria-label="GROW home">GR<i>O</i>W</Link>
+                        <SmartLink
+                            to="/"
+                            aria-label="BBM home"
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                minWidth: 0,
+                                textDecoration: "none",
+                                color: "#08222B",
+                            }}
+                        >
+                            <span
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    flexShrink: 0,
+                                    background: "#FFFFFF",
+                                    padding: "4px 0px",
+                                }}
+                            >
+                                <img
+                                    src="/Logo.png"
+                                    alt="BBM"
+                                    style={{
+                                        display: "block",
+                                        height: "28px",
+                                        width: "auto",
+                                        objectFit: "contain",
+                                    }}
+                                />
+                            </span>
+
+                            <span
+                                style={{
+                                    fontFamily:
+                                        '"Bricolage Grotesque", "Figtree", system-ui, sans-serif',
+                                    fontWeight: 800,
+                                    fontSize: "1.125rem",
+                                    lineHeight: 1,
+                                    letterSpacing: "0.02em",
+                                    whiteSpace: "nowrap",
+                                }}
+                            >
+                                BBM
+                            </span>
+                        </SmartLink>
                     ) : (
-                        <a className="logo" href="#grow-top" onClick={goTo("grow-top")} aria-label="GROW home">GR<i>O</i>W</a>
+                        <a
+                            href="#grow-top"
+                            onClick={goTo("grow-top")}
+                            aria-label="BBM home"
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
+                                minWidth: 0,
+                                textDecoration: "none",
+                                color: "#08222B",
+                            }}
+                        >
+                            <span
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    flexShrink: 0,
+                                    background: "#FFFFFF",
+                                    padding: "4px 0px",
+                                }}
+                            >
+                                <img
+                                    src="/Logo.png"
+                                    alt="BBM"
+                                    style={{
+                                        display: "block",
+                                        height: "28px",
+                                        width: "auto",
+                                        objectFit: "contain",
+                                    }}
+                                />
+                            </span>
+
+                            <span
+                                style={{
+                                    fontFamily:
+                                        '"Bricolage Grotesque", "Figtree", system-ui, sans-serif',
+                                    fontWeight: 800,
+                                    fontSize: "1.125rem",
+                                    lineHeight: 1,
+                                    letterSpacing: "0.02em",
+                                    whiteSpace: "nowrap",
+                                }}
+                            >
+                                BBM
+                            </span>
+                        </a>
                     )}
 
                     {!isStart && (
@@ -54,7 +148,7 @@ export default function GrowLayout() {
 
             <footer className="ft" style={{ paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))" }}>
                 <div className="wrap">
-                    <span><b>GROW</b> · More buyers. More business. Less selling effort.</span>
+                    <span><b>BBM Marketplace</b> · More buyers. More business. Less selling effort.</span>
                     <span>People • Product • Partnership</span>
                 </div>
             </footer>

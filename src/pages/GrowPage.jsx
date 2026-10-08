@@ -46,7 +46,7 @@ const TOPICS = [
     {
         id: "pricing", tone: "y", tag: "Pricing",
         title: "“How do I manage pricing without losing control?”",
-        intro: "B2B pricing is rarely one-size-fits-all. GROW is designed around that reality.",
+        intro: "B2B pricing is rarely one-size-fits-all. BBM Marketplace is designed around that reality.",
         qa: [
             { q: "How do I manage different prices for different buyers?", ctx: "I sell the same product to different customers at different commercial prices.", sol: "Create buyer-specific pricing while keeping one central product catalogue." },
             { q: "Can I give better prices for larger quantities?", ctx: "Quantity often changes the economics of a B2B order.", sol: "Create quantity-based price slabs so the right price applies to the quantity ordered." },
@@ -198,7 +198,7 @@ function QA({ uid, open, onToggle, q, ctx, sol }) {
                     <div className="ans">
                         <p>{ctx}</p>
                         <div className="sol">
-                            <b>GROW</b>
+                            <b>BBM Marketplace</b>
                             <span>{sol}</span>
                         </div>
                     </div>
@@ -254,10 +254,10 @@ export default function GrowPage() {
                                 <span className="ic">
                                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z" /><circle cx="7.5" cy="7.5" r="1.4" /></svg>
                                 </span>
-                                <span className="tx"><b>Brands</b><small>Already on GROW</small></span>
+                                <span className="tx"><b>Brands</b><small>Already on BBM Marketplace</small></span>
                                 <span className="ch" aria-hidden="true">›</span>
                             </a>
-                            <Link className="t2 b" to={MENU_ROUTES.manageProducts}>
+                            <Link className="t2 b" to={"/grow?start=1"}>
                                 <span className="ic">
                                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9M9 20v-6h6v6" /></svg>
                                 </span>
@@ -272,7 +272,7 @@ export default function GrowPage() {
                         </p>
                         <div>
                             <Link className="btn" to={'/grow?start=1'}>Add your products</Link>
-                            <a className="btn ghost mt-3" href="#grow-pricing" onClick={goTo("grow-pricing")}>See how pricing works</a>
+                            <a className="btn ghost mt-3 sm:ms-2" href="#grow-pricing" onClick={goTo("grow-pricing")}>See how pricing works</a>
                         </div>
                         <div className="trio">
                             <span className="o">More buyers</span>
@@ -283,7 +283,7 @@ export default function GrowPage() {
 
                     <figure className="shot">
                         <img
-                            src="/grow_listing.jpg"
+                            src="/grow_listing.png"
                             width="760"
                             height="745"
                             alt="GROW listing screen: Castrol Magnatec engine oil with master pack pricing, best price offer and a seller's own listing with promo"
@@ -304,7 +304,7 @@ export default function GrowPage() {
             {/* Brand wall */}
             <section className="brands" id="grow-brandwall" aria-labelledby="grow-brands-h">
                 <div className="wrap">
-                    <h2 id="grow-brands-h">Brands buyers already trust on GROW.</h2>
+                    <h2 id="grow-brands-h">Brands buyers already trust on BBM Marketplace.</h2>
                     <p><b>23 brands</b> and <b>50+ products</b> are already listed on the marketplace.</p>
                 </div>
                 <Rail items={ROW_1} />
@@ -316,7 +316,7 @@ export default function GrowPage() {
                 <div className="wrap">
                     <h2>Selling a product is easy. Managing everything around the sale is not.</h2>
                     <p>
-                        Finding buyers. Sharing product details. Managing prices. Handling inquiries. Coordinating delivery. Managing credit. GROW brings the selling process together, so you can focus on growing the business.
+                        Finding buyers. Sharing product details. Managing prices. Handling inquiries. Coordinating delivery. Managing credit. BBM Marketplace brings the selling process together, so you can focus on growing the business.
                     </p>
                 </div>
             </section>
@@ -343,7 +343,7 @@ export default function GrowPage() {
             {/* Final CTA */}
             <section className="cta" id="grow-start">
                 <div className="wrap">
-                    <h2>You decide how you sell. GROW helps you sell it better.</h2>
+                    <h2>You decide how you sell. BBM Marketplace helps you sell it better.</h2>
                     <div className="fee">
                         <b>0.25%</b>
                         <div className="fee-text">

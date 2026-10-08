@@ -268,7 +268,7 @@ export default function GrowEnquiryDetailPage() {
                 </div>
 
                 <footer className="ged-ft">
-                    <b>GROW</b> · More buyers. More business. Less selling effort.<br />People • Product • Partnership
+                    <b>BBM Marketplace</b> · More buyers. More business. Less selling effort.<br />People • Product • Partnership
                 </footer>
             </div>
 
