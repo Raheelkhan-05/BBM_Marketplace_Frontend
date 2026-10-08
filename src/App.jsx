@@ -20,6 +20,7 @@ import GrowProviders from "./components/grow/GrowProviders.jsx";
 import OnboardingGate from "./components/OnboardingGate.jsx";
 import AppShell from "./components/AppShell.jsx";
 import SaveLayout from "./components/save/SaveLayout.jsx";
+import PaymentReturnPage from "./pages/PaymentReturnPage.jsx";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -165,6 +166,7 @@ function App() {
                   <Route path="/" element={<Navigate to="/home" replace />} />
 
 
+                  <Route path="/pay/return" element={<PaymentReturnPage />} />
                   <Route path="/search" element={<SearchResultsPage />} />
                   <Route path="/home" element={<HomePage />} />
                   <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />

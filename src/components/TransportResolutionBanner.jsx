@@ -60,7 +60,7 @@ export default function TransportResolutionBanner() {
             {!rejectedIntent && resumableIntent && (
                 <motion.div
                     key="resumable"
-                    className="fixed inset-x-0 bottom-20 md:bottom-6 z-[1100] flex justify-center px-4"
+                    className="fixed inset-x-0 bottom-5 md:bottom-6 z-[9999] flex justify-center px-4"
                     initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
                 >
                     <div className="flex w-full max-w-md items-center gap-3 rounded-2xl border bg-white px-4 py-3 shadow-2xl" style={{ borderColor: "rgba(11,17,22,0.09)" }}>

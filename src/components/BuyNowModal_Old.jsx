@@ -12,15 +12,11 @@
 //   - transport already set       -> "Buy now"
 // Quantity warnings (below MOQ / out of stock / exceeds stock) show in the footer, right
 // next to the stepper being tapped.
-//
-// PAYMENT: a standard order is created in "awaiting_payment", then the buyer is sent to JioPay's
-// hosted checkout (utils/paymentsApi.js). They come back through /payment/return, which shows the
-// verified result. If starting the payment fails (or the buyer comes back with the browser's back
-// button), a "Payment pending" panel lets them retry the SAME order or cancel it to edit.
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
+import PaymentQRModal from "./PaymentQRModal.jsx";
 import AddressBook from "./shipping/AddressBook.jsx";
 import ImageLightbox from "./ImageLightbox.jsx";
 import {
@@ -34,10 +30,10 @@ import {
     fetchCheckoutStatus, fetchOrderQuote,
     placeOrder, cancelMyOrder, fetchCreditStatus,
     requestCreditIncrease as requestCreditIncreaseApi, fetchBrandItemDetail, fetchOrderConstraints,
-    fetchOrderById,
 } from "../utils/api.js";
 import { addToCart } from "../utils/cartApi.js";
-import { startOrderPayment, redirectToGateway } from "../utils/paymentsApi.js";
+import { saveOrderFormSession, loadOrderFormSession, clearOrderFormSession } from "../utils/orderFormSession.js";
+import { clearPaymentSession } from "../utils/paymentSession.js";
 import { C, EASE, Label, ChipToggleGroup } from "./seller/listingForm/FormPrimitives.jsx";
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, hasOuterPack, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
@@ -368,11 +364,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         if (target) selectAddress(target);
     }, [addresses, selectAddress]);
 
-    // ---- Payment hand-off state ----
-    // pendingPay: an order that exists in "awaiting_payment" and still needs paying.
-    // redirecting: we've just sent the buyer to JioPay's page.
-    const [pendingPay, setPendingPay] = useState(null); // { orderId, orderNumber }
-    const [redirecting, setRedirecting] = useState(false);
+    const [awaitingPaymentOrderId, setAwaitingPaymentOrderId] = useState(null);
     const [orderMode, setOrderMode] = useState("standard"); // standard | sample | credit
     const isSample = orderMode === "sample";
     const isCredit = orderMode === "credit";
@@ -449,17 +441,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isSample]);
-
-    // If the buyer comes back with the browser's Back button, the page can be restored from the
-    // back/forward cache with our "redirecting" state frozen. Unfreeze it; the pending-payment
-    // panel (below) then lets them retry or edit.
-    useEffect(() => {
-        const onShow = (e) => {
-            if (e.persisted) { setRedirecting(false); setSubmitting(false); }
-        };
-        window.addEventListener("pageshow", onShow);
-        return () => window.removeEventListener("pageshow", onShow);
-    }, []);
 
     // ---- Product details (image, specs, description…) — non-blocking ----
     const [detail, setDetail] = useState(null);
@@ -678,27 +659,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         };
     }, [effectiveCity, effectiveState, seller?.sellerId, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // ---- Start the JioPay payment for an order that is awaiting payment ----
-    const beginPayment = async (orderId, orderNumber) => {
-        setError(null);
-        setSubmitting(true);
-        // Remember the order BEFORE leaving, so Back from the gateway shows retry / edit.
-        setPendingPay({ orderId, orderNumber: orderNumber || null });
-        const pay = await startOrderPayment(token, orderId);
-        if (!pay?.success || !pay.redirectUrl) {
-            setSubmitting(false);
-            setError(pay?.message || "Couldn't start the payment. Please try again.");
-            return;
-        }
-        setRedirecting(true);
-        if (!redirectToGateway(pay.redirectUrl)) {
-            setRedirecting(false);
-            setSubmitting(false);
-            setError("Couldn't open the payment page. Please try again.");
-        }
-        // On success the whole window navigates away; keep the spinner up until it does.
-    };
-
     // ---- Place order ----
     const handleSubmit = async (override = {}) => {
         setError(null);
@@ -743,42 +703,18 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
             notes: notes.trim() || undefined,
             transportRouteOptionId: routeOptionId,
         });
-        if (!res?.success) {
-            setSubmitting(false);
-            return setError(res?.message || "Couldn't place the order.");
-        }
+        setSubmitting(false);
+        if (!res?.success) return setError(res?.message || "Couldn't place the order.");
 
         if (res.orderStatus === "awaiting_payment") {
-            // Standard order: straight on to JioPay.
-            await beginPayment(res.orderId, res.orderNumber);
+            saveOrderFormSession({
+                orderId: res.orderId, seller, product, quantity, basis,
+                selectedAddressId, notes, orderMode: effectiveOrderType,
+            });
+            setAwaitingPaymentOrderId(res.orderId);
         } else {
-            setSubmitting(false);
             setDone(res);
         }
-    };
-
-    // "Edit order": cancel the unpaid order and return to the form. Never cancels an order that was
-    // actually paid in the meantime (the payment can complete while the buyer is on this panel).
-    const handleEditOrder = async () => {
-        if (!pendingPay || submitting) return;
-        setError(null);
-        setSubmitting(true);
-        const current = await fetchOrderById(token, pendingPay.orderId);
-        const status = current?.order?.status;
-        if (current?.success && status && status !== "awaiting_payment") {
-            setSubmitting(false);
-            setPendingPay(null);
-            onClose();
-            navigate(`/orders/${pendingPay.orderId}`);
-            return;
-        }
-        const res = await cancelMyOrder(token, pendingPay.orderId, "Buyer went back to edit the order before paying");
-        setSubmitting(false);
-        if (!res?.success) {
-            setError(res?.message || "Couldn't reopen the order for editing. Please try again.");
-            return;
-        }
-        setPendingPay(null);
     };
 
     const handleAddToCart = async () => {
@@ -797,6 +733,22 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         onClose();
         navigate("/cart");
     };
+
+    const restoreFromSession = (session) => {
+        if (!session) return;
+        setQuantity(session.quantity);
+        userPickedBasis.current = true;
+        setBasis(session.basis);
+        restoreAddressIdRef.current = session.selectedAddressId || null;
+        setNotes(session.notes || "");
+        setOrderMode(session.orderMode || "standard");
+    };
+
+    useEffect(() => {
+        const session = loadOrderFormSession();
+        if (session && session.seller?.offerId === seller?.offerId && session.orderId) restoreFromSession(session);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const resumeAppliedRef = useRef(false);
     useEffect(() => {
@@ -824,6 +776,23 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         }
         navigate(location.pathname + location.search, { replace: true, state: {} });
     }, [location.state, seller?.offerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleCloseToEdit = () => {
+        const session = loadOrderFormSession(awaitingPaymentOrderId);
+        restoreFromSession(session);
+        clearPaymentSession();
+        clearOrderFormSession();
+        setAwaitingPaymentOrderId(null);
+    };
+
+    const handleBackToEdit = async () => {
+        if (awaitingPaymentOrderId) {
+            const res = await cancelMyOrder(token, awaitingPaymentOrderId, "Buyer went back to edit the order before paying");
+            if (!res?.success) console.warn("Couldn't cancel the pending order before going back:", res?.message);
+        }
+        clearPaymentSession();
+        setAwaitingPaymentOrderId(null);
+    };
 
     const gateContent = {
         NOT_AUTHENTICATED: {
@@ -1006,44 +975,14 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                 transition={{ duration: 0.22, ease: EASE }}
                 onClick={(e) => e.stopPropagation()}>
 
-                {redirecting ? (
-                    <div className="flex flex-col items-center px-6 py-16 text-center">
-                        <Loader2 className="h-9 w-9 animate-spin" style={{ color: C.secondary }} />
-                        <h2 className="mt-5 text-[18px] font-bold tracking-tight" style={{ color: C.ink }}>Taking you to JioPay…</h2>
-                        <p className="mt-1.5 max-w-xs text-[13px] font-medium leading-relaxed" style={{ color: C.muted }}>
-                            Please don't close or refresh this page. You'll be brought back here once the payment is done.
-                        </p>
-                    </div>
-                ) : pendingPay ? (
-                    <div className="flex flex-col items-center px-6 py-10 text-center">
-                        <span className="flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                            <CreditCard className="h-7 w-7" />
-                        </span>
-                        <h2 className="mt-5 text-[19px] font-bold tracking-tight" style={{ color: C.ink }}>Payment pending</h2>
-                        {pendingPay.orderNumber && (
-                            <p className="mt-1.5 rounded-full bg-[#FCFBF9] px-3 py-1 font-mono text-[12px] font-semibold" style={{ color: C.secondary }}>{pendingPay.orderNumber}</p>
-                        )}
-                        <p className="mt-3 max-w-sm text-[13px] font-medium leading-relaxed" style={{ color: C.muted }}>
-                            Your order is created but not paid yet. Pay now to confirm it, or edit the order first.
-                            If you already paid, give it a minute — you'll find it in your orders.
-                        </p>
-                        {error && <div className="mt-4 w-full"><Notice tone="danger">{error}</Notice></div>}
-                        <div className="mt-6 flex w-full flex-col gap-2.5">
-                            <button onClick={() => beginPayment(pendingPay.orderId, pendingPay.orderNumber)} disabled={submitting}
-                                className="flex w-full items-center justify-center gap-2 rounded-xl py-3 text-[14px] font-bold text-white shadow-sm disabled:opacity-60"
-                                style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay now"}
-                            </button>
-                            <button onClick={handleEditOrder} disabled={submitting}
-                                className="w-full rounded-xl border py-3 text-[13.5px] font-bold disabled:opacity-60" style={{ borderColor: C.hair, color: C.ink }}>
-                                Edit order
-                            </button>
-                            <button onClick={onClose} disabled={submitting}
-                                className="w-full py-2 text-[12.5px] font-bold disabled:opacity-60" style={{ color: C.muted }}>
-                                Pay later from My orders
-                            </button>
-                        </div>
-                    </div>
+                {awaitingPaymentOrderId ? (
+                    <PaymentQRModal
+                        token={token}
+                        orderId={awaitingPaymentOrderId}
+                        onClose={handleCloseToEdit}
+                        onBack={handleBackToEdit}
+                        onDoneViewOrders={() => navigate("/orders")}
+                    />
                 ) : done ? (
                     <div className="flex flex-col items-center px-6 py-10 text-center">
                         <span className="flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg" style={{ background: "linear-gradient(135deg,#047084,#0B9FB8)" }}>

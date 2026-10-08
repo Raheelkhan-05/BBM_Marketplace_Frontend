@@ -134,6 +134,7 @@ const HIDE_DOCK_CSS = `
 body:has(.gs .app.hb) .bbm-dock,
 body:has(.gax-edit) .bbm-dock,
 body:has(.sh-portal) .bbm-dock,
+body:has(.bbm-buynow) .bbm-dock,
 body:has([role="dialog"][aria-modal="true"]) .bbm-dock { display: none !important; }
 `;
 
