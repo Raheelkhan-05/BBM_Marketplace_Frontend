@@ -1,9 +1,11 @@
 // src/pages/GrowEnquiriesPage.jsx — seller home: greeting, KPIs and the RFQ / enquiry module (new UI).
 // Same backend as RfqPage: fetchRfqList / closeRfq + the existing post, bulk-upload and quote modals.
+// Live enquiries can be opened on their own page (/grow/enquiry/:id) and shared with the share button.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
+import { Share2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import { useListings } from "../context/ListingsContext.jsx";
@@ -13,6 +15,7 @@ import RfqQuoteModal from "../components/rfq/RfqQuoteModal.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import { fetchRfqList, closeRfq } from "../utils/rfqApi.js";
 import { fmtNum, timeAgo, paymentLabel, consumptionLabel, locationSummary } from "../utils/rfqUtils.js";
+import { shareEnquiry, enquiryPath } from "../utils/rfqShare.js";
 import Ic from "../components/growSeller/Ic.jsx";
 import { Thumb, Empty, ListSkeleton } from "../components/growSeller/ui.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
@@ -42,18 +45,21 @@ const KpBadge = ({ n }) => (n > 0 ? (
     <i className="nb">{n > 99 ? "99+" : n}<em className="vh"> unread</em></i>
 ) : null);
 
-function EnquiryCard({ item, quoted, onQuote, onEdit, onClose }) {
+function EnquiryCard({ item, quoted, onQuote, onEdit, onClose, onShare }) {
     const mine = item.isMine;
     const total = item.quantity * item.packSize;
     const published = item.publishedAt || item.createdAt;
     const isNew = published && Date.now() - new Date(published).getTime() < H;
+    const live = item.status === "approved";
     return (
         <article className="card">
             <div className="top">
                 <Thumb src={item.images?.[0]} name={item.productName} />
                 <div className="in">
                     <h3>
-                        {toTitleCase(item.productName)}
+                        <Link to={enquiryPath(item.id)} state={{ enquiry: item }} style={{ color: "inherit", textDecoration: "none" }}>
+                            {toTitleCase(item.productName)}
+                        </Link>
                         {mine && <span className={`stt rfq ${item.status}`}>{STATUS_LABEL[item.status] || item.status}</span>}
                         {!mine && isNew && <span className="nw">NEW</span>}
                     </h3>
@@ -76,13 +82,18 @@ function EnquiryCard({ item, quoted, onQuote, onEdit, onClose }) {
             <div className="rf">
                 <div className="tm"><Ic n="clock" /><span><b>{timeAgo(published)}</b></span></div>
                 <div className="rowa">
+                    {live && (
+                        <button type="button" className="bt sm" aria-label={`Share enquiry for ${item.productName}`} onClick={() => onShare(item)}>
+                            <Share2 size={15} strokeWidth={2.2} />Share
+                        </button>
+                    )}
                     {mine && ["pending_review", "rejected"].includes(item.status) && (
                         <button type="button" className="bt sm" onClick={() => onEdit(item)}><Ic n="edit" />{item.status === "rejected" ? "Fix & resubmit" : "Edit"}</button>
                     )}
                     {mine && ["pending_review", "approved"].includes(item.status) && (
                         <button type="button" className="bt sm" onClick={() => onClose(item)}><Ic n="x" />Close</button>
                     )}
-                    {!mine && item.status === "approved" && (
+                    {!mine && live && (
                         quoted
                             ? <span className="qd"><Ic n="check" />Quote sent</span>
                             : <button type="button" className="bt go" onClick={() => onQuote(item)}><Ic n="send" />Submit quote</button>
@@ -201,6 +212,12 @@ export default function GrowEnquiriesPage() {
         setReloadKey((k) => k + 1);
     };
 
+    const handleShare = async (item) => {
+        const r = await shareEnquiry(item);
+        if (r === "copied") say("Enquiry link copied.");
+        else if (r === "failed") say("Couldn't copy the link.");
+    };
+
     const kp = (v) => (v == null ? "–" : v);
     const listRef = useRef(null);
 
@@ -257,7 +274,8 @@ export default function GrowEnquiriesPage() {
                         <EnquiryCard key={item.id} item={item} quoted={quoted.has(item.id)}
                             onQuote={setQuoteFor}
                             onEdit={(it) => setFormState({ mode: "edit", initial: it })}
-                            onClose={handleClose} />
+                            onClose={handleClose}
+                            onShare={handleShare} />
                     ))}
                     {!loading && !error && items.length === 0 && (
                         <Empty

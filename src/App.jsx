@@ -83,6 +83,7 @@ const AdminRfqPage = lazy(() => import("./pages/admin/AdminRfqPage.jsx"));
 const GrowPage = lazy(() => import("./pages/GrowPage.jsx"));
 const GrowEntry = lazy(() => import("./pages/GrowEntry.jsx"));
 const GrowEnquiriesPage = lazy(() => import("./pages/GrowEnquiriesPage.jsx"));
+const GrowEnquiryDetailPage = lazy(() => import("./pages/GrowEnquiryDetailPage.jsx"));
 const GrowProductsPage = lazy(() => import("./pages/GrowProductsPage.jsx"));
 const GrowOrdersPage = lazy(() => import("./pages/GrowOrdersPage.jsx"));
 const GrowOrderDetailPage = lazy(() => import("./pages/GrowOrderDetailPage.jsx"));
@@ -150,6 +151,11 @@ function App() {
                 </Route>
                 <Route path="/terms" element={<TermsPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPage />} />
+
+                {/* Single, shareable enquiry. Standalone (own header, no Layout / GrowSellerRoot)
+                    so a link opened by someone who isn't a seller yet still renders. */}
+                <Route path="/grow/enquiry/:id" element={<GrowEnquiryDetailPage />} />
+
                 <Route element={<Layout />}>
                   <Route path="/" element={<Navigate to="/home" replace />} />
 

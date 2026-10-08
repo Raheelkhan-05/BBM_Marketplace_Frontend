@@ -1,6 +1,10 @@
 // src/pages/GrowStartPage.jsx
 // New default /grow experience (the compact HTML design) wired to the existing backend.
 // land -> Start selling -> (login | seller onboarding | add-product wizard)
+//
+// Return flow: a page can send someone here with nav("/grow?start=1", { state: { from: "/grow/enquiry/12" } }).
+// When `from` is an enquiry page (list or single enquiry) the flow does login -> onboarding -> straight back to that
+// exact page, instead of opening the add-product wizard.
 import { useEffect, useMemo, useRef, useState } from "react";   // add useMemo
 import { derivePriceBreakdown } from "../../shared/customPricing.js";
 import { GrowBuyerAccessDraft } from "../components/grow/GrowBuyerAccess.jsx";
@@ -24,11 +28,14 @@ import MarketingServicePicker from "../components/seller/listingForm/MarketingSe
 import GrowAuthFlow, { toTop } from "../components/grow/GrowAuthFlow.jsx";
 import GrowBrandField from "../components/grow/GrowBrandField.jsx";
 import GrowDeliveryPicker, { blankDelivery, validateDelivery, buildDispatching, summarizeDelivery } from "../components/grow/GrowDeliveryPicker.jsx";
+import GrowCheckSkeleton from "../components/grow/GrowCheckSkeleton.jsx";
+import { safeFrom, isEnquiryPath } from "../components/grow/growReturn.js";
 import { useDrop, useDropGuard } from "../components/grow/growUi.js";
 import { peekAccess, loadAccess, setAccess } from "../components/grow/growAccess.js";
 import "../components/grow/grow-start.css";
 import "../components/grow/grow-extras.css"; // keep AFTER grow-start.css
 import "../components/grow/grow-access.css"; // after grow-extras.css
+import "../components/grow/grow-transitions.css"; // after grow-access.css
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Dozen", "Tons"]; // same list as SellerListingForm
 const GST = [0, 0.25, 3, 5, 12, 18, 28];
@@ -62,18 +69,18 @@ export default function GrowStartPage() {
     const [sp] = useSearchParams();
 
     const location = useLocation();
-    // Page the seller came from (e.g. "/grow/products"). Captured once, because the ?start=1 redirect below drops it.
-    const [returnTo] = useState(() => {
-        const from = location.state?.from;
-        return typeof from === "string" && from.startsWith("/") ? from : null;
-    });
+    // Page the seller came from (e.g. "/grow/products" or "/grow/enquiry/12"). Captured once, because the ?start=1
+    // redirect below drops it.
+    const [returnTo] = useState(() => safeFrom(location.state?.from));
+    // Came from an enquiry page: after login / onboarding go straight back there instead of the add-product wizard.
+    const resumeBack = isEnquiryPath(returnTo);
 
     // land | auth | check | onb | prod | pdone
     // Coming from "Add your products" (?start=1): never flash the landing screen. If the access check was
     // already warmed up by the details page, open the wizard on the very first render.
     const [view, setView] = useState(() => {
         if (sp.get("start") !== "1") return "land";
-        if (!initializing && isLoggedIn && !needsOnboarding && peekAccess(token)?.canPublish) return "prod";
+        if (!resumeBack && !initializing && isLoggedIn && !needsOnboarding && peekAccess(token)?.canPublish) return "prod";
         return "check";
     });
     const [toast, setToast] = useState("");
@@ -87,8 +94,16 @@ export default function GrowStartPage() {
     // Prefetch access status so "Start selling" resolves instantly.
     useEffect(() => { if (token && !needsOnboarding) loadAccess(token); }, [token, needsOnboarding]);
 
+    // Send the seller back to the enquiry page they came from. Keep the loading screen up meanwhile, so the
+    // hand-over is one smooth fade instead of a flash of the landing / wizard screen.
+    const goBack = () => {
+        setView("check");
+        nav(returnTo, { replace: true });
+    };
+    const finishFlow = () => (resumeBack ? goBack() : setView("prod"));
+
     const route = (a) => {
-        if (a?.canPublish) return setView("prod");
+        if (a?.canPublish) return finishFlow();
         if (a?.reason === "SELLER_NOT_ONBOARDED") return setView("onb");
         if (a?.reason === "SELLER_NOT_APPROVED") {
 
@@ -127,17 +142,16 @@ export default function GrowStartPage() {
     return (
         <div className="gs">
             <div className={`app${view === "land" ? " wide" : ""}${hasBar ? " hb" : ""}`}>
-                {view === "land" && <Landing onStart={start} />}
-                {view === "auth" && <GrowAuthFlow onAuthed={proceed} say={say} />}
-                {view === "check" && (
-                    <section className="scr" aria-busy="true" aria-label="Loading">
-                        <div className="gx-skel w40" /><div className="gx-skel h30 w80" /><div className="gx-skel w60" />
-                        <div className="gx-skel h56" /><div className="gx-skel h56" /><div className="gx-skel h56" />
-                    </section>
+                {view === "land" && (
+                    <Landing onStart={start}
+                        backLabel={resumeBack ? (returnTo.startsWith("/grow/enquiry/") ? "Back to the enquiry" : "Back to enquiries") : ""}
+                        onBack={resumeBack ? () => nav(returnTo, { replace: true }) : null} />
                 )}
+                {view === "auth" && <GrowAuthFlow onAuthed={proceed} say={say} />}
+                {view === "check" && <GrowCheckSkeleton />}
                 {view === "onb" && (
                     <Onboarding token={token} profile={profile} refreshProfile={refreshProfile} say={say}
-                        onDone={() => { setAccess(token, { canPublish: true, success: true }); setView("prod"); }} />
+                        onDone={() => { setAccess(token, { canPublish: true, success: true }); finishFlow(); }} />
                 )}
                 {view === "prod" && (
                     <Wizard token={token} say={say} onExit={exitWizard}
@@ -163,7 +177,7 @@ export default function GrowStartPage() {
     );
 }
 
-function Landing({ onStart }) {
+function Landing({ onStart, onBack, backLabel }) {
     const V = [
         ["#F4511E", "More buyers", "Reach relevant B2B buyers beyond your network.", "M9 4a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM2.5 20c0-3.6 3-5.5 6.5-5.5s6.5 1.9 6.5 5.5M16 4.8a3.5 3.5 0 0 1 0 6.4M18 14.8c2 .7 3.5 2.2 3.5 5.2"],
         ["#1E78D6", "More inquiries", "Get requirements for products you actually sell.", "M4 5h16v11H9l-5 4z"],
@@ -185,6 +199,7 @@ function Landing({ onStart }) {
             </div>
             <div className="l-cta">
                 <button className="sbtn" type="button" onClick={onStart}>Start selling</button>
+                {onBack && <button className="sbtn gh" type="button" onClick={onBack}>{backLabel}</button>}
                 <Link className="sbtn gh" to="/grow/details">See the full seller page</Link>
             </div>
         </section>
@@ -301,7 +316,7 @@ function Onboarding({ token, profile, refreshProfile, onDone, say }) {
         } finally { setBusy(false); }
     };
 
-    if (loading) return <section className="scr on"><h2>Loading your details…</h2></section>;
+    if (loading) return <GrowCheckSkeleton />;
     const G = gst || {};
     const rows = [["Legal name", G.legal_name], ["Trade name", G.trade_name], ["GSTIN", G.gstin], ["Status", G.gstin_status], ["PAN", G.pan], ["State", G.state], ["District", G.district], ["Pincode", G.pincode], ["Registered address", G.registered_address]];
 
