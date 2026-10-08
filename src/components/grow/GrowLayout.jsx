@@ -44,9 +44,7 @@ export default function GrowLayout() {
                         </nav>
                     )}
 
-                    {isStart
-                        ? <Link className="btn ghost" to="/grow/details">Full seller page</Link>
-                        : <Link className="btn" to="/grow?start=1">Start selling</Link>}
+                    <Link className="btn" to="/grow?start=1">Start selling</Link>
                 </div>
             </header>
 

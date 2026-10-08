@@ -167,7 +167,7 @@ export default function GrowStartPage() {
                             <div className="th" style={last.img ? { backgroundImage: `url(${last.img})` } : undefined}>{last.img ? "" : "✓"}</div>
                             <div><b>{last.name}</b><small>{last.meta}</small></div></div>}
                         <button className="sbtn" type="button" onClick={() => setView("prod")}>Add another product</button>
-                        <Link className="sbtn gh" to="/seller/products">Go to my products</Link>
+                        <Link className="sbtn gh" to="/grow/products">Go to my products</Link>
                         <Link className="sbtn gh" to="/grow/details">Back to the seller page</Link>
                     </section>
                 )}
@@ -288,7 +288,8 @@ function Onboarding({ token, profile, refreshProfile, onDone, say }) {
 
     const ok = {
         gst: !!gst,
-        contact: f.contact_person.trim().length >= 2 && !!f.logo_url,
+        // contact: f.contact_person.trim().length >= 2 && !!f.logo_url,
+        contact: f.contact_person.trim().length >= 2,
         ops: f.working_days.length > 0 && f.transport_options.length > 0 && !!f.order_acceptance_start && !!f.order_acceptance_end && /^\d{6}$/.test(f.dispatch_pincode),
         bank: /^\d{9,18}$/.test(f.bank_account_number) && /^[A-Z]{4}0[A-Z0-9]{6}$/.test(f.bank_ifsc_code),
     };
@@ -304,9 +305,10 @@ function Onboarding({ token, profile, refreshProfile, onDone, say }) {
                 address: gst?.registered_address || "", pincode: gst?.pincode || "", city: gst?.district || "", state: gst?.state || "", pan: gst?.pan || "",
                 display_name: gst?.trade_name || gst?.legal_name || "", business_type: guessBusinessType(gst?.nature_of_business),
                 ...(seller || {}), ...f,
+                logo_url: f.logo_url || null,
             };
             const s1 = await saveSellerProgress(token, { ...form, onboarding_step: "review" });
-            const merged = { ...form, ...(s1?.success ? s1.seller : {}), ...f };
+            const merged = { ...form, ...(s1?.success ? s1.seller : {}), ...f, logo_url: f.logo_url || null };
             const b = await saveSellerBankDetails(token, { account_number: f.bank_account_number, ifsc_code: f.bank_ifsc_code });
             if (!b?.success) return say(b?.message || "Could not save bank details.");
             const r = await submitSellerOnboarding(token, merged);
@@ -337,9 +339,13 @@ function Onboarding({ token, profile, refreshProfile, onDone, say }) {
                     <F l="Contact person"><In v={f.contact_person} on={(v) => set("contact_person", v)} placeholder="Full name" autoComplete="name" /></F>
                     <F l="Contact number"><div className="inp ro"><input readOnly value={profile?.phone ? `+91 ${profile.phone}` : ""} /></div></F>
                     <F l="Email"><div className="inp ro"><input readOnly value={profile?.email || ""} /></div></F>
-                    <F l="Company logo *" c="Your shop colours are picked from the logo. You can also drag and drop an image here.">
+                    <F l="Company logo (optional)" c="No logo yet? You can skip this and add it later. If you add one, your shop colours are picked from it. You can also drag and drop an image here.">
                         <div className={`ph gx-dz${logoDrop.active ? " on" : ""}`} {...logoDrop.bind}>
-                            {f.logo_url && <div className="th" style={{ backgroundImage: `url(${f.logo_url})` }} />}
+                            {f.logo_url && (
+                                <div className="th" style={{ backgroundImage: `url(${f.logo_url})` }}>
+                                    <button type="button" className="x" aria-label="Remove logo" onClick={() => set("logo_url", "")}>×</button>
+                                </div>
+                            )}
                             <label className="add" style={{ width: 76, height: 76, borderRadius: 16 }}>
                                 {logoBusy ? "…" : f.logo_url ? "Replace" : "+ Add"}
                                 <input type="file" accept="image/*" hidden disabled={logoBusy} onChange={(e) => { pickLogo(e.target.files?.[0]); e.target.value = ""; }} />

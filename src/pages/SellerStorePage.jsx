@@ -8,6 +8,10 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { Loader2, ShieldCheck, User, Truck, Landmark, Check, Link2, Copy, Share2, ExternalLink } from "lucide-react";
+import {
+    fetchSellerDashboard, updateSellerProfile,
+    fetchSellerBankDetails, saveSellerBankDetails, uploadSellerFile,
+} from "../utils/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
     fetchSellerDashboard, updateSellerProfile,
@@ -166,22 +170,43 @@ function GstSection({ business }) {
 
 function ContactSection({ seller, email, token, onSaved }) {
     const initial = seller.contact_person || "";
+    const initialLogo = seller.logo_url || "";
     const [person, setPerson] = useState(initial);
+    const [logo, setLogo] = useState(initialLogo);
+    const [logoBusy, setLogoBusy] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState(null);
-    const dirty = person !== initial;
+    const dirty = (person !== initial || logo !== initialLogo) && !logoBusy;
+
+    const pickLogo = async (file) => {
+        if (!file) return;
+        if (!file.type?.startsWith("image/")) return setError("Please choose an image file.");
+        setError(null);
+        setLogoBusy(true);
+        try {
+            const r = await uploadSellerFile(token, file, "logo");
+            if (r?.success) { setLogo(r.url); setSaved(false); }
+            else setError(r?.message || "Logo upload failed. Try again.");
+        } catch {
+            setError("Logo upload failed. Try again.");
+        } finally {
+            setLogoBusy(false);
+        }
+    };
 
     const save = async () => {
         setError(null);
         if (!person.trim()) return setError("Contact person can't be empty.");
         setSaving(true);
-        const res = await updateSellerProfile(token, { contact_person: person.trim() });
+        const res = await updateSellerProfile(token, { contact_person: person.trim(), logo_url: logo || null });
         setSaving(false);
         if (!res?.success) return setError(res?.message || "Couldn't save changes.");
         setSaved(true);
         onSaved();
     };
+
+    const letter = (seller.display_name || "S").trim()[0]?.toUpperCase();
 
     return (
         <SectionCard icon={User} title="Contact" subtitle="Who buyers and our team reach out to">
@@ -195,6 +220,42 @@ function ContactSection({ seller, email, token, onSaved }) {
                 />
                 <TextField label="Email" value={email || ""} disabled hint="Your login email can't be changed here." />
             </div>
+
+            <div className="flex flex-col gap-1.5">
+                <Label hint="Optional. Shown on your shop.">Company logo</Label>
+                <div className="flex flex-wrap items-center gap-3">
+                    <div
+                        className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-white text-[20px] font-extrabold"
+                        style={{ borderColor: C.hair, color: C.muted }}
+                    >
+                        {logo ? <img src={logo} alt="Company logo" className="h-full w-full object-contain" /> : letter}
+                    </div>
+                    <label
+                        className="cursor-pointer rounded-lg border px-3 py-2 text-[13px] font-bold tracking-wide"
+                        style={{ borderColor: C.hair, color: C.ink, opacity: logoBusy ? 0.5 : 1 }}
+                    >
+                        {logoBusy ? "Uploading…" : logo ? "Replace logo" : "Add logo"}
+                        <input
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            disabled={logoBusy}
+                            onChange={(e) => { pickLogo(e.target.files?.[0]); e.target.value = ""; }}
+                        />
+                    </label>
+                    {logo && !logoBusy && (
+                        <button
+                            type="button"
+                            onClick={() => { setLogo(""); setSaved(false); }}
+                            className="text-[13px] font-bold"
+                            style={{ color: C.danger }}
+                        >
+                            Remove
+                        </button>
+                    )}
+                </div>
+            </div>
+
             <SaveBar dirty={dirty} saving={saving} saved={saved} error={error} onSave={save} />
         </SectionCard>
     );

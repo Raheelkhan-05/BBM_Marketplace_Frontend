@@ -13,7 +13,19 @@ export default function GrowEntry() {
     const { token, isLoggedIn, profile, needsOnboarding, initializing } = useAuth();
     const [sp] = useSearchParams();
     const location = useLocation();
-    const [adding] = useState(() => sp.get("start") === "1");
+
+    const startParam = sp.get("start") === "1";
+    const [sticky, setSticky] = useState(startParam);
+    if (startParam && !sticky) setSticky(true);
+    const adding = sticky || startParam;
+
+    // New run of the flow every time ?start=1 arrives via a fresh navigation.
+    // location.key changes per navigation, so GrowStartPage remounts and re-reads
+    // ?start=1 and location.state.from. The later replace to "/grow" has no param,
+    // so it does not change this key and the flow is not interrupted.
+    const [startKey, setStartKey] = useState(startParam ? location.key : null);
+    if (startParam && startKey !== location.key) setStartKey(location.key);
+
     const [back] = useState(() => enquiryReturnTo(location.state?.from));
 
     const ready = !initializing && isLoggedIn && !needsOnboarding && isSellerReady(profile, token);
@@ -23,13 +35,7 @@ export default function GrowEntry() {
     }, [initializing, ready, profile]);
 
     if (initializing && !adding) return <div className="gs"><div className="app"><GrowCheckSkeleton /></div></div>;
-
-    // Ready seller visiting plain /grow -> dashboard / enquiry (unchanged)
     if (ready && !adding) return <Navigate to={back || "/grow/enquiries"} replace />;
-
-    // Login / onboarding / add-product flow (unchanged)
-    if (adding || back) return <GrowStartPage />;
-
-    // Everyone else (not a seller yet) -> the full details page
+    if (adding || back) return <GrowStartPage key={startKey ?? "flow"} />;
     return <GrowPage />;
 }
