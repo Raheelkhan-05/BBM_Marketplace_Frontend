@@ -13,10 +13,6 @@ import {
     fetchSellerBankDetails, saveSellerBankDetails, uploadSellerFile,
 } from "../utils/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import {
-    fetchSellerDashboard, updateSellerProfile,
-    fetchSellerBankDetails, saveSellerBankDetails,
-} from "../utils/api.js";
 import { TRANSPORT_OPTIONS } from "../../shared/transportOptions.js";
 import { lookupPincode } from "../utils/sellerListingApi.js";
 import { SectionCard, TextField, Label, Pill, C } from "../components/seller/listingForm/FormPrimitives.jsx";

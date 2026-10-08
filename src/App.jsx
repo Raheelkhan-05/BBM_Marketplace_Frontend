@@ -90,7 +90,11 @@ const GrowOrderDetailPage = lazy(() => import("./pages/GrowOrderDetailPage.jsx")
 const GrowWalletPage = lazy(() => import("./pages/GrowWalletPage.jsx"));
 const GrowStorePage = lazy(() => import("./pages/GrowStorePage.jsx"));
 
-const SavePage = lazy(() => import("./pages/SavePage.jsx"));
+// const SavePage = lazy(() => import("./pages/SavePage.jsx"));
+const SaveEntry = lazy(() => import("./pages/SaveEntry.jsx"));
+const SaveOrdersPage = lazy(() => import("./pages/SaveOrdersPage.jsx"));
+const SaveCartPage = lazy(() => import("./pages/SaveCartPage.jsx"));
+const SaveOrderDetailPage = lazy(() => import("./pages/SaveOrderDetailPage.jsx"));
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -254,7 +258,10 @@ function App() {
                   </Route>
 
                   <Route element={<SaveLayout />}>
-                    <Route path="/save" element={<SavePage />} />
+                    <Route path="/save" element={<SaveEntry />} />
+                    <Route path="/save/orders" element={<SaveOrdersPage />} />
+                    <Route path="/save/orders/:id" element={<SaveOrderDetailPage />} />
+                    <Route path="/save/cart" element={<SaveCartPage />} />
                   </Route>
                 </Route>
               </Route>

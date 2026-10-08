@@ -3,9 +3,11 @@
 import { useEffect } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { goTo } from "../grow/scrollTo.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 import SmartLink from "../SmartLink.jsx";
 import { MENU_ROUTES } from "../menuItems.js";
 import "./save.css";
+import "./save-home.css";
 
 const NAV = [
     ["Find", "save-find"],
@@ -18,6 +20,7 @@ const NAV = [
 
 export default function SaveLayout() {
     const { pathname } = useLocation();
+    const { isLoggedIn } = useAuth();
 
     useEffect(() => {
         window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -73,11 +76,13 @@ export default function SaveLayout() {
                             BBM
                         </span>
                     </SmartLink>
-                    <nav aria-label="Page sections">
-                        {NAV.map(([label, id]) => (
-                            <a key={id} href={`#${id}`} onClick={goTo(id)}>{label}</a>
-                        ))}
-                    </nav>
+                    {!isLoggedIn && (
+                        <nav aria-label="Page sections">
+                            {NAV.map(([label, id]) => (
+                                <a key={id} href={`#${id}`} onClick={goTo(id)}>{label}</a>
+                            ))}
+                        </nav>
+                    )}
                     <Link className="btn" to={MENU_ROUTES.home}>Start buying</Link>
                 </div>
             </header>

@@ -125,12 +125,16 @@ body[data-bbm-menu="open"] .bbm-tile { opacity: 0 !important; pointer-events: no
 ${HIDE_WHEN_MENU_OPEN.map((s) => `body[data-bbm-menu="open"] ${s}`).join(",\n")} { visibility: hidden !important; }
 `;
 
-// Hide the dock while a screen with its own sticky action bar is open:
-//  - .gs .app.hb  = seller onboarding + Add Product wizard
-//  - .gax-edit    = the edit-listing sheet opened from My products
+// Hide the dock while a screen with its own sticky action bar, or any modal dialog, is open:
+//  - .gs .app.hb       = seller onboarding + Add Product wizard
+//  - .gax-edit         = the edit-listing sheet opened from My products
+//  - .sh-portal        = Save module modals ("Add to my price list" wizard, enquiry details)
+//  - [aria-modal=true] = any other proper modal dialog (create / edit / info)
 const HIDE_DOCK_CSS = `
 body:has(.gs .app.hb) .bbm-dock,
-body:has(.gax-edit) .bbm-dock { display: none !important; }
+body:has(.gax-edit) .bbm-dock,
+body:has(.sh-portal) .bbm-dock,
+body:has([role="dialog"][aria-modal="true"]) .bbm-dock { display: none !important; }
 `;
 
 // Mobile: bottom sheet. Desktop (md+): a wide card above the dock.
