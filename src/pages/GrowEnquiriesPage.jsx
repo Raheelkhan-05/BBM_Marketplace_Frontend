@@ -21,6 +21,7 @@ import { Thumb, Empty, ListSkeleton } from "../components/growSeller/ui.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
 import useSellerStats from "../components/growSeller/useSellerStats.js";
 import { greeting, shopName, toTitleCase, H } from "../components/growSeller/sellerHelpers.js";
+import "../components/growSeller/grow-store.css";
 
 const PAGE = 12;
 const STATUS_FILTERS = [
@@ -237,6 +238,13 @@ export default function GrowEnquiriesPage() {
                 <button type="button" style={{ "--a": "var(--bl)" }} onClick={() => nav("/grow/orders")}><b>{kp(stats.ord)}</b><span>New orders</span><KpBadge n={salesUnreadCount} /></button>
                 <button type="button" style={{ "--a": "var(--gr)" }} onClick={() => nav("/grow/products")}><b>{kp(stats.prod)}</b><span>Live products</span><KpBadge n={productsBadgeCount} /></button>
             </div>
+            <button type="button" className="st-nav" onClick={() => nav("/grow/shop")}>
+                <span className="st-ico" style={{ background: "#E3F5EC", color: "#12794A" }}>
+                    <svg className="ic" viewBox="0 0 24 24"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9M9 20v-6h6v6" /></svg>
+                </span>
+                <span><b>My shop</b><small>View, share and edit your shop details</small></span>
+                <Ic n="chev" />
+            </button>
 
             <div className="sh" ref={listRef}>
                 <div>

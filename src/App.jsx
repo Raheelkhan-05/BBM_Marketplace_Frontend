@@ -88,6 +88,7 @@ const GrowProductsPage = lazy(() => import("./pages/GrowProductsPage.jsx"));
 const GrowOrdersPage = lazy(() => import("./pages/GrowOrdersPage.jsx"));
 const GrowOrderDetailPage = lazy(() => import("./pages/GrowOrderDetailPage.jsx"));
 const GrowWalletPage = lazy(() => import("./pages/GrowWalletPage.jsx"));
+const GrowStorePage = lazy(() => import("./pages/GrowStorePage.jsx"));
 
 const SavePage = lazy(() => import("./pages/SavePage.jsx"));
 
@@ -249,6 +250,7 @@ function App() {
                     <Route path="/grow/orders" element={<GrowOrdersPage />} />
                     <Route path="/grow/orders/:id" element={<GrowOrderDetailPage />} />
                     <Route path="/grow/wallet" element={<GrowWalletPage />} />
+                    <Route path="/grow/shop" element={<GrowStorePage />} />
                   </Route>
 
                   <Route element={<SaveLayout />}>
