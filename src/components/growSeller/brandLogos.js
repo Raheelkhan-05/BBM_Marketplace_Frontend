@@ -3,14 +3,14 @@
 // Set `src` to an imported asset or a hosted URL, e.g.
 //   import bosch from "../../assets/brands/bosch.png";  ->  { name: "Bosch", src: bosch }
 // While `src` is null the tile falls back to the brand name as text.
-import bosch from "../../../public/brands/Bosch.jpg";
-import castrol from "../../../public/brands/Castrol.jpg";
-import mobil from "../../../public/brands/Mobil.jpg";
-import nerolac from "../../../public/brands/Nerolac.jpg";
-import shell from "../../../public/brands/Shell.jpg";
-import skf from "../../../public/brands/SKF.jpg";
-import timken from "../../../public/brands/Timken.jpg";
-import zerust from "../../../public/brands/Zerust.jpg";
+import bosch from "../../../public/brands/bosch.jpg";
+import castrol from "../../../public/brands/castrol.jpg";
+import mobil from "../../../public/brands/mobil.jpg";
+import nerolac from "../../../public/brands/nerolac.jpg";
+import shell from "../../../public/brands/shell.jpg";
+import skf from "../../../public/brands/skf.jpg";
+import timken from "../../../public/brands/timken.jpg";
+import zerust from "../../../public/brands/zerust.jpg";
 
 const BRAND_LOGOS = [
     { name: "Bosch", src: bosch },
