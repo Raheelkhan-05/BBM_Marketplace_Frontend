@@ -133,8 +133,8 @@ export default function GrowStartPage() {
 
     // Cancel on the first Add Product step: go back where the seller came from, otherwise show the landing screen.
     const exitWizard = () => {
-        if (!returnTo) return setView("land");
-        if (window.history.state?.idx > 0) nav(-1);        // the previous history entry is that page
+        if (!returnTo) return nav("/grow/details");   // was: setView("land")
+        if (window.history.state?.idx > 0) nav(-1);
         else nav(returnTo, { replace: true });
     };
 

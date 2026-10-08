@@ -7,15 +7,13 @@ import { isSellerReady, markSeenGrow } from "../components/growSeller/growSeller
 import GrowCheckSkeleton from "../components/grow/GrowCheckSkeleton.jsx";
 import { enquiryReturnTo } from "../components/grow/growReturn.js";
 import GrowStartPage from "./GrowStartPage.jsx";
+import GrowPage from "./GrowPage.jsx";
 
 export default function GrowEntry() {
     const { token, isLoggedIn, profile, needsOnboarding, initializing } = useAuth();
     const [sp] = useSearchParams();
     const location = useLocation();
-    // Captured once: GrowStartPage removes ?start=1 from the URL right after reading it,
-    // and a seller adding a product must not be bounced back to the dashboard.
     const [adding] = useState(() => sp.get("start") === "1");
-    // Enquiry page the person was sent here from (if any); a ready seller goes back there instead of the default.
     const [back] = useState(() => enquiryReturnTo(location.state?.from));
 
     const ready = !initializing && isLoggedIn && !needsOnboarding && isSellerReady(profile, token);
@@ -24,8 +22,14 @@ export default function GrowEntry() {
         if (!initializing && !ready) markSeenGrow(profile);
     }, [initializing, ready, profile]);
 
-    // Same skeleton as the start flow's "check" screen, so the hand-over is seamless.
     if (initializing && !adding) return <div className="gs"><div className="app"><GrowCheckSkeleton /></div></div>;
+
+    // Ready seller visiting plain /grow -> dashboard / enquiry (unchanged)
     if (ready && !adding) return <Navigate to={back || "/grow/enquiries"} replace />;
-    return <GrowStartPage />;
+
+    // Login / onboarding / add-product flow (unchanged)
+    if (adding || back) return <GrowStartPage />;
+
+    // Everyone else (not a seller yet) -> the full details page
+    return <GrowPage />;
 }

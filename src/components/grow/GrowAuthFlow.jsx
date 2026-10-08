@@ -221,7 +221,7 @@ export default function GrowAuthFlow({ onAuthed, say }) {
     const labels = lt === "email" ? ["Email", "Mobile", "GST"] : ["Mobile", "Email", "GST"];
     return (
         <section className="scr">
-            <p className="kick">Seller sign-up</p>
+            <p className="kick">User Authentication</p>
             <h2>Verify your business</h2>
             <p className="sub">Three quick checks keep GROW trusted for buyers and sellers.</p>
             <ol className="stp" aria-label="Verification progress">
