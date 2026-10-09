@@ -120,7 +120,7 @@ export default function PaymentReturnPage() {
         view = {
             tone: "warn", icon: AlertTriangle, title: "Payment received, but it can't be used",
             text: `We received ${inr(payment.amount)}, but this order was already cancelled, paid, or changed. A full refund is being sent to your original payment method automatically.`,
-            actions: [["Go to my orders", () => navigate("/saave/orders"), true]],
+            actions: [["Go to my orders", () => navigate("/save/orders"), true]],
         };
     } else if (payment.status === "review") {
         view = {
