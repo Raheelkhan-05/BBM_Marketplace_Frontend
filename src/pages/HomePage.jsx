@@ -1,19 +1,29 @@
 // src/pages/HomePage.jsx
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 import ShopBanner from "../components/home/ShopBanner.jsx";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import CategoryStrip from "../components/home/CategoryStrip.jsx";
 import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
+import PromoHero from "../components/home/PromoHero.jsx";
 import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
+import { useAuth } from "../context/AuthContext.jsx";
 
 const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
+
+// Promo banner dismissal lasts for the browser session (reappears on a fresh visit).
+const PROMO_KEY = "bbm_promo_hero_dismissed_v1";
+const readPromoDismissed = () => { try { return sessionStorage.getItem(PROMO_KEY) === "1"; } catch { return false; } };
+const writePromoDismissed = () => { try { sessionStorage.setItem(PROMO_KEY, "1"); } catch { /* private mode */ } };
 
 export default function HomePage() {
     const [query, setQuery] = useState("");
     const [activeCategory, setActiveCategory] = useState(null);
     const navigate = useNavigate();
+    const location = useLocation();
+    const { effectiveLoggedIn, needsOnboarding } = useAuth();
 
     const [searchParams, setSearchParams] = useSearchParams();
     const shopSlug = searchParams.get("shop")?.trim() || null;
@@ -29,6 +39,14 @@ export default function HomePage() {
     const [shopName, setShopName] = useState(null);
     useEffect(() => { if (!shopSlug) setShopName(null); }, [shopSlug]);
 
+    // Promo banner: logged-out visitors only, until dismissed.
+    const [promoDismissed, setPromoDismissed] = useState(readPromoDismissed);
+    const showPromo = !effectiveLoggedIn && !promoDismissed;
+    const dismissPromo = () => { setPromoDismissed(true); writePromoDismissed(); };
+    const goSignIn = () =>
+        navigate("/login", { state: { from: `${location.pathname}${location.search}${location.hash || ""}` } });
+    const goSell = () => navigate("/grow");
+
     const handleSuggestionSelect = (s) => {
         if (s.level === "brandFamily") {
             navigate(`/brand-family/${encodeURIComponent(s.name)}`);
@@ -40,9 +58,6 @@ export default function HomePage() {
     const handleSubmit = (trimmedQuery) => setQuery(trimmedQuery);
     const handleImageResolved = (result) => navigate("/browse", { state: { imageResult: result } });
 
-    // Category strip + search bar. HomeProductFeed renders this inside its
-    // sticky block, together with the Deliver-to / GST row, so all four stay
-    // visible while the page scrolls.
     const toolbar = (
         <>
             <MarketplaceSearchBar
@@ -61,15 +76,25 @@ export default function HomePage() {
     );
 
     return (
-        // overflow-x-clip (NOT hidden): overflow-x-hidden turns this div into a
-        // scroll container and silently breaks `position: sticky` for everything inside.
+        // overflow-x-clip (NOT hidden): overflow-x-hidden breaks `position: sticky` inside.
         <div className="min-h-screen bg-[#FFFFFF] pt-3 text-slate-900 antialiased overflow-x-clip" style={{ fontFamily: FONT_BODY }}>
 
             <SmoothScrollProvider>
-                {/* bottom padding so the last feed items clear the floating buttons (BottomNavStrip) */}
                 <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20">
 
                     {shopSlug && !viaSellers && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
+
+                    <AnimatePresence initial={false}>
+                        {showPromo && (
+                            <PromoHero
+                                key="promo-hero"
+                                needsOnboarding={needsOnboarding}
+                                onSignIn={goSignIn}
+                                onSell={goSell}
+                                onDismiss={dismissPromo}
+                            />
+                        )}
+                    </AnimatePresence>
 
                     <HomeProductFeed
                         category={activeCategory}

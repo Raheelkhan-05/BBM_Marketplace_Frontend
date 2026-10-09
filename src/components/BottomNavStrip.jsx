@@ -15,11 +15,11 @@
 // Dock, backdrop and sheet are rendered through a portal on document.body.
 // Only ONE instance ever renders (an extra copy renders nothing).
 //
-// Dock layout is the SAME on every page: [Grow] [Save] [Menu or Home].
-//  - outside the Grow / Save modules the third button is Menu
+// Dock layout is the SAME on every page: [Grow] [Save] [Menu | Home | Sign in].
+//  - every button now carries a text LABEL under its circle (see DockItem)
+//  - the ACTIVE module (Grow / Save) gets a soft colour ring + a small bar under its label
+//  - outside the Grow / Save modules the third button is Menu (logged in) or Sign in
 //  - inside the Grow / Save modules the third button is Home (same position)
-// Enquiries / Products / Orders are no longer in the dock; their counts are shown
-// on the Grow page's own summary tiles.
 import { Fragment, useEffect, useId, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -41,7 +41,8 @@ const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(
 const HIDDEN_MENU_IDS = ["list-product", "manage-products", "sales-orders"];
 
 const FAB_BOTTOM_HOME = 12;
-const DOCK_HEIGHT = 84; // 60 (tallest button) + 18 padding + 3 border + 4 ring
+// 60 (tallest circle) + 4 gap + 11 label + 18 padding + 3 border + 4 ring + ~2 slack
+const DOCK_HEIGHT = 102;
 
 // Layers (portal on document.body). Kept very high so page-level fixed bars sit underneath.
 const Z_BACKDROP = 9990;
@@ -73,10 +74,11 @@ const GrowIcon = () => <svg {...svgBase}><path d="M3 17l6-6 4 4 8-8M15 7h6v6" />
 const SaveIcon = () => <span style={{ font: "900 1.5rem 'Figtree', system-ui, sans-serif", lineHeight: 1 }}>₹</span>;
 const HomeIcon = ({ size = 22 }) => <Home size={size} strokeWidth={1.8} aria-hidden="true" />;
 
+// Labels shown under each dock circle live here, change them in one place.
 const TILES = {
     home: { key: "home", label: "Home", Icon: HomeIcon, to: "/home", theme: FAB_THEME.home },
-    grow: { key: "grow", label: "Grow", Icon: GrowIcon, to: "/grow", theme: FAB_THEME.grow },
-    save: { key: "save", label: "Save", Icon: SaveIcon, to: "/save", theme: FAB_THEME.save },
+    grow: { key: "grow", label: "Sell", Icon: GrowIcon, to: "/grow", theme: FAB_THEME.grow },
+    save: { key: "save", label: "Buy", Icon: SaveIcon, to: "/save", theme: FAB_THEME.save },
 };
 
 const DOCK_BTN = "relative grid shrink-0 place-items-center rounded-full";
@@ -115,8 +117,8 @@ const DOCK_AURA_CSS = `
     .bbm-dock-spin, .bbm-dock-ping, .bbm-dock-nudge { animation: none; }
     .bbm-dock-ping { display: none; }
 }
-.bbm-tile { outline: none; -webkit-tap-highlight-color: transparent; }
-.bbm-tile:focus-visible { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #141B22 !important; }
+.bbm-item { outline: none; -webkit-tap-highlight-color: transparent; }
+.bbm-item:focus-visible .bbm-ic { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #141B22 !important; }
 `;
 
 // While the menu is open: our own tiles are forced hidden, plus any selectors listed above.
@@ -299,6 +301,61 @@ function DockBadge({ n }) {
     );
 }
 
+// One dock button = coloured circle + text label underneath.
+//  - `active`  : soft ring in the button's own colour + a small bar under the label
+//  - `current` : sets aria-current="page" (defaults to `active`; Menu passes false because
+//                an open menu is not a page)
+//  - `ping`    : the attention ring on the raised "Save" slot
+//  - `badge`   : number for the corner badge (omit for none)
+// Fixed 64px width keeps every column the same size, so the collapse-measuring logic
+// (tilesInnerRef) stays exact.
+function DockItem({
+    label, active = false, current, theme, size = 52, ping = false, badge,
+    onClick, ariaLabel, title, tabIndex, className = "", children, ...rest
+}) {
+    return (
+        <motion.button
+            type="button"
+            onClick={onClick}
+            aria-label={ariaLabel || label}
+            aria-current={(current ?? active) ? "page" : undefined}
+            title={title || label}
+            tabIndex={tabIndex}
+            whileTap={{ scale: 0.94 }}
+            transition={{ type: "spring", stiffness: 500, damping: 32 }}
+            className={`bbm-item relative flex w-16 shrink-0 flex-col items-center gap-1 bg-transparent p-0 ${className}`}
+            {...rest}
+        >
+            <span
+                className={`${DOCK_BTN} bbm-ic transition-shadow duration-200`}
+                style={{
+                    width: size, height: size, background: theme.bg, color: theme.fg,
+                    boxShadow: active ? `0 0 0 4px color-mix(in srgb, ${theme.bg} 30%, transparent)` : "none",
+                }}
+            >
+                {ping && (
+                    <span aria-hidden className="bbm-dock-ping pointer-events-none absolute inset-0 rounded-full border-2" style={{ borderColor: theme.bg }} />
+                )}
+                {children}
+                {badge !== undefined && <DockBadge n={badge} />}
+            </span>
+
+            <span
+                className={`block max-w-full truncate text-[10.5px] leading-none tracking-wide transition-colors duration-150 ${active ? "font-black" : "font-bold"}`}
+                style={{ color: active ? C.ink : C.muted }}
+            >
+                {label}
+            </span>
+
+            <span
+                aria-hidden
+                className={`absolute -bottom-[6px] h-[3px] w-[18px] rounded-full transition-opacity duration-150 ${active ? "opacity-100" : "opacity-0"}`}
+                style={{ background: theme.bg }}
+            />
+        </motion.button>
+    );
+}
+
 export default function BottomNavStrip({ onOpenRfq }) {
     const primary = useIsPrimaryInstance();
     const navigate = useNavigate();
@@ -325,10 +382,12 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const isHome = pathname === "/home" || pathname === "/home/";
     const inGrow = pathname === "/grow" || pathname.startsWith("/grow/");
     const inSave = pathname === "/save" || pathname.startsWith("/save/");
+    const inLogin = pathname === "/login" || pathname.startsWith("/login/");
     const inModule = inGrow || inSave; // third slot is Home inside Grow / Save, Menu everywhere else
+    const activeKey = inGrow ? "grow" : inSave ? "save" : null;
     const fabBottom = FAB_BOTTOM_HOME;
     const shopName = profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM";
-    const tileGap = 12;
+    const tileGap = 8;
 
     // Total of everything that used to show on the removed menu rows
     // (Manage products + Sales orders). Shown on the Grow button.
@@ -339,7 +398,6 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/grow/enquiries" : "/grow";
 
     // Always the same two tiles, in the same order: Grow, Save.
-    // (Grow's badge is hidden inside the Grow module, where the page shows the counts itself.)
     const tiles = [TILES.grow, TILES.save].map((t, i) => ({
         ...t, to: t.key === "grow" ? growTo : t.to, slot: SLOT[i], badge: t.key === "grow" ? growBadgeTotal : 0,
     }));
@@ -398,15 +456,15 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const badgeDisplay = badgeTotal > 0 ? (badgeTotal > 9 ? "9+" : badgeTotal) : null;
 
     const menuButton = (
-        <motion.button
-            type="button"
+        <DockItem
+            label={pageOpen ? "Close" : "Menu"}
+            theme={FAB_THEME.menu}
+            active={pageOpen}
+            current={false}
             onClick={() => setPageOpen((v) => !v)}
-            aria-label={badgeDisplay ? `${pageOpen ? "Close" : "Open"} menu, ${badgeTotal} unread` : `${pageOpen ? "Close" : "Open"} menu`}
+            ariaLabel={badgeDisplay ? `${pageOpen ? "Close" : "Open"} menu, ${badgeTotal} unread` : `${pageOpen ? "Close" : "Open"} menu`}
             aria-expanded={pageOpen}
-            animate={{ opacity: 1 }}
-            whileTap={{ scale: 0.92 }}
-            className={DOCK_BTN}
-            style={{ width: 52, height: 52, background: FAB_THEME.menu.bg, color: FAB_THEME.menu.fg, outline: "none", WebkitTapHighlightColor: "transparent" }}
+            badge={pageOpen ? 0 : badgeTotal}
         >
             <AnimatePresence mode="wait" initial={false}>
                 <motion.span
@@ -420,39 +478,19 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     {pageOpen ? <X size={22} strokeWidth={2.4} /> : <Menu size={22} strokeWidth={2.4} />}
                 </motion.span>
             </AnimatePresence>
-
-            <DockBadge n={pageOpen ? 0 : badgeTotal} />
-        </motion.button>
+        </DockItem>
     );
 
     const homeButton = (
-        <motion.button
-            type="button"
-            onClick={() => navigate("/home")}
-            aria-label="Home"
-            title="Home"
-            animate={{ opacity: 1 }}
-            whileTap={{ scale: 0.92 }}
-            className={DOCK_BTN}
-            style={{ width: 52, height: 52, background: FAB_THEME.home.bg, color: FAB_THEME.home.fg, outline: "none", WebkitTapHighlightColor: "transparent" }}
-        >
+        <DockItem label="Home" theme={FAB_THEME.home} onClick={() => navigate("/home")}>
             <HomeIcon size={22} />
-        </motion.button>
+        </DockItem>
     );
 
     const signInButton = (
-        <motion.button
-            type="button"
-            onClick={() => navigate("/login")}
-            aria-label="Sign in"
-            title="Sign in"
-            animate={{ opacity: 1 }}
-            whileTap={{ scale: 0.92 }}
-            className={DOCK_BTN}
-            style={{ width: 52, height: 52, background: FAB_THEME.login.bg, color: FAB_THEME.login.fg, outline: "none", WebkitTapHighlightColor: "transparent" }}
-        >
+        <DockItem label="Sign in" theme={FAB_THEME.login} active={inLogin} onClick={() => navigate("/login")}>
             <LogIn size={22} strokeWidth={2.4} />
-        </motion.button>
+        </DockItem>
     );
 
     if (!primary || typeof document === "undefined") return null;
@@ -483,10 +521,11 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
                     </span>
 
-                    {/* the dock pill (no backdrop blur) */}
+                    {/* the dock pill (no backdrop blur). items-end keeps labels on one baseline
+                        and keeps the Menu/X button in the same spot whether the tiles are open or not. */}
                     <div
                         ref={pillRef}
-                        className="relative m-[2px] flex items-center justify-center rounded-full border-[1.5px] p-[9px] transition-[background-color,box-shadow] duration-200"
+                        className="relative m-[2px] flex items-end justify-center rounded-full border-[1.5px] px-[14px] pb-[10px] pt-[9px] transition-[background-color,box-shadow] duration-200"
                         style={{
                             background: pageOpen ? "transparent" : "rgba(255,255,255,.92)",
                             borderColor: pageOpen ? "transparent" : "#DFE7EA",
@@ -507,38 +546,26 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             onAnimationComplete={() => { if (!pageOpen) setClipTiles(false); }}
                             style={{ overflow: clipTiles ? "hidden" : "visible" }}
                         >
-                            <div ref={tilesInnerRef} className="relative flex w-max items-center" style={{ gap: tileGap }}>
-                                <>
-                                    {tiles.map(({ key, label, Icon, to, theme, slot, badge }) => {
-                                        return (
-                                            <motion.button
-                                                key={key}
-                                                type="button"
-                                                onClick={() => navigate(to)}
-                                                onPointerEnter={key === "grow" ? warmGrow : undefined}
-                                                onTouchStart={key === "grow" ? warmGrow : undefined}
-                                                aria-label={badge > 0 ? `${label}, ${badge} unread` : label}
-                                                tabIndex={pageOpen ? -1 : 0}
-                                                title={label}
-                                                transition={{ type: "spring", stiffness: 500, damping: 32 }}
-                                                whileTap={{ scale: 0.92 }}
-                                                style={{
-                                                    width: slot.size, height: slot.size, marginTop: slot.raised || slot.lift ? -4 : 0,
-                                                    background: theme.bg, color: theme.fg, "--fab-bg": theme.bg,
-                                                    boxShadow: "none",
-                                                }}
-                                                className={`${DOCK_BTN} bbm-tile ${pageOpen ? "pointer-events-none" : ""}`}
-                                            >
-                                                {/* ping ring belongs to the raised slot, so it stays when Save swaps to Home */}
-                                                {slot.raised && (
-                                                    <span aria-hidden className="bbm-dock-ping pointer-events-none absolute inset-0 rounded-full border-2" style={{ borderColor: theme.bg }} />
-                                                )}
-                                                <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon size={slot.icon} /></span>
-                                                <DockBadge n={badge} />
-                                            </motion.button>
-                                        );
-                                    })}
-                                </>
+                            <div ref={tilesInnerRef} className="relative flex w-max items-end" style={{ gap: tileGap }}>
+                                {tiles.map(({ key, label, Icon, to, theme, slot, badge }) => (
+                                    <DockItem
+                                        key={key}
+                                        label={label}
+                                        theme={theme}
+                                        size={slot.size}
+                                        ping={!!slot.raised}
+                                        badge={badge}
+                                        active={activeKey === key}
+                                        ariaLabel={badge > 0 ? `${label}, ${badge} unread` : label}
+                                        tabIndex={pageOpen ? -1 : 0}
+                                        onClick={() => navigate(to)}
+                                        onPointerEnter={key === "grow" ? warmGrow : undefined}
+                                        onTouchStart={key === "grow" ? warmGrow : undefined}
+                                        className={`bbm-tile ${pageOpen ? "pointer-events-none" : ""}`}
+                                    >
+                                        <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon size={slot.icon} /></span>
+                                    </DockItem>
+                                ))}
                             </div>
                         </motion.div>
 
