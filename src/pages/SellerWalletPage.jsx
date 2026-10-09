@@ -1,12 +1,14 @@
 // pages/SellerWalletPage.jsx
-import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+// Top-ups are paid on JioPay's hosted checkout: "Proceed to pay" redirects there and the seller comes
+// back through /payment/return, which shows the verified result and links back here.
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Wallet, Loader2, AlertTriangle, IndianRupee, Clock, ShieldCheck, ChevronDown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchWalletStatus, fetchWalletTransactions, fetchWalletPayments } from "../utils/walletApi.js";
+import { startWalletPayment, redirectToGateway } from "../utils/paymentsApi.js";
 import { C } from "../components/catalog/tokens";
-import WalletPaymentQRModal from "../components/WalletPaymentQRModal.jsx";
 
 // Module-scoped — survives unmount/remount as you navigate away and back,
 // but resets on a hard page reload (which is fine; a hard reload should
@@ -34,8 +36,6 @@ function Card({ title, children, right }) {
 // as a negative amount (legacy from the old debt model, where a payment
 // reduced a debt total). Deriving sign from type instead of trusting
 // t.amount's sign keeps the ledger readable without needing a DB migration.
-// pages/SellerWalletPage.jsx — reordered, top to bottom:
-
 const TXN_LABEL = {
     commission_accrued: { label: "Marketing & promotion (incl. GST)", color: "#c71f11", sign: -1 },
     commission_reversed: { label: "Marketing charges reversed", color: "#059669", sign: 1 },
@@ -64,10 +64,7 @@ function withClosingBalances(txns, currentBalance) {
 function BreakdownPanel({ t }) {
     const b = t.breakdown;
     const services = Array.isArray(b.services) ? b.services : [];
-    const svcSum = round2(services.reduce((s, x) => s + Number(x.amount || 0), 0));
     const fee = Number(b.feeAmount) || 0, gst = Number(b.gstAmount) || 0, total = Number(b.total) || 0;
-    const reconciles = Math.abs(svcSum - fee) < 0.005 && Math.abs(round2(fee + gst) - total) < 0.005
-        && Math.abs(total - Math.abs(Number(t.amount) || 0)) < 0.005;
     const row = "flex items-center justify-between gap-2 text-[12px] font-semibold tracking-wide";
     return (
         <div className="mt-2 rounded-xl border p-2.5" style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}>
@@ -94,9 +91,6 @@ function BreakdownPanel({ t }) {
                     <span className="tabular-nums font-extrabold" style={{ color: C.ink }}>₹{inr(total)}</span>
                 </div>
             </div>
-            {/* <p className="mt-1.5 text-[10.5px] font-bold tracking-wide" style={{ color: reconciles ? "#059669" : "#b45309" }}>
-                {reconciles ? "✓ Adds up to the amount deducted" : "Amounts differ from this entry. Contact support."}
-            </p> */}
         </div>
     );
 }
@@ -160,9 +154,8 @@ export default function SellerWalletPage() {
     const [loading, setLoading] = useState(!walletCache);
 
     const [payAmount, setPayAmount] = useState("");
-    const [showQrModal, setShowQrModal] = useState(false);
+    const [paying, setPaying] = useState(false);
     const [amountError, setAmountError] = useState(null);
-    const [notice, setNotice] = useState(null);
 
     const load = useCallback(async ({ background = false } = {}) => {
         if (!background) setLoading(true);
@@ -191,19 +184,41 @@ export default function SellerWalletPage() {
         load({ background: !!walletCache });
     }, [load, token]);
 
-    const handleProceedToPay = () => {
-        setAmountError(null);
-        if (!(Number(payAmount) > 0)) { setAmountError("Enter a valid amount."); return; }
-        setShowQrModal(true);
-    };
+    // Back/forward cache: if the seller presses Back from the payment page, unfreeze the button.
+    useEffect(() => {
+        const onShow = (e) => { if (e.persisted) setPaying(false); };
+        window.addEventListener("pageshow", onShow);
+        return () => window.removeEventListener("pageshow", onShow);
+    }, []);
 
-    const handlePaymentSubmitted = () => {
-        setPayAmount("");
-        setNotice("Credits submitted for verification.");
-        load();
+    const handleProceedToPay = async () => {
+        if (paying) return;
+        setAmountError(null);
+        const raw = String(payAmount).trim();
+        if (!/^\d+(\.\d{1,2})?$/.test(raw) || !(Number(raw) > 0)) { setAmountError("Enter a valid amount (up to 2 decimals)."); return; }
+        if (Number(raw) < 1 || Number(raw) > 1000000) { setAmountError("Amount must be between ₹1 and ₹10,00,000."); return; }
+
+        setPaying(true);
+        const res = await startWalletPayment(token, raw);
+        if (!res?.success || !redirectToGateway(res.redirectUrl)) {
+            setPaying(false);
+            setAmountError(res?.message || "Couldn't start the payment. Please try again.");
+        }
+        // On success the window navigates to JioPay; keep the button busy until it does.
     };
 
     if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-6 w-6 animate-spin" style={{ color: C.muted }} /></div>;
+
+    // The wallet request failed and there is nothing cached to show.
+    if (!wallet) {
+        return (
+            <div className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center px-4 text-center">
+                <p className="text-[14px] font-bold" style={{ color: C.ink }}>Couldn't load your wallet</p>
+                <p className="mt-1 text-[12.5px] font-medium" style={{ color: C.muted }}>Check your connection and try again.</p>
+                <button onClick={() => load()} className="mt-4 rounded-xl px-5 py-2.5 text-[13px] font-bold text-white" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>Try again</button>
+            </div>
+        );
+    }
 
     const isBlocked = wallet?.is_blocked;
     const isThreshold = wallet.billing_mode === "threshold";
@@ -249,22 +264,22 @@ export default function SellerWalletPage() {
                 <div className="flex flex-col gap-2.5">
                     <div>
                         <label className="text-[12px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>Amount</label>
-                        <input type="text" inputMode="decimal" value={payAmount} onChange={(e) => setPayAmount(e.target.value.replace(/[^\d.]/g, ""))}
+                        <input type="text" inputMode="decimal" value={payAmount} disabled={paying}
+                            onChange={(e) => { setPayAmount(e.target.value.replace(/[^\d.]/g, "")); setAmountError(null); }}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleProceedToPay(); } }}
                             placeholder={isThreshold ? `e.g. ₹${inr(wallet.threshold_amount)}` : `Up to ₹${inr(wallet.balance_due)}`}
                             className="mt-1 w-full rounded-lg border px-3 py-2 text-[13.5px] font-bold tabular-nums" style={{ borderColor: C.hair }} />
                     </div>
                     {amountError && <p className="text-[11.5px] font-semibold" style={{ color: "#c71f11" }}>{amountError}</p>}
                     <p className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                        Test mode — payment is simulated. You'll get a QR code on the next step to pay and submit your UTR.
+                        You'll be taken to JioPay's secure page to pay by card, UPI or net banking. Credits are added automatically as soon as the payment is confirmed.
                     </p>
-                    <button onClick={handleProceedToPay}
-                        className="rounded-xl px-4 py-2.5 text-[13px] font-bold text-white" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
-                        Proceed to pay
+                    <button onClick={handleProceedToPay} disabled={paying}
+                        className="rounded-xl px-4 py-2.5 text-[13px] font-bold text-white disabled:opacity-60" style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
+                        {paying ? "Redirecting to JioPay…" : "Proceed to pay"}
                     </button>
                 </div>
             </Card>
-
-            {notice && <p className="mt-3 rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ background: `${C.secondary}10`, color: C.secondary }}>{notice}</p>}
 
             {/* ---- Payment history ---- */}
             {payments.length > 0 && (
@@ -286,7 +301,6 @@ export default function SellerWalletPage() {
                 </Card>
             )}
 
-            {/* ---- Ledger ---- */}
             {/* ---- Ledger ---- */}
             <Card
                 title="Transaction ledger"
@@ -335,17 +349,6 @@ export default function SellerWalletPage() {
                     </>
                 )}
             </Card>
-
-            {
-                showQrModal && (
-                    <WalletPaymentQRModal
-                        token={token}
-                        amount={Number(payAmount)}
-                        onClose={() => setShowQrModal(false)}
-                        onSubmitted={handlePaymentSubmitted}
-                    />
-                )
-            }
-        </div >
+        </div>
     );
 }

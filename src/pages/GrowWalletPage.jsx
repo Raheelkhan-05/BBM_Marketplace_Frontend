@@ -1,10 +1,12 @@
 // src/pages/GrowWalletPage.jsx — seller wallet in the new GROW UI.
-// Same data and logic as SellerWalletPage (status, ledger with closing balances, breakdowns, payments, QR top-up).
+// Same data and logic as SellerWalletPage (status, ledger with closing balances, breakdowns, payments).
+// Top-ups are paid on JioPay's hosted checkout: "Proceed to pay" redirects there and the seller comes
+// back through /payment/return, which shows the verified result and links back here.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchWalletStatus, fetchWalletTransactions, fetchWalletPayments } from "../utils/walletApi.js";
-import WalletPaymentQRModal from "../components/WalletPaymentQRModal.jsx";
+import { startWalletPayment, redirectToGateway } from "../utils/paymentsApi.js";
 import Ic from "../components/growSeller/Ic.jsx";
 import { Empty } from "../components/growSeller/ui.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
@@ -111,15 +113,14 @@ function TxnRow({ t, onOrder }) {
 export default function GrowWalletPage() {
     const nav = useNavigate();
     const { token } = useAuth();
-    const { say, refreshWallet } = useGrowSeller();
+    const { refreshWallet } = useGrowSeller();
     const [wallet, setWallet] = useState(walletCache?.wallet ?? null);
     const [txns, setTxns] = useState(walletCache?.txns ?? []);
     const [payments, setPayments] = useState(walletCache?.payments ?? []);
     const [loading, setLoading] = useState(!walletCache);
     const [payAmount, setPayAmount] = useState("");
-    const [showQr, setShowQr] = useState(false);
+    const [paying, setPaying] = useState(false);
     const [amountError, setAmountError] = useState(null);
-    const [notice, setNotice] = useState(false);
     const [filter, setFilter] = useState("all");
 
     // Only block on the skeleton if there is nothing to show yet; refreshes happen quietly.
@@ -140,8 +141,17 @@ export default function GrowWalletPage() {
 
     useEffect(() => {
         if (!token) return;
-        load({ background: !!walletCache });
+        // After a JioPay top-up the seller lands back here: refresh the page data and the header balance once.
+        load({ background: !!walletCache }).then(() => refreshWallet?.());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [load, token]);
+
+    // Back/forward cache: if the seller presses Back from the payment page, unfreeze the button.
+    useEffect(() => {
+        const onShow = (e) => { if (e.persisted) setPaying(false); };
+        window.addEventListener("pageshow", onShow);
+        return () => window.removeEventListener("pageshow", onShow);
+    }, []);
 
     const annotated = useMemo(() => withClosingBalances(txns, wallet?.balance_due), [txns, wallet?.balance_due]);
     const shown = useMemo(() => annotated.filter((t) => {
@@ -150,18 +160,20 @@ export default function GrowWalletPage() {
         return filter === "in" ? e > 0 : e < 0;
     }), [annotated, filter]);
 
-    const proceed = () => {
+    const proceed = async () => {
+        if (paying) return;
         setAmountError(null);
-        if (!(Number(payAmount) > 0)) { setAmountError("Enter a valid amount."); return; }
-        setShowQr(true);
-    };
+        const raw = String(payAmount).trim();
+        if (!/^\d+(\.\d{1,2})?$/.test(raw) || !(Number(raw) > 0)) { setAmountError("Enter a valid amount (up to 2 decimals)."); return; }
+        if (Number(raw) < 1 || Number(raw) > 1000000) { setAmountError("Amount must be between ₹1 and ₹10,00,000."); return; }
 
-    const submitted = () => {
-        setPayAmount("");
-        setNotice(true);
-        say("Credits submitted for verification.");
-        load();
-        refreshWallet?.();
+        setPaying(true);
+        const res = await startWalletPayment(token, raw);
+        if (!res?.success || !redirectToGateway(res.redirectUrl)) {
+            setPaying(false);
+            setAmountError(res?.message || "Couldn't start the payment. Please try again.");
+        }
+        // On success the window navigates to JioPay; keep the button in its busy state until it does.
     };
 
     if (loading) {
@@ -231,26 +243,27 @@ export default function GrowWalletPage() {
                             <label htmlFor="wx-amt">Amount</label>
                             <div className="inp">
                                 <span className="pre">₹</span>
-                                <input id="wx-amt" type="text" inputMode="decimal" value={payAmount}
+                                <input id="wx-amt" type="text" inputMode="decimal" value={payAmount} disabled={paying}
                                     placeholder={isThreshold ? `e.g. ${inr(wallet.threshold_amount)}` : `Up to ${inr(wallet.balance_due)}`}
+                                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); proceed(); } }}
                                     onChange={(e) => { setPayAmount(e.target.value.replace(/[^\d.]/g, "")); setAmountError(null); }} />
                             </div>
                         </div>
                         {isThreshold && (
                             <div className="wx-quick" role="group" aria-label="Quick amounts">
                                 {quick.map((v) => (
-                                    <button key={v} type="button" aria-pressed={Number(payAmount) === v} onClick={() => { setPayAmount(String(v)); setAmountError(null); }}>
+                                    <button key={v} type="button" aria-pressed={Number(payAmount) === v} disabled={paying} onClick={() => { setPayAmount(String(v)); setAmountError(null); }}>
                                         ₹{v.toLocaleString("en-IN")}
                                     </button>
                                 ))}
                             </div>
                         )}
                         {amountError && <p className="wx-err">{amountError}</p>}
-                        <p className="wx-hint">Test mode: payment is simulated. You'll get a QR code on the next step to pay and submit your UTR.</p>
-                        <button className="bt go blk" type="button" style={{ marginTop: 14 }} onClick={proceed}>Proceed to pay</button>
+                        <p className="wx-hint">You'll be taken to JioPay's secure page to pay by card, UPI or net banking. Credits are added automatically as soon as the payment is confirmed.</p>
+                        <button className="bt go blk" type="button" style={{ marginTop: 14 }} onClick={proceed} disabled={paying}>
+                            {paying ? "Redirecting to JioPay…" : "Proceed to pay"}
+                        </button>
                     </div>
-
-                    {notice && <div className="wx-ok"><Ic n="check" />Credits submitted for verification.</div>}
 
                     {payments.length > 0 && (
                         <div className="card">
@@ -302,10 +315,6 @@ export default function GrowWalletPage() {
                     </div>
                 </div>
             </div>
-
-            {showQr && (
-                <WalletPaymentQRModal token={token} amount={Number(payAmount)} onClose={() => setShowQr(false)} onSubmitted={submitted} />
-            )}
         </div>
     );
 }

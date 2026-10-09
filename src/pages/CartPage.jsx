@@ -10,17 +10,21 @@
 //
 // Pricing, stock, MOQ, order-window / serviceability constraints and the debounced
 // quantity writes are unchanged.
+//
+// PAYMENT: checkout creates the order group, then the buyer is sent to JioPay's hosted checkout
+// (utils/paymentsApi.js) for the whole cart in one payment. They return via /payment/return.
+// If starting the payment fails, tapping the button again resumes the same pending group.
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Trash2, Loader2, Store, ShoppingCart, MapPin, Minus, Plus, Clock, Truck, AlertCircle, ReceiptText, Package, FileText, X, ChevronDown } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
+import { startGroupPayment, redirectToGateway } from "../utils/paymentsApi.js";
 import { fetchOrderConstraints } from "../utils/api.js";
 import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
 import { useOrderResume } from "../context/OrderResumeContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 import { C } from "../components/catalog/tokens";
-import GroupPaymentQRModal from "../components/GroupPaymentQRModal.jsx";
 import AddressBook from "../components/shipping/AddressBook.jsx";
 import TransportPreferenceModal from "../components/transport/TransportPreferenceModal.jsx";
 import { BuyerAddressProvider, useBuyerAddress } from "../context/BuyerAddressContext.jsx";
@@ -283,10 +287,17 @@ function CartPageInner() {
     const [viewingItem, setViewingItem] = useState(null);
     const [checking, setChecking] = useState(false);
     const [error, setError] = useState(null);
-    const [payingGroupId, setPayingGroupId] = useState(null);
     const pendingWrites = useRef({});
     const pendingWritePromises = useRef({});
-    const { reload: reloadCartBadge, setCountOptimistic } = useCart();
+    const { setCountOptimistic } = useCart();
+
+    // Coming back with the browser's Back button from the payment page can restore this page from the
+    // back/forward cache with the button stuck on its spinner. Unfreeze it.
+    useEffect(() => {
+        const onShow = (e) => { if (e.persisted) setChecking(false); };
+        window.addEventListener("pageshow", onShow);
+        return () => window.removeEventListener("pageshow", onShow);
+    }, []);
 
     const load = useCallback(async () => {
         const res = await fetchCart(token);
@@ -568,6 +579,7 @@ function CartPageInner() {
         }
 
         setChecking(true);
+        let navigating = false;
         try {
             await flushPendingWrites();
             const transportPreferencesPayload = Object.entries(prefs)
@@ -576,9 +588,16 @@ function CartPageInner() {
 
             const res = await checkoutCart(token, { shippingAddressId: selectedAddressId, transportPreferences: transportPreferencesPayload });
             if (!res?.success) { setError(res?.message || "Couldn't place the order."); return; }
-            setPayingGroupId(res.orderGroupId);
+
+            // The order group exists (awaiting payment). Send the buyer to JioPay for the whole cart.
+            // If this step fails, tapping the button again resumes the same pending group.
+            const pay = await startGroupPayment(token, res.orderGroupId);
+            if (!pay?.success) { setError(pay?.message || "Couldn't start the payment. Tap the button again to retry."); return; }
+            navigating = redirectToGateway(pay.redirectUrl);
+            if (!navigating) setError("Couldn't open the payment page. Tap the button again to retry.");
         } finally {
-            setChecking(false);
+            // While the browser navigates to the gateway keep the spinner up.
+            if (!navigating) setChecking(false);
         }
     };
 
@@ -779,12 +798,6 @@ function CartPageInner() {
                         </div>
                     </div>
                 </>
-            )}
-
-            {payingGroupId && (
-                <GroupPaymentQRModal token={token} groupId={payingGroupId}
-                    onClose={() => { setPayingGroupId(null); load(); reloadCartBadge(); }}
-                    onDoneViewOrders={() => navigate("/orders")} />
             )}
 
             {activeTransportSellerId && grouped[activeTransportSellerId] && (
