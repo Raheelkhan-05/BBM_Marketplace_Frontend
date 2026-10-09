@@ -15,8 +15,17 @@ const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public San
 
 // Promo banner dismissal lasts for the browser session (reappears on a fresh visit).
 const PROMO_KEY = "bbm_promo_hero_dismissed_v1";
-const readPromoDismissed = () => { try { return sessionStorage.getItem(PROMO_KEY) === "1"; } catch { return false; } };
-const writePromoDismissed = () => { try { sessionStorage.setItem(PROMO_KEY, "1"); } catch { /* private mode */ } };
+const PROMO_TTL_MS = 1 * 60 * 60 * 1000; // 1 hour
+
+const readPromoDismissed = () => {
+    try {
+        const t = Number(localStorage.getItem(PROMO_KEY));
+        return t > 0 && Date.now() - t < PROMO_TTL_MS;
+    } catch { return false; }
+};
+const writePromoDismissed = () => {
+    try { localStorage.setItem(PROMO_KEY, String(Date.now())); } catch { /* private mode */ }
+};
 
 export default function HomePage() {
     const [query, setQuery] = useState("");
