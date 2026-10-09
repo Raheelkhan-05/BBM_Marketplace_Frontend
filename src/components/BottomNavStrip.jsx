@@ -525,7 +525,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         and keeps the Menu/X button in the same spot whether the tiles are open or not. */}
                     <div
                         ref={pillRef}
-                        className="relative m-[2px] flex items-end justify-center rounded-full border-[1.5px] px-[14px] pb-[10px] pt-[9px] transition-[background-color,box-shadow] duration-200"
+                        className="relative m-[2px] flex items-end justify-center rounded-full border-[1.5px] px-[14px] pb-[10px] pt-[5px] transition-[background-color,box-shadow] duration-200"
                         style={{
                             background: pageOpen ? "transparent" : "rgba(255,255,255,.92)",
                             borderColor: pageOpen ? "transparent" : "#DFE7EA",
