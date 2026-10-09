@@ -90,19 +90,19 @@ export default function PaymentReturnPage() {
         }
     };
 
-    const walletPath = takePaymentReturnPath() || "/seller/wallet";
+    const walletPath = takePaymentReturnPath() || "/grow/wallet";
 
     /* --------------------------------------------------------------- states */
     let view;
     if (!validRef) {
-        view = { tone: "bad", icon: XCircle, title: "Invalid payment link", text: "This payment reference isn't valid.", actions: [["Go to my orders", () => navigate("/orders"), true]] };
+        view = { tone: "bad", icon: XCircle, title: "Invalid payment link", text: "This payment reference isn't valid.", actions: [["Go to my orders", () => navigate("/save/orders"), true]] };
     } else if (!token) {
         view = authWaited
             ? { tone: "warn", icon: AlertTriangle, title: "Please sign in", text: "Sign in to see the result of your payment.", actions: [["Sign in", () => navigate("/login", { state: { from: location.pathname + location.search } }), true]] }
             : { tone: "wait", icon: Loader2, spin: true, title: "Checking your session…", text: "" };
     } else if (!payment) {
         view = timedOut
-            ? { tone: "warn", icon: Clock, title: "Still waiting", text: error || "We couldn't load the payment yet.", actions: [["Go to my orders", () => navigate("/orders"), true]] }
+            ? { tone: "warn", icon: Clock, title: "Still waiting", text: error || "We couldn't load the payment yet.", actions: [["Go to my orders", () => navigate("/save/orders"), true]] }
             : { tone: "wait", icon: Loader2, spin: true, title: "Confirming your payment…", text: "Please don't pay again or close this page." };
     } else if (payment.status === "success") {
         const forWallet = payment.purpose === "wallet_topup";
@@ -120,13 +120,13 @@ export default function PaymentReturnPage() {
         view = {
             tone: "warn", icon: AlertTriangle, title: "Payment received, but it can't be used",
             text: `We received ${inr(payment.amount)}, but this order was already cancelled, paid, or changed. A full refund is being sent to your original payment method automatically.`,
-            actions: [["Go to my orders", () => navigate("/orders"), true]],
+            actions: [["Go to my orders", () => navigate("/saave/orders"), true]],
         };
     } else if (payment.status === "review") {
         view = {
             tone: "warn", icon: Clock, title: "We're verifying your payment",
             text: "The amount confirmed by the bank needs a quick manual check. Our team will resolve it shortly — you don't need to pay again.",
-            actions: [["Go to my orders", () => navigate("/orders"), true]],
+            actions: [["Go to my orders", () => navigate("/save/orders"), true]],
         };
     } else if (payment.status === "failed" || payment.status === "expired") {
         const forWallet = payment.purpose === "wallet_topup";
@@ -136,13 +136,13 @@ export default function PaymentReturnPage() {
             text: "No money was taken. If an amount was deducted, it will be confirmed or refunded automatically.",
             actions: forWallet
                 ? [["Back to wallet", () => navigate(walletPath), true]]
-                : [[retrying ? "Starting…" : "Try again", retry, true, RotateCcw], ["Go to my orders", () => navigate("/orders"), false]],
+                : [[retrying ? "Starting…" : "Try again", retry, true, RotateCcw], ["Go to my orders", () => navigate("/save/orders"), false]],
         };
     } else if (timedOut) {
         view = {
             tone: "warn", icon: Clock, title: "Still waiting for the bank",
             text: "We haven't received a final answer yet. If money was deducted it will be confirmed automatically — check your orders in a few minutes. You don't need to pay again.",
-            actions: [["Go to my orders", () => navigate(payment.purpose === "wallet_topup" ? walletPath : "/orders"), true]],
+            actions: [["Go to my orders", () => navigate(payment.purpose === "wallet_topup" ? walletPath : "/save/orders"), true]],
         };
     } else {
         view = { tone: "wait", icon: Loader2, spin: true, title: "Confirming your payment…", text: "Waiting for the bank's confirmation. Please don't pay again or close this page." };
@@ -157,7 +157,7 @@ export default function PaymentReturnPage() {
     const Icon = view.icon;
 
     return (
-        <div className="mx-auto flex min-h-[70vh] max-w-md flex-col items-center justify-center px-5 py-10 text-center">
+        <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-5 py-10 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-full" style={{ background: colors.bg, color: colors.fg }}>
                 <Icon className={`h-8 w-8 ${view.spin ? "animate-spin" : ""}`} />
             </span>
