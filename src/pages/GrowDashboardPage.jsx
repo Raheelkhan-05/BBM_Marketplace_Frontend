@@ -363,7 +363,7 @@ export default function GrowDashboardPage() {
                         : list.length === 0 ? <div className="gk-empty" style={{ border: 0, padding: "24px 8px" }}><Inbox size={22} /><b>No orders yet</b>Orders will appear as buyers place them.</div>
                             : list.slice(0, 4).map((o) => (
                                 <button key={o.id} type="button" className="gd-row" onClick={() => nav(`/grow/orders/${o.id}`)}>
-                                    <span className="gd-th">{(o.buyer_business_name || o.buyer_contact_name || "B")[0].toUpperCase()}</span>
+                                    {/* <span className="gd-th">{(o.buyer_business_name || o.buyer_contact_name || "B")[0].toUpperCase()}</span> */}
                                     <span className="t"><b>{o.buyer_business_name || o.buyer_contact_name}</b><small>{o.order_number} · {timeAgo(o.created_at)}</small></span>
                                     <span className="r"><b>{o.order_type === "sample" ? "Free" : money(o.subtotal_amount)}</b><span className="gk-pill" data-s={o.status}>{STATUS_LABEL[o.status] || o.status}</span></span>
                                 </button>
