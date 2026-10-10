@@ -115,6 +115,9 @@ export function AuthProvider({ children }) {
           businessProfile: res.businessProfile,
           shop_slug: res.businessProfile?.shop_slug ?? res.shop_slug ?? null,
           notificationChannel: res.notificationChannel,
+          // Seller ship-from location (seller_profiles city/state + dispatch
+          // fields). Used to prefill the origin in the Transport add-route form.
+          sellerLocation: res.sellerLocation ?? null,
         });
         return;
       }

@@ -10,6 +10,68 @@ export function Portal({ children }) {
     return root ? createPortal(children, root) : null;
 }
 
+// Phone: keeps the sheet's layer inside the area above the keyboard,
+// and scrolls the focused field into view. Writes to the DOM directly (no React lag).
+function useKeyboardSheet(shadeRef, sheetRef) {
+    useEffect(() => {
+        const shade = shadeRef.current;
+        const sheet = sheetRef.current;
+        if (!shade || !sheet) return undefined;
+        const phone = window.matchMedia("(max-width: 767px)");
+        const vv = window.visualViewport;
+        const timers = [];
+        let raf = 0;
+
+        const apply = () => {
+            if (!phone.matches) {
+                shade.style.height = shade.style.transform = sheet.style.maxHeight = "";
+                shade.dataset.kb = "false";
+                return;
+            }
+            const h = Math.round(vv ? vv.height : window.innerHeight);
+            const top = Math.round(vv ? vv.offsetTop : 0);
+            shade.style.height = `${h}px`;
+            shade.dataset.kb = window.innerHeight - h > 120 ? "true" : "false";
+            shade.style.transform = `translate3d(0, ${top}px, 0)`;
+            sheet.style.maxHeight = `${Math.round(h * 0.94)}px`;
+        };
+        const reveal = () => {
+            const el = document.activeElement;
+            if (el && sheet.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) {
+                el.scrollIntoView({ block: "center", behavior: "auto" });
+            }
+        };
+        const onChange = () => {
+            if (window.scrollX || window.scrollY) window.scrollTo(0, 0); // undo browser page pan
+            apply();
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => { apply(); reveal(); });
+        };
+        const settle = () => {
+            onChange();
+            [60, 150, 300, 600].forEach((ms) => timers.push(setTimeout(onChange, ms)));
+        };
+
+        apply();
+        vv?.addEventListener("resize", onChange);
+        vv?.addEventListener("scroll", onChange);
+        window.addEventListener("resize", onChange);
+        window.addEventListener("orientationchange", settle);
+        document.addEventListener("focusin", settle);
+        document.addEventListener("focusout", settle);
+        return () => {
+            cancelAnimationFrame(raf);
+            timers.forEach(clearTimeout);
+            vv?.removeEventListener("resize", onChange);
+            vv?.removeEventListener("scroll", onChange);
+            window.removeEventListener("resize", onChange);
+            window.removeEventListener("orientationchange", settle);
+            document.removeEventListener("focusin", settle);
+            document.removeEventListener("focusout", settle);
+        };
+    }, [shadeRef, sheetRef]);
+}
+
 /**
  * Bottom sheet on phones, centred modal from 768px.
  * `light` = white panel for reused (Tailwind, light) content such as the edit form.
@@ -17,6 +79,9 @@ export function Portal({ children }) {
  */
 export function Sheet({ title, sub, onClose, wide = false, light = false, bare = false, children }) {
     const closeRef = useRef(onClose);
+    const shadeRef = useRef(null);
+    const sheetRef = useRef(null);
+    useKeyboardSheet(shadeRef, sheetRef);
     closeRef.current = onClose;
 
     useEffect(() => {
@@ -34,8 +99,8 @@ export function Sheet({ title, sub, onClose, wide = false, light = false, bare =
 
     return (
         <Portal>
-            <div className="shade" onMouseDown={(e) => { if (e.target === e.currentTarget) closeRef.current?.(); }}>
-                <div className={`sheet${wide ? " wide" : ""}${light ? " lt" : ""}${bare ? " bare" : ""}`} role="dialog" aria-modal="true" aria-label={title || "Details"} data-lenis-prevent="">
+            <div ref={shadeRef} className="shade" onMouseDown={(e) => { if (e.target === e.currentTarget) closeRef.current?.(); }}>
+                <div ref={sheetRef} className={`sheet${wide ? " wide" : ""}${light ? " lt" : ""}${bare ? " bare" : ""}`} role="dialog" aria-modal="true" aria-label={title || "Details"} data-lenis-prevent="">
                     <div className="gp" />
                     {!bare && (
                         <div className="shh">

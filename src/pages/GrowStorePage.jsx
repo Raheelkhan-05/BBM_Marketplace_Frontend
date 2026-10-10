@@ -2,10 +2,10 @@
 // Same data and actions as SellerStorePage: fetchSellerDashboard, updateSellerProfile,
 // fetchSellerBankDetails / saveSellerBankDetails, uploadSellerFile, lookupPincode.
 //   1. Shop card          – logo, name, share + view shop
-//   2. GST registration   – read-only
-//   3. Contact            – contact person + optional logo
-//   4. Operations         – working days, transport, order hours, dispatch pincode
-//   5. Bank details
+//   2. GST registration   – read-only            (collapsed by default)
+//   3. Contact            – contact person + logo (collapsed by default)
+//   4. Operations         – working days, transport, order hours, dispatch pincode (collapsed by default)
+//   5. Bank details                              (collapsed by default)
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -44,14 +44,28 @@ async function copyText(text) {
 }
 
 /* ---------- small pieces ---------- */
-function Head({ id, title, sub, right }) {
+
+// Collapsible card used by every section. Starts collapsed. The body stays
+// mounted (just hidden) so unsaved edits are kept when the section is
+// closed, and data a section loads on mount (bank details) is ready on open.
+function Collapsible({ id, title, sub, right, defaultOpen = false, children }) {
+    const [open, setOpen] = useState(defaultOpen);
     const ic = ICON[id];
+    const bodyId = `st-body-${id}`;
     return (
-        <div className="st-h">
-            <span className="st-ico" style={ic.s}><svg className="ic" viewBox="0 0 24 24"><path d={ic.d} /></svg></span>
-            <div><b>{title}</b><small>{sub}</small></div>
-            {right}
-        </div>
+        <section className="card">
+            <button type="button" className="st-tog" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen((o) => !o)}>
+                <span className="st-ico" style={ic.s}><svg className="ic" viewBox="0 0 24 24"><path d={ic.d} /></svg></span>
+                <span className="st-h" style={{ flex: 1, margin: 0, display: "block" }}>
+                    <b>{title}</b><small>{sub}</small>
+                </span>
+                {right}
+                <Ic n="chev" />
+            </button>
+            <div id={bodyId} hidden={!open} style={{ marginTop: 12 }}>
+                {children}
+            </div>
+        </section>
     );
 }
 
@@ -119,7 +133,6 @@ function ShopCard({ seller }) {
 }
 
 function GstSection({ business }) {
-    const [open, setOpen] = useState(false);
     const b = business || {};
     const nature = Array.isArray(b.nature_of_business) ? b.nature_of_business.join(", ") : b.nature_of_business;
     const rows = [
@@ -129,25 +142,12 @@ function GstSection({ business }) {
         ["Registered address", b.registered_address ?? b.address], ["District", b.district],
         ["State", b.state], ["Pincode", b.pincode], ["PAN", b.pan], ["Nature of business", nature],
     ].filter(([, v]) => v);
-    const ic = ICON.gst;
     return (
-        <section className="card">
-            <button type="button" className="st-tog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-                <span className="st-ico" style={ic.s}><svg className="ic" viewBox="0 0 24 24"><path d={ic.d} /></svg></span>
-                <span className="st-h" style={{ flex: 1, margin: 0, display: "block" }}>
-                    <b>GST registration</b><small>Taken from your GST record</small>
-                </span>
-                <span className="st-pill">Read only</span>
-                <Ic n="chev" />
-            </button>
-            {open && (
-                <div style={{ marginTop: 12 }}>
-                    {rows.length
-                        ? rows.map(([k, v]) => <div className="st-row" key={k}><small>{k}</small><b>{v}</b></div>)
-                        : <p className="sub2">No GST details on file.</p>}
-                </div>
-            )}
-        </section>
+        <Collapsible id="gst" title="GST registration" sub="Taken from your GST record" right={<span className="st-pill">Read only</span>}>
+            {rows.length
+                ? rows.map(([k, v]) => <div className="st-row" key={k}><small>{k}</small><b>{v}</b></div>)
+                : <p className="sub2">No GST details on file.</p>}
+        </Collapsible>
     );
 }
 
@@ -188,8 +188,7 @@ function ContactSection({ seller, email, token, onSaved }) {
     };
 
     return (
-        <section className="card">
-            <Head id="contact" title="Contact" sub="Who buyers and our team reach out to" />
+        <Collapsible id="contact" title="Contact" sub="Who buyers and our team reach out to">
             <div className="f">
                 <label htmlFor="st-person">Contact person</label>
                 <div className="inp"><input id="st-person" value={person} autoComplete="name" placeholder="Full name" onChange={(e) => { setPerson(e.target.value); setError(null); }} /></div>
@@ -220,7 +219,7 @@ function ContactSection({ seller, email, token, onSaved }) {
                 </div>
             </div>
             <SaveRow dirty={dirty} saving={saving} error={error} onSave={save} />
-        </section>
+        </Collapsible>
     );
 }
 
@@ -275,8 +274,7 @@ function OperationsSection({ seller, token, onSaved }) {
     const where = f.dispatch_district && f.dispatch_state ? `${f.dispatch_district}, ${f.dispatch_state}` : "";
 
     return (
-        <section className="card">
-            <Head id="ops" title="Operations" sub="Working days, transport and dispatch" />
+        <Collapsible id="ops" title="Operations" sub="Working days, transport and dispatch">
             <div className="f">
                 <label>Working days</label>
                 <Chips value={f.working_days} onChange={(v) => set({ working_days: WEEKDAYS.filter((d) => v.includes(d)) })}
@@ -306,7 +304,7 @@ function OperationsSection({ seller, token, onSaved }) {
                 {!pin && where && <p className="st-cap ok">Dispatching from {where}</p>}
             </div>
             <SaveRow dirty={dirty} saving={saving} error={error} onSave={save} disabled={!valid} />
-        </section>
+        </Collapsible>
     );
 }
 
@@ -348,9 +346,8 @@ function BankSection({ token }) {
     };
 
     return (
-        <section className="card">
-            <Head id="bank" title="Bank details" sub="Where your order payouts are sent" />
-            {!loaded ? <div className="sk line" style={{ marginTop: 18 }} /> : (
+        <Collapsible id="bank" title="Bank details" sub="Where your order payouts are sent">
+            {!loaded ? <div className="sk line" style={{ marginTop: 6 }} /> : (
                 <>
                     <div className="f"><label htmlFor="st-acc">Account number</label>
                         <div className="inp"><input id="st-acc" inputMode="numeric" maxLength={18} autoComplete="off" placeholder="9 to 18 digits"
@@ -362,7 +359,7 @@ function BankSection({ token }) {
                     <SaveRow dirty={dirty} saving={saving} error={error} onSave={save} label="Save bank details" disabled={!valid} />
                 </>
             )}
-        </section>
+        </Collapsible>
     );
 }
 

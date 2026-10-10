@@ -1671,7 +1671,10 @@
 .gsl .shade {
     position: fixed;
     inset: 0;
+    bottom: auto;
+    will-change: transform, height;
     z-index: 80;
+    height: 100dvh;
     background: rgba(8, 34, 43, .45);
     display: flex;
     align-items: flex-end;
@@ -1696,6 +1699,7 @@
     max-height: 92dvh;
     overflow: auto;
     overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
     background: var(--s);
     color: var(--ink);
     border-radius: 28px 28px 0 0;
@@ -1769,6 +1773,10 @@
     min-height: min(520px, 70dvh);
     /* stops the sheet jumping in height while the form loads */
     max-height: none
+}
+
+.gsl .shade[data-kb="true"] .sheet.bare .gax-edit {
+    min-height: 0;
 }
 
 .gsl .sheet.lt .ib {

@@ -25,6 +25,34 @@ const normPart = (v) => String(v || "").trim().replace(/\s+/g, " ").toLowerCase(
 const normKey = (oc, dc, mode, identity) => `${normPart(oc)}::${normPart(dc)}::${normPart(mode)}::${normPart(identity)}`;
 const keyOf = (o) => normKey(o.origin_city, o.dest_city, o.mode, routeOptionIdentity(o.mode, o.fields));
 
+const clean = (v) => (typeof v === "string" ? v.trim() : "");
+const filled = (v) => String(v || "").trim().length > 0;
+const fmtPlace = (v) => { const s = clean(v); return s ? toTitleCase(s) : ""; };
+
+// Where this seller ships FROM, used to prefill the add-route form.
+// Source: profile.sellerLocation (seller_profiles row, delivered by /auth/me).
+//  1. Dispatches from a different place (dispatch_same_as_registered === false)
+//     -> dispatch_district + dispatch_state (district stands in for city —
+//     there is no dispatch_city column).
+//  2. Otherwise the registered seller city + state.
+//  3. If the seller profile has neither yet, fall back to the GST business
+//     profile's district + state.
+function getSellerOrigin(profile) {
+    const loc = profile?.sellerLocation;
+    if (loc) {
+        const dCity = fmtPlace(loc.dispatch_district);
+        const dState = fmtPlace(loc.dispatch_state);
+        if (loc.dispatch_same_as_registered === false && dCity && dState) {
+            return { city: dCity, state: dState };
+        }
+        const city = fmtPlace(loc.city);
+        const state = fmtPlace(loc.state);
+        if (city || state) return { city, state };
+    }
+    const biz = profile?.businessProfile;
+    return { city: fmtPlace(biz?.district), state: fmtPlace(biz?.state) };
+}
+
 // ---------- shared route card ----------
 function RouteCard({ opt, children, className = "" }) {
     return (
@@ -145,24 +173,28 @@ function BrowseTab({ canAdd, token }) {
 }
 
 // ---------- Add route (sheet) ----------
-function nonIdentityFields(mode) {
-    return getRouteTransportFields(mode).filter((f) => f.key !== "transport_company" && f.key !== "train_number" && f.key !== "airline_name");
-}
-
-function ModeQuickAdd({ mode, onAdded, onCancel, token }) {
-    const [originState, setOriginState] = useState("");
-    const [originCity, setOriginCity] = useState("");
+function ModeQuickAdd({ mode, origin, onAdded, onCancel, token }) {
+    // Origin is prefilled from the seller's profile; still editable.
+    const [originState, setOriginState] = useState(origin?.state || "");
+    const [originCity, setOriginCity] = useState(origin?.city || "");
     const [destState, setDestState] = useState("");
     const [destCity, setDestCity] = useState("");
     const [fields, setFields] = useState({});
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
 
-    const modeFields = nonIdentityFields(mode);
-    const canSubmit = originState && originCity && destState && destCity &&
-        modeFields.filter((f) => f.required).every((f) => String(fields[f.key] || "").trim());
+    // Every field in the schema is rendered — including the identity ones
+    // (transport_company / train_number / airline_name). The backend requires
+    // them, so the form must ask for them; validation below uses the same list.
+    const modeFields = getRouteTransportFields(mode);
+    const canSubmit =
+        filled(originState) && filled(originCity) && filled(destState) && filled(destCity) &&
+        modeFields.filter((f) => f.required).every((f) => filled(fields[f.key]));
+
+    const setField = (key, value) => setFields((p) => ({ ...p, [key]: value }));
 
     const submit = async () => {
+        if (!canSubmit || submitting) return;
         setSubmitting(true);
         setError(null);
         const res = await createOwnRouteOption({ originState, originCity, destState, destCity, mode, fields }, token);
@@ -172,18 +204,22 @@ function ModeQuickAdd({ mode, onAdded, onCancel, token }) {
     };
 
     return (
-        <div className="gt-form" onKeyDown={(e) => { if (e.key === "Enter" && canSubmit && !submitting && e.target.tagName === "INPUT") submit(); }}>
+        <div className="gt-form" onKeyDown={(e) => { if (e.key === "Enter" && e.target.tagName === "INPUT") submit(); }}>
             <h3>{routeTransportModeLabel(mode)}</h3>
             <div className="gt-2">
-                <div className="gk-field"><label>Origin city</label><input className="gk-inp" value={originCity} onChange={(e) => setOriginCity(e.target.value)} placeholder="City" /></div>
-                <div className="gk-field"><label>Origin state</label><input className="gk-inp" value={originState} onChange={(e) => setOriginState(e.target.value)} placeholder="State" /></div>
-                <div className="gk-field"><label>Destination city</label><input className="gk-inp" value={destCity} onChange={(e) => setDestCity(e.target.value)} placeholder="City" /></div>
-                <div className="gk-field"><label>Destination state</label><input className="gk-inp" value={destState} onChange={(e) => setDestState(e.target.value)} placeholder="State" /></div>
+                <div className="gk-field"><label>Origin city *</label><input className="gk-inp" value={originCity} onChange={(e) => setOriginCity(e.target.value)} placeholder="City" /></div>
+                <div className="gk-field"><label>Origin state *</label><input className="gk-inp" value={originState} onChange={(e) => setOriginState(e.target.value)} placeholder="State" /></div>
+                <div className="gk-field"><label>Destination city *</label><input className="gk-inp" value={destCity} onChange={(e) => setDestCity(e.target.value)} placeholder="City" /></div>
+                <div className="gk-field"><label>Destination state *</label><input className="gk-inp" value={destState} onChange={(e) => setDestState(e.target.value)} placeholder="State" /></div>
             </div>
             {modeFields.map((f) => (
                 <div className="gk-field" key={f.key}>
                     <label>{f.label}{f.required && " *"}</label>
-                    <input className="gk-inp" value={fields[f.key] || ""} onChange={(e) => setFields((p) => ({ ...p, [f.key]: e.target.value }))} />
+                    {f.type === "textarea" ? (
+                        <textarea className="gk-inp" rows={3} value={fields[f.key] || ""} onChange={(e) => setField(f.key, e.target.value)} />
+                    ) : (
+                        <input className="gk-inp" value={fields[f.key] || ""} onChange={(e) => setField(f.key, e.target.value)} />
+                    )}
                 </div>
             ))}
             {error && <p className="gt-err" role="alert">{error}</p>}
@@ -195,7 +231,7 @@ function ModeQuickAdd({ mode, onAdded, onCancel, token }) {
     );
 }
 
-function AddRouteSheet({ onClose, onAdded, token }) {
+function AddRouteSheet({ onClose, onAdded, token, origin }) {
     const [activeMode, setActiveMode] = useState(null);
 
     useEffect(() => {
@@ -228,7 +264,7 @@ function AddRouteSheet({ onClose, onAdded, token }) {
                             </div>
                         </div>
                     ))}
-                    {activeMode && <ModeQuickAdd key={activeMode} mode={activeMode} token={token} onAdded={onAdded} onCancel={() => setActiveMode(null)} />}
+                    {activeMode && <ModeQuickAdd key={activeMode} mode={activeMode} origin={origin} token={token} onAdded={onAdded} onCancel={() => setActiveMode(null)} />}
                 </div>
             </motion.div>
         </motion.div>
@@ -237,7 +273,7 @@ function AddRouteSheet({ onClose, onAdded, token }) {
 
 // ---------- Manage ----------
 function ManageTab() {
-    const { token } = useAuth();
+    const { token, profile } = useAuth();
     const { socket } = useSocket();
     const { say } = useGrowSeller();
     const { markProposalResolved, syncPendingCount } = useTransportLibrary();
@@ -247,6 +283,8 @@ function ManageTab() {
     const [addOpen, setAddOpen] = useState(false);
     const [busyId, setBusyId] = useState(null);
     const [q, setQ] = useState("");
+
+    const origin = useMemo(() => getSellerOrigin(profile), [profile]);
 
     const load = useCallback((opts = {}) => {
         const { silent = false } = opts;
@@ -371,7 +409,7 @@ function ManageTab() {
 
             <AnimatePresence>
                 {addOpen && (
-                    <AddRouteSheet token={token} onClose={() => setAddOpen(false)}
+                    <AddRouteSheet token={token} origin={origin} onClose={() => setAddOpen(false)}
                         onAdded={() => { setAddOpen(false); say("Route added."); load({ silent: true }); }} />
                 )}
             </AnimatePresence>
