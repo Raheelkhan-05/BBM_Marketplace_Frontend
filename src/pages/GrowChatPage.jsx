@@ -68,6 +68,7 @@ function useVisualViewport(active) {
         if (!active) return undefined;
         const vv = window.visualViewport;
         let raf = 0;
+        const timers = [];
         const update = () => {
             cancelAnimationFrame(raf);
             raf = requestAnimationFrame(() => {
@@ -75,17 +76,27 @@ function useVisualViewport(active) {
                 setVp((p) => (p.h === n.h && p.top === n.top && p.kb === n.kb ? p : n));
             });
         };
+        // Some browsers report the new size late: re-read a few times after a field gains/loses focus.
+        const settle = () => {
+            update();
+            [60, 150, 300, 600, 1000].forEach((ms) => timers.push(setTimeout(update, ms)));
+        };
         update();
         vv?.addEventListener("resize", update);
         vv?.addEventListener("scroll", update);
         window.addEventListener("resize", update);
-        window.addEventListener("orientationchange", update);
+        window.addEventListener("orientationchange", settle);
+        document.addEventListener("focusin", settle);
+        document.addEventListener("focusout", settle);
         return () => {
             cancelAnimationFrame(raf);
+            timers.forEach(clearTimeout);
             vv?.removeEventListener("resize", update);
             vv?.removeEventListener("scroll", update);
             window.removeEventListener("resize", update);
-            window.removeEventListener("orientationchange", update);
+            window.removeEventListener("orientationchange", settle);
+            document.removeEventListener("focusin", settle);
+            document.removeEventListener("focusout", settle);
         };
     }, [active]);
     return vp;
@@ -387,13 +398,12 @@ export default function GrowChatPage() {
 
             {phoneThread && createPortal(
                 <div
-                    className="gk"
+                    className="gk gct-layer"
+                    data-kb={vp.kb ? "true" : "false"}
                     style={{
                         position: "fixed", left: 0, right: 0, top: vp.top, height: vp.h, zIndex: 1000,
                         display: "flex", flexDirection: "column", overflow: "hidden",
-                        overscrollBehavior: "none", background: "var(--k-bg, #fff)",
-                        // keep clear of the home bar only while the keyboard is closed
-                        paddingBottom: vp.kb ? 0 : "env(safe-area-inset-bottom, 0px)",
+                        overscrollBehavior: "none", background: "var(--k-bg, #F4F8F9)",
                     }}
                 >
                     <GrowChatThread

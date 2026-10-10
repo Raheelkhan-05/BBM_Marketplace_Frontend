@@ -2807,3 +2807,20 @@ button.gc-sech {
         gap: 8px;
     }
 }
+
+/* Phone: the open thread is rendered in its own portal layer (GrowChatPage),
+   so the old fixed pane must not be drawn behind it. */
+@media (max-width: 767px) {
+    .gc.has-thread .gc-pane {
+        display: none;
+    }
+}
+
+/* Composer inside the portal layer: the layer handles the home-bar gap itself. */
+.gct-layer .gct-comp {
+    padding-bottom: 10px;
+}
+
+.gct-layer[data-kb="false"] .gct-comp {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
