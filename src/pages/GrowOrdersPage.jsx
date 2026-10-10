@@ -59,7 +59,16 @@ function OrderCard({ order, busy, onAction, onOpen, unread }) {
     const money = (n) => `₹${inr(n)}`;
     return (
         <article className="card" style={{ cursor: "pointer", position: "relative" }} onClick={() => onOpen(order.id)}>
-            {unread > 0 && <span className="bdg" style={{ top: -6, right: -4, border: "2px solid var(--s)" }}>{unread > 9 ? "9+" : unread}</span>}
+            {unread > 0 && (
+                <span
+                    className="bdg"
+                    aria-label="Unread updates"
+                    style={{
+                        top: -4, right: -4, width: 12, height: 12, minWidth: 0, padding: 0,
+                        fontSize: 0, borderRadius: "50%", border: "2px solid var(--s)",
+                    }}
+                />
+            )}
             <div className="oh">
                 <span className="oid">{order.order_number}</span>
                 <small>{shortDate(order.created_at)}</small>

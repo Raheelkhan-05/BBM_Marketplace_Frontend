@@ -25,6 +25,10 @@ export function stockState(stock, moq) {
     return "ok";
 }
 
+// The ONE definition of "needs restock", used by the page and by the badge count.
+export const needsRestock = (it) =>
+    it.review_status !== "rejected" && ["low", "out"].includes(stockState(it.stock_quantity, it.moq));
+
 export function packagingLabel(packSize, masterPackSize, unit) {
     const pack = Number(packSize) || 0;
     const master = Number(masterPackSize) || 0;

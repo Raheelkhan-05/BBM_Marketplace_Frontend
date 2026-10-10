@@ -68,6 +68,13 @@ export default function GrowOrderDetailPage() {
     const fetcher = useCallback((orderId) => fetchSellerOrderById(token, orderId), [token]);
     const { order, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
 
+    // Clear this order's unread notifications when the page opens, and again if
+    // a new one arrives while the page is open (markOrderRead changes whenever
+    // `notifications` changes, so this re-runs and no-ops when nothing is unread).
+    useEffect(() => {
+        if (order?.id) markOrderRead(order.id, "seller");
+    }, [order?.id, markOrderRead]);
+
     if (loading && !order) return <div className="v"><div className="sk line" style={{ marginTop: 28, width: "55%" }} /><div className="sk tall" style={{ marginTop: 18 }} /></div>;
     if (!order) return (
         <div className="v" style={{ marginTop: 28 }}>

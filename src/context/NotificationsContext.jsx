@@ -156,10 +156,11 @@ export function NotificationsProvider({ children }) {
     // so this clears all of them at once, not just one.
     const markOrderRead = useCallback(async (orderId, role) => {
         if (!orderId) return;
-        const expectedLink = role === "seller" ? `/seller/orders/${orderId}` : `/orders/${orderId}`;
-        const toMark = notifications.filter((n) => !n.read && n.link === expectedLink);
+        const isMine = role === "seller" ? isSalesOrderNotification : isPurchaseOrderNotification;
+        const matches = (n) => isMine(n) && orderIdFromLink(n.link) === String(orderId);
+        const toMark = notifications.filter((n) => !n.read && matches(n));
         if (toMark.length === 0) return;
-        setNotifications((prev) => prev.map((n) => (n.link === expectedLink ? { ...n, read: true } : n)));
+        setNotifications((prev) => prev.map((n) => (matches(n) ? { ...n, read: true } : n)));
         await Promise.all(toMark.map((n) => apiMarkRead(token, n.id)));
     }, [notifications, token]);
 

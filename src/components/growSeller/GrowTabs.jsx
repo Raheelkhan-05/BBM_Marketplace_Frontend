@@ -5,10 +5,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LayoutGrid, Package, Megaphone, Receipt, Truck, MessageSquare, Wallet, Store, ChevronDown } from "lucide-react";
-import { useNotifications } from "../../context/NotificationsContext.jsx";
-import { useListings } from "../../context/ListingsContext.jsx";
-import { useChatContext } from "../../context/ChatContext.jsx";
-import { useTransportLibrary } from "../../context/TransportLibraryContext.jsx";
+import useGrowBadges from "./useGrowBadges.js";
 import "./grow-modules.css";
 
 const TABS = [
@@ -31,10 +28,8 @@ const DELTA = 6;         // ignore scroll jitter smaller than this
 
 export default function GrowTabs() {
     const { pathname } = useLocation();
-    const { salesUnreadCount } = useNotifications();
-    const { totalBadgeCount: productsBadge } = useListings();
-    const { conversations } = useChatContext();
-    const transport = useTransportLibrary();
+    // Same hook the Grow FAB uses, so the numbers always match.
+    const counts = useGrowBadges();
 
     const rootRef = useRef(null);
     const tilesRef = useRef(null);
@@ -42,14 +37,6 @@ export default function GrowTabs() {
     const [full, setFull] = useState(0);        // natural (expanded) height, reserved so the layout never shifts
     const [compact, setCompact] = useState(false);
     const [open, setOpen] = useState(false);
-
-    const chatUnread = (conversations || []).reduce((n, c) => n + (Number(c.unreadCount) || 0), 0);
-    const counts = {
-        orders: Number(salesUnreadCount) || 0,
-        products: Number(productsBadge) || 0,
-        chat: chatUnread,
-        transport: Number(transport?.pendingCount) || 0,
-    };
 
     const current = TABS.find((t) => isActive(t, pathname)) || TABS[0];
     const dropdown = compact && open;

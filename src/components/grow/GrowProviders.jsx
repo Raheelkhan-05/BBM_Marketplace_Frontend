@@ -1,16 +1,10 @@
 import { Outlet } from "react-router-dom";
-import { NotificationsProvider } from "../../context/NotificationsContext.jsx";
-import { CartProvider } from "../../context/CartContext.jsx";
-import { ChatProvider } from "../../context/ChatContext.jsx";
-import { ListingsProvider } from "../../context/ListingsContext.jsx";
-import { HelpRequestProvider } from "../../context/HelpRequestContext.jsx";
 
-// One set of providers for the whole /grow/* tree, so moving between
-// /grow, /grow/details and /grow/enquiries never remounts or refetches them.
+// Notifications, Cart, Chat, Listings, HelpRequest and TransportLibrary providers
+// come from AppShell, which wraps every route. Re-wrapping them here would create a
+// second copy of their state and socket listeners for the /grow/* tree, so the
+// bottom dock (in AppShell) and the Grow pages/tabs would read different data.
+// Keep this as a pass-through (or add Grow-only providers here, never these).
 export default function GrowProviders() {
-    return (
-        <NotificationsProvider><CartProvider><ChatProvider><ListingsProvider><HelpRequestProvider>
-            <Outlet />
-        </HelpRequestProvider></ListingsProvider></ChatProvider></CartProvider></NotificationsProvider>
-    );
+    return <Outlet />;
 }

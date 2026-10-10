@@ -34,6 +34,7 @@ import { useListings } from "../context/ListingsContext.jsx";
 import HelpBulb from "./HelpBulb.jsx";
 import { buildMenuItems } from "./menuItems.js";
 import { isSellerReady } from "./growSeller/growSeller.js";
+import useGrowBadges from "./growSeller/useGrowBadges.js";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)", tile: "rgba(20,27,34,0.06)" };
 
@@ -380,6 +381,8 @@ export default function BottomNavStrip({ onOpenRfq }) {
         creditUnread: creditUnreadCount,
     });
 
+    const growBadges = useGrowBadges();
+
     const isHome = pathname === "/home" || pathname === "/home/";
     const inGrow = pathname === "/grow" || pathname.startsWith("/grow/");
     const inSave = pathname === "/save" || pathname.startsWith("/save/");
@@ -390,17 +393,13 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const shopName = profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM";
     const tileGap = 8;
 
-    // Total of everything that used to show on the removed menu rows
-    // (Manage products + Sales orders). Shown on the Grow button.
-    const growBadgeTotal = (productsBadgeCount || 0) + (salesUnreadCount || 0);
-
     // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
     // (Going via /grow made the screen render the start layout first and then redirect = visible jump.)
     const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/grow/dashboard" : "/grow";
 
     // Always the same two tiles, in the same order: Grow, Save.
     const tiles = [TILES.grow, TILES.save].map((t, i) => ({
-        ...t, to: t.key === "grow" ? growTo : t.to, slot: SLOT[i], badge: t.key === "grow" ? growBadgeTotal : 0,
+        ...t, to: t.key === "grow" ? growTo : t.to, slot: SLOT[i], badge: t.key === "grow" ? growBadges.total : 0,
     }));
 
     // Menu rows: drop the seller rows that now live in Grow, and Home while already on Home.

@@ -5,6 +5,7 @@ import { CartProvider } from "../context/CartContext.jsx";
 import { ChatProvider } from "../context/ChatContext.jsx";
 import { ListingsProvider } from "../context/ListingsContext.jsx";
 import { HelpRequestProvider } from "../context/HelpRequestContext.jsx";
+import { TransportLibraryProvider } from "../context/TransportLibraryContext.jsx";
 import BottomNavStrip from "./BottomNavStrip.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -24,9 +25,9 @@ export default function AppShell() {
 
     const show = !HIDE.some((r) => r.test(pathname));
     return (
-        <NotificationsProvider><CartProvider><ChatProvider><ListingsProvider><HelpRequestProvider>
+        <NotificationsProvider><CartProvider><ChatProvider><ListingsProvider><HelpRequestProvider><TransportLibraryProvider>
             <Outlet />
             {show && <BottomNavStrip />}
-        </HelpRequestProvider></ListingsProvider></ChatProvider></CartProvider></NotificationsProvider>
+        </TransportLibraryProvider ></HelpRequestProvider></ListingsProvider></ChatProvider></CartProvider></NotificationsProvider>
     );
 }

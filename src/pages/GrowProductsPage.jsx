@@ -9,6 +9,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 import { useListings } from "../context/ListingsContext.jsx";
 import { shareProductLink } from "../utils/share.js";
+import { useNotifications } from "../context/NotificationsContext.jsx";
 import {
     fetchMySellerSubmissions, updateSellerProductSubmission, setSellerSubmissionActive, refreshSellerSubmission,
 } from "../utils/api.js";
@@ -23,7 +24,7 @@ import { Sheet, Thumb, Empty, ListSkeleton } from "../components/growSeller/ui.j
 import EditPriceSheet from "../components/growSeller/EditPriceSheet.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
 import {
-    fmtQty, inr, toTitleCase, isHiddenLabel, stockState, packagingLabel, compactSaleUnit,
+    fmtQty, inr, toTitleCase, isHiddenLabel, stockState, needsRestock, packagingLabel, compactSaleUnit,
     priceRowsFor, getListingStatus, renewalHoursFor,
 } from "../components/growSeller/sellerHelpers.js";
 
@@ -195,6 +196,9 @@ export default function GrowProductsPage() {
     const [priceFor, setPriceFor] = useState(null);
     const [lightbox, setLightbox] = useState(null);
 
+    const { listingApprovalUnreadCount, listingRejectionUnreadCount } = useNotifications();
+    const unreadListingNotifs = (listingApprovalUnreadCount || 0) + (listingRejectionUnreadCount || 0);
+
     useEffect(() => { const t = setInterval(() => setNowMs(Date.now()), 60000); return () => clearInterval(t); }, []);
 
     const reload = useCallback(() => {
@@ -213,14 +217,32 @@ export default function GrowProductsPage() {
     }, [socket, reload]);
     useEffect(() => registerResyncHandler?.(() => { setNowMs(Date.now()); reload(); }), [registerResyncHandler, reload]);
 
-    useEffect(() => {
-        markListingsViewed?.().then((ids) => {
-            if (!ids?.length) return;
-            setHighlighted(new Set(ids));
-            setTimeout(() => setHighlighted(new Set()), 5000);
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Highlight records and bring the first one into view.
+    const flash = useCallback((ids) => {
+        if (!ids.length) return;
+        const strs = ids.map(String);
+        setHighlighted((prev) => new Set([...prev, ...strs]));
+        setTimeout(() => document.querySelector(".card.hl")?.scrollIntoView({ block: "center", behavior: "smooth" }), 250);
+        setTimeout(() => setHighlighted((prev) => {
+            const next = new Set(prev); strs.forEach((i) => next.delete(i)); return next;
+        }), 6000);
     }, []);
+
+    // 1) Approved / rejected listings that raised a notification: re-runs when they arrive,
+    //    so it also works right after a fresh page load.
+    useEffect(() => {
+        if (!unreadListingNotifs) return;
+        markListingsViewed?.().then((ids) => flash(ids || []));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [unreadListingNotifs]);
+
+    // 2) Items that need restock (the other part of the badge): once, after the list has loaded.
+    const restockFlashed = useRef(false);
+    useEffect(() => {
+        if (loading || restockFlashed.current) return;
+        restockFlashed.current = true;
+        flash(items.filter(needsRestock).map((it) => it.id));
+    }, [loading, items, flash]);
 
     // A rejected listing is never live, expired, ending soon or in need of restocking.
     const stats = useMemo(() => {
@@ -238,7 +260,11 @@ export default function GrowProductsPage() {
     }, [items, nowMs]);
 
     useEffect(() => { setBadge("prod", stats.expired + stats.rejected); }, [stats.expired, stats.rejected, setBadge]);
-    useEffect(() => { reportRestockCount?.(stats.low + stats.out); }, [stats.low, stats.out, reportRestockCount]);
+    // useEffect(() => { reportRestockCount?.(stats.low + stats.out); }, [stats.low, stats.out, reportRestockCount]);
+    useEffect(() => {
+        if (loading) return; // don't report "0" while the list is still empty
+        reportRestockCount?.(stats.low + stats.out);
+    }, [loading, stats.low, stats.out, reportRestockCount]);
 
     const counts = { all: stats.total, low: stats.low + stats.out, exp: stats.expired, soon: stats.soon, rej: stats.rejected };
 
@@ -370,7 +396,7 @@ export default function GrowProductsPage() {
                 <div className="grid c2">
                     {filtered.map((it) => (
                         <ProductCard key={it.id} it={it} includeGst={includeGst} nowMs={nowMs}
-                            highlighted={highlighted.has(it.id)} togglingId={togglingId} savingPriceId={savingPriceId} refreshingId={refreshingId}
+                            highlighted={highlighted.has(String(it.id))} togglingId={togglingId} savingPriceId={savingPriceId} refreshingId={refreshingId}
                             onToggleActive={setActive} onShare={handleShare}
                             onEditPrice={setPriceFor} onEditSection={(id, section) => setEdit({ id, section })}
                             onRenew={handleRenew} onOpenImage={setLightbox} />
