@@ -155,6 +155,7 @@ function Composer({ onSend, onTypingChange, disabled }) {
     return (
         <div className="gct-comp">
             <textarea ref={ref} value={value} onChange={onChange} onKeyDown={onKeyDown} rows={1} enterKeyHint="send"
+                style={{ fontSize: 16 }}
                 autoComplete="off" placeholder="Type a message…" aria-label="Type a message" />
             <button type="button" className="gct-send" aria-label="Send" disabled={!value.trim()}
                 onPointerDown={(e) => e.preventDefault()} onClick={submit}><Send size={18} /></button>
@@ -162,7 +163,7 @@ function Composer({ onSend, onTypingChange, disabled }) {
     );
 }
 
-export default function GrowChatThread({ conversationId, meta, onBack }) {
+export default function GrowChatThread({ conversationId, meta, onBack, style }) {
     const { profile, token } = useAuth();
     const { markLocalRead } = useChatContext();
     const scrollRef = useRef(null);
@@ -280,7 +281,7 @@ export default function GrowChatThread({ conversationId, meta, onBack }) {
                 : { cls: "", node: formatLastSeen(otherPresence?.lastSeenAt) };
 
     return (
-        <div className="gk gct">
+        <div className="gk gct" style={style}>
             {!connected && <div className="gct-recon" role="status">Reconnecting…</div>}
 
             <header className="gct-h">

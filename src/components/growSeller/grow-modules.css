@@ -49,11 +49,6 @@
     flex: none;
 }
 
-.gk :focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--k-bl) 55%, transparent);
-    outline-offset: 2px;
-}
-
 .gk-vh {
     position: absolute;
     width: 1px;
@@ -234,10 +229,6 @@
     transition: border-color .2s;
 }
 
-.gk-search:focus-within {
-    border-color: color-mix(in srgb, var(--k-bl) 60%, var(--k-line));
-}
-
 .gk-search input {
     flex: 1;
     min-width: 0;
@@ -280,11 +271,6 @@
     font: 600 .98rem var(--k-f);
     outline: 0;
     transition: border-color .2s, background .2s;
-}
-
-.gk-inp:focus {
-    border-color: color-mix(in srgb, var(--k-bl) 65%, var(--k-line));
-    background: var(--k-s);
 }
 
 .gk-inp::placeholder {
@@ -2710,11 +2696,6 @@ button.gc-sech {
     overflow-y: hidden;
     outline: 0;
     transition: border-color .2s, background .2s;
-}
-
-.gct-comp textarea:focus {
-    border-color: color-mix(in srgb, var(--k-bl) 65%, var(--k-line));
-    background: var(--k-s);
 }
 
 .gct-comp textarea::placeholder {

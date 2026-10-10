@@ -12,6 +12,7 @@ import { fetchApprovedSellers, getOrCreateDirectConversation } from "../utils/ch
 import { prefetchMessages } from "../hooks/useChat.js";
 import GrowChatThread, { ChatAvatar } from "../components/growSeller/GrowChatThread.jsx";
 import "../components/growSeller/grow-modules.css";
+import { createPortal } from "react-dom";
 
 const collator = new Intl.Collator("en", { sensitivity: "base" });
 
@@ -50,21 +51,73 @@ function useVisualViewportVars() {
     }, []);
 }
 
+const readViewport = () => {
+    if (typeof window === "undefined") return { h: 0, top: 0, kb: false };
+    const vv = window.visualViewport;
+    return {
+        h: Math.round(vv ? vv.height : window.innerHeight),
+        top: Math.round(vv ? vv.offsetTop : 0),
+        kb: vv ? window.innerHeight - vv.height > 120 : false, // keyboard is open
+    };
+};
+
+// Live size of the area above the keyboard.
+function useVisualViewport(active) {
+    const [vp, setVp] = useState(readViewport);
+    useEffect(() => {
+        if (!active) return undefined;
+        const vv = window.visualViewport;
+        let raf = 0;
+        const update = () => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => {
+                const n = readViewport();
+                setVp((p) => (p.h === n.h && p.top === n.top && p.kb === n.kb ? p : n));
+            });
+        };
+        update();
+        vv?.addEventListener("resize", update);
+        vv?.addEventListener("scroll", update);
+        window.addEventListener("resize", update);
+        window.addEventListener("orientationchange", update);
+        return () => {
+            cancelAnimationFrame(raf);
+            vv?.removeEventListener("resize", update);
+            vv?.removeEventListener("scroll", update);
+            window.removeEventListener("resize", update);
+            window.removeEventListener("orientationchange", update);
+        };
+    }, [active]);
+    return vp;
+}
+
 // Phone: stop the page behind an open thread from scrolling.
+// Phone: freeze the page behind an open thread (no scroll, no jump when the keyboard opens).
 function useLockBodyScroll(active) {
     useEffect(() => {
         if (!active || !window.matchMedia("(max-width: 767px)").matches) return undefined;
         const html = document.documentElement;
         const body = document.body;
-        const prev = [html.style.overflow, body.style.overflow, html.style.overscrollBehavior];
-        html.style.overflow = "hidden";
-        body.style.overflow = "hidden";
+        const y = window.scrollY;
+        const prev = {
+            pos: body.style.position, top: body.style.top, left: body.style.left,
+            right: body.style.right, width: body.style.width, overscroll: html.style.overscrollBehavior,
+        };
+        body.style.position = "fixed";
+        body.style.top = `-${y}px`;
+        body.style.left = "0";
+        body.style.right = "0";
+        body.style.width = "100%";
         html.style.overscrollBehavior = "none";
         window.lenis?.stop?.();
         return () => {
-            html.style.overflow = prev[0];
-            body.style.overflow = prev[1];
-            html.style.overscrollBehavior = prev[2];
+            body.style.position = prev.pos;
+            body.style.top = prev.top;
+            body.style.left = prev.left;
+            body.style.right = prev.right;
+            body.style.width = prev.width;
+            html.style.overscrollBehavior = prev.overscroll;
+            window.scrollTo(0, y);
             window.lenis?.start?.();
         };
     }, [active]);
@@ -293,6 +346,9 @@ export default function GrowChatPage() {
     const desktop = useMedia("(min-width: 768px)");
     const wide = desktop && !conversationId; // desktop with no chat open -> full-width icon grid
 
+    const phoneThread = !desktop && !!conversationId;
+    const vp = useVisualViewport(phoneThread);
+
     useVisualViewportVars();
     useLockBodyScroll(!!conversationId);
     // useLenisHijack(rootRef, desktop, conversationId);
@@ -317,7 +373,9 @@ export default function GrowChatPage() {
             </aside>
             <section className="gc-pane" data-lenis-prevent>
                 {conversationId ? (
-                    <GrowChatThread conversationId={conversationId} meta={activeMeta} onBack={() => navigate("/grow/chat")} />
+                    phoneThread ? null : (
+                        <GrowChatThread conversationId={conversationId} meta={activeMeta} onBack={() => navigate("/grow/chat")} />
+                    )
                 ) : (
                     <div className="gc-blank">
                         <MessageSquare size={30} />
@@ -326,6 +384,27 @@ export default function GrowChatPage() {
                     </div>
                 )}
             </section>
+
+            {phoneThread && createPortal(
+                <div
+                    className="gk"
+                    style={{
+                        position: "fixed", left: 0, right: 0, top: vp.top, height: vp.h, zIndex: 1000,
+                        display: "flex", flexDirection: "column", overflow: "hidden",
+                        overscrollBehavior: "none", background: "var(--k-bg, #fff)",
+                        // keep clear of the home bar only while the keyboard is closed
+                        paddingBottom: vp.kb ? 0 : "env(safe-area-inset-bottom, 0px)",
+                    }}
+                >
+                    <GrowChatThread
+                        conversationId={conversationId}
+                        meta={activeMeta}
+                        onBack={() => navigate("/grow/chat")}
+                        style={{ flex: 1, minHeight: 0, height: "100%" }}
+                    />
+                </div>,
+                document.body
+            )}
         </div>
     );
 }
