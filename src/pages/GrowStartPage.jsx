@@ -5,6 +5,8 @@
 // Return flow: a page can send someone here with nav("/grow?start=1", { state: { from: "/grow/enquiry/12" } }).
 // When `from` is an enquiry page (list or single enquiry) the flow does login -> onboarding -> straight back to that
 // exact page, instead of opening the add-product wizard.
+//
+// The Wizard is also exported: SellThisItemModal reuses it in "locked" mode (brand / name / image fixed, own submit fn).
 import { useEffect, useMemo, useRef, useState } from "react";   // add useMemo
 import { derivePriceBreakdown } from "../../shared/customPricing.js";
 import { GrowBuyerAccessDraft } from "../components/grow/GrowBuyerAccess.jsx";
@@ -36,6 +38,7 @@ import "../components/grow/grow-start.css";
 import "../components/grow/grow-extras.css"; // keep AFTER grow-start.css
 import "../components/grow/grow-access.css"; // after grow-extras.css
 import "../components/grow/grow-transitions.css"; // after grow-access.css
+import "../components/grow/grow-sell-item.css"; // after grow-access.css
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Dozen", "Tons"]; // same list as SellerListingForm
 const GST = [0, 0.25, 3, 5, 12, 18, 28];
@@ -399,6 +402,22 @@ const blank = () => ({
 // when a catalogue match is lost, the fields it had locked go back to empty
 const unlock = (x) => (x.match ? { ...x, match: null, u: "", ps: "", op: null, mps: "", gst: "" } : x);
 
+// NEW (locked mode): starting values for a catalogue item whose identity is fixed (SellThisItemModal).
+// Packaging is fixed too when the catalogue item has it on file; older items without it stay editable.
+const lockedBlank = (L) => {
+    const hasPack = !!L.unit && Number(L.packSize) > 0;
+    const outer = hasPack && Number(L.masterPackSize) > 1;
+    return {
+        ...blank(),
+        n: L.productName || "", b: L.brandName || "", nb: !L.brandName,
+        im: L.image ? [L.image] : [],
+        u: hasPack ? L.unit : "", ps: hasPack ? String(L.packSize) : "",
+        op: hasPack ? outer : null, mps: outer ? String(L.masterPackSize) : "",
+        gst: L.gstPercent ?? "",
+        match: hasPack ? { id: L.id, unit: L.unit, packSize: L.packSize, masterPackSize: outer ? L.masterPackSize : 1, gstPercent: L.gstPercent ?? null } : null,
+    };
+};
+
 function CertRow({ c, busy, onRename, onReplace, onRemove }) {
     const [edit, setEdit] = useState(false);
     const [draft, setDraft] = useState(c.name || "");
@@ -429,9 +448,15 @@ function CertRow({ c, busy, onRename, onReplace, onRemove }) {
     );
 }
 
-function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted }) {
+// Props for reuse (SellThisItemModal):
+//   locked   - { id, productName, brandName, image, unit, packSize, masterPackSize, gstPercent }
+//              brand / name / image are fixed; packaging + GST are fixed when the catalogue item has them.
+//   submitFn - async (payload) => response. Replaces the default create call (e.g. createSellerListingForBrand).
+//   onStep   - called with the step index whenever it changes (lets a host scroll its own container to the top).
+// onSubmitted(card, res) receives the raw API response as a 2nd argument.
+export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted, locked = null, submitFn = null, onStep }) {
     const { seller } = useSellerProfileStatus(token);
-    const [P, setP] = useState(blank);
+    const [P, setP] = useState(() => (locked ? lockedBlank(locked) : blank()));
     const [ps, setPs] = useState(0);
     const [busy, setBusy] = useState(false);
     const [up, setUp] = useState(false);
@@ -441,7 +466,7 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
     const [dpMsg, setDpMsg] = useState("");
     const india = useRef(null);
     const dpInit = useRef(false);
-    useEffect(() => { toTop(); }, [ps]);
+    useEffect(() => { toTop(); onStep?.(ps); }, [ps]); // eslint-disable-line
     const set = (k, v) => setP((x) => ({ ...x, [k]: v }));
 
     // Policy options + the seller's last-used defaults (same sources as SellerListingForm)
@@ -480,7 +505,9 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
     }, [P.dp, P.dd, P.ds]);
 
     // Existing catalogue product? Lock unit / pack / GST like the real form.
+    // (Skipped in locked mode: the catalogue item is already known.)
     useEffect(() => {
+        if (locked) return undefined;
         const productName = P.n.trim(), brandName = P.b.trim();
         if (productName.length < 2 || (!P.nb && !brandName)) { setP(unlock); return; }
         const t = setTimeout(async () => {
@@ -494,7 +521,7 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
             });
         }, 400);
         return () => clearTimeout(t);
-    }, [P.n, P.b, P.nb, token]);
+    }, [P.n, P.b, P.nb, token]); // eslint-disable-line
 
     const loadIndia = async () => {
         if (india.current) return india.current;
@@ -568,6 +595,8 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
     const slabBad = P.sl.some((s) => (s.minQty || s.discountPercent)
         && !(Number(s.minQty) > 0 && Number(s.discountPercent) > 0 && Number(s.discountPercent) < 100));
     const delErr = validateDelivery(P.dl, states.length);
+    // GST is shown as fixed only when the catalogue item actually carries a value.
+    const gstLocked = !!P.match && P.gst !== "" && P.gst != null;
 
     const buyerProduct = useMemo(() => {
         const gstN = Number(P.gst) || 0;
@@ -586,8 +615,40 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
     }));
     const setSlab = (i, k, v) => setP((x) => ({ ...x, sl: x.sl.map((r, j) => (j === i ? { ...r, [k]: num(v) } : r)) }));
 
+    // Certificates block, shared by the normal and the locked first step.
+    const certField = (
+        <F l="Quality & certifications (optional)">
+            {P.cert.map((c, i) => (
+                <CertRow key={c.url} c={c} busy={up}
+                    onRename={(name) => setP((x) => ({ ...x, cert: x.cert.map((r, j) => (j === i ? { ...r, name } : r)) }))}
+                    onReplace={(file) => replaceCert(i, file)}
+                    onRemove={() => setP((x) => ({ ...x, cert: x.cert.filter((_, j) => j !== i) }))} />
+            ))}
+            <label className={`gx-drop${certDrop.active ? " on" : ""}${up ? " off" : ""}`} {...certDrop.bind}>
+                {up ? "Uploading…" : <><span>Drag and drop files here or <b>browse</b></span><em>PDF, Word, Excel, text or image</em></>}
+                <input type="file" accept={CERT_ACCEPT} multiple hidden disabled={up} onChange={(e) => { addFiles(e.target.files, "cert"); e.target.value = ""; }} />
+            </label>
+        </F>
+    );
+
     const S = [
-        {
+        locked ? {
+            t: "Confirm your product", s: "This product is already approved on GROW, so its name, brand and photo are locked.",
+            ok: true,
+            h: () => (<>
+                <div className="gx-lock">
+                    <div className="gx-lth" style={P.im[0] ? { backgroundImage: `url(${P.im[0]})` } : undefined}>{P.im[0] ? "" : (P.n.trim()[0] || "?").toUpperCase()}</div>
+                    <div className="gx-lin">
+                        <small>Product</small>
+                        <b>{P.n}</b>
+                        {!P.nb && P.b && <span>{P.b}</span>}
+                    </div>
+                    <span className="gx-lk">Locked</span>
+                </div>
+                <p className="cap" style={{ marginTop: 10, marginBottom: 10 }}>Next, add your own price, stock and delivery terms.</p>
+                {certField}
+            </>)
+        } : {
             t: "What are you selling?", s: "Start with the basics buyers see first.",
             ok: P.n.trim().length >= 2 && (P.nb || P.b.trim()) && P.im.length > 0,
             h: () => (<>
@@ -603,18 +664,7 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
                     {P.im.length < 5 && <label className="add">{up ? "…" : "+ Add"}<input type="file" accept="image/*" multiple hidden disabled={up} onChange={(e) => { addFiles(e.target.files, "im"); e.target.value = ""; }} /></label>}
                 </div>
                 <p className="cap" style={{ marginTop: 8 }}>Tap Add or drag and drop photos here.</p>
-                <F l="Quality & certifications (optional)">
-                    {P.cert.map((c, i) => (
-                        <CertRow key={c.url} c={c} busy={up}
-                            onRename={(name) => setP((x) => ({ ...x, cert: x.cert.map((r, j) => (j === i ? { ...r, name } : r)) }))}
-                            onReplace={(file) => replaceCert(i, file)}
-                            onRemove={() => setP((x) => ({ ...x, cert: x.cert.filter((_, j) => j !== i) }))} />
-                    ))}
-                    <label className={`gx-drop${certDrop.active ? " on" : ""}${up ? " off" : ""}`} {...certDrop.bind}>
-                        {up ? "Uploading…" : <><span>Drag and drop files here or <b>browse</b></span><em>PDF, Word, Excel, text or image</em></>}
-                        <input type="file" accept={CERT_ACCEPT} multiple hidden disabled={up} onChange={(e) => { addFiles(e.target.files, "cert"); e.target.value = ""; }} />
-                    </label>
-                </F>
+                {certField}
                 <F l="Note to admin (optional)"><textarea value={P.note} onChange={(e) => set("note", e.target.value)} placeholder="Anything our team should know?" /></F>
             </>)
         },
@@ -641,7 +691,7 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
             t: "Set your price", s: "Clear, simple and valid for as long as you choose.",
             ok: P.gst !== "" && P.gst != null && !!P.basis && price > 0 && P.inc !== null && P.fr !== null && Number(P.val) > 0 && !slabBad,
             h: () => (<>
-                {P.match ? <p className="cap">GST {P.gst}% is fixed for this product.</p>
+                {gstLocked ? <p className="cap">GST {P.gst}% is fixed for this product.</p>
                     : <F l="Applicable GST % *"><Chips v={P.gst} on={(v) => set("gst", Number(v))} o={GST.map((g) => [g, `${g}%`])} /></F>}
                 <F l="Price is entered per *">
                     <Chips v={P.basis} on={(v) => set("basis", v)} o={[["per_unit", P.u || "Unit"], ["per_pack", "Pack"], ...(outer ? [["per_master_pack", "Master Pack"]] : [])]} />
@@ -746,7 +796,8 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
                 images: P.im, qualityCertificates: P.cert, noteToAdmin: P.note,
                 unit: P.u, packSize: String(P.ps), hasOuterPack: !!P.op,
                 masterPackSize: P.op ? String(P.mps) : (P.match ? "1" : "0"),
-                brandItemMatch: P.match, genericProductBrandId: P.match?.id || null, hsnCode: "", gstPercent: Number(P.gst),
+                // locked mode always points at the catalogue item, even when its packaging wasn't on file
+                brandItemMatch: P.match, genericProductBrandId: locked ? (locked.id || null) : (P.match?.id || null), hsnCode: "", gstPercent: Number(P.gst),
                 basePrice: String(P.price), priceBasis: P.basis, gstInclusive: !!P.inc, freightIncluded: !!P.fr,
                 validityHours: resolveValidityHours(P.val),
                 marketingServices: Array.isArray(P.ms) ? normalizeServiceKeys(P.ms) : null, marketingLegacyPercent: null,
@@ -763,20 +814,23 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
                         .map(({ pendingPricing, basedOnPrice, ...b }) => b),
                 },
             };
-            const res = payload.genericProductBrandId ? await createListingForExistingBrand(token, payload) : await createSellerSubmission(token, payload);
+            const res = submitFn
+                ? await submitFn(payload)
+                : payload.genericProductBrandId ? await createListingForExistingBrand(token, payload) : await createSellerSubmission(token, payload);
             if (!res?.success) {
                 const code = res?.code;
                 if (code === "SELLER_NOT_ONBOARDED") return onNeedOnboarding();
-                if (code === "NOT_AUTHENTICATED") { say("Please sign in to submit your listing."); return onNeedLogin(); }
+                if (code === "NOT_AUTHENTICATED" || res?.status === 401) { say("Please sign in to submit your listing."); return onNeedLogin(); }
                 if (code === "SELLER_NOT_APPROVED") return say(res.sellerStatus === "pending_review" ? "Your shop is still under review. We will notify you once it is approved." : "Your shop is not approved yet.");
                 return say(res?.message || "Could not submit. Please check the required fields.");
             }
-            onSubmitted({ name: P.n.trim(), img: P.im[0], meta: [P.nb ? "No brand" : P.b, pk ? `₹${pk.toLocaleString("en-IN")} / pack` : ""].filter(Boolean).join(" · ") });
+            onSubmitted({ name: P.n.trim(), img: P.im[0], meta: [P.nb ? "No brand" : P.b, pk ? `₹${pk.toLocaleString("en-IN")} / pack` : ""].filter(Boolean).join(" · ") }, res);
         } finally { setBusy(false); }
     };
 
     const s = S[ps], lastStep = ps === S.length - 1;
     const goto = (i) => setPs(i);
+    const submitText = locked ? (busy ? "Publishing…" : "Publish listing") : (busy ? "Submitting…" : "Submit for review");
     return (
         <>
             <section className="scr on">
@@ -794,7 +848,7 @@ function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted
             <div className="bar"><div>
                 <button className="sbtn gh sm" type="button" onClick={() => (ps ? goto(ps - 1) : onExit())}>{ps ? "Back" : "Cancel"}</button>
                 <button className="sbtn" type="button" disabled={!s.ok || busy || up} onClick={() => (lastStep ? submit() : goto(ps + 1))}>
-                    {lastStep ? (busy ? "Submitting…" : "Submit for review") : "Continue"}
+                    {lastStep ? submitText : "Continue"}
                 </button>
             </div></div>
         </>

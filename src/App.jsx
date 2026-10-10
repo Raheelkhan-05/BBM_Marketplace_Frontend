@@ -83,6 +83,7 @@ const AdminRfqPage = lazy(() => import("./pages/admin/AdminRfqPage.jsx"));
 
 const GrowPage = lazy(() => import("./pages/GrowPage.jsx"));
 const GrowEntry = lazy(() => import("./pages/GrowEntry.jsx"));
+const GrowSellItemPage = lazy(() => import("./pages/GrowSellItemPage.jsx"));
 const GrowEnquiriesPage = lazy(() => import("./pages/GrowEnquiriesPage.jsx"));
 const GrowEnquiryDetailPage = lazy(() => import("./pages/GrowEnquiryDetailPage.jsx"));
 const GrowProductsPage = lazy(() => import("./pages/GrowProductsPage.jsx"));
@@ -251,6 +252,8 @@ function App() {
                   <Route element={<GrowLayout />}>
                     <Route path="/grow" element={<GrowEntry />} />
                     <Route path="/grow/details" element={<GrowPage />} />
+                    {/* "I want to sell this" from the catalogue: locked-identity add-product wizard */}
+                    <Route path="/grow/sell/:brandId" element={<GrowSellItemPage />} />
                   </Route>
 
                   <Route element={<GrowSellerRoot />}>

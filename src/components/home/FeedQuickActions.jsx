@@ -32,7 +32,7 @@ export default function FeedQuickActions({ active = null, brandLabel = null, onB
                         aria-label={isActive ? `${label}: ${sub}. Tap to clear` : `${label}. ${hint}`}
                         className="group relative flex min-w-0 items-center gap-2.5 overflow-hidden rounded-[20px] border p-3 text-left text-white transition-transform duration-150 sm:gap-3 sm:p-3.5"
                         style={{
-                            background: `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 70%, #000))`,
+                            background: `linear-gradient(135deg, ${accent}, ${accent})`,
                             borderColor: "rgba(255,255,255,0.14)",
                             boxShadow: `2px 2px 10px 0px ${accent}90`,
                         }}
