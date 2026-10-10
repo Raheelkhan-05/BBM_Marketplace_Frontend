@@ -4,7 +4,7 @@
 // Scroll up    -> expands back. The nav's layout height never changes, so the page never jumps.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutGrid, Package, Megaphone, Receipt, Truck, MessageSquare, Wallet, Store, ChevronDown } from "lucide-react";
+import { LayoutGrid, Package, Megaphone, Receipt, Truck, MessageSquare, Wallet, Store, Users, Film, ChevronDown } from "lucide-react";
 import useGrowBadges from "./useGrowBadges.js";
 import "./grow-modules.css";
 
@@ -17,6 +17,9 @@ const TABS = [
     { key: "chat", to: "/grow/chat", label: "Chat", Icon: MessageSquare, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/grow/chat"] },
     { key: "wallet", to: "/grow/wallet", label: "Wallet", Icon: Wallet, a: "var(--gr, #22A06B)", ai: "var(--gt, #12794A)", match: ["/grow/wallet"] },
     { key: "shop", to: "/grow/shop", label: "Shop", Icon: Store, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/grow/shop"] },
+    // Coming soon: they open a friendly "coming soon" page and show a "Soon" tag on the tile.
+    { key: "customers", to: "/grow/customers", label: "Customers", Icon: Users, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/grow/customers"], soon: true },
+    { key: "media", to: "/grow/media", label: "Media", Icon: Film, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/grow/media"], soon: true },
 ];
 
 const isActive = (tab, path) => tab.match.some((m) => path === m || path.startsWith(`${m}/`));
@@ -156,6 +159,7 @@ export default function GrowTabs() {
                                             {n > 0 && <em className="gn-badge">{n > 99 ? "99+" : n}<span className="gk-vh"> unread</span></em>}
                                         </span>
                                         <span className="gn-lb">{t.label}</span>
+                                        {/* {t.soon && <span className="gn-soon">Soon</span>} */}
                                     </Link>
                                 );
                             })}

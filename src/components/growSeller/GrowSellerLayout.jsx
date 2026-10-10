@@ -110,7 +110,7 @@ export default function GrowSellerLayout() {
 
     return (
         <GrowSellerCtx.Provider value={ctx}>
-            <div className="gsl" ref={setRoot}>
+            <div className="gsl md:pb-20" ref={setRoot}>
                 <header className="hd">
                     <div className="hd-in">
                         {/* <Link className="logo" to="/grow/enquiries" aria-label="GROW seller home">GR<i>O</i>W</Link> */}

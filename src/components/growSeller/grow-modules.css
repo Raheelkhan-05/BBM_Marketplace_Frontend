@@ -2773,3 +2773,56 @@ button.gc-sech {
         transition: none !important;
     }
 }
+
+/* Append this to src/components/growSeller/grow-modules.css */
+
+/* "Soon" tag on coming-soon section tiles (Customers, Media) */
+.gn-tab {
+    position: relative;
+}
+
+.gn-soon {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    line-height: 1.5;
+    text-transform: uppercase;
+    background: #141B22;
+    color: #fff;
+    pointer-events: none;
+}
+
+.gn-tab:has(.gn-soon) .gn-ico2 {
+    opacity: .85;
+}
+
+/* ---- Tile grid: 5 columns on mobile/tablet, one row of 10 on desktop ---- */
+.gk.gn .gn-tiles {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 8px 6px;
+}
+
+.gk.gn .gn-tab {
+    min-width: 0;
+}
+
+.gk.gn .gn-lb {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+}
+
+@media (min-width: 900px) {
+    .gk.gn .gn-tiles {
+        grid-template-columns: repeat(10, minmax(0, 1fr)) !important;
+        gap: 8px;
+    }
+}

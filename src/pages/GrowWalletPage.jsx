@@ -2,7 +2,7 @@
 // Same data and logic as SellerWalletPage (status, ledger with closing balances, breakdowns, payments).
 // Top-ups are paid on JioPay's hosted checkout: "Proceed to pay" redirects there and the seller comes
 // back through /payment/return, which shows the verified result and links back here.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchWalletStatus, fetchWalletTransactions, fetchWalletPayments } from "../utils/walletApi.js";
@@ -14,7 +14,8 @@ import { inr, dateTime } from "../components/growSeller/sellerHelpers.js";
 import "../components/growSeller/grow-wallet.css";
 
 // Module-scoped: survives navigating away and back, resets on a hard reload.
-let walletCache = null; // { wallet, txns, payments }
+const PAGE = 20;
+let walletCache = null; // { wallet, txns, nextCursor, hasMore, payments }
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
@@ -122,22 +123,56 @@ export default function GrowWalletPage() {
     const [paying, setPaying] = useState(false);
     const [amountError, setAmountError] = useState(null);
     const [filter, setFilter] = useState("all");
+    const [nextCursor, setNextCursor] = useState(walletCache?.nextCursor ?? null);
+    const [hasMore, setHasMore] = useState(walletCache?.hasMore ?? false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [moreError, setMoreError] = useState(false);
+    const moreLock = useRef(false);
 
     // Only block on the skeleton if there is nothing to show yet; refreshes happen quietly.
     const load = useCallback(async ({ background = false } = {}) => {
         if (!background) setLoading(true);
-        const [w, t, p] = await Promise.all([fetchWalletStatus(token), fetchWalletTransactions(token), fetchWalletPayments(token)]);
+        const [w, t, p] = await Promise.all([
+            fetchWalletStatus(token),
+            fetchWalletTransactions(token, { limit: PAGE }),
+            fetchWalletPayments(token),
+        ]);
         const next = {
             wallet: w?.success ? w.wallet : walletCache?.wallet ?? null,
             txns: t?.success ? t.transactions : walletCache?.txns ?? [],
+            nextCursor: t?.success ? t.nextCursor ?? null : walletCache?.nextCursor ?? null,
+            hasMore: t?.success ? !!t.hasMore : walletCache?.hasMore ?? false,
             payments: p?.success ? p.payments : walletCache?.payments ?? [],
         };
         walletCache = next;
         setWallet(next.wallet);
         setTxns(next.txns);
+        setNextCursor(next.nextCursor);
+        setHasMore(next.hasMore);
         setPayments(next.payments);
+        setMoreError(false);
         setLoading(false);
     }, [token]);
+
+    const loadMore = useCallback(async () => {
+        if (moreLock.current || !hasMore || !nextCursor) return;
+        moreLock.current = true;
+        setLoadingMore(true);
+        setMoreError(false);
+        const res = await fetchWalletTransactions(token, { limit: PAGE, cursor: nextCursor });
+        if (res?.success) {
+            const seen = new Set(txns.map((t) => t.id));
+            const merged = [...txns, ...(res.transactions || []).filter((t) => !seen.has(t.id))];
+            walletCache = { ...walletCache, txns: merged, nextCursor: res.nextCursor ?? null, hasMore: !!res.hasMore };
+            setTxns(merged);
+            setNextCursor(res.nextCursor ?? null);
+            setHasMore(!!res.hasMore);
+        } else {
+            setMoreError(true); // stops auto-loading until the seller taps "Try again"
+        }
+        setLoadingMore(false);
+        moreLock.current = false;
+    }, [token, hasMore, nextCursor, txns]);
 
     useEffect(() => {
         if (!token) return;
@@ -159,6 +194,19 @@ export default function GrowWalletPage() {
         const e = effectOnBalance(t);
         return filter === "in" ? e > 0 : e < 0;
     }), [annotated, filter]);
+
+    const sentinelRef = useRef(null);
+    useEffect(() => {
+        const el = sentinelRef.current;
+        if (!el || !hasMore || loadingMore || moreError) return undefined;
+        const io = new IntersectionObserver(
+            (entries) => { if (entries[0].isIntersecting) loadMore(); },
+            { rootMargin: "300px 0px" } // start loading a little before the bottom is reached
+        );
+        io.observe(el);
+        return () => io.disconnect();
+        // shown.length re-arms the observer, so a short filtered list keeps loading until it fills the screen
+    }, [hasMore, loadingMore, moreError, loadMore, shown.length]);
 
     const proceed = async () => {
         if (paying) return;
@@ -302,14 +350,27 @@ export default function GrowWalletPage() {
                                     <p className="sub2" style={{ margin: "14px 0 4px" }}>Nothing in this view.</p>
                                 ) : shown.map((t) => <TxnRow key={t.id} t={t} onOrder={(id) => nav(`/grow/orders/${id}`)} />)}
 
-                                {/* Opening balance: the balance before the oldest transaction shown, so the ledger reads as a closed loop. */}
-                                <div className="wx-open">
-                                    <span>Opening balance</span>
-                                    <b>₹{inr(annotated[annotated.length - 1].closingBalance - effectOnBalance(annotated[annotated.length - 1]))}</b>
-                                </div>
+                                {/* Scroll trigger + loading / error state */}
+                                {hasMore && (
+                                    <div ref={sentinelRef} style={{ padding: "14px 0", textAlign: "center" }}>
+                                        {moreError ? (
+                                            <>
+                                                <p className="wx-hint" style={{ margin: "0 0 8px" }}>Couldn't load more transactions.</p>
+                                                <button className="bt sm" type="button" onClick={loadMore}>Try again</button>
+                                            </>
+                                        ) : (
+                                            <small aria-live="polite">{loadingMore ? "Loading more…" : " "}</small>
+                                        )}
+                                    </div>
+                                )}
 
-                                {/* The ledger endpoint returns at most 100 rows. */}
-                                {txns.length >= 100 && <p className="wx-hint">Showing your most recent 100 transactions.</p>}
+                                {/* Opening balance only makes sense once the oldest transaction is loaded. */}
+                                {!hasMore && (
+                                    <div className="wx-open">
+                                        <span>Opening balance</span>
+                                        <b>₹{inr(annotated[annotated.length - 1].closingBalance - effectOnBalance(annotated[annotated.length - 1]))}</b>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>
