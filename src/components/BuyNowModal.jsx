@@ -795,7 +795,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         setSubmitting(false);
         if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
         onClose();
-        navigate("/cart");
+        navigate("/save/cart");
     };
 
     const resumeAppliedRef = useRef(false);
