@@ -51,55 +51,54 @@ function useVisualViewportVars() {
     }, []);
 }
 
-const readViewport = () => {
-    if (typeof window === "undefined") return { h: 0, top: 0, kb: false };
-    const vv = window.visualViewport;
-    return {
-        h: Math.round(vv ? vv.height : window.innerHeight),
-        top: Math.round(vv ? vv.offsetTop : 0),
-        kb: vv ? window.innerHeight - vv.height > 120 : false, // keyboard is open
-    };
-};
-
-// Live size of the area above the keyboard.
-function useVisualViewport(active) {
-    const [vp, setVp] = useState(readViewport);
-    useEffect(() => {
-        if (!active) return undefined;
+// Phone: pins a layer to the visible area above the keyboard.
+// Writes straight to the DOM node (no React state), so it never lags behind the keyboard.
+function useKeyboardLayer(ref, active) {
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!active || !el) return undefined;
         const vv = window.visualViewport;
         let raf = 0;
         const timers = [];
-        const update = () => {
+
+        const apply = () => {
+            const h = vv ? vv.height : window.innerHeight;
+            const top = vv ? vv.offsetTop : 0;
+            el.style.height = `${Math.round(h)}px`;
+            el.style.transform = `translate3d(0, ${Math.round(top)}px, 0)`;
+            el.dataset.kb = window.innerHeight - h > 120 ? "true" : "false";
+        };
+        const onChange = () => {
+            // the browser tried to pan the page to reveal the input: undo it
+            if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+            apply();
             cancelAnimationFrame(raf);
-            raf = requestAnimationFrame(() => {
-                const n = readViewport();
-                setVp((p) => (p.h === n.h && p.top === n.top && p.kb === n.kb ? p : n));
-            });
+            raf = requestAnimationFrame(apply);
         };
-        // Some browsers report the new size late: re-read a few times after a field gains/loses focus.
+        // some browsers report the final size late
         const settle = () => {
-            update();
-            [60, 150, 300, 600, 1000].forEach((ms) => timers.push(setTimeout(update, ms)));
+            onChange();
+            [60, 150, 300, 600].forEach((ms) => timers.push(setTimeout(onChange, ms)));
         };
-        update();
-        vv?.addEventListener("resize", update);
-        vv?.addEventListener("scroll", update);
-        window.addEventListener("resize", update);
+
+        apply();
+        vv?.addEventListener("resize", onChange);
+        vv?.addEventListener("scroll", onChange);
+        window.addEventListener("resize", onChange);
         window.addEventListener("orientationchange", settle);
         document.addEventListener("focusin", settle);
         document.addEventListener("focusout", settle);
         return () => {
             cancelAnimationFrame(raf);
             timers.forEach(clearTimeout);
-            vv?.removeEventListener("resize", update);
-            vv?.removeEventListener("scroll", update);
-            window.removeEventListener("resize", update);
+            vv?.removeEventListener("resize", onChange);
+            vv?.removeEventListener("scroll", onChange);
+            window.removeEventListener("resize", onChange);
             window.removeEventListener("orientationchange", settle);
             document.removeEventListener("focusin", settle);
             document.removeEventListener("focusout", settle);
         };
-    }, [active]);
-    return vp;
+    }, [ref, active]);
 }
 
 // Phone: stop the page behind an open thread from scrolling.
@@ -358,7 +357,8 @@ export default function GrowChatPage() {
     const wide = desktop && !conversationId; // desktop with no chat open -> full-width icon grid
 
     const phoneThread = !desktop && !!conversationId;
-    const vp = useVisualViewport(phoneThread);
+    const layerRef = useRef(null);
+    useKeyboardLayer(layerRef, phoneThread);
 
     useVisualViewportVars();
     useLockBodyScroll(!!conversationId);
@@ -398,12 +398,14 @@ export default function GrowChatPage() {
 
             {phoneThread && createPortal(
                 <div
+                    ref={layerRef}
                     className="gk gct-layer"
-                    data-kb={vp.kb ? "true" : "false"}
+                    data-kb="false"
                     style={{
-                        position: "fixed", left: 0, right: 0, top: vp.top, height: vp.h, zIndex: 1000,
+                        position: "fixed", left: 0, right: 0, top: 0, height: "100dvh", zIndex: 1000,
                         display: "flex", flexDirection: "column", overflow: "hidden",
                         overscrollBehavior: "none", background: "var(--k-bg, #F4F8F9)",
+                        willChange: "transform, height",
                     }}
                 >
                     <GrowChatThread
