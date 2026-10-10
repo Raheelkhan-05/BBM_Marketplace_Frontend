@@ -190,8 +190,12 @@ const C = {
     brand: "#de3207ff", brandDeep: "#C44705", brandInk: "#8F3200",
     brandTint: "#FFF3EB", brandTint2: "#FFE2D1", brandHair: "rgba(222,83,7,0.25)",
     // Action colours (Grow palette)
-    buy: "#F4511E",        // Swipe to buy knob + Buy now buttons (--orange)
-    buyDeep: "#D83F0E",    // pressed / hover shade of buy
+    buy: "#D8420F",
+    buyDeep: "#972E0B",   // darker end of the gradient, also used for the slider label
+    buyGradient: "linear-gradient(135deg, #D8420F, color-mix(in srgb, #D8420F 70%, #000))",
+    buyShadow: "2px 2px 10px 0px #D8420F90",
+    buyTrack: "color-mix(in srgb, #D8420F 12%, #fff)",
+
     sell: "#1E78D6",       // "Sell this product" (--blue)
     sellDeep: "#1666B8",   // hover shade of sell
     green: "#22A06B",      // GST switch ON (--green)
@@ -1326,7 +1330,8 @@ function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, bre
                     <ShareBtn className="h-9 w-28 shrink-0" />
                 ) : !outOfStock ? (
                     <button type="button" onClick={(e) => { e.stopPropagation(); onBuy(); }}
-                        className="flex h-9 w-28 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#F4511E] text-[12px] font-extrabold tracking-wide text-white shadow-[0_6px_14px_-8px_rgba(244,81,30,0.8)] transition hover:bg-[#D83F0E] active:scale-95">
+                        className="flex h-9 w-28 shrink-0 items-center justify-center gap-1.5 rounded-lg border text-[12px] font-extrabold tracking-wide text-white transition hover:brightness-95 active:scale-95"
+                        style={{ background: C.buyGradient, borderColor: "rgba(255,255,255,0.14)", boxShadow: C.buyShadow }}>
                         {opening && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                         Buy now
                     </button>
@@ -1961,7 +1966,7 @@ function SlideToConfirm({
         <div
             ref={trackRef}
             className={`relative ${compact ? "h-10" : "h-12"} w-full overflow-hidden rounded-full select-none`}
-            style={{ background: "#FDE9E2", opacity: disabled ? 0.5 : 1 }}
+            style={{ background: C.buyTrack, opacity: disabled ? 0.5 : 1 }}
         >
             <motion.div
                 className="pointer-events-none absolute inset-y-0 left-0 rounded-full"
@@ -1999,8 +2004,8 @@ function SlideToConfirm({
                     left: SLIDE_PAD,
                     width: knob,
                     height: knob,
-                    background: C.buy,
-                    boxShadow: "0 4px 10px -4px rgba(244, 81, 30, 0.75)",
+                    background: C.buyGradient,
+                    boxShadow: C.buyShadow,
                     cursor: disabled ? "not-allowed" : "grab",
                     touchAction: "pan-y",
                 }}
@@ -2346,7 +2351,7 @@ function SellerDropdown({
             transition={{ duration: 0.24, ease: EASE }}
             className="overflow-hidden"
         >
-            <div className="border-b px-3 py-2.5 sm:px-4" style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}>
+            <div className="border-b py-2.5" style={{ borderColor: C.hairSoft, background: "#FCFBF9" }}>
                 <div className="flex flex-nowrap items-center justify-end gap-2 pb-2 overflow-x-auto">
                     {/* Pills stay mounted through a sort switch — never gated on loading */}
                     {items.length > 1 && (
@@ -2407,7 +2412,7 @@ function SellerDropdown({
                                                 if ((e.key === "Enter" || e.key === " ") && !blocked && !isOwn) { e.preventDefault(); onBuySeller(s); }
                                             }}
                                             aria-disabled={blocked || isOwn}
-                                            className={`relative flex items-start gap-3 py-3 text-left transition-colors duration-150 bg-[#FCFBF9] max-md:cursor-default ${notDeliverable ? "cursor-not-allowed" : "hover:bg-black/[0.03] cursor-pointer"}`}
+                                            className={`relative flex items-start gap-3 py-3 px-3 sm:px-4 text-left transition-colors duration-150 bg-[#FCFBF9] max-md:cursor-default ${notDeliverable ? "cursor-not-allowed" : "hover:bg-black/[0.03] cursor-pointer"}`}
                                             style={outOfStock
                                                 ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" }
                                                 : notDeliverable ? { opacity: 0.62 } : undefined}
@@ -2493,7 +2498,10 @@ function SellerDropdown({
                                                         {/* md and up: price + Buy now button */}
                                                         <div className="hidden flex-col items-end gap-1.5 md:flex">
                                                             <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                                            <span className="rounded-lg bg-[#F4511E] px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white shadow-[0_6px_14px_-8px_rgba(244,81,30,0.8)] transition-colors group-hover:bg-[#D83F0E]">
+                                                            <span
+                                                                className="rounded-lg border px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white"
+                                                                style={{ background: C.buyGradient, borderColor: "rgba(255,255,255,0.14)", boxShadow: C.buyShadow }}
+                                                            >
                                                                 Buy now
                                                             </span>
                                                         </div>
