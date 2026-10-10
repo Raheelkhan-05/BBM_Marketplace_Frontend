@@ -1,14 +1,12 @@
-// src/pages/GrowEnquiriesPage.jsx — seller home: greeting, KPIs and the RFQ / enquiry module (new UI).
+// src/pages/GrowEnquiriesPage.jsx — the RFQ / enquiry module (the greeting and KPIs now live on the dashboard).
 // Same backend as RfqPage: fetchRfqList / closeRfq + the existing post, bulk-upload and quote modals.
 // Live enquiries can be opened on their own page (/grow/enquiry/:id) and shared with the share button.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { Share2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { useNotifications } from "../context/NotificationsContext.jsx";
-import { useListings } from "../context/ListingsContext.jsx";
 import RfqFormModal from "../components/rfq/RfqFormModal.jsx";
 import RfqBulkUploadModal from "../components/rfq/RfqBulkUploadModal.jsx";
 import RfqQuoteModal from "../components/rfq/RfqQuoteModal.jsx";
@@ -19,8 +17,7 @@ import { shareEnquiry, enquiryPath } from "../utils/rfqShare.js";
 import Ic from "../components/growSeller/Ic.jsx";
 import { Thumb, Empty, ListSkeleton } from "../components/growSeller/ui.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
-import useSellerStats from "../components/growSeller/useSellerStats.js";
-import { greeting, shopName, toTitleCase, H } from "../components/growSeller/sellerHelpers.js";
+import { toTitleCase, H } from "../components/growSeller/sellerHelpers.js";
 import "../components/growSeller/grow-store.css";
 
 const PAGE = 12;
@@ -40,11 +37,6 @@ const mergeUnique = (prev, incoming) => {
 
 // Last result per (token, tab, search, status): switching tabs paints instantly, then revalidates silently.
 const CACHE = new Map();
-
-// Unread count in the corner of a summary tile (styles live in grow-seller.css: .kp .nb).
-const KpBadge = ({ n }) => (n > 0 ? (
-    <i className="nb">{n > 99 ? "99+" : n}<em className="vh"> unread</em></i>
-) : null);
 
 function EnquiryCard({ item, quoted, onQuote, onEdit, onClose, onShare }) {
     const mine = item.isMine;
@@ -105,14 +97,9 @@ function EnquiryCard({ item, quoted, onQuote, onEdit, onClose, onShare }) {
     );
 }
 
-
 export default function GrowEnquiriesPage() {
-    const nav = useNavigate();
-    const { token, profile } = useAuth();
+    const { token } = useAuth();
     const { say } = useGrowSeller();
-    const stats = useSellerStats();
-    const { salesUnreadCount } = useNotifications();
-    const { totalBadgeCount: productsBadgeCount } = useListings();
     const [params, setParams] = useSearchParams();
 
     const tab = params.get("tab") === "mine" ? "mine" : "all";
@@ -219,46 +206,17 @@ export default function GrowEnquiriesPage() {
         else if (r === "failed") say("Couldn't copy the link.");
     };
 
-    const kp = (v) => (v == null ? "–" : v);
-    const listRef = useRef(null);
-
     return (
         <div className="v">
-            <h1 className="gr1">Good {greeting()},<span>{shopName(profile)}</span></h1>
-            <p className="sub2">Here is what needs you today.</p>
+            <h2 className="h2" style={{ marginTop: 22 }}>Requests for quotation</h2>
+            <p className="sub2">Quote on live enquiries from buyers.</p>
 
-            <div className="kp">
-                <button type="button" style={{ "--a": "var(--or)", position: "relative" }} onClick={() => {
-                    if (listRef.current) {
-                        listRef.current.style.scrollMarginTop = "180px";
-                        listRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }
-                }}
-                ><b>{kp(stats.enq)}</b><span>Open enquiries</span></button>
-                <button type="button" style={{ "--a": "var(--bl)" }} onClick={() => nav("/grow/orders")}><b>{kp(stats.ord)}</b><span>New orders</span><KpBadge n={salesUnreadCount} /></button>
-                <button type="button" style={{ "--a": "var(--gr)" }} onClick={() => nav("/grow/products")}><b>{kp(stats.prod)}</b><span>Live products</span><KpBadge n={productsBadgeCount} /></button>
-            </div>
-            <button type="button" className="st-nav" onClick={() => nav("/grow/shop")}>
-                <span className="st-ico" style={{ background: "#E3F5EC", color: "#12794A" }}>
-                    <svg className="ic" viewBox="0 0 24 24"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9M9 20v-6h6v6" /></svg>
-                </span>
-                <span><b>My shop</b><small>View, share and edit your shop details</small></span>
-                <Ic n="chev" />
-            </button>
-
-            <div className="sh" ref={listRef}>
-                <div>
-                    <h2 className="h2">Requests for quotation</h2>
-                    <p className="sub2">Quote on live enquiries.</p>
-                </div>
-            </div>
             {/* <div className="act">
                 <button className="bt" type="button" onClick={() => setBulkOpen(true)}><Ic n="upload" />Bulk upload</button>
                 <button className="bt or" type="button" onClick={() => setFormState({ mode: "create", initial: null })}><Ic n="plus" />Post enquiry</button>
             </div> */}
 
-            <div className="tb">
-
+            <div className="tb" style={{ marginTop: 14 }}>
                 <label className="srch">
                     <Ic n="search" />
                     <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search enquiries" aria-label="Search enquiries" />

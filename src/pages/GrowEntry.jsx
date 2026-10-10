@@ -36,7 +36,7 @@ export default function GrowEntry() {
     }, [initializing, ready, profile]);
 
     if (initializing && !adding) return <div className="gs"><div className="app"><GrowCheckSkeleton /></div></div>;
-    if (ready && !adding) return <Navigate to={back || "/grow/enquiries"} replace />;
+    if (ready && !adding) return <Navigate to={back || "/grow/dashboard"} replace />;
     if (adding || back) return <GrowStartPage key={startKey ?? "flow"} />;
     return <Navigate to="/grow/details" replace />;
 }

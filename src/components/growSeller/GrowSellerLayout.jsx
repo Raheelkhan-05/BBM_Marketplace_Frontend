@@ -13,6 +13,8 @@ import SmartLink from "../SmartLink.jsx";
 import { toTop } from "../grow/GrowAuthFlow.jsx";
 import Ic from "./Ic.jsx";
 import { GrowSellerCtx } from "../../context/GrowSellerContext.js";
+import { TransportLibraryProvider } from "../../context/TransportLibraryContext.jsx";
+import GrowTabs from "./GrowTabs.jsx";
 import "./grow-seller.css";
 // import BottomNavStrip from "../BottomNavStrip.jsx";
 
@@ -62,7 +64,8 @@ export default function GrowSellerLayout() {
     useEffect(() => { if (allowed) refreshWallet(); }, [allowed, refreshWallet]);
     useEffect(() => { if (wallet) reportWallet?.(wallet); }, [wallet, reportWallet]);
     useEffect(() => registerResyncHandler?.(refreshWallet), [registerResyncHandler, refreshWallet]);
-    useEffect(() => { toTop(); }, [pathname]);
+    const section = pathname.split("/").slice(0, 3).join("/"); // "/grow/chat", "/grow/orders", ...
+    useEffect(() => { toTop(); }, [section]);
 
     const openWallet = async () => { await markWalletTopupViewed?.(); nav("/grow/wallet"); };
 
@@ -107,70 +110,73 @@ export default function GrowSellerLayout() {
     };
 
     return (
-        <GrowSellerCtx.Provider value={ctx}>
-            <div className="gsl" ref={setRoot}>
-                <header className="hd">
-                    <div className="hd-in">
-                        {/* <Link className="logo" to="/grow/enquiries" aria-label="GROW seller home">GR<i>O</i>W</Link> */}
-                        <SmartLink
-                            to="/"
-                            aria-label="BBM home"
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "8px",
-                                minWidth: 0,
-                                textDecoration: "none",
-                                color: "#08222B",
-                            }}
-                        >
-                            <span
+        <TransportLibraryProvider>
+            <GrowSellerCtx.Provider value={ctx}>
+                <div className="gsl" ref={setRoot}>
+                    <header className="hd">
+                        <div className="hd-in">
+                            {/* <Link className="logo" to="/grow/enquiries" aria-label="GROW seller home">GR<i>O</i>W</Link> */}
+                            <SmartLink
+                                to="/"
+                                aria-label="BBM home"
                                 style={{
                                     display: "flex",
                                     alignItems: "center",
-                                    flexShrink: 0,
-                                    background: "#FFFFFF",
-                                    padding: "4px 0px",
+                                    gap: "8px",
+                                    minWidth: 0,
+                                    textDecoration: "none",
+                                    color: "#08222B",
                                 }}
                             >
-                                <img
-                                    src="/Logo.png"
-                                    alt="BBM"
+                                <span
                                     style={{
-                                        display: "block",
-                                        height: "28px",
-                                        width: "auto",
-                                        objectFit: "contain",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        flexShrink: 0,
+                                        background: "#FFFFFF",
+                                        padding: "4px 0px",
                                     }}
-                                />
-                            </span>
+                                >
+                                    <img
+                                        src="/Logo.png"
+                                        alt="BBM"
+                                        style={{
+                                            display: "block",
+                                            height: "28px",
+                                            width: "auto",
+                                            objectFit: "contain",
+                                        }}
+                                    />
+                                </span>
 
-                            <span
-                                style={{
-                                    fontFamily: '"Bricolage Grotesque", "Figtree", system-ui, sans-serif',
-                                    fontWeight: 800,
-                                    fontSize: "1.125rem",
-                                    lineHeight: 1,
-                                    letterSpacing: "0.02em",
-                                    whiteSpace: "nowrap",
-                                }}
-                            >
-                                BBM
-                            </span>
-                        </SmartLink>
-                        {/* <nav className="tabs" aria-label="Main">{TABS.map(tabLink)}</nav> */}
-                        <span className="sp" />
-                        <button className={`wl${blocked ? " neg" : ""}`} type="button" aria-label="Open wallet" onClick={openWallet}>
-                            <span className="wi"><Ic n="wallet" /></span>
-                            <span><small>{blocked ? "Orders paused" : "Wallet"}</small><b>{balance}</b></span>
-                        </button>
-                    </div>
-                </header>
-                {body}
-                {/* <nav className="dock" aria-label="Main">{TABS.map(tabLink)}</nav> */}
-                {/* <BottomNavStrip /> */}
-                <div className={`toast${toast ? " on" : ""}`} role="status">{toast}</div>
-            </div>
-        </GrowSellerCtx.Provider>
+                                <span
+                                    style={{
+                                        fontFamily: '"Bricolage Grotesque", "Figtree", system-ui, sans-serif',
+                                        fontWeight: 800,
+                                        fontSize: "1.125rem",
+                                        lineHeight: 1,
+                                        letterSpacing: "0.02em",
+                                        whiteSpace: "nowrap",
+                                    }}
+                                >
+                                    BBM
+                                </span>
+                            </SmartLink>
+                            {/* <nav className="tabs" aria-label="Main">{TABS.map(tabLink)}</nav> */}
+                            <span className="sp" />
+                            <button className={`wl${blocked ? " neg" : ""}`} type="button" aria-label="Open wallet" onClick={openWallet}>
+                                <span className="wi"><Ic n="wallet" /></span>
+                                <span><small>{blocked ? "Orders paused" : "Wallet"}</small><b>{balance}</b></span>
+                            </button>
+                        </div>
+                    </header>
+                    <GrowTabs />
+                    {body}
+                    {/* <nav className="dock" aria-label="Main">{TABS.map(tabLink)}</nav> */}
+                    {/* <BottomNavStrip /> */}
+                    <div className={`toast${toast ? " on" : ""}`} role="status">{toast}</div>
+                </div>
+            </GrowSellerCtx.Provider>
+        </TransportLibraryProvider>
     );
 }

@@ -386,7 +386,7 @@ export default function GrowStorePage() {
 
     const back = (
         <div className="back">
-            <button className="ib" type="button" aria-label="Back to enquiries" onClick={() => nav("/grow/enquiries")}><Ic n="back" /></button>
+            {/* <button className="ib" type="button" aria-label="Back to enquiries" onClick={() => nav("/grow/enquiries")}><Ic n="back" /></button> */}
             <div className="hh">
                 <h1>My shop</h1>
                 <div className="live"><i />Your details and how buyers reach you</div>

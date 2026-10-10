@@ -91,7 +91,7 @@
 }
 
 .gsl .hd {
-    position: sticky;
+    position: relative;
     top: env(safe-area-inset-top, 0px);
     z-index: 40;
     background: color-mix(in srgb, var(--s) 86%, transparent);

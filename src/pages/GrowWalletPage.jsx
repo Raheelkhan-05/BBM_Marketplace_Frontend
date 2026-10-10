@@ -204,7 +204,7 @@ export default function GrowWalletPage() {
     return (
         <div className="v">
             <div className="back">
-                <button className="ib" type="button" aria-label="Back to products" onClick={() => nav("/grow/products")}><Ic n="back" /></button>
+                {/* <button className="ib" type="button" aria-label="Back to products" onClick={() => nav("/grow/products")}><Ic n="back" /></button> */}
                 <div className="hh">
                     <h1>Wallet</h1>
                     <div className="live"><i />Credits, charges and payments</div>

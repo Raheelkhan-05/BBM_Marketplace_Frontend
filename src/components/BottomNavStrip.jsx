@@ -133,6 +133,7 @@ ${HIDE_WHEN_MENU_OPEN.map((s) => `body[data-bbm-menu="open"] ${s}`).join(",\n")}
 //  - .sh-portal        = Save module modals ("Add to my price list" wizard, enquiry details)
 //  - [aria-modal=true] = any other proper modal dialog (create / edit / info)
 const HIDE_DOCK_CSS = `
+.bbm-dock[data-hidden="true"],
 body:has(.gs .app.hb) .bbm-dock,
 body:has(.gax-edit) .bbm-dock,
 body:has(.sh-portal) .bbm-dock,
@@ -395,7 +396,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
     // (Going via /grow made the screen render the start layout first and then redirect = visible jump.)
-    const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/grow/enquiries" : "/grow";
+    const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/grow/dashboard" : "/grow";
 
     // Always the same two tiles, in the same order: Grow, Save.
     const tiles = [TILES.grow, TILES.save].map((t, i) => ({
@@ -455,6 +456,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const badgeTotal = items.reduce((sum, it) => sum + (it.rawBadge || 0), 0);
     const badgeDisplay = badgeTotal > 0 ? (badgeTotal > 9 ? "9+" : badgeTotal) : null;
 
+    // A chat thread is open: /grow/chat/:id (hide the dock for an immersive view)
+    const inChatThread = /^\/grow\/chat\/[^/]+/.test(pathname);
+
     const menuButton = (
         <DockItem
             label={pageOpen ? "Close" : "Menu"}
@@ -501,6 +505,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
             {/* ===================== DOCK ===================== */}
             <div
+                data-hidden={inChatThread ? "true" : undefined}
                 className={`bbm-dock pointer-events-none fixed inset-x-0 flex justify-center transition-opacity duration-150 ${typing ? "opacity-0" : ""}`}
                 style={{ zIndex: Z_DOCK, bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
             >
