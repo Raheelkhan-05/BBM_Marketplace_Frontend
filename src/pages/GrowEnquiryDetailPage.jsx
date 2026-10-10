@@ -17,6 +17,7 @@ import { fmtNum, timeAgo, paymentLabel, consumptionLabel, locationSummary } from
 import { toTitleCase } from "../components/growSeller/sellerHelpers.js";
 import { isSellerReady } from "../components/growSeller/growSeller.js";
 import { shareEnquiry } from "../utils/rfqShare.js";
+import SmartLink from "../components/SmartLink.jsx";
 import BRAND_LOGOS from "../components/growSeller/brandLogos.js";
 import "../components/rfq/growEnquiry.css";
 
@@ -163,7 +164,52 @@ export default function GrowEnquiryDetailPage() {
         <div className="ged ged-page" data-theme={theme}>
             <header className="ged-hd">
                 <div className="ged-hd-in">
-                    <Link className="ged-logo" to="/grow">GR<i>O</i>W</Link>
+                    <SmartLink
+                        to="/"
+                        aria-label="BBM home"
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            minWidth: 0,
+                            textDecoration: "none",
+                            color: "#08222B",
+                        }}
+                    >
+                        <span
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                flexShrink: 0,
+                                background: "#FFFFFF",
+                                padding: "4px 0px",
+                            }}
+                        >
+                            <img
+                                src="/Logo.png"
+                                alt="BBM"
+                                style={{
+                                    display: "block",
+                                    height: "28px",
+                                    width: "auto",
+                                    objectFit: "contain",
+                                }}
+                            />
+                        </span>
+
+                        <span
+                            style={{
+                                fontFamily: '"Bricolage Grotesque", "Figtree", system-ui, sans-serif',
+                                fontWeight: 800,
+                                fontSize: "1.125rem",
+                                lineHeight: 1,
+                                letterSpacing: "0.02em",
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            BBM
+                        </span>
+                    </SmartLink>
                     <span className="ged-sp" />
                     <button className="ged-pill" type="button" onClick={onShare}><Share2 className="ged-ic" />Share</button>
                     {/* <button className="ged-ib" type="button" aria-label="Switch theme" onClick={toggleTheme}>
