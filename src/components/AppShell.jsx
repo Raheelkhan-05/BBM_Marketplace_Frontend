@@ -9,7 +9,8 @@ import { TransportLibraryProvider } from "../context/TransportLibraryContext.jsx
 import BottomNavStrip from "./BottomNavStrip.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
-const HIDE = [/^\/admin/, /^\/seller\/wallet/, /^\/chat\/[^/]+/, /^\/orders\//, /^\/seller\/orders\//, /^\/login/, /^\/terms/, /^\/privacy-policy/];
+
+const HIDE = [/^\/admin/, /^\/seller\/wallet/, /^\/chat\/[^/]+/, /^\/orders\//, /^\/seller\/orders\//, /^\/login/, /^\/terms/, /^\/privacy-policy/, /^\/payment\/return/];
 
 export default function AppShell() {
     const { pathname } = useLocation();

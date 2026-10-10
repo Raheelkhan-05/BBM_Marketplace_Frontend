@@ -161,6 +161,7 @@ function App() {
                 </Route>
                 <Route path="/terms" element={<TermsPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPage />} />
+                <Route path="/payment/return" element={<PaymentReturnPage />} />
 
                 {/* Single, shareable enquiry. Standalone (own header, no Layout / GrowSellerRoot)
                     so a link opened by someone who isn't a seller yet still renders. */}
@@ -168,8 +169,6 @@ function App() {
 
                 <Route element={<Layout />}>
                   <Route path="/" element={<Navigate to="/home" replace />} />
-
-                  <Route path="/payment/return" element={<PaymentReturnPage />} />
 
                   <Route path="/search" element={<SearchResultsPage />} />
                   <Route path="/home" element={<HomePage />} />
