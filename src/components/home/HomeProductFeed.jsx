@@ -3211,13 +3211,23 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const pinnedNow = (it) =>
         isFollowed(it.id) || (it.is_pinned === true && !unpinnedIds.has(it.id));
 
+    // Hide products with no visible seller for THIS user. Rows still being
+    // verified (search) and the row whose dropdown is open are kept, so
+    // nothing vanishes under the user's finger.
+    const visibleItems = items.filter(
+        (it) =>
+            it.lowest_price != null ||
+            it._priceVerified === false ||
+            String(it.id) === String(openItemId)
+    );
+
     const displayItems = (() => {
-        if (!items.length || items.some((it) => it.default_rank == null)) return items; // e.g. search results
+        if (!visibleItems.length || visibleItems.some((it) => it.default_rank == null)) return visibleItems;
         let frontier = -1;
-        for (const it of items) {
+        for (const it of visibleItems) {
             if (it.is_pinned === false && it.default_rank > frontier) frontier = it.default_rank;
         }
-        const visible = items.filter(
+        const visible = visibleItems.filter(
             (it) => hasMore === false || pinnedNow(it) || it.default_rank <= frontier
         );
         return visible.sort(
