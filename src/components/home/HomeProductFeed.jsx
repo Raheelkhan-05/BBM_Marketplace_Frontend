@@ -3130,32 +3130,21 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         const trimmed = q.trim();
         const useFeedRpc = !!shopSlug || selectedBrands.length > 0;
         const addr = buyerAddressRef.current;
-        const request = useFeedRpc
-            ? fetchBrandItemsFeed({
-                categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset,
-                signal: controller.signal, token, shopSlug,
-                brands: selectedBrands,
-                destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
-            })
-            : trimmed
-                ? fetchProductSearchMerged(trimmed, { limit: PAGE_SIZE, offset, categoryId: category?.id || null, signal: controller.signal, token })
-                : fetchBrandItemsFeed({ categoryId: category?.id || null, q: "", limit: PAGE_SIZE, offset, signal: controller.signal, token });
+        const request = fetchBrandItemsFeed({
+            categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset,
+            signal: controller.signal, token, shopSlug,
+            brands: selectedBrands,
+            destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
+        });
 
         request
             .then((res) => {
                 if (!res?.success) return;
                 if (requestToken !== queryTokenRef.current) return;
-
-                // Only plain search results need verifying; the feed RPC is already filtered.
-                const needsVerify = !!trimmed && !useFeedRpc && isLoggedIn && !!token;
-                const incoming = needsVerify
-                    ? (res.items || []).map((it) => ({ ...it, _priceVerified: false }))
-                    : (res.items || []);
-
+                const incoming = res.items || [];
                 setItems((prev) => (append ? mergeUnique(prev, incoming) : incoming));
                 setTotal(res.total ?? incoming.length ?? null);
                 setHasMore(!!res.hasMore);
-                if (needsVerify) verifyLowestFor(incoming, requestToken);
             })
             .catch((err) => { if (err?.name !== "AbortError") setHasMore(false); })
             .finally(() => {
