@@ -3,6 +3,9 @@
 // Live enquiries can be opened on their own page (/grow/enquiry/:id) and shared with the share button.
 // Quotes are real now: "Submit quote" opens RfqQuoteModal (pick a catalog product -> price -> send). The list keeps
 // itself fresh (socket event, focus, light poll) so a sent / updated / withdrawn quote shows up without a refresh.
+// Each card shows ONE quantity at the top: the buyer's total in the individual unit (e.g. 500 Kg), with the price basis
+// per individual unit. The pack / master pack breakdown is shown inside the quote popup, where the seller's product is known.
+// Prices are always shown per individual unit, including the "Quote sent" chip (e.g. ₹2.47/Kg).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
@@ -44,14 +47,31 @@ const mergeUnique = (prev, incoming) => {
 const CACHE = new Map();
 
 const inr = (n) => "₹" + (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+// A price per single unit can be small (e.g. ₹2.4691), so up to 4 decimals are kept, at least 2 are shown.
+const inrUnit = (n) => "₹" + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+
+// The seller's quote price per INDIVIDUAL unit (incl. GST). The quote's own `price` is per pack, so it is not used here.
+// Uses a per-unit field when the API sends one; otherwise the quote's total for the buyer's quantity divided by that
+// quantity (both incl. GST). Returns null when neither is available.
+const unitPriceOf = (quote, totalUnits) => {
+    if (!quote) return null;
+    for (const k of ["pricePerUnit", "price_per_unit", "unitPrice", "perUnitPrice"]) {
+        const v = Number(quote[k]);
+        if (v > 0) return v;
+    }
+    const t = Number(quote.total);
+    if (t > 0 && totalUnits > 0) return t / totalUnits;
+    return null;
+};
 
 function EnquiryCard({ item, onQuote, onEdit, onClose, onShare }) {
     const mine = item.isMine;
-    const total = item.quantity * item.packSize;
+    const total = Math.round(item.quantity * item.packSize * 1e6) / 1e6; // the buyer's quantity in the individual unit
     const published = item.publishedAt || item.createdAt;
     const isNew = published && Date.now() - new Date(published).getTime() < H;
     const live = item.status === "approved";
     const myQuote = item.myQuote || null;
+    const myUnitPrice = unitPriceOf(myQuote, total);
     return (
         <article className="card">
             <div className="top">
@@ -64,8 +84,8 @@ function EnquiryCard({ item, onQuote, onEdit, onClose, onShare }) {
                         {mine && <span className={`stt rfq ${item.status}`}>{STATUS_LABEL[item.status] || item.status}</span>}
                         {!mine && isNew && <span className="nw">NEW</span>}
                     </h3>
-                    <b className="q">{fmtNum(item.quantity)} Pack{item.quantity === 1 ? "" : "s"} × {fmtNum(item.packSize)} {item.unit}</b>
-                    <small>Total {fmtNum(total)} {item.unit}</small>
+                    <b className="q">{fmtNum(total)} {item.unit}</b>
+                    <small>Price per unit ({item.unit})</small>
                     <span className="eq">
                         {item.acceptEquivalent ? <><Ic n="shuffle" />Equivalent OK</> : <><Ic n="equal" />Same product only</>}
                     </span>
@@ -97,7 +117,9 @@ function EnquiryCard({ item, onQuote, onEdit, onClose, onShare }) {
                     {!mine && live && (
                         myQuote ? (
                             <>
-                                <span className="qd"><Ic n="check" />Quote sent · {inr(myQuote.price)}/pack</span>
+                                <span className="qd">
+                                    <Ic n="check" />Quote sent · {myUnitPrice != null ? `${inrUnit(myUnitPrice)}/${item.unit}` : `${inr(myQuote.price)}/pack`}
+                                </span>
                                 <button type="button" className="bt sm" onClick={() => onQuote(item)}><Ic n="edit" />Edit quote</button>
                             </>
                         ) : (

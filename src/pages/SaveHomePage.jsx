@@ -3,6 +3,8 @@
 // Layout mirrors GrowEnquiriesPage: greeting, summary tiles, quick links, then the searchable list of cards.
 // Quotes are real now: every row carries the quotes sellers sent (item.quotes / item.quotesCount from the API), and the
 // page refreshes itself when a quote arrives (socket event, focus, light poll) - no manual refresh needed.
+// Each row shows ONE quantity: the total in the individual unit (e.g. 500 Kg), not packs x pack size.
+// Quote prices are shown per individual unit too (e.g. ₹2.47 / Kg), with the total for the buyer's quantity below.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
@@ -39,6 +41,8 @@ const greeting = () => { const h = new Date().getHours(); return h < 12 ? "morni
 const EASE = [0.16, 1, 0.3, 1];
 const toTitle = (str = "") => str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 const inr = (n) => (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+// A price per single unit can be small (e.g. ₹2.4691), so up to 4 decimals are kept, at least 2 are shown.
+const inrUnit = (n) => "₹" + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "");
 
 // Quotes for one enquiry, as sent by the API (rfq.controller attaches them to the buyer's own rows):
@@ -47,6 +51,20 @@ const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString("en-IN", { da
 //   item.quotesCount -> number of live quotes
 const quotesOf = (item) => (Array.isArray(item.quotes) ? item.quotes : []);
 const quoteCountOf = (item) => Number(item.quotesCount ?? item.quoteCount ?? quotesOf(item).length) || 0;
+
+// The quote's price per INDIVIDUAL unit (incl. GST). The quote's own `price` is per pack, so it is not used here.
+// Uses a per-unit field when the API sends one; otherwise the quote's total for the buyer's quantity divided by that
+// quantity (both incl. GST). Returns null when neither is available.
+const unitPriceOf = (quote, totalUnits) => {
+    if (!quote) return null;
+    for (const k of ["pricePerUnit", "price_per_unit", "unitPrice", "perUnitPrice"]) {
+        const v = Number(quote[k]);
+        if (v > 0) return v;
+    }
+    const t = Number(quote.total);
+    if (t > 0 && totalUnits > 0) return t / totalUnits;
+    return null;
+};
 
 function useColumnCount() {
     const get = () => (typeof window !== "undefined" && window.innerWidth >= 768 ? 2 : 1);
@@ -66,9 +84,10 @@ const bucket = (list, n) => {
     return cols;
 };
 
-function QuoteItem({ q }) {
+function QuoteItem({ q, unit, totalUnits }) {
     const place = [q.city, q.state].filter(Boolean).join(", ");
     const product = [q.productName, q.brandName].filter(Boolean).join(" · ");
+    const unitPrice = unitPriceOf(q, totalUnits);
     return (
         <div className="sh-qt">
             <div>
@@ -86,8 +105,13 @@ function QuoteItem({ q }) {
                 {q.submissionId && <Link className="sh-btn sm go" style={{ marginTop: 10 }} to={`/p/${q.submissionId}`}><ShoppingCart size={14} />Buy this product</Link>}
             </div>
             <div className="sh-qp">
-                <b>{inrFmt(q.price)}</b>
-                <small>per pack · incl. GST</small>
+                {unitPrice != null ? (<>
+                    <b>{inrUnit(unitPrice)}</b>
+                    <small>per {unit} · incl. GST</small>
+                </>) : (<>
+                    <b>{inrFmt(q.price)}</b>
+                    <small>per pack · incl. GST</small>
+                </>)}
                 <small>Total {inrFmt(q.total)}</small>
             </div>
         </div>
@@ -100,6 +124,7 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
     const live = item.status === "approved";
     const canEdit = ["pending_review", "rejected"].includes(item.status);
     const canClose = ["pending_review", "approved"].includes(item.status);
+    const totalUnits = Math.round(item.quantity * item.packSize * 1e6) / 1e6; // the buyer's quantity in the individual unit
 
     let message = null;
     if (item.status === "pending_review") message = ["Waiting for review", "Suppliers can send quotes once our team approves this item."];
@@ -124,7 +149,7 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
                 {item.status === "rejected" && item.reviewNote && <p className="sh-rej">{item.reviewNote}</p>}
                 {quotes.length > 0 && (
                     <div className="sh-qts" data-lenis-prevent>
-                        {quotes.map((q, i) => <QuoteItem key={q.id ?? i} q={q} />)}
+                        {quotes.map((q, i) => <QuoteItem key={q.id ?? i} q={q} unit={item.unit} totalUnits={totalUnits} />)}
                     </div>
                 )}
                 {message && item.status !== "rejected" && <div className="sh-ddm"><b>{message[0]}</b>{message[1]}</div>}
@@ -142,7 +167,7 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
 }
 
 function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onClose }) {
-    const total = item.quantity * item.packSize;
+    const total = Math.round(item.quantity * item.packSize * 1e6) / 1e6; // one quantity, in the individual unit
     const count = quoteCountOf(item);
     const toggleKey = (e) => {
         if (e.target !== e.currentTarget) return;
@@ -156,9 +181,7 @@ function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onCl
                 </div>
                 <div className="sh-in">
                     <p className="sh-rn">{toTitle(item.productName)}</p>
-                    <p className="sh-rq">
-                        {fmtNum(item.quantity)} Pack{item.quantity === 1 ? "" : "s"} × {fmtNum(item.packSize)} {item.unit} <span>· Total {fmtNum(total)} {item.unit}</span>
-                    </p>
+                    <p className="sh-rq">{fmtNum(total)} {item.unit}</p>
                     <div className="sh-rqt">
                         <span>Quotes received<b className={count > 0 ? "has" : ""}>{count}</b></span>
                         <span className={`sh-st ${item.status}`}><i />{STATUS_LABEL[item.status] || item.status}</span>

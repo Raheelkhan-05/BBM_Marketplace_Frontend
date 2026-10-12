@@ -1,8 +1,11 @@
 // components/rfq/RfqQuoteModal.jsx
 // Seller quote flow: search your catalog -> pick a product -> price -> send.
 //  - Only products sold in the SAME unit the buyer asked in can be quoted (Kg vs Pieces cannot be compared).
-//  - The seller can type the price per unit / per pack / per master pack, with or without GST.
-//    It starts at the buyer's custom price (if any), otherwise the regular listing price.
+//  - The buyer asks for ONE total quantity in the individual unit (e.g. 500 Kg). The price starts per INDIVIDUAL UNIT
+//    (shown first), and a "Packaging breakdown" block explains the pack / master pack structure of the chosen product:
+//    how many units in a pack, how many packs (and units) in a master pack, and what the buyer's quantity comes to.
+//  - The seller can still switch the price to per pack / per master pack, with or without GST.
+//    It starts at the buyer's custom price (if any), otherwise the regular listing price, converted to per unit.
 //  - The breakdown is shown at the seller's MOQ, prices WITHOUT GST first, then GST, then the total.
 //  - The final price is also stored as that buyer's custom price (same API GrowBuyerAccess uses), so the buyer's
 //    product page, cart and checkout match the quote.
@@ -40,6 +43,12 @@ const unitsIn = (l, basis) => {
     return 1;
 };
 const round4 = (n) => Math.round(n * 10000) / 10000;
+
+// "= 25 Packs" when it divides exactly, "≈ 2.5 Packs" when it does not.
+const needIn = (n, word) => {
+    const r = Math.round(n * 100) / 100;
+    return `${Math.abs(n - Math.round(n)) < 0.005 ? "=" : "≈"} ${fmtNum(r)} ${word}${r === 1 ? "" : "s"}`;
+};
 
 // The enquiry owner (the buyer). Checks every field name this API could plausibly use.
 const pickBuyerId = (e) => (e
@@ -108,6 +117,7 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
     const bodyRef = useRef(null);
 
     const set = (patch) => { setF((s) => ({ ...s, ...patch })); setErr(""); };
+    // The buyer's total quantity, in the individual unit.
     const totalUnits = Number(opts?.enquiry?.totalUnits ?? (Number(enquiry.quantity) * Number(enquiry.packSize))) || 0;
 
     // lock page scroll (native + Lenis) while open
@@ -130,15 +140,17 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
         return () => document.removeEventListener("keydown", onKey);
     }, []);
 
-    // Price starts at the buyer's custom price, otherwise the regular listing price (both are per sale unit, incl. GST).
+    // The price starts PER INDIVIDUAL UNIT (incl. GST): the buyer's custom price, otherwise the regular listing price.
+    // Both are stored per sale unit (unit / pack / master pack), so they are divided down to one individual unit here.
     const choose = (l, mine) => {
         if (!l.unitMatches) return; // different unit from the buyer's: cannot be quoted
         const mq = mine && mine.submissionId === l.submissionId ? mine : null;
         const start = l.customPrice ?? l.listPrice;
+        const perUnit = start == null ? null : start / unitsIn(l, l.saleBasis || "per_unit");
         setSel(l);
         setF({
-            price: start == null ? "" : String(start),
-            basis: l.saleBasis || "per_unit",
+            price: perUnit == null ? "" : String(round4(perUnit)),
+            basis: "per_unit",
             gstIncl: true,
             valid: mq?.validityOption || "7d",
         });
@@ -226,6 +238,14 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
         ...(sel.hasMaster ? [["per_master_pack", "Per master pack"]] : []),
     ];
     const basisWord = f.basis === "per_pack" ? "pack" : f.basis === "per_master_pack" ? "master pack" : sel?.unit;
+
+    // Packaging breakdown (information only): units in a pack, packs + units in a master pack, and the buyer's quantity.
+    const packUnits = sel ? unitsIn(sel, "per_pack") : 1;
+    const masterUnits = sel ? unitsIn(sel, "per_master_pack") : 1;
+    const needParts = !sel ? [] : [
+        ...(packUnits > 1 ? [needIn(totalUnits / packUnits, "Pack")] : []),
+        ...(sel.hasMaster && masterUnits > 1 ? [needIn(totalUnits / masterUnits, "Master Pack")] : []),
+    ];
 
     const saleIncl = calc?.saleIncl ?? 0;
     const sameAsList = !!sel && sel.listPrice != null && nearPrice(saleIncl, sel.listPrice);
@@ -375,14 +395,22 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
                                     <span className="rqm-tx"><b>{sel.productName}</b><small>{sel.brandName || "No brand"}</small></span>
                                 </div>
                                 <dl className="rqm-kv">
-                                    <div><dt>Pack</dt><dd>1 Pack = {fmtNum(sel.packSize)} {sel.unit}</dd></div>
-                                    {sel.hasMaster && <div><dt>Master pack</dt><dd>1 Master Pack = {fmtNum(sel.masterPackSize)} Packs ({fmtNum(sel.packSize * sel.masterPackSize)} {sel.unit})</dd></div>}
                                     <div><dt>GST on this product</dt><dd>{sel.gstPercent}%</dd></div>
                                     {sel.moq != null && <div><dt>Your MOQ</dt><dd>{fmtNum(sel.moq)} {saleLabel(sel)}{sel.moq === 1 ? "" : "s"} ({fmtNum(sel.moqUnits)} {sel.unit})</dd></div>}
                                     <div><dt>Freight</dt><dd>{sel.freightIncluded ? "Included" : "Extra"}</dd></div>
-                                    <div><dt>Buyer needs</dt><dd>{fmtNum(enquiry.quantity)} pack{Number(enquiry.quantity) === 1 ? "" : "s"} × {fmtNum(enquiry.packSize)} {unit} = {fmtNum(totalUnits)} {unit}</dd></div>
                                 </dl>
                                 {belowMoq && <p className="rqm-warn">The buyer's quantity is below your MOQ of {fmtNum(sel.moqUnits)} {sel.unit}. They may not be able to order it at the minimum from your listing.</p>}
+                            </div>
+
+                            {/* Information block: how this product is packed, and what the buyer's quantity comes to. */}
+                            <div className="rqm-card">
+                                <p className="rqm-h">Packaging breakdown</p>
+                                <dl className="rqm-kv">
+                                    <div><dt>Individual unit</dt><dd>1 {sel.unit} (price is entered per {sel.unit} first)</dd></div>
+                                    <div><dt>Pack</dt><dd>1 Pack = {fmtNum(sel.packSize)} {sel.unit}</dd></div>
+                                    {sel.hasMaster && <div><dt>Master pack</dt><dd>1 Master Pack = {fmtNum(sel.masterPackSize)} Packs = {fmtNum(masterUnits)} {sel.unit}</dd></div>}
+                                    <div><dt>Buyer needs</dt><dd>{fmtNum(totalUnits)} {unit}{needParts.length ? ` (${needParts.join(" · ")})` : ""}</dd></div>
+                                </dl>
                             </div>
 
                             <div className="rqm-f">
@@ -405,8 +433,8 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
                                         onChange={(e) => set({ price: e.target.value.replace(/[^\d.]/g, "") })} />
                                 </div>
                                 <p className="rqm-n">
-                                    {sel.customPrice != null ? `Started from your custom price for this buyer (${inr(sel.customPrice)} per ${saleLabel(sel)}, incl. GST). `
-                                        : sel.listPrice != null ? `Started from your regular listing price (${inr(sel.listPrice)} per ${saleLabel(sel)}, incl. GST). ` : ""}
+                                    {sel.customPrice != null ? `Started from your custom price for this buyer (${inr(sel.customPrice)} per ${saleLabel(sel)}, incl. GST), shown here per ${sel.unit}. `
+                                        : sel.listPrice != null ? `Started from your regular listing price (${inr(sel.listPrice)} per ${saleLabel(sel)}, incl. GST), shown here per ${sel.unit}. ` : ""}
                                     This is the price the buyer pays on your listing, so it is saved for them when you send the quote.
                                 </p>
                             </div>

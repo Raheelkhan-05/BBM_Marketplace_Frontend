@@ -1,6 +1,7 @@
 // src/components/save/SaveEnquiryInfoModal.jsx
 // Full details of one enquiry (opened from the "i" button on a row of the Save home list).
 // Uses the same overlay/dialog styles as the post wizard, and the same Lenis-safe scrolling.
+// Quantity is shown as ONE total in the individual unit (older enquiries saved as packs x pack size are totalled).
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X, ExternalLink, Share2, Pencil, XCircle } from "lucide-react";
@@ -38,14 +39,13 @@ export default function SaveEnquiryInfoModal({ item, quoteCount = 0, onClose, on
         return () => document.removeEventListener("keydown", onKey);
     }, []);
 
-    const total = item.quantity * item.packSize;
+    const total = Math.round(item.quantity * item.packSize * 1e6) / 1e6;
     const live = item.status === "approved";
     const canEdit = ["pending_review", "rejected"].includes(item.status);
     const canClose = ["pending_review", "approved"].includes(item.status);
     const images = (item.images || []).filter(Boolean);
     const rows = [
-        ["Quantity", `${fmtNum(item.quantity)} Pack${item.quantity === 1 ? "" : "s"} × ${fmtNum(item.packSize)} ${item.unit}`],
-        ["Total", `${fmtNum(total)} ${item.unit}`],
+        ["Quantity needed", `${fmtNum(total)} ${item.unit}`],
         ["Equivalent products", item.acceptEquivalent ? "Acceptable" : "Same product only"],
         ["Payment", paymentLabel(item)],
         ["Consumption", consumptionLabel(item)],
