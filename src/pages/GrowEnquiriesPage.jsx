@@ -1,6 +1,8 @@
 // src/pages/GrowEnquiriesPage.jsx — the RFQ / enquiry module (the greeting and KPIs now live on the dashboard).
-// Same backend as RfqPage: fetchRfqList / closeRfq + the existing post, bulk-upload and quote modals.
+// Same backend as RfqPage: fetchRfqList / closeRfq + the existing post, bulk-upload modals.
 // Live enquiries can be opened on their own page (/grow/enquiry/:id) and shared with the share button.
+// Quotes are real now: "Submit quote" opens RfqQuoteModal (pick a catalog product -> price -> send). The list keeps
+// itself fresh (socket event, focus, light poll) so a sent / updated / withdrawn quote shows up without a refresh.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
@@ -11,6 +13,8 @@ import RfqFormModal from "../components/rfq/RfqFormModal.jsx";
 import RfqBulkUploadModal from "../components/rfq/RfqBulkUploadModal.jsx";
 import RfqQuoteModal from "../components/rfq/RfqQuoteModal.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
+import useRfqLive from "../hooks/useRfqLive.js";
+import useQuoteResume from "../hooks/useQuoteResume.js";
 import { fetchRfqList, closeRfq } from "../utils/rfqApi.js";
 import { fmtNum, timeAgo, paymentLabel, consumptionLabel, locationSummary } from "../utils/rfqUtils.js";
 import { shareEnquiry, enquiryPath } from "../utils/rfqShare.js";
@@ -21,6 +25,7 @@ import { toTitleCase, H } from "../components/growSeller/sellerHelpers.js";
 import "../components/growSeller/grow-store.css";
 
 const PAGE = 12;
+const MAX_PAGE = 30; // server cap
 const STATUS_FILTERS = [
     { value: "", label: "All" },
     { value: "pending_review", label: "In review" },
@@ -38,12 +43,15 @@ const mergeUnique = (prev, incoming) => {
 // Last result per (token, tab, search, status): switching tabs paints instantly, then revalidates silently.
 const CACHE = new Map();
 
-function EnquiryCard({ item, quoted, onQuote, onEdit, onClose, onShare }) {
+const inr = (n) => "₹" + (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
+function EnquiryCard({ item, onQuote, onEdit, onClose, onShare }) {
     const mine = item.isMine;
     const total = item.quantity * item.packSize;
     const published = item.publishedAt || item.createdAt;
     const isNew = published && Date.now() - new Date(published).getTime() < H;
     const live = item.status === "approved";
+    const myQuote = item.myQuote || null;
     return (
         <article className="card">
             <div className="top">
@@ -87,9 +95,14 @@ function EnquiryCard({ item, quoted, onQuote, onEdit, onClose, onShare }) {
                         <button type="button" className="bt sm" onClick={() => onClose(item)}><Ic n="x" />Close</button>
                     )}
                     {!mine && live && (
-                        quoted
-                            ? <span className="qd"><Ic n="check" />Quote sent</span>
-                            : <button type="button" className="bt go" onClick={() => onQuote(item)}><Ic n="send" />Submit quote</button>
+                        myQuote ? (
+                            <>
+                                <span className="qd"><Ic n="check" />Quote sent · {inr(myQuote.price)}/pack</span>
+                                <button type="button" className="bt sm" onClick={() => onQuote(item)}><Ic n="edit" />Edit quote</button>
+                            </>
+                        ) : (
+                            <button type="button" className="bt go" onClick={() => onQuote(item)}><Ic n="send" />Submit quote</button>
+                        )
                     )}
                 </div>
             </div>
@@ -100,9 +113,9 @@ function EnquiryCard({ item, quoted, onQuote, onEdit, onClose, onShare }) {
 export default function GrowEnquiriesPage() {
     const { token } = useAuth();
     const { say } = useGrowSeller();
-    const [params, setParams] = useSearchParams();
+    const [resume, clearResume] = useQuoteResume();
 
-    const tab = params.get("tab") === "mine" ? "mine" : "all";
+    const tab = "all";
     const setTab = (t) => {
         const next = new URLSearchParams(params);
         if (t === "mine") next.set("tab", "mine"); else next.delete("tab");
@@ -122,12 +135,12 @@ export default function GrowEnquiriesPage() {
 
     const [formState, setFormState] = useState(null); // { mode, initial }
     const [bulkOpen, setBulkOpen] = useState(false);
-    const [quoteFor, setQuoteFor] = useState(null);
-    const [quoted, setQuoted] = useState(() => new Set());
+    const [quoteFor, setQuoteFor] = useState(null);   // { enquiry, submissionId }
 
     const abortRef = useRef(null);
     const seqRef = useRef(0);
     const itemsRef = useRef([]);
+    const loadRef = useRef(null);
     itemsRef.current = items;
 
     useEffect(() => {
@@ -135,7 +148,8 @@ export default function GrowEnquiriesPage() {
         return () => clearTimeout(t);
     }, [qInput]);
 
-    const load = useCallback(async (offset, append) => {
+    // silent = background refresh: no skeleton, no flicker, errors ignored, keeps as many rows as are already shown.
+    const load = useCallback(async (offset, append, silent = false) => {
         const key = `${token}|${tab}|${q}|${tab === "mine" ? status : ""}`;
         abortRef.current?.abort();
         const controller = new AbortController();
@@ -143,7 +157,7 @@ export default function GrowEnquiriesPage() {
         const seq = ++seqRef.current;
 
         if (append) setLoadingMore(true);
-        else {
+        else if (!silent) {
             setError(null);
             const hit = CACHE.get(key);
             if (hit) { setItems(hit.items); setTotal(hit.total); setHasMore(hit.hasMore); setLoading(false); }
@@ -151,32 +165,48 @@ export default function GrowEnquiriesPage() {
         }
         try {
             const res = await fetchRfqList(token, {
-                scope: tab, q, status: tab === "mine" ? status : "", limit: PAGE, offset, signal: controller.signal,
+                scope: tab, q, status: tab === "mine" ? status : "",
+                limit: silent ? Math.min(MAX_PAGE, Math.max(PAGE, itemsRef.current.length)) : PAGE,
+                offset, signal: controller.signal,
             });
             if (seq !== seqRef.current) return;
             if (!res.success) {
+                if (silent) return;
                 if (!append && !CACHE.get(key)) { setItems([]); setTotal(0); }
                 setHasMore(false);
                 setError(res.message || "Couldn't load enquiries.");
                 return;
             }
-            const merged = append ? mergeUnique(itemsRef.current, res.items || []) : res.items || [];
+            const incoming = (res.items || []).filter((i) => !i.isMine);
+            const merged = append ? mergeUnique(itemsRef.current, incoming) : incoming;
             setItems(merged);
             setTotal(res.total ?? 0);
             setHasMore(!!res.hasMore);
+            setError(null);
             CACHE.set(key, { items: merged, total: res.total ?? 0, hasMore: !!res.hasMore });
         } catch (e) {
-            if (e?.name !== "AbortError" && seq === seqRef.current) setHasMore(false);
+            if (!silent && e?.name !== "AbortError" && seq === seqRef.current) setHasMore(false);
         } finally {
             if (seq === seqRef.current) { setLoading(false); setLoadingMore(false); }
         }
     }, [token, tab, q, status]);
+    loadRef.current = load;
 
     useEffect(() => {
         if (!token) { setLoading(false); return undefined; }
         load(0, false);
         return () => abortRef.current?.abort();
     }, [load, reloadKey, token]);
+
+    // Realtime: a quote was sent / updated / withdrawn (or the tab came back): refresh quietly.
+    useRfqLive(() => { CACHE.clear(); loadRef.current?.(0, false, true); }, { enabled: !!token });
+
+    // Came back from "add a product" for a quote: re-open the popup with that product preselected.
+    useEffect(() => {
+        if (!resume) return;
+        setQuoteFor({ enquiry: resume.enquiry, submissionId: resume.submissionId || null });
+        clearResume();
+    }, [resume, clearResume]);
 
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && load(items.length, true),
@@ -185,7 +215,6 @@ export default function GrowEnquiriesPage() {
 
     const afterSubmit = (message) => {
         say(message);
-        if (tab !== "mine") setTab("mine");
         setStatus("");
         CACHE.clear();
         setReloadKey((k) => k + 1);
@@ -206,6 +235,13 @@ export default function GrowEnquiriesPage() {
         else if (r === "failed") say("Couldn't copy the link.");
     };
 
+    const handleQuoteDone = (quote, meta) => {
+        setQuoteFor(null);
+        say(meta?.withdrawn ? "Quote withdrawn." : "Quote sent.");
+        CACHE.clear();
+        load(0, false, true);
+    };
+
     return (
         <div className="v">
             <h2 className="h2" style={{ marginTop: 22 }}>Requests for quotation</h2>
@@ -224,32 +260,17 @@ export default function GrowEnquiriesPage() {
                 </label>
             </div>
 
-            {tab === "mine" && (
-                <div className="chs">
-                    {STATUS_FILTERS.map((s) => (
-                        <button key={s.value || "all"} type="button" aria-pressed={status === s.value} onClick={() => setStatus(s.value)}>{s.label}</button>
-                    ))}
-                </div>
-            )}
-
             {!loading && !error && <p className="cnt">{total} enquir{total === 1 ? "y" : "ies"}</p>}
 
             {loading && items.length === 0 ? <ListSkeleton n={4} tall /> : (
                 <div className="grid c3">
                     {items.map((item) => (
-                        <EnquiryCard key={item.id} item={item} quoted={quoted.has(item.id)}
-                            onQuote={setQuoteFor}
+                        <EnquiryCard key={item.id} item={item}
+                            onQuote={(it) => setQuoteFor({ enquiry: it, submissionId: null })}
                             onEdit={(it) => setFormState({ mode: "edit", initial: it })}
                             onClose={handleClose}
                             onShare={handleShare} />
                     ))}
-                    {!loading && !error && items.length === 0 && (
-                        <Empty
-                            title={q ? "No enquiries match your search" : tab === "mine" ? "You have not posted an enquiry yet" : "No live enquiries right now"}
-                            text={tab === "mine" && !q ? "Post what you need and suppliers will quote." : q ? "Try a different word." : "New enquiries appear here as buyers post them."}>
-                            {tab === "mine" && !q && (<><br /><button className="bt or" type="button" onClick={() => setFormState({ mode: "create", initial: null })}><Ic n="plus" />Post enquiry</button></>)}
-                        </Empty>
-                    )}
                 </div>
             )}
 
@@ -274,8 +295,8 @@ export default function GrowEnquiriesPage() {
                             }} />
                     )}
                     {quoteFor && (
-                        <RfqQuoteModal key="quote" enquiry={quoteFor} onClose={() => setQuoteFor(null)}
-                            onDone={() => { setQuoted((s) => new Set(s).add(quoteFor.id)); setQuoteFor(null); say("Quote preview submitted."); }} />
+                        <RfqQuoteModal key="quote" enquiry={quoteFor.enquiry} initialSubmissionId={quoteFor.submissionId}
+                            onClose={() => setQuoteFor(null)} onDone={handleQuoteDone} />
                     )}
                 </AnimatePresence>,
                 document.body

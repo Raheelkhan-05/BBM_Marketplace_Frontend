@@ -95,6 +95,7 @@ const GrowChatPage = lazy(() => import("./pages/GrowChatPage.jsx"));
 const GrowTransportPage = lazy(() => import("./pages/GrowTransportPage.jsx"));
 const GrowDashboardPage = lazy(() => import("./pages/GrowDashboardPage.jsx"));
 const GrowComingSoonPage = lazy(() => import("./pages/GrowComingSoonPage.jsx"));
+const GrowQuoteProductPage = lazy(() => import("./pages/GrowQuoteProductPage.jsx"));
 
 // const SavePage = lazy(() => import("./pages/SavePage.jsx"));
 const SaveEntry = lazy(() => import("./pages/SaveEntry.jsx"));
@@ -254,6 +255,8 @@ function App() {
                     <Route path="/grow/details" element={<GrowPage />} />
                     {/* "I want to sell this" from the catalogue: locked-identity add-product wizard */}
                     <Route path="/grow/sell/:brandId" element={<GrowSellItemPage />} />
+                    <Route path="/grow/enquiry/:enquiryId/add-product" element={<GrowQuoteProductPage />} />
+                    <Route path="/grow/enquiry/:enquiryId/add-product/:brandId" element={<GrowQuoteProductPage />} />
                   </Route>
 
                   <Route element={<GrowSellerRoot />}>

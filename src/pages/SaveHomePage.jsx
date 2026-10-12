@@ -1,6 +1,8 @@
 // src/pages/SaveHomePage.jsx — buyer home for logged-in users (route: /save, via SaveEntry).
 // Same backend as the old RFQ page: fetchRfqList / closeRfq, plus the existing post, edit and bulk-upload flows.
 // Layout mirrors GrowEnquiriesPage: greeting, summary tiles, quick links, then the searchable list of cards.
+// Quotes are real now: every row carries the quotes sellers sent (item.quotes / item.quotesCount from the API), and the
+// page refreshes itself when a quote arrives (socket event, focus, light poll) - no manual refresh needed.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
@@ -10,8 +12,9 @@ import {
     ChevronDown, Info, ExternalLink, MapPin, Clock, Truck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { useBuyerAddress } from "../context/BuyerAddressContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
+import { inr as inrFmt, etaText, validText } from "../utils/rfqQuoteFmt.js";
+import useRfqLive from "../hooks/useRfqLive.js";
 import RfqBulkUploadModal from "../components/rfq/RfqBulkUploadModal.jsx";
 import SavePostWizard from "../components/save/SavePostWizard.jsx";
 import SaveEnquiryInfoModal, { STATUS_LABEL } from "../components/save/SaveEnquiryInfoModal.jsx";
@@ -21,13 +24,10 @@ import { shareEnquiry, enquiryPath } from "../utils/rfqShare.js";
 import { MENU_ROUTES } from "../components/menuItems.js";
 
 const PAGE = 12;
+const MAX_PAGE = 30; // server cap
 const FILTERS = [
     ["", "All"], ["pending_review", "In review"], ["approved", "Live"], ["rejected", "Needs changes"], ["closed", "Closed"],
 ];
-
-// Number of quotes received. There is no backend for buyer-side quotes yet (the supplier quote modal is a preview),
-// so this stays null and the tile shows a dash. When a quotes API exists, feed its total in here.
-const QUOTES_COUNT = null;
 
 const mergeUnique = (prev, incoming) => {
     const seen = new Set(prev.map((i) => i.id));
@@ -39,11 +39,12 @@ const greeting = () => { const h = new Date().getHours(); return h < 12 ? "morni
 const EASE = [0.16, 1, 0.3, 1];
 const toTitle = (str = "") => str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 const inr = (n) => (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "");
 
-// Quotes for one enquiry. There is no buyer-side quotes API yet, so this reads whatever the list payload carries:
-//   item.quotes      -> [{ id, sellerName, city, state, price, moq, deliveryDays, freightIncluded }]
-//   item.quotesCount -> total, when the list only has the count
-// When the quotes API exists, change ONLY these two helpers (e.g. fetch per enquiry when its row opens).
+// Quotes for one enquiry, as sent by the API (rfq.controller attaches them to the buyer's own rows):
+//   item.quotes      -> [{ id, sellerName, city, state, productName, brandName, price (per pack), total, moq,
+//                          deliveryDays, freightIncluded, validUntil }]  (cheapest first)
+//   item.quotesCount -> number of live quotes
 const quotesOf = (item) => (Array.isArray(item.quotes) ? item.quotes : []);
 const quoteCountOf = (item) => Number(item.quotesCount ?? item.quoteCount ?? quotesOf(item).length) || 0;
 
@@ -67,22 +68,27 @@ const bucket = (list, n) => {
 
 function QuoteItem({ q }) {
     const place = [q.city, q.state].filter(Boolean).join(", ");
+    const product = [q.productName, q.brandName].filter(Boolean).join(" · ");
     return (
         <div className="sh-qt">
             <div>
                 <b>{q.sellerName || "Supplier"}</b>
+                {product && <small>{product}</small>}
                 {place && <small><MapPin size={12} />{place}</small>}
                 <div className="sh-chips">
                     {q.moq != null && <span className="sh-chip"><Package size={12} />MOQ {fmtNum(q.moq)}</span>}
-                    {q.deliveryDays != null && <span className="sh-chip"><Clock size={12} />~{q.deliveryDays} {Number(q.deliveryDays) === 1 ? "day" : "days"}</span>}
+                    {q.deliveryDays != null && <span className="sh-chip"><Clock size={12} />{etaText(q)}</span>}
                     {q.freightIncluded != null && (
                         <span className={`sh-chip${q.freightIncluded ? " ok" : ""}`}><Truck size={12} />{q.freightIncluded ? "Freight included" : "Freight extra"}</span>
                     )}
+                    <span className="sh-chip">{validText(q)}</span>
                 </div>
+                {q.submissionId && <Link className="sh-btn sm go" style={{ marginTop: 10 }} to={`/p/${q.submissionId}`}><ShoppingCart size={14} />Buy this product</Link>}
             </div>
             <div className="sh-qp">
-                <b>₹{inr(q.price)}</b>
-                <small>per pack</small>
+                <b>{inrFmt(q.price)}</b>
+                <small>per pack · incl. GST</small>
+                <small>Total {inrFmt(q.total)}</small>
             </div>
         </div>
     );
@@ -192,10 +198,13 @@ export default function SaveHomePage() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError] = useState(null);
     const [reloadKey, setReloadKey] = useState(0);
+    const [liveTick, setLiveTick] = useState(0);
     const [openCount, setOpenCount] = useState(null);
+    const [quotesTotal, setQuotesTotal] = useState(null);
 
     const [openId, setOpenId] = useState(null);   // row whose quotes dropdown is open
-    const [infoItem, setInfoItem] = useState(null); // enquiry shown in the details modal
+    const [infoId, setInfoId] = useState(null);   // enquiry shown in the details modal (kept by id so it stays fresh)
+    const [infoSnap, setInfoSnap] = useState(null);
     const [wizard, setWizard] = useState(null); // { mode, initial }
     const [bulkOpen, setBulkOpen] = useState(false);
     const [toast, setToast] = useState("");
@@ -203,6 +212,7 @@ export default function SaveHomePage() {
     const abortRef = useRef(null);
     const seqRef = useRef(0);
     const itemsRef = useRef([]);
+    const loadRef = useRef(null);
     const tt = useRef(null);
     const listRef = useRef(null);
     itemsRef.current = items;
@@ -212,7 +222,8 @@ export default function SaveHomePage() {
 
     useEffect(() => { const t = setTimeout(() => setQ(qInput.trim()), 300); return () => clearTimeout(t); }, [qInput]);
 
-    const load = useCallback(async (offset, append) => {
+    // silent = background refresh (new quote arrived): no skeleton, errors ignored, keeps the rows already loaded.
+    const load = useCallback(async (offset, append, silent = false) => {
         const key = `${token}|${q}|${status}`;
         abortRef.current?.abort();
         const controller = new AbortController();
@@ -220,16 +231,21 @@ export default function SaveHomePage() {
         const seq = ++seqRef.current;
 
         if (append) setLoadingMore(true);
-        else {
+        else if (!silent) {
             setError(null);
             const hit = CACHE.get(key);
             if (hit) { setItems(hit.items); setTotal(hit.total); setHasMore(hit.hasMore); setLoading(false); }
             else { setItems([]); setTotal(0); setHasMore(false); setLoading(true); }
         }
         try {
-            const res = await fetchRfqList(token, { scope: "mine", q, status, limit: PAGE, offset, signal: controller.signal });
+            const res = await fetchRfqList(token, {
+                scope: "mine", q, status,
+                limit: silent ? Math.min(MAX_PAGE, Math.max(PAGE, itemsRef.current.length)) : PAGE,
+                offset, signal: controller.signal,
+            });
             if (seq !== seqRef.current) return;
             if (!res.success) {
+                if (silent) return;
                 if (!append && !CACHE.get(key)) { setItems([]); setTotal(0); }
                 setHasMore(false);
                 setError(res.message || "Couldn't load your price list.");
@@ -239,13 +255,16 @@ export default function SaveHomePage() {
             setItems(merged);
             setTotal(res.total ?? 0);
             setHasMore(!!res.hasMore);
+            setError(null);
+            if (res.quotesTotal != null) setQuotesTotal(res.quotesTotal);
             CACHE.set(key, { items: merged, total: res.total ?? 0, hasMore: !!res.hasMore });
         } catch (e) {
-            if (e?.name !== "AbortError" && seq === seqRef.current) setHasMore(false);
+            if (!silent && e?.name !== "AbortError" && seq === seqRef.current) setHasMore(false);
         } finally {
             if (seq === seqRef.current) { setLoading(false); setLoadingMore(false); }
         }
     }, [token, q, status]);
+    loadRef.current = load;
 
     useEffect(() => {
         if (!token) { setLoading(false); return undefined; }
@@ -261,7 +280,10 @@ export default function SaveHomePage() {
             .then((r) => { if (live) setOpenCount(r?.success ? r.total ?? 0 : null); })
             .catch(() => { if (live) setOpenCount(null); });
         return () => { live = false; };
-    }, [token, reloadKey]);
+    }, [token, reloadKey, liveTick]);
+
+    // Realtime: a seller sent / updated / withdrew a quote -> refresh the list, the tiles and any open dialog.
+    useRfqLive(() => { CACHE.clear(); loadRef.current?.(0, false, true); setLiveTick((t) => t + 1); }, { enabled: !!token });
 
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && load(items.length, true),
@@ -299,10 +321,17 @@ export default function SaveHomePage() {
     const shopLabel = ctxShopName || profile?.shop_name || profile?.shopName || "your shop";
 
     const openPage = (item) => nav(enquiryPath(item.id), { state: { enquiry: item } });
-    const editItem = (item) => { setInfoItem(null); setWizard({ mode: "edit", initial: item }); };
-    const closeItem = async (item) => { await handleClose(item); setInfoItem(null); };
+    const showInfo = (item) => { setInfoId(item.id); setInfoSnap(item); };
+    const editItem = (item) => { setInfoId(null); setWizard({ mode: "edit", initial: item }); };
+    const closeItem = async (item) => { await handleClose(item); setInfoId(null); };
     const shareItem = (item) => handleShare(item);
     const columns = bucket(items, columnCount);
+
+    // The details dialog follows the live list, so its quote count updates while it is open.
+    const infoItem = infoId ? (items.find((i) => i.id === infoId) || infoSnap) : null;
+
+    // Tile total: the server's count across ALL enquiries; falls back to what is loaded on screen.
+    const quotesTile = quotesTotal ?? (items.length ? items.reduce((s, it) => s + quoteCountOf(it), 0) : null);
 
     return (
         <div className="sh-w">
@@ -313,8 +342,8 @@ export default function SaveHomePage() {
                 <button type="button" style={{ "--a": "var(--or)" }} onClick={openFilter}>
                     <b>{openCount ?? "–"}</b><span>Open RFQs</span>
                 </button>
-                <button type="button" style={{ "--a": "var(--bl)" }} onClick={() => say("Quotes from suppliers will appear here.")}>
-                    <b>{QUOTES_COUNT ?? "–"}</b><span>Quotes received</span>
+                <button type="button" style={{ "--a": "var(--bl)" }} onClick={openFilter}>
+                    <b>{quotesTile ?? "–"}</b><span>Quotes received</span>
                 </button>
             </div>
 
@@ -376,7 +405,7 @@ export default function SaveHomePage() {
                                             item={it}
                                             isOpen={openId === it.id}
                                             onToggle={() => setOpenId((cur) => (cur === it.id ? null : it.id))}
-                                            onInfo={() => setInfoItem(it)}
+                                            onInfo={() => showInfo(it)}
                                             onOpenPage={() => openPage(it)}
                                             onShare={() => shareItem(it)}
                                             onEdit={() => editItem(it)}
@@ -391,6 +420,7 @@ export default function SaveHomePage() {
                         <div className="sh-emp">
                             <b>{q ? "Nothing matches your search" : status ? "Nothing here yet" : "Your price list is empty"}</b>
                             {q ? "Try a different word." : "Add a product you buy and suppliers will price it."}
+                            <br />
                             {!q && !status && (
                                 <button type="button" className="sh-btn go" style={{ marginTop: 16 }} onClick={startPost}>
                                     <Send size={16} />Add to my price list
@@ -410,8 +440,8 @@ export default function SaveHomePage() {
                 <SaveEnquiryInfoModal
                     item={infoItem}
                     quoteCount={quoteCountOf(infoItem)}
-                    onClose={() => setInfoItem(null)}
-                    onOpenPage={() => { const it = infoItem; setInfoItem(null); openPage(it); }}
+                    onClose={() => setInfoId(null)}
+                    onOpenPage={() => { const it = infoItem; setInfoId(null); openPage(it); }}
                     onShare={() => shareItem(infoItem)}
                     onEdit={() => editItem(infoItem)}
                     onCloseEnquiry={() => closeItem(infoItem)}

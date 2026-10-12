@@ -1,230 +1,465 @@
 // components/rfq/RfqQuoteModal.jsx
-// PREVIEW ONLY: nothing is saved or sent yet (next phase). Flow: details -> mobile OTP -> confirmation.
-// Mobile: bottom sheet. Tablet / desktop: centred dialog.
-// Props (unchanged): enquiry, onClose, onDone. Optional: theme ("light" | "dark").
-// onDone(quote) fires when the person finishes on the confirmation screen (button or close).
-import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
-import { X, Send, Check } from "lucide-react";
-import { EASE } from "../seller/listingForm/FormPrimitives.jsx";
+// Seller quote flow: search your catalog -> pick a product -> price -> send.
+//  - Only products sold in the SAME unit the buyer asked in can be quoted (Kg vs Pieces cannot be compared).
+//  - The seller can type the price per unit / per pack / per master pack, with or without GST.
+//    It starts at the buyer's custom price (if any), otherwise the regular listing price.
+//  - The breakdown is shown at the seller's MOQ, prices WITHOUT GST first, then GST, then the total.
+//  - The final price is also stored as that buyer's custom price (same API GrowBuyerAccess uses), so the buyer's
+//    product page, cart and checkout match the quote.
+//  - "Sell this" opens the add-product wizard with the product name, brand and image from the ENQUIRY and the unit
+//    locked to the enquiry's unit (no catalogue brand lookup).
+// Delivery time is never asked or shown here: the server works it out for the buyer.
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { X, Send, Check, ChevronRight, Plus, Search, ArrowLeft } from "lucide-react";
+import { useAuth } from "../../context/AuthContext.jsx";
 import { fmtNum } from "../../utils/rfqUtils.js";
-import "./growEnquiry.css";
+import { enquiryPath } from "../../utils/rfqShare.js";
+import { inr, shortDate } from "../../utils/rfqQuoteFmt.js";
+import { fetchQuoteOptions, submitQuote, withdrawQuote } from "../../utils/rfqQuoteApi.js";
+import { saveCustomPricingForBuyer, deleteCustomPricingForBuyer } from "../../utils/sellerListingApi.js";
+import { MIN_UNIT_PRICE } from "../../../shared/customPricing.js";
+import { VALIDITY_OPTIONS, nearPrice, round2 } from "../../../shared/rfqQuoteMath.js";
+import "./rfqQuoteModal.css";
 
-const VALIDITY = [3, 7, 15];
+const GATE_CODES = ["NOT_AUTHENTICATED", "SELLER_NOT_ONBOARDED", "SELLER_NOT_APPROVED"];
+const ini = (s) => (s || "?").trim()[0]?.toUpperCase();
+const saleLabel = (l) => (l.saleBasis === "per_master_pack" ? "master pack" : l.saleBasis === "per_pack" ? "pack" : l.unit);
+const packLine = (l) => [
+    l.brandName,
+    `1 Pack = ${fmtNum(l.packSize)} ${l.unit}`,
+    l.hasMaster ? `1 Master Pack = ${fmtNum(l.masterPackSize)} Packs` : null,
+].filter(Boolean).join(" · ");
 
-const readTheme = () => {
-    try { return localStorage.getItem("gth") === "dark" ? "dark" : "light"; } catch { return "light"; }
+// How many base units (Pieces / Kg ...) one "unit", one "pack" or one "master pack" holds.
+const unitsIn = (l, basis) => {
+    const pack = Number(l.packSize) > 0 ? Number(l.packSize) : 1;
+    if (basis === "per_pack") return pack;
+    if (basis === "per_master_pack") return pack * (l.hasMaster && Number(l.masterPackSize) > 0 ? Number(l.masterPackSize) : 1);
+    return 1;
 };
-const rupees = (n) => "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-const validTill = (days) => new Date(Date.now() + days * 864e5).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-const maskMobile = (m) => `+91 ${m.slice(0, 2)}XXXXXX${m.slice(-2)}`;
+const round4 = (n) => Math.round(n * 10000) / 10000;
 
-export default function RfqQuoteModal({ enquiry, onClose, onDone, theme }) {
+// The enquiry owner (the buyer). Checks every field name this API could plausibly use.
+const pickBuyerId = (e) => (e
+    ? (e.buyerId ?? e.buyer_id ?? e.userId ?? e.user_id ?? e.ownerId ?? e.owner_id ?? e.createdBy ?? e.created_by
+        ?? e.requesterId ?? e.postedBy ?? e.buyer?.id ?? e.buyer?.buyerId ?? e.user?.id ?? e.owner?.id ?? null)
+    : null);
+
+// The brand typed on the enquiry (string), whatever the API calls it.
+const pickBrandName = (e) => {
+    if (!e) return "";
+    const b = e.brandName ?? e.brand_name ?? e.brand;
+    if (typeof b === "string") return b.trim();
+    return String(b?.name ?? b?.brandName ?? "").trim();
+};
+
+// The product image on the enquiry (URL string), whatever the API calls it.
+const pickImage = (e) => {
+    if (!e) return "";
+    const first = Array.isArray(e.images) ? e.images[0] : null;
+    const v = e.image ?? e.imageUrl ?? e.image_url ?? e.productImage ?? e.product_image ?? first ?? null;
+    if (typeof v === "string") return v.trim();
+    return String(v?.url ?? v?.src ?? "").trim();
+};
+
+function Thumb({ src, name }) {
+    return <span className="rqm-th">{src ? <img src={src} alt="" loading="lazy" /> : ini(name)}</span>;
+}
+
+function PickRow({ l, unit, onPick }) {
+    const price = l.customPrice ?? l.listPrice;
+    const unitBlocked = l.selectable && !l.unitMatches;
+    const can = l.selectable && l.unitMatches;
+    return (
+        <button type="button" className="rqm-row" disabled={!can} onClick={() => onPick(l)}>
+            <Thumb src={l.image} name={l.productName} />
+            <span className="rqm-tx">
+                <b>{l.productName}</b>
+                <small>{packLine(l)}</small>
+                {price != null && <small>{inr(price)} / {saleLabel(l)} incl. GST{l.customPrice != null ? " · custom for this buyer" : ""}</small>}
+                {l.reason && <em>{l.reason}</em>}
+                {unitBlocked && <em>Sold in {l.unit}, but the buyer asked in {unit}. You can only quote products sold in {unit}.</em>}
+                {l.quoted && <em className="ok">Quote sent</em>}
+            </span>
+            {can && <ChevronRight size={18} aria-hidden="true" />}
+        </button>
+    );
+}
+
+export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmissionId = null }) {
+    const { token, isLoggedIn } = useAuth();
+    const nav = useNavigate();
+    const loc = useLocation();
     const unit = enquiry.unit || "unit";
-    const total = (Number(enquiry.quantity) || 0) * (Number(enquiry.packSize) || 0);
 
-    const [step, setStep] = useState("form"); // form | otp | done
-    const [f, setF] = useState({ name: "", mob: "", price: "", days: "3", valid: 7 });
-    const [digits, setDigits] = useState(["", "", "", "", "", ""]);
+    const [view, setView] = useState("loading"); // loading | gate | error | pick | price | done
+    const [opts, setOpts] = useState(null);
+    const [msg, setMsg] = useState("");
+    const [sel, setSel] = useState(null);
+    const [f, setF] = useState({ price: "", basis: "per_unit", gstIncl: true, valid: "7d" });
+    const [search, setSearch] = useState("");
     const [err, setErr] = useState("");
-    const [info, setInfo] = useState("");
-    const [cd, setCd] = useState(30);
-    const [otpRun, setOtpRun] = useState(0);
+    const [busy, setBusy] = useState(false);
     const [quote, setQuote] = useState(null);
+    const [wasUpdate, setWasUpdate] = useState(false);
+    const [reload, setReload] = useState(0);
+    const bodyRef = useRef(null);
 
-    const sheetRef = useRef(null);
-    const otpRefs = useRef([]);
+    const set = (patch) => { setF((s) => ({ ...s, ...patch })); setErr(""); };
+    const totalUnits = Number(opts?.enquiry?.totalUnits ?? (Number(enquiry.quantity) * Number(enquiry.packSize))) || 0;
 
-    const set = (k, v) => { setF((s) => ({ ...s, [k]: v })); setErr(""); };
-    const price = parseFloat(f.price) || 0;
-    const days = parseInt(f.days, 10) || 0;
-
-    // Lock page scroll while open, close on Escape, move focus into the dialog.
+    // lock page scroll (native + Lenis) while open
     useEffect(() => {
-        const sw = window.innerWidth - document.documentElement.clientWidth;
+        const root = document.documentElement;
+        const sw = window.innerWidth - root.clientWidth;
         const { style } = document.body;
-        const prevO = style.overflow, prevP = style.paddingRight;
+        const po = style.overflow, pp = style.paddingRight;
         style.overflow = "hidden";
         if (sw > 0) style.paddingRight = `${sw}px`;
-        sheetRef.current?.focus({ preventScroll: true });
-        return () => { style.overflow = prevO; style.paddingRight = prevP; };
+        try { window.lenis?.stop?.(); } catch { /* ignore */ }
+        return () => { style.overflow = po; style.paddingRight = pp; try { window.lenis?.start?.(); } catch { /* ignore */ } };
     }, []);
 
     const closeRef = useRef();
-    closeRef.current = () => (step === "done" ? onDone?.(quote) : onClose?.());
+    closeRef.current = () => (view === "done" ? onDone?.(quote, { withdrawn: false }) : onClose?.());
     useEffect(() => {
         const onKey = (e) => { if (e.key === "Escape") closeRef.current(); };
         document.addEventListener("keydown", onKey);
         return () => document.removeEventListener("keydown", onKey);
     }, []);
 
-    // OTP resend countdown.
+    // Price starts at the buyer's custom price, otherwise the regular listing price (both are per sale unit, incl. GST).
+    const choose = (l, mine) => {
+        if (!l.unitMatches) return; // different unit from the buyer's: cannot be quoted
+        const mq = mine && mine.submissionId === l.submissionId ? mine : null;
+        const start = l.customPrice ?? l.listPrice;
+        setSel(l);
+        setF({
+            price: start == null ? "" : String(start),
+            basis: l.saleBasis || "per_unit",
+            gstIncl: true,
+            valid: mq?.validityOption || "7d",
+        });
+        setErr(""); setView("price");
+        requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: 0 }));
+    };
+
     useEffect(() => {
-        if (step !== "otp") return undefined;
-        setCd(30);
-        const t = setInterval(() => setCd((c) => Math.max(0, c - 1)), 1000);
-        return () => clearInterval(t);
-    }, [step, otpRun]);
+        if (!isLoggedIn || !token) { setView("gate"); return undefined; }
+        const ctl = new AbortController();
+        setView("loading");
+        fetchQuoteOptions(token, enquiry.id, ctl.signal).then((res) => {
+            if (ctl.signal.aborted) return;
+            if (!res.success) {
+                if (res.status === 401 || GATE_CODES.includes(res.code)) { setView("gate"); return; }
+                setMsg(res.message || "Couldn't load your catalog."); setView("error"); return;
+            }
+            setOpts(res);
+            const want = initialSubmissionId || res.myQuote?.submissionId;
+            const hit = want ? res.listings.find((l) => l.submissionId === want && l.selectable && l.unitMatches) : null;
+            if (hit) choose(hit, res.myQuote); else setView("pick");
+        }).catch(() => { });
+        return () => ctl.abort();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isLoggedIn, token, enquiry.id, reload]);
 
-    useEffect(() => {
-        if (step === "otp") otpRefs.current[0]?.focus({ preventScroll: true });
-    }, [step]);
+    // "Sell this": opens the add-product wizard (/grow) with what the buyer posted: product name, brand, unit and image.
+    // The wizard shows them as locked fields. After the listing is created the seller returns here with the
+    // new listing preselected (useQuoteResume).
+    const enqBrand = pickBrandName(enquiry) || pickBrandName(opts?.enquiry);
+    const enqImage = pickImage(enquiry) || pickImage(opts?.enquiry);
+    const goSell = () => nav("/grow?start=1", {
+        state: {
+            from: `${loc.pathname}${loc.search}`,
+            enquiry,
+            sellPrefill: {
+                productName: String(enquiry.productName || "").trim(),
+                brandName: enqBrand,
+                unit: enquiry.unit || "",
+                image: enqImage,
+            },
+        },
+    });
+    // "Add a new product" (free-form) keeps its own page.
+    const goAdd = () => nav(`/grow/enquiry/${enquiry.id}/add-product`, { state: { from: `${loc.pathname}${loc.search}`, enquiry } });
+    const goSignIn = () => nav("/grow?start=1", { state: { from: enquiryPath(enquiry.id) } });
 
-    const submitForm = () => {
-        if (f.name.trim().length < 2) return setErr("Enter your business name.");
-        if (!/^[6-9]\d{9}$/.test(f.mob)) return setErr("Enter a valid 10-digit mobile number.");
-        if (!(price > 0)) return setErr(`Enter your price per ${unit}.`);
-        if (!(days > 0)) return setErr("Enter the delivery days.");
-        setErr(""); setInfo(""); setDigits(["", "", "", "", "", ""]); setStep("otp");
+    // ---- price maths ----
+    // The seller types a price per unit / pack / master pack, with or without GST. Everything is worked out from the
+    // price per base unit incl. GST. `saleIncl` is the same price per SALE unit incl. GST that listings and buyer
+    // custom prices are stored in.
+    const price = parseFloat(f.price) || 0;
+    const gstPct = sel ? Number(sel.gstPercent) || 0 : 0;
+    const calc = useMemo(() => {
+        if (!sel || !(price > 0)) return null;
+        const g = 1 + gstPct / 100;
+        const inclEntered = f.gstIncl ? price : price * g;                  // per the basis the seller typed
+        const perUnitIncl = inclEntered / unitsIn(sel, f.basis);
+        const saleUnits = unitsIn(sel, sel.saleBasis || "per_unit");
+        const moqBase = Number(sel.moqUnits) > 0 ? Number(sel.moqUnits) : (Number(sel.moq) > 0 ? Number(sel.moq) : 1) * saleUnits;
+        const totalIncl = round2(perUnitIncl * moqBase);
+        const taxable = round2(totalIncl / g);
+        const unitExcl = perUnitIncl / g;
+        return {
+            saleIncl: round2(perUnitIncl * saleUnits),
+            moqBase, totalIncl, taxable, gstAmount: round2(totalIncl - taxable),
+            perUnitExcl: unitExcl,
+            perPackExcl: unitExcl * unitsIn(sel, "per_pack"),
+            perMasterExcl: sel.hasMaster ? unitExcl * unitsIn(sel, "per_master_pack") : null,
+        };
+    }, [sel, price, f.basis, f.gstIncl, gstPct]);
+
+    // Switching "per unit / pack / master pack" or "incl. / excl. GST" keeps the same real price and re-expresses it.
+    const convertTo = (nextBasis, nextIncl) => {
+        if (!sel || !(price > 0)) return set({ basis: nextBasis, gstIncl: nextIncl });
+        const g = 1 + gstPct / 100;
+        const perUnitIncl = (f.gstIncl ? price : price * g) / unitsIn(sel, f.basis);
+        const next = (perUnitIncl * unitsIn(sel, nextBasis)) / (nextIncl ? 1 : g);
+        set({ basis: nextBasis, gstIncl: nextIncl, price: String(round4(next)) });
     };
 
-    const verify = () => {
-        if (digits.join("").length < 6) return setErr("Enter the 6-digit code.");
-        setErr("");
-        setQuote({ name: f.name.trim(), mobile: f.mob, price, days, validDays: f.valid, total: price * total });
-        setStep("done");
+    const basisOpts = !sel ? [] : [
+        ["per_unit", `Per ${sel.unit}`],
+        ...(Number(sel.packSize) > 1 || sel.saleBasis === "per_pack" ? [["per_pack", "Per pack"]] : []),
+        ...(sel.hasMaster ? [["per_master_pack", "Per master pack"]] : []),
+    ];
+    const basisWord = f.basis === "per_pack" ? "pack" : f.basis === "per_master_pack" ? "master pack" : sel?.unit;
+
+    const saleIncl = calc?.saleIncl ?? 0;
+    const sameAsList = !!sel && sel.listPrice != null && nearPrice(saleIncl, sel.listPrice);
+    const sameAsCustom = !!sel && sel.customPrice != null && nearPrice(saleIncl, sel.customPrice);
+    const wantsCustom = saleIncl > 0 && !sameAsList && !sameAsCustom;            // new price -> store as the buyer's price
+    const resetCustom = saleIncl > 0 && sameAsList && sel?.customPrice != null;  // back to regular price -> remove override
+    const isMine = !!sel && opts?.myQuote?.submissionId === sel.submissionId;
+    const belowMoq = !!sel && sel.moqUnits > 0 && totalUnits < sel.moqUnits;     // same unit, so the numbers are comparable
+    const buyerId = pickBuyerId(enquiry) ?? pickBuyerId(opts?.enquiry);
+
+    const submit = async () => {
+        if (busy || !sel) return;
+        if (!sel.unitMatches) return setErr(`This product is sold in ${sel.unit}, but the buyer asked in ${unit}. You can't quote it.`);
+        if (!(price > 0)) return setErr("Enter your price.");
+        if ((wantsCustom || resetCustom) && !buyerId) {
+            console.warn("RfqQuoteModal: no buyer id found. enquiry keys:", Object.keys(enquiry),
+                "| quote-options enquiry keys:", Object.keys(opts?.enquiry || {}));
+        }
+        setBusy(true); setErr("");
+
+        if (buyerId && wantsCustom) {
+            const r = await saveCustomPricingForBuyer(token, buyerId, [{
+                submissionId: sel.submissionId, overrideType: "fixed", value: round2(saleIncl), inputMode: "fixed_price",
+            }]);
+            if (r?.rejected?.length || (!r?.success && !r?.saved)) {
+                setBusy(false);
+                console.warn("saveCustomPricingForBuyer response:", r);
+                return setErr(r?.rejected?.length
+                    ? `That price would go below ₹${MIN_UNIT_PRICE} per unit, so it was not saved.`
+                    : (r?.message || "Couldn't save this buyer's price. Please try again."));
+            }
+        } else if (buyerId && resetCustom) {
+            const r = await deleteCustomPricingForBuyer(token, buyerId, sel.submissionId);
+            if (!r?.success) {
+                setBusy(false);
+                return setErr(r?.message || "Couldn't reset this buyer's price. Please try again.");
+            }
+        }
+
+        const res = await submitQuote(token, enquiry.id, {
+            submissionId: sel.submissionId, price, priceBasis: f.basis, gstInclusive: f.gstIncl,
+            validity: f.valid,
+            // If this modal saved the price itself, the server must not save it again. If there was no buyer id,
+            // ask the server to store it (it knows who owns the enquiry).
+            saveCustomPrice: !buyerId && wantsCustom,
+        });
+        setBusy(false);
+        if (!res.success) {
+            if (res.status === 401 || GATE_CODES.includes(res.code)) return setView("gate");
+            return setErr(res.message || "Couldn't send the quote. Please try again.");
+        }
+        setQuote(res.quote); setWasUpdate(!!res.updated); setView("done");
     };
 
-    const setDigit = (i, raw) => {
-        const v = raw.replace(/\D/g, "").slice(-1);
-        setDigits((d) => d.map((x, idx) => (idx === i ? v : x)));
-        setErr("");
-        if (v && otpRefs.current[i + 1]) otpRefs.current[i + 1].focus();
-    };
-    const onDigitKey = (i, e) => {
-        if (e.key === "Backspace" && !digits[i] && otpRefs.current[i - 1]) otpRefs.current[i - 1].focus();
-        if (e.key === "Enter") verify();
-    };
-    const onDigitPaste = (e) => {
-        const t = (e.clipboardData.getData("text") || "").replace(/\D/g, "").slice(0, 6);
-        if (!t) return;
-        e.preventDefault();
-        setDigits(Array.from({ length: 6 }, (_, j) => t[j] || ""));
-        otpRefs.current[Math.min(t.length, 5)]?.focus();
+    const withdraw = async () => {
+        if (busy || !window.confirm("Withdraw your quote? The buyer will no longer see it.")) return;
+        setBusy(true);
+        const res = await withdrawQuote(token, enquiry.id);
+        setBusy(false);
+        if (!res.success) return setErr(res.message || "Couldn't withdraw the quote.");
+        onDone?.(null, { withdrawn: true });
     };
 
-    const onFormKey = (e) => { if (e.key === "Enter") { e.preventDefault(); submitForm(); } };
+    // ---- catalog search ----
+    const q = search.trim().toLowerCase();
+    const hit = (l) => !q || `${l.productName} ${l.brandName}`.toLowerCase().includes(q);
+    const listings = (opts?.listings || []).filter(hit);
+    const matches = listings.filter((l) => l.matches);
+    const others = opts?.canAddNew ? listings.filter((l) => !l.matches) : [];
+    const anySelectable = (opts?.listings || []).some((l) => l.selectable && l.unitMatches);
+    const onlyUnitBlocked = !anySelectable && (opts?.listings || []).some((l) => l.selectable && !l.unitMatches);
 
-    return (
-        <div className="ged" data-theme={theme || readTheme()}>
-            <motion.div className="ged-ov" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                onMouseDown={(e) => { if (e.target === e.currentTarget) closeRef.current(); }}>
-                <motion.div ref={sheetRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Send your quote" data-lenis-prevent
-                    className="ged-sheet"
-                    initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 40, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: EASE }}>
-                    <button type="button" className="ged-x" aria-label="Close" onClick={() => closeRef.current()}><X size={18} /></button>
+    const title = { loading: "Send your quote", gate: "Sign in to quote", error: "Something went wrong", pick: "Choose a product", price: isMine ? "Update your quote" : "Set your price", done: wasUpdate ? "Quote updated" : "Quote sent" }[view];
 
-                    {step === "form" && (
-                        <div className="ged-in" key="form">
-                            <h3 className="ged-t">Send your quote</h3>
-                            <p className="ged-sub">
-                                {enquiry.productName} · {fmtNum(total)} {unit}
-                            </p>
-                            <p className="ged-sub" style={{ fontSize: ".9rem" }}>No account needed to send your first quote.</p>
+    return createPortal(
+        <div className="rqm" role="presentation">
+            <div className="rqm-ov" onMouseDown={(e) => { if (e.target === e.currentTarget) closeRef.current(); }}>
+                <div className="rqm-sheet" role="dialog" aria-modal="true" aria-label="Send your quote">
+                    <div className="rqm-hd">
+                        {view === "price" && (
+                            <button type="button" className="rqm-ib" aria-label="Back to products" onClick={() => { setErr(""); setView("pick"); }}><ArrowLeft size={18} /></button>
+                        )}
+                        <div className="rqm-ht">
+                            <h3>{title}</h3>
+                            <p>{enquiry.productName} · {fmtNum(totalUnits)} {unit}</p>
+                        </div>
+                        <button type="button" className="rqm-ib" aria-label="Close" onClick={() => closeRef.current()}><X size={18} /></button>
+                    </div>
 
-                            <div className="ged-f">
-                                <label htmlFor="ged-qn">Business name</label>
-                                <div className="ged-inp">
-                                    <input id="ged-qn" autoComplete="organization" placeholder="Your company" value={f.name}
-                                        onChange={(e) => set("name", e.target.value)} onKeyDown={onFormKey} />
+                    <div className="rqm-bd" ref={bodyRef} data-lenis-prevent>
+                        {view === "loading" && <div aria-busy="true"><div className="rqm-sk" /><div className="rqm-sk" /><div className="rqm-sk" /></div>}
+
+                        {view === "gate" && (<>
+                            <p className="rqm-p">Quotes are sent from your seller catalog. Sign in or finish setting up your shop and you will come straight back here.</p>
+                            <button type="button" className="rqm-btn go blk" onClick={goSignIn}>Continue</button>
+                        </>)}
+
+                        {view === "error" && (<>
+                            <p className="rqm-p">{msg}</p>
+                            <button type="button" className="rqm-btn go blk" onClick={() => setReload((r) => r + 1)}>Try again</button>
+                        </>)}
+
+                        {view === "pick" && opts && (<>
+                            <label className="rqm-search">
+                                <Search size={16} aria-hidden="true" />
+                                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search your catalog" aria-label="Search your catalog" />
+                                {search && <button type="button" aria-label="Clear search" onClick={() => setSearch("")}><X size={14} /></button>}
+                            </label>
+
+                            {matches.length > 0 && (
+                                <div className="rqm-sec"><p className="rqm-h">From your catalog</p>
+                                    {matches.map((l) => <PickRow key={l.submissionId} l={l} unit={unit} onPick={(x) => choose(x, opts.myQuote)} />)}</div>
+                            )}
+                            {others.length > 0 && (
+                                <div className="rqm-sec"><p className="rqm-h">Other products in your catalog</p>
+                                    <p className="rqm-n">This buyer accepts an equivalent product.</p>
+                                    {others.map((l) => <PickRow key={l.submissionId} l={l} unit={unit} onPick={(x) => choose(x, opts.myQuote)} />)}</div>
+                            )}
+                            {q && !matches.length && !others.length && <p className="rqm-p">Nothing in your catalog matches "{search}".</p>}
+                            {!q && !anySelectable && (
+                                <p className="rqm-p">
+                                    {onlyUnitBlocked
+                                        ? `This buyer asked in ${unit}, and none of your products are sold in ${unit}, so you can't quote on them. Add a product sold in ${unit} below.`
+                                        : "You don't have a product in your catalog that fits this enquiry yet. Add one below to send your quote."}
+                                </p>
+                            )}
+
+                            {/* Sell this: built from the enquiry itself (product name, brand, unit, image), not from catalogue brands. */}
+                            <div className="rqm-sec"><p className="rqm-h">Sell this item</p>
+                                <div className="rqm-row add">
+                                    <Thumb src={enqImage || null} name={enquiry.productName} />
+                                    <span className="rqm-tx">
+                                        <b>{enquiry.productName}</b>
+                                        <small>{[enqBrand, `Sold in ${unit}`].filter(Boolean).join(" · ")}</small>
+                                        <small>List it exactly as the buyer asked, then send your quote.</small>
+                                    </span>
+                                    <button type="button" className="rqm-add" onClick={goSell}>Sell this</button>
                                 </div>
                             </div>
-                            <div className="ged-f">
-                                <label htmlFor="ged-qm">Mobile number</label>
-                                <div className="ged-inp">
-                                    <span className="ged-pre">+91</span>
-                                    <input id="ged-qm" inputMode="numeric" maxLength={10} autoComplete="tel-national" placeholder="98765 43210" value={f.mob}
-                                        onChange={(e) => set("mob", e.target.value.replace(/\D/g, "").slice(0, 10))} onKeyDown={onFormKey} />
+                            {opts.canAddNew && <button type="button" className="rqm-new" onClick={goAdd}><Plus size={16} />Add a new product</button>}
+                        </>)}
+
+                        {view === "price" && sel && (<>
+                            <div className="rqm-card">
+                                <div className="rqm-sel">
+                                    <Thumb src={sel.image} name={sel.productName} />
+                                    <span className="rqm-tx"><b>{sel.productName}</b><small>{sel.brandName || "No brand"}</small></span>
+                                </div>
+                                <dl className="rqm-kv">
+                                    <div><dt>Pack</dt><dd>1 Pack = {fmtNum(sel.packSize)} {sel.unit}</dd></div>
+                                    {sel.hasMaster && <div><dt>Master pack</dt><dd>1 Master Pack = {fmtNum(sel.masterPackSize)} Packs ({fmtNum(sel.packSize * sel.masterPackSize)} {sel.unit})</dd></div>}
+                                    <div><dt>GST on this product</dt><dd>{sel.gstPercent}%</dd></div>
+                                    {sel.moq != null && <div><dt>Your MOQ</dt><dd>{fmtNum(sel.moq)} {saleLabel(sel)}{sel.moq === 1 ? "" : "s"} ({fmtNum(sel.moqUnits)} {sel.unit})</dd></div>}
+                                    <div><dt>Freight</dt><dd>{sel.freightIncluded ? "Included" : "Extra"}</dd></div>
+                                    <div><dt>Buyer needs</dt><dd>{fmtNum(enquiry.quantity)} pack{Number(enquiry.quantity) === 1 ? "" : "s"} × {fmtNum(enquiry.packSize)} {unit} = {fmtNum(totalUnits)} {unit}</dd></div>
+                                </dl>
+                                {belowMoq && <p className="rqm-warn">The buyer's quantity is below your MOQ of {fmtNum(sel.moqUnits)} {sel.unit}. They may not be able to order it at the minimum from your listing.</p>}
+                            </div>
+
+                            <div className="rqm-f">
+                                <label>I am entering the price</label>
+                                <div className="rqm-chips" role="group">
+                                    {basisOpts.map(([k, l]) => <button key={k} type="button" aria-pressed={f.basis === k} onClick={() => convertTo(k, f.gstIncl)}>{l}</button>)}
                                 </div>
                             </div>
-                            <div className="ged-two">
-                                <div className="ged-f">
-                                    <label htmlFor="ged-qp">Price per {unit}</label>
-                                    <div className="ged-inp">
-                                        <span className="ged-pre">₹</span>
-                                        <input id="ged-qp" inputMode="decimal" value={f.price}
-                                            onChange={(e) => set("price", e.target.value.replace(/[^\d.]/g, ""))} onKeyDown={onFormKey} />
-                                    </div>
-                                </div>
-                                <div className="ged-f">
-                                    <label htmlFor="ged-qd">Deliver in</label>
-                                    <div className="ged-inp">
-                                        <input id="ged-qd" inputMode="numeric" value={f.days}
-                                            onChange={(e) => set("days", e.target.value.replace(/\D/g, "").slice(0, 3))} onKeyDown={onFormKey} />
-                                        <span className="ged-suf">days</span>
-                                    </div>
+                            <div className="rqm-f">
+                                <label>Does this price include GST?</label>
+                                <div className="rqm-chips" role="group">
+                                    <button type="button" aria-pressed={f.gstIncl} onClick={() => convertTo(f.basis, true)}>Includes GST</button>
+                                    <button type="button" aria-pressed={!f.gstIncl} onClick={() => convertTo(f.basis, false)}>Excludes GST</button>
                                 </div>
                             </div>
-                            <div className="ged-f">
-                                <label id="ged-qv-l">Quote valid for</label>
-                                <div className="ged-ch" role="group" aria-labelledby="ged-qv-l">
-                                    {VALIDITY.map((d) => (
-                                        <button key={d} type="button" aria-pressed={f.valid === d} onClick={() => set("valid", d)}>{d} days</button>
-                                    ))}
+                            <div className="rqm-f">
+                                <label htmlFor="rqm-price">Price per {basisWord} ({f.gstIncl ? "incl." : "excl."} GST {sel.gstPercent}%)</label>
+                                <div className="rqm-inp"><span>₹</span>
+                                    <input id="rqm-price" inputMode="decimal" value={f.price}
+                                        onChange={(e) => set({ price: e.target.value.replace(/[^\d.]/g, "") })} />
+                                </div>
+                                <p className="rqm-n">
+                                    {sel.customPrice != null ? `Started from your custom price for this buyer (${inr(sel.customPrice)} per ${saleLabel(sel)}, incl. GST). `
+                                        : sel.listPrice != null ? `Started from your regular listing price (${inr(sel.listPrice)} per ${saleLabel(sel)}, incl. GST). ` : ""}
+                                    This is the price the buyer pays on your listing, so it is saved for them when you send the quote.
+                                </p>
+                            </div>
+
+                            <div className="rqm-f">
+                                <label>Quote valid for</label>
+                                <div className="rqm-chips" role="group">
+                                    {VALIDITY_OPTIONS.map((o) => <button key={o.key} type="button" aria-pressed={f.valid === o.key} onClick={() => set({ valid: o.key })}>{o.label}</button>)}
                                 </div>
                             </div>
 
-                            <div className="ged-brk">
-                                {price > 0 ? (
-                                    <>
-                                        <div><span>{rupees(price)} × {fmtNum(total)} {unit}</span><b>{rupees(price * total)}</b></div>
-                                        <div><span>Valid until</span><b>{validTill(f.valid)}</b></div>
-                                        <div className="tot"><span>Your quote</span><span>{rupees(price * total)}</span></div>
-                                    </>
-                                ) : `Enter your price per ${unit} to see the total.`}
+                            <div className="rqm-bk">
+                                {calc ? (<>
+                                    <div><span>Price per {sel.unit} (excl. GST)</span><b>{inr(calc.perUnitExcl, 2)}</b></div>
+                                    {Number(sel.packSize) > 1 && <div><span>Price per pack (excl. GST)</span><b>{inr(calc.perPackExcl, 2)}</b></div>}
+                                    {calc.perMasterExcl != null && <div><span>Price per master pack (excl. GST)</span><b>{inr(calc.perMasterExcl, 2)}</b></div>}
+                                    <div><span>Your MOQ</span><b>{fmtNum(sel.moq ?? 1)} {saleLabel(sel)}{Number(sel.moq ?? 1) === 1 ? "" : "s"} ({fmtNum(calc.moqBase)} {sel.unit})</b></div>
+                                    <div className="ln"><span>Total before GST</span><b>{inr(calc.taxable)}</b></div>
+                                    <div><span>GST @ {gstPct}%</span><b>{inr(calc.gstAmount)}</b></div>
+                                    <div className="tot"><span>Total at MOQ (incl. GST)</span><b>{inr(calc.totalIncl)}</b></div>
+                                </>) : <p className="rqm-n" style={{ margin: 0 }}>Enter your price to see the breakdown at your MOQ.</p>}
                             </div>
+                            {err && <p className="rqm-err" role="alert">{err}</p>}
+                        </>)}
 
-                            <p className="ged-err" role="alert">{err}</p>
-                            <button type="button" className="ged-btn go blk" style={{ marginTop: 6 }} onClick={submitForm}>
-                                <Send className="ged-ic" />Submit quote
+                        {view === "done" && quote && (<>
+                            <div className="rqm-okc"><Check size={28} strokeWidth={3} /></div>
+                            <p className="rqm-p ctr">The buyer can now see your quote and buy from your listing.</p>
+                            <div className="rqm-bk">
+                                <div><span>Product</span><b>{quote.productName}</b></div>
+                                <div><span>Total before GST</span><b>{inr(quote.taxableValue)}</b></div>
+                                <div><span>GST @ {quote.gstPercent}%</span><b>{inr(quote.gstAmount)}</b></div>
+                                <div className="tot"><span>Total incl. GST</span><b>{inr(quote.total)}</b></div>
+                                <div><span>Price per pack (incl. GST)</span><b>{inr(quote.price)}</b></div>
+                                <div><span>Valid</span><b>{quote.lifetime ? "No expiry" : `Until ${shortDate(quote.validUntil)}`}</b></div>
+                            </div>
+                        </>)}
+                    </div>
+
+                    {view === "price" && sel && (
+                        <div className="rqm-ft">
+                            <button type="button" className="rqm-btn go blk" disabled={busy || !calc} onClick={submit}>
+                                <Send size={16} />{busy ? "Sending…" : isMine ? "Update quote" : "Send quote"}
                             </button>
-                            <p className="ged-fi">We will confirm your mobile number with a one-time code.</p>
+                            {isMine && <button type="button" className="rqm-lnk" disabled={busy} onClick={withdraw}>Withdraw my quote</button>}
                         </div>
                     )}
-
-                    {step === "otp" && (
-                        <div className="ged-in" key="otp">
-                            <h3 className="ged-t">Confirm it is you</h3>
-                            <p className="ged-sub">Enter the 6-digit code sent to <b style={{ color: "var(--ink)" }}>{maskMobile(f.mob)}</b></p>
-                            <div className="ged-otp" role="group" aria-label="6-digit code">
-                                {digits.map((d, i) => (
-                                    <input key={i} ref={(el) => { otpRefs.current[i] = el; }} inputMode="numeric" maxLength={1} value={d}
-                                        aria-label={`Digit ${i + 1}`} autoComplete={i === 0 ? "one-time-code" : "off"}
-                                        onChange={(e) => setDigit(i, e.target.value)} onKeyDown={(e) => onDigitKey(i, e)} onPaste={onDigitPaste} />
-                                ))}
-                            </div>
-                            <p className="ged-err" role="alert">{err}</p>
-                            <button type="button" className="ged-btn go blk" style={{ marginTop: 6 }} onClick={verify}>Verify and send quote</button>
-                            <p className="ged-fi">
-                                <button type="button" className="ged-lnk" disabled={cd > 0}
-                                    onClick={() => { setInfo("A new code is on its way."); setDigits(["", "", "", "", "", ""]); setOtpRun((r) => r + 1); }}>
-                                    {cd > 0 ? `Resend in ${cd}s` : "Resend code"}
-                                </button>
-                                {" · "}
-                                <button type="button" className="ged-lnk" onClick={() => { setErr(""); setStep("form"); }}>Edit quote</button>
-                            </p>
-                            {info && <p className="ged-fi" role="status">{info}</p>}
-                            <p className="ged-fi">Prototype: any 6 digits will work.</p>
-                        </div>
+                    {view === "done" && (
+                        <div className="rqm-ft"><button type="button" className="rqm-btn go blk" onClick={() => onDone?.(quote, { withdrawn: false })}>Done</button></div>
                     )}
-
-                    {step === "done" && quote && (
-                        <div className="ged-in ged-center" key="done">
-                            <div className="ged-okc"><Check /></div>
-                            <h3 className="ged-t">Quote sent to the buyer</h3>
-                            <p className="ged-sub">Thank you, {quote.name}. The buyer will review it and get back to you.</p>
-                            <div className="ged-brk" style={{ textAlign: "left" }}>
-                                <div><span>Your price</span><b>{rupees(quote.price)} / {unit}</b></div>
-                                <div><span>Total for {fmtNum(total)} {unit}</span><b>{rupees(quote.total)}</b></div>
-                                <div><span>Delivery</span><b>~{quote.days} day{quote.days > 1 ? "s" : ""}</b></div>
-                                <div><span>Valid until</span><b>{validTill(quote.validDays)}</b></div>
-                            </div>
-                            <button type="button" className="ged-btn go blk" onClick={() => onDone?.(quote)}>Done</button>
-                        </div>
-                    )}
-                </motion.div>
-            </motion.div>
-        </div>
+                </div>
+            </div>
+        </div>,
+        document.body
     );
 }

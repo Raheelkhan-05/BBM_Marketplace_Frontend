@@ -6,6 +6,12 @@
 // When `from` is an enquiry page (list or single enquiry) the flow does login -> onboarding -> straight back to that
 // exact page, instead of opening the add-product wizard.
 //
+// "Sell this" from an enquiry quote popup sends { from, enquiry, sellPrefill: { productName, brandName, unit, image } }.
+// Then the wizard opens with that product name, brand, unit and image shown as locked fields, and the enquiry id is
+// sent with the listing so the backend approves it directly. When the listing comes back live, the seller is sent
+// straight back to the enquiry with the quote popup re-opened on the new listing (resumeQuote). If it is not live
+// (for example the product already existed and is still pending review), a "listing submitted" screen is shown.
+//
 // The Wizard is also exported: SellThisItemModal reuses it in "locked" mode (brand / name / image fixed, own submit fn).
 import { useEffect, useMemo, useRef, useState } from "react";   // add useMemo
 import { derivePriceBreakdown } from "../../shared/customPricing.js";
@@ -64,6 +70,7 @@ const Chips = ({ v, on, o }) => (
 const YN = ({ v, on }) => <Chips v={v} on={(k) => on(k === "y")} o={[["y", "Yes"], ["n", "No"]]} />;
 // Chips compare String(v) to the key. true/false map to y/n, and null/undefined stay EMPTY (nothing preselected).
 const yn = (b) => (b === true ? "y" : b === false ? "n" : "");
+const sameUnitText = (a, b) => String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
 
 /* ================================ PAGE ================================ */
 export default function GrowStartPage() {
@@ -75,8 +82,15 @@ export default function GrowStartPage() {
     // Page the seller came from (e.g. "/grow/products" or "/grow/enquiry/12"). Captured once, because the ?start=1
     // redirect below drops it.
     const [returnTo] = useState(() => safeFrom(location.state?.from));
+    // "Sell this" from an enquiry: the enquiry itself, and what the buyer posted (product name, brand, unit, image).
+    const [enquiry] = useState(() => location.state?.enquiry || null);
+    const [sellPrefill] = useState(() => {
+        const p = location.state?.sellPrefill;
+        return p && (p.productName || p.brandName || p.unit || p.image) ? p : null;
+    });
     // Came from an enquiry page: after login / onboarding go straight back there instead of the add-product wizard.
-    const resumeBack = isEnquiryPath(returnTo);
+    // Not when the seller pressed "Sell this": then they must land in the wizard.
+    const resumeBack = isEnquiryPath(returnTo) && !sellPrefill;
 
     // land | auth | check | onb | prod | pdone
     // Coming from "Add your products" (?start=1): never flash the landing screen. If the access check was
@@ -88,6 +102,7 @@ export default function GrowStartPage() {
     });
     const [toast, setToast] = useState("");
     const [last, setLast] = useState(null);
+    const [lastRes, setLastRes] = useState(null);
     const auto = useRef(false), pend = useRef(false), startRef = useRef(null), tt = useRef(null);
     useDropGuard(); // a file dropped just outside a drop zone must not navigate the tab away
 
@@ -104,6 +119,26 @@ export default function GrowStartPage() {
         nav(returnTo, { replace: true });
     };
     const finishFlow = () => (resumeBack ? goBack() : setView("prod"));
+
+    // After "Sell this": back to the enquiry with the quote popup re-opened on the new listing.
+    const toQuote = (res) => nav(returnTo, {
+        replace: true,
+        state: { resumeQuote: { enquiry, submissionId: res?.submission?.id || null } },
+    });
+    const backToQuote = () => toQuote(lastRes);
+
+    // The listing was just created. From an enquiry and live (approved): go straight back to the enquiry, with the
+    // loading screen up meanwhile. Otherwise show the "listing submitted" screen.
+    const onListed = (card, res) => {
+        setLast(card);
+        setLastRes(res || null);
+        if (enquiry && returnTo && res?.submission?.review_status === "approved" && res?.submission?.id) {
+            setView("check");
+            toQuote(res);
+            return;
+        }
+        setView("pdone");
+    };
 
     const route = (a) => {
         if (a?.canPublish) return finishFlow();
@@ -141,6 +176,7 @@ export default function GrowStartPage() {
         else nav(returnTo, { replace: true });
     };
 
+    const live = lastRes?.submission?.review_status === "approved";
     const hasBar = view === "onb" || view === "prod";
     return (
         <div className="gs">
@@ -157,21 +193,31 @@ export default function GrowStartPage() {
                         onDone={() => { setAccess(token, { canPublish: true, success: true }); finishFlow(); }} />
                 )}
                 {view === "prod" && (
-                    <Wizard token={token} say={say} onExit={exitWizard}
+                    <Wizard token={token} say={say} onExit={exitWizard} prefill={sellPrefill} enquiryId={sellPrefill ? (enquiry?.id || null) : null}
                         onNeedOnboarding={() => setView("onb")} onNeedLogin={() => setView("auth")}
-                        onSubmitted={(card) => { setLast(card); setView("pdone"); }} />
+                        onSubmitted={onListed} />
                 )}
                 {view === "pdone" && (
                     <section className="scr ctr">
                         <div className="big" aria-hidden="true">✓</div>
-                        <h2>Your listing is submitted</h2>
-                        <p className="sub">We will review it and let you know once it is live for buyers.</p>
+                        <h2>{enquiry && live ? "Your listing is live" : "Your listing is submitted"}</h2>
+                        <p className="sub">
+                            {enquiry && live
+                                ? "Now send your quote to the buyer with this product."
+                                : "We will review it and let you know once it is live for buyers."}
+                        </p>
                         {last && <div className="pv" style={{ textAlign: "left", marginBottom: 22 }}>
                             <div className="th" style={last.img ? { backgroundImage: `url(${last.img})` } : undefined}>{last.img ? "" : "✓"}</div>
                             <div><b>{last.name}</b><small>{last.meta}</small></div></div>}
-                        <button className="sbtn" type="button" onClick={() => setView("prod")}>Add another product</button>
+                        {enquiry && (
+                            <button className="sbtn" type="button" onClick={backToQuote} disabled={!live}>Continue to your quote</button>
+                        )}
+                        {enquiry && !live && <p className="cap">You can send your quote once this listing is approved.</p>}
+                        {!enquiry && <button className="sbtn" type="button" onClick={() => setView("prod")}>Add another product</button>}
                         <Link className="sbtn gh" to="/grow/products">Go to my products</Link>
-                        <Link className="sbtn gh" to="/grow/details">Back to the seller page</Link>
+                        {enquiry
+                            ? !live && <button className="sbtn gh" type="button" onClick={() => nav(returnTo, { replace: true })}>Back to the enquiry</button>
+                            : <Link className="sbtn gh" to="/grow/details">Back to the seller page</Link>}
                     </section>
                 )}
             </div>
@@ -402,6 +448,15 @@ const blank = () => ({
 // when a catalogue match is lost, the fields it had locked go back to empty
 const unlock = (x) => (x.match ? { ...x, match: null, u: "", ps: "", op: null, mps: "", gst: "" } : x);
 
+// NEW (enquiry prefill): product name, brand, unit and image come from the enquiry the seller is answering.
+// All four stay fixed; pack size, price, stock etc. are the seller's to fill in.
+const prefillBlank = (R) => ({
+    ...blank(),
+    n: R.productName || "", b: R.brandName || "", nb: !R.brandName,
+    u: R.unit || "",
+    im: R.image ? [R.image] : [],
+});
+
 // NEW (locked mode): starting values for a catalogue item whose identity is fixed (SellThisItemModal).
 // Packaging is fixed too when the catalogue item has it on file; older items without it stay editable.
 const lockedBlank = (L) => {
@@ -449,14 +504,18 @@ function CertRow({ c, busy, onRename, onReplace, onRemove }) {
 }
 
 // Props for reuse (SellThisItemModal):
-//   locked   - { id, productName, brandName, image, unit, packSize, masterPackSize, gstPercent }
-//              brand / name / image are fixed; packaging + GST are fixed when the catalogue item has them.
-//   submitFn - async (payload) => response. Replaces the default create call (e.g. createSellerListingForBrand).
-//   onStep   - called with the step index whenever it changes (lets a host scroll its own container to the top).
+//   locked    - { id, productName, brandName, image, unit, packSize, masterPackSize, gstPercent }
+//               brand / name / image are fixed; packaging + GST are fixed when the catalogue item has them.
+//   prefill   - { productName, brandName, unit, image } from an enquiry ("Sell this"): name, brand, unit and image are
+//               shown as locked fields, exactly what the buyer posted. A catalogue match is only used when it has the
+//               same unit. If the enquiry has no image, the normal photo upload is shown instead.
+//   enquiryId - id of that enquiry. It is sent as rfqEnquiryId so the backend approves the listing directly.
+//   submitFn  - async (payload) => response. Replaces the default create call (e.g. createSellerListingForBrand).
+//   onStep    - called with the step index whenever it changes (lets a host scroll its own container to the top).
 // onSubmitted(card, res) receives the raw API response as a 2nd argument.
-export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted, locked = null, submitFn = null, onStep }) {
+export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted, locked = null, prefill = null, enquiryId = null, submitFn = null, onStep, quiet = false }) {
     const { seller } = useSellerProfileStatus(token);
-    const [P, setP] = useState(() => (locked ? lockedBlank(locked) : blank()));
+    const [P, setP] = useState(() => (locked ? lockedBlank(locked) : prefill ? prefillBlank(prefill) : blank()));
     const [ps, setPs] = useState(0);
     const [busy, setBusy] = useState(false);
     const [up, setUp] = useState(false);
@@ -468,6 +527,11 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
     const dpInit = useRef(false);
     useEffect(() => { toTop(); onStep?.(ps); }, [ps]); // eslint-disable-line
     const set = (k, v) => setP((x) => ({ ...x, [k]: v }));
+    const fixedEnq = !locked && !!prefill; // name / brand / unit fixed to the enquiry
+    const fixedImg = fixedEnq && !!prefill.image; // the enquiry's image is locked too
+
+    // like `unlock`, but with an enquiry the unit stays what the buyer asked in
+    const unlockP = (x) => (x.match ? { ...x, match: null, u: fixedEnq ? (prefill.unit || "") : "", ps: "", op: null, mps: "", gst: "" } : x);
 
     // Policy options + the seller's last-used defaults (same sources as SellerListingForm)
     useEffect(() => {
@@ -506,17 +570,19 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
 
     // Existing catalogue product? Lock unit / pack / GST like the real form.
     // (Skipped in locked mode: the catalogue item is already known.)
+    // With an enquiry prefill a match is only used when its unit equals the enquiry's unit.
     useEffect(() => {
         if (locked) return undefined;
         const productName = P.n.trim(), brandName = P.b.trim();
-        if (productName.length < 2 || (!P.nb && !brandName)) { setP(unlock); return; }
+        if (productName.length < 2 || (!P.nb && !brandName)) { setP(unlockP); return; }
         const t = setTimeout(async () => {
             const r = await findBrandItemMatch(token, { productName, brandName, brandNotApplicable: P.nb });
             if (!r?.success) return;
             setP((x) => {
                 if (x.n.trim() !== productName || x.b.trim() !== brandName || x.nb !== P.nb) return x;
-                if (!r.match) return unlock(x);
+                if (!r.match) return unlockP(x);
                 const m = r.match, outer = Number(m.masterPackSize) > 1;
+                if (fixedEnq && prefill.unit && !sameUnitText(m.unit, prefill.unit)) return unlockP(x); // different unit: don't use it
                 return { ...x, match: m, u: m.unit, ps: String(m.packSize), op: outer, mps: outer ? String(m.masterPackSize) : "", gst: m.gstPercent ?? x.gst };
             });
         }, 400);
@@ -649,21 +715,43 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
                 {certField}
             </>)
         } : {
-            t: "What are you selling?", s: "Start with the basics buyers see first.",
+            t: "What are you selling?",
+            s: fixedEnq
+                ? (fixedImg ? "Product name, brand, unit and photo come from the buyer's enquiry." : "Product name, brand and unit come from the buyer's enquiry.")
+                : "Start with the basics buyers see first.",
             ok: P.n.trim().length >= 2 && (P.nb || P.b.trim()) && P.im.length > 0,
             h: () => (<>
-                <F l="Product name *"><In v={P.n} on={(v) => set("n", v)} placeholder="e.g. Premium Stainless Steel Hinges" /></F>
-                <F l="Brand *">
-                    <GrowBrandField token={token} value={P.b} image={P.bi} notApplicable={P.nb} isNew={P.bnew} say={say}
-                        onChange={({ b, bi, nb, isNew }) => setP((x) => ({ ...x, b, bi, nb, bnew: !!isNew }))} />
-                </F>
-                {P.match && <p className="cap">This product already exists on GROW. Its packaging and GST are fixed.</p>}
-                <div className="lb">Product images * <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600, color: "var(--mute)" }}>up to 5</span></div>
-                <div className={`ph gx-dz${imgDrop.active ? " on" : ""}`} {...imgDrop.bind}>
-                    {P.im.map((u, i) => <div className="th" key={u} style={{ backgroundImage: `url(${u})` }}><button type="button" className="x" aria-label="Remove image" onClick={() => setP((x) => ({ ...x, im: x.im.filter((_, j) => j !== i) }))}>×</button></div>)}
-                    {P.im.length < 5 && <label className="add">{up ? "…" : "+ Add"}<input type="file" accept="image/*" multiple hidden disabled={up} onChange={(e) => { addFiles(e.target.files, "im"); e.target.value = ""; }} /></label>}
-                </div>
-                <p className="cap" style={{ marginTop: 8 }}>Tap Add or drag and drop photos here.</p>
+                {fixedEnq ? (<>
+                    <div className="gx-lock">
+                        <div className="gx-lth" style={P.im[0] ? { backgroundImage: `url(${P.im[0]})` } : undefined}>{P.im[0] ? "" : (P.n.trim()[0] || "?").toUpperCase()}</div>
+                        <div className="gx-lin">
+                            <small>Product</small>
+                            <b>{P.n}</b>
+                            <span>{P.nb ? "No brand" : P.b}</span>
+                            {P.u && <span>Sold in {P.u}</span>}
+                        </div>
+                        <span className="gx-lk">Locked</span>
+                    </div>
+                    <p className="cap" style={{ marginTop: 10, marginBottom: 10 }}>
+                        {fixedImg ? "These come from the buyer's enquiry and can't be changed. " : "These come from the buyer's enquiry and can't be changed. The enquiry has no photo, so add your own below. "}
+                        Next, add your own price, stock and delivery terms.
+                    </p>
+                </>) : (<>
+                    <F l="Product name *"><In v={P.n} on={(v) => set("n", v)} placeholder="e.g. Premium Stainless Steel Hinges" /></F>
+                    <F l="Brand *">
+                        <GrowBrandField token={token} value={P.b} image={P.bi} notApplicable={P.nb} isNew={P.bnew} say={say}
+                            onChange={({ b, bi, nb, isNew }) => setP((x) => ({ ...x, b, bi, nb, bnew: !!isNew }))} />
+                    </F>
+                </>)}
+                {P.match && !quiet && <p className="cap">This product already exists on BBM Marketplace. Its packaging and GST are fixed.</p>}
+                {!fixedImg && (<>
+                    <div className="lb">Product images * <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600, color: "var(--mute)" }}>up to 5</span></div>
+                    <div className={`ph gx-dz${imgDrop.active ? " on" : ""}`} {...imgDrop.bind}>
+                        {P.im.map((u, i) => <div className="th" key={u} style={{ backgroundImage: `url(${u})` }}><button type="button" className="x" aria-label="Remove image" onClick={() => setP((x) => ({ ...x, im: x.im.filter((_, j) => j !== i) }))}>×</button></div>)}
+                        {P.im.length < 5 && <label className="add">{up ? "…" : "+ Add"}<input type="file" accept="image/*" multiple hidden disabled={up} onChange={(e) => { addFiles(e.target.files, "im"); e.target.value = ""; }} /></label>}
+                    </div>
+                    <p className="cap" style={{ marginTop: 8 }}>Tap Add or drag and drop photos here.</p>
+                </>)}
                 {certField}
                 <F l="Note to admin (optional)"><textarea value={P.note} onChange={(e) => set("note", e.target.value)} placeholder="Anything our team should know?" /></F>
             </>)
@@ -676,7 +764,9 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
                 {P.match
                     ? <div className="brk"><div><span>Fixed by this product</span><b>1 Pack = {P.ps} {P.u}{outer ? ` · 1 Master Pack = ${P.mps} Packs` : ""}</b></div></div>
                     : (<>
-                        <F l="Selling unit *" c="Smallest measure this product is sold in."><Chips v={P.u} on={(v) => set("u", v)} o={UNITS.map((u) => [u, u])} /></F>
+                        {fixedEnq
+                            ? <F l="Selling unit" c="Fixed to the unit the buyer asked in."><div className="inp ro"><input readOnly value={P.u} /></div></F>
+                            : <F l="Selling unit *" c="Smallest measure this product is sold in."><Chips v={P.u} on={(v) => set("u", v)} o={UNITS.map((u) => [u, u])} /></F>}
                         <F l={P.u ? `How many ${P.u} in a Pack? *` : "Pack size *"}><In v={P.ps} on={(v) => set("ps", num(v))} inputMode="decimal" placeholder="e.g. 4" /></F>
                         <F l="Does it have an outer pack? *" c="A larger Master Pack holding several Packs."><YN v={yn(P.op)} on={setOuter} /></F>
                         {P.op === true && <F l="Packs in one outer pack *"><In v={P.mps} on={(v) => set("mps", v.replace(/\D/g, ""))} inputMode="numeric" placeholder="e.g. 4" /></F>}
@@ -813,6 +903,8 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
                     buyers: (P.ba.mode === "restricted" ? P.ba.buyers : P.ba.buyers.filter((b) => b.override))
                         .map(({ pendingPricing, basedOnPrice, ...b }) => b),
                 },
+                // "Sell this" from an enquiry: the backend checks this enquiry is open and approves the listing directly.
+                ...(fixedEnq && enquiryId ? { rfqEnquiryId: enquiryId } : {}),
             };
             const res = submitFn
                 ? await submitFn(payload)

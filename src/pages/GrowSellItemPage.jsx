@@ -2,6 +2,10 @@
 // Same wizard as the add-product flow, with the catalogue item's brand / name / image (and packaging + GST when
 // on file) locked. Submits through createSellerListingForBrand, which the backend auto-approves.
 // Runs under GrowProviders + GrowLayout, so it gets exactly the same styling environment as /grow.
+//
+// Enquiry flow: RfqQuoteModal sends the seller here with state { from, enquiry }. After the listing is created, the
+// seller goes back to `from` with state { resumeQuote: { enquiry, submissionId } }; the host page (useQuoteResume)
+// re-opens the quote popup with the new listing preselected.
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -17,13 +21,13 @@ export default function GrowSellItemPage() {
     const location = useLocation();
     const { token, isLoggedIn, profile, initializing, clearSession } = useAuth();
 
-    // Where the seller came from (set by SellThisItemModal). Falls back to the home page.
+    // Where the seller came from (set by SellThisItemModal / RfqQuoteModal). Falls back to the home page.
     const [from] = useState(() => {
         const f = location.state?.from;
         return typeof f === "string" && f.startsWith("/") ? f : "/home";
     });
-
-    const seed = location.state?.brandItem || null;
+    // Set when the seller came from an enquiry's quote popup.
+    const [enquiry] = useState(() => location.state?.enquiry || null);
 
     const [access, setAccess] = useState(undefined);
     const [detail, setDetail] = useState(null);
@@ -43,7 +47,6 @@ export default function GrowSellItemPage() {
         let cancelled = false;
         setDetailState("loading");
         fetchBrandItemDetail(brandId).then((res) => {
-            console.log("brand detail", res);
             if (cancelled) return;
             if (res?.success && res.item) { setDetail(res.item); setDetailState("ready"); } else setDetailState("error");
         }).catch(() => { if (!cancelled) setDetailState("error"); });
@@ -96,6 +99,12 @@ export default function GrowSellItemPage() {
         else nav(from, { replace: true });
     };
 
+    // Back to the enquiry and re-open the quote popup with the listing that was just created.
+    const backToQuote = () => nav(from, {
+        replace: true,
+        state: { resumeQuote: { enquiry, submissionId: done?.submission?.id || null } },
+    });
+
     const gate = {
         NOT_AUTHENTICATED: { title: "Sign in to sell this", body: "You'll need to sign in first.", cta: "Sign in", action: () => nav("/login") },
         SELLER_NOT_ONBOARDED: { title: "Set up your seller shop first", body: "Listing a product requires an approved seller shop.", cta: "Set up my shop", action: () => nav("/seller/onboarding") },
@@ -111,9 +120,18 @@ export default function GrowSellItemPage() {
             <section className="scr ctr">
                 <div className="big" aria-hidden="true">✓</div>
                 <h2>{live ? "Your listing is live" : "Your listing is submitted"}</h2>
-                <p className="sub">{done.message || (live ? "Buyers can now see it." : "We will let you know once it is live for buyers.")}</p>
-                <Link className="sbtn" to="/grow/products">Go to my products</Link>
-                <button className="sbtn gh" type="button" onClick={() => nav(from, { replace: true })}>Back to browsing</button>
+                <p className="sub">
+                    {enquiry && live
+                        ? "Now send your quote to the buyer with this product."
+                        : (done.message || (live ? "Buyers can now see it." : "We will let you know once it is live for buyers."))}
+                </p>
+                {enquiry && (
+                    <button className="sbtn" type="button" onClick={backToQuote} disabled={!live}>Continue to your quote</button>
+                )}
+                {enquiry && !live && <p className="cap">You can send your quote once this listing is approved.</p>}
+                <Link className={enquiry ? "sbtn gh" : "sbtn"} to="/grow/products">Go to my products</Link>
+                {!enquiry && <button className="sbtn gh" type="button" onClick={() => nav(from, { replace: true })}>Back to browsing</button>}
+                {enquiry && !live && <button className="sbtn gh" type="button" onClick={() => nav(from, { replace: true })}>Back to the enquiry</button>}
             </section>
         );
     } else if (loading) {

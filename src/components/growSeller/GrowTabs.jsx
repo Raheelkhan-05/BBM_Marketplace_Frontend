@@ -4,7 +4,7 @@
 // Scroll up    -> expands back. The nav's layout height never changes, so the page never jumps.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutGrid, Package, Megaphone, Receipt, Truck, MessageSquare, Wallet, Store, Users, Film, ChevronDown } from "lucide-react";
+import { LayoutGrid, Package, Megaphone, Receipt, Truck, MessageSquare, Store, Users, Film, ChevronDown } from "lucide-react";
 import useGrowBadges from "./useGrowBadges.js";
 import "./grow-modules.css";
 
@@ -15,12 +15,14 @@ const TABS = [
     { key: "orders", to: "/grow/orders", label: "Orders", Icon: Receipt, a: "var(--gr, #22A06B)", ai: "var(--gt, #12794A)", match: ["/grow/orders"] },
     { key: "transport", to: "/grow/transport", label: "Transport", Icon: Truck, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/grow/transport"] },
     { key: "chat", to: "/grow/chat", label: "Chat", Icon: MessageSquare, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/grow/chat"] },
-    { key: "wallet", to: "/grow/wallet", label: "Wallet", Icon: Wallet, a: "var(--gr, #22A06B)", ai: "var(--gt, #12794A)", match: ["/grow/wallet"] },
     { key: "shop", to: "/grow/shop", label: "Shop", Icon: Store, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/grow/shop"] },
     // Coming soon: they open a friendly "coming soon" page and show a "Soon" tag on the tile.
     { key: "customers", to: "/grow/customers", label: "Customers", Icon: Users, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/grow/customers"], soon: true },
-    { key: "media", to: "/grow/media", label: "Media", Icon: Film, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/grow/media"], soon: true },
+    // { key: "media", to: "/grow/media", label: "Media", Icon: Film, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/grow/media"], soon: true },
 ];
+
+// Shown in the compact bar when the current page is not one of the tabs (e.g. wallet, opened from the header).
+const NEUTRAL = { label: "Menu", Icon: LayoutGrid, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)" };
 
 const isActive = (tab, path) => tab.match.some((m) => path === m || path.startsWith(`${m}/`));
 const tabStyle = (t) => ({ "--a": t.a, "--c": t.c || "#fff", "--ai": t.ai });
@@ -41,7 +43,9 @@ export default function GrowTabs() {
     const [compact, setCompact] = useState(false);
     const [open, setOpen] = useState(false);
 
-    const current = TABS.find((t) => isActive(t, pathname)) || TABS[0];
+    // null when the page isn't one of the tabs -> no tile is highlighted.
+    const current = TABS.find((t) => isActive(t, pathname)) || null;
+    const shown = current || NEUTRAL;
     const dropdown = compact && open;
 
     // Stick directly under the header (sticky / fixed header) or to the top.
@@ -105,7 +109,7 @@ export default function GrowTabs() {
         return () => { document.removeEventListener("pointerdown", down); document.removeEventListener("keydown", key); };
     }, [dropdown]);
 
-    const CurIcon = current.Icon;
+    const CurIcon = shown.Icon;
 
     return (
         <nav
@@ -124,13 +128,13 @@ export default function GrowTabs() {
                             <button
                                 type="button"
                                 className="gn-cbtn"
-                                style={tabStyle(current)}
+                                style={tabStyle(shown)}
                                 aria-expanded={dropdown}
                                 aria-controls="gn-tiles"
                                 onClick={() => setOpen((o) => !o)}
                             >
                                 <span className="gn-cico"><CurIcon aria-hidden="true" /></span>
-                                <b>{current.label}</b>
+                                <b>{shown.label}</b>
                                 <span className="gn-chv">All sections <ChevronDown aria-hidden="true" /></span>
                             </button>
                         </div>
@@ -142,7 +146,7 @@ export default function GrowTabs() {
                     <div className="gn-clip">
                         <div ref={tilesRef} id="gn-tiles" className="gn-tiles">
                             {TABS.map((t) => {
-                                const active = t === current;
+                                const active = current === t;
                                 const n = counts[t.key] || 0;
                                 return (
                                     <Link
