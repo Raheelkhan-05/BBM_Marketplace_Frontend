@@ -15,7 +15,7 @@
 // LAYOUT: the page is at least one viewport tall (min-h-screen) and the list card
 // stretches to fill it; the page itself scrolls when there are many rows.
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     History, ArrowLeft, CreditCard, Search, Loader2, Clock3, Check, X,
@@ -719,7 +719,9 @@ export default function CreditPage() {
     const { connected } = useSocket();
     const { creditUnreadCount, markCreditViewed } = useNotifications();
 
-    const isSeller = profile?.seller_status === "approved";
+    const isApprovedSeller = profile?.seller_status === "approved";
+    const isSeller = false; // seller inbox moved to Customers; this page is the buyer view for everyone
+    const navigate = useNavigate();
     const [tabState, setTabState] = useState(null);
     const [filter, setFilter] = useState("all");
     const [historyOpen, setHistoryOpen] = useState(false);

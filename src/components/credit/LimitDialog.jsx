@@ -13,7 +13,7 @@ import { C, EASE, fmtINR } from "./tokens.js";
 
 const PRESETS = [10000, 25000, 50000, 100000];
 
-export default function LimitDialog({ open, mode, buyerLabel, currentLimit, confirming, onClose, onConfirm }) {
+export default function LimitDialog({ open, mode, buyerLabel, currentLimit, usageNote, confirming, onClose, onConfirm }) {
     const [limit, setLimit] = useState("");
     const numeric = Number(limit);
     const canConfirm = limit !== "" && numeric > 0 && Number.isFinite(numeric);
@@ -115,7 +115,7 @@ export default function LimitDialog({ open, mode, buyerLabel, currentLimit, conf
                             <p className="mt-2.5 text-[11px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
                                 {isApprove
                                     ? "The buyer can order up to this much on credit per calendar month, across any number of orders. Resets automatically each month."
-                                    : `Current limit: ${currentLimit != null ? fmtINR(currentLimit) : "not set"}. Updating resets this month's usage to zero.`}
+                                    : `Current limit: ${currentLimit != null ? fmtINR(currentLimit) : "not set"}. ${usageNote ?? "Updating resets this month's usage to zero."}`}
                             </p>
                         </div>
 
