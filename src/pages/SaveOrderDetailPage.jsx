@@ -1,6 +1,7 @@
 // src/pages/SaveOrderDetailPage.jsx — buyer purchase-order detail in the Save (sh-) UI.
 // Same data/actions as the old OrderDetailPage: fetchOrderById + useRealtimeOrder, markOrderRead(id, "buyer") on open,
 // DisputePanel, CancelOrderControl, TransportInfoCard, PurchaseOrderDocument. Only the presentation changed.
+// Unpaid orders ("awaiting_payment") show a "Complete your payment" card at the top.
 // Layout mirrors GrowOrderDetailPage (two columns on wide screens). Render inside the same ".sv" wrapper as SaveHomePage.
 import { useCallback, useEffect } from "react";
 import { useNavigate, useParams, useLocation, Link } from "react-router-dom";
@@ -10,6 +11,7 @@ import { useNotifications } from "../context/NotificationsContext.jsx";
 import { fetchOrderById } from "../utils/api.js";
 import DisputePanel from "../components/orders/DisputePanel.jsx";
 import { CancelOrderControl } from "../components/orders/PurchaseCardActions.jsx";
+import ResumePaymentButton from "../components/orders/ResumePaymentButton.jsx";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
@@ -26,6 +28,7 @@ const STATUS_LABEL = {
     not_accepted: "Not accepted",
 };
 const statusText = (s) => STATUS_LABEL[s] || String(s || "").replace(/_/g, " ");
+const inr = (n) => (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
 function Timeline({ status, events, autoRejected }) {
     const bad = status === "cancelled" || status === "rejected";
@@ -125,6 +128,8 @@ export default function SaveOrderDetailPage() {
     const showDelivery = shouldShowDelivery(order, firstItem);
     const showShortfall = shouldShowShortfall(order);
     const seller = order.seller;
+    const unpaid = order.status === "awaiting_payment";
+    const inCart = !!order.order_group_id;
 
     return (
         <div className="sh-w">
@@ -139,6 +144,22 @@ export default function SaveOrderDetailPage() {
 
             <div className="sh-dgrid">
                 <div className="sh-dcol">
+                    {unpaid && (
+                        <Section title="Complete your payment">
+                            <p className="sh-cap" style={{ margin: "0 0 12px" }}>
+                                {inCart
+                                    ? `This order is part of a cart checkout${order.group_number ? ` (#${order.group_number})` : ""}, so you pay for the whole cart in one payment. The seller is notified once the payment is confirmed.`
+                                    : `Your order of ₹${inr(order.total_amount)} is created but not paid yet. The seller is notified once the payment is confirmed.`}
+                            </p>
+                            <ResumePaymentButton
+                                orderId={order.id}
+                                groupId={order.order_group_id || null}
+                                label={inCart ? "Pay for the whole cart" : `Pay ₹${inr(order.total_amount)}`}
+                                className="sh-btn go"
+                            />
+                        </Section>
+                    )}
+
                     <Section title="Payment & freight">
                         <OrderTags order={order} isSample={isSample} />
                         <div className="sh-tw sh-stk">

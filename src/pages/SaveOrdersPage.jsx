@@ -1,6 +1,8 @@
 // src/pages/SaveOrdersPage.jsx — buyer "My orders" (PURCHASE orders only) in the Save (sh-) UI.
 // Same data/actions as the old OrdersPage purchase view: fetchMyOrders + useRealtimeOrders,
 // grouping by order_group_id, purchaseOrderUnreadCounts, PurchaseCardActions. Cards open /orders/:id.
+// Unpaid ("awaiting_payment") orders get a "Complete payment" button; orders that belong to a cart
+// group get ONE button on the group header (the whole cart is paid in one payment).
 // Render it inside the same ".sv" wrapper as SaveHomePage.
 import { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -10,6 +12,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import { fetchMyOrders } from "../utils/api.js";
 import PurchaseCardActions from "../components/orders/PurchaseCardActions.jsx";
+import ResumePaymentButton from "../components/orders/ResumePaymentButton.jsx";
 import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
 import { transportLabel } from "../../shared/transportOptions.js";
 import {
@@ -34,6 +37,8 @@ const STATUS_TABS = [
     ["processing", "Processing"], ["shipped", "Shipped"], ["delivered", "Delivered"], ["cancelled", "Cancelled"], ["rejected", "Rejected"],
 ];
 const TYPE_TABS = [["", "All orders"], ["standard", "Standard"], ["sample", "Samples"]];
+
+const isUnpaid = (o) => o?.status === "awaiting_payment";
 
 /* ---------- tags ---------- */
 function OrderTags({ order, isSample }) {
@@ -67,7 +72,8 @@ function GroupTags({ orders }) {
 }
 
 /* ---------- order card ---------- */
-function OrderCard({ order, idx, onChanged }) {
+// inGroup: the order belongs to a cart group, so payment is offered once on the group header instead.
+function OrderCard({ order, idx, onChanged, inGroup = false }) {
     const navigate = useNavigate();
     const { purchaseOrderUnreadCounts } = useNotifications();
     const unread = purchaseOrderUnreadCounts?.get(String(order.id)) || 0;
@@ -80,6 +86,7 @@ function OrderCard({ order, idx, onChanged }) {
     const showDelivery = !!item && shouldShowDelivery(order, item);
     const showShortfall = shouldShowShortfall(order);
     const showRequested = !!order.buyer_transport_mode && !order.transport_mode;
+    const showPay = isUnpaid(order) && !inGroup;
 
     return (
         <motion.article
@@ -123,7 +130,10 @@ function OrderCard({ order, idx, onChanged }) {
                 </div>
             )}
 
-            <div className="sh-tw sh-oa" onClick={stop}>
+            <div className="sh-tw sh-oa" onClick={stop} style={showPay ? { display: "flex", flexDirection: "column", gap: 10 } : undefined}>
+                {showPay && (
+                    <ResumePaymentButton orderId={order.id} groupId={order.order_group_id || null} label={`Complete payment · ₹${inr(order.total_amount)}`} />
+                )}
                 <PurchaseCardActions order={order} onChanged={onChanged} />
             </div>
         </motion.article>
@@ -134,6 +144,8 @@ function stop(e) { e.stopPropagation(); }
 function OrderGroup({ group, startIdx, onChanged }) {
     if (!group.groupId) return <OrderCard order={group.orders[0]} idx={startIdx} onChanged={onChanged} />;
     const combined = group.orders.reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
+    const unpaid = group.orders.filter(isUnpaid);
+    const unpaidTotal = unpaid.reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
     return (
         <div className="sh-grp">
             <div className="sh-grh">
@@ -143,8 +155,17 @@ function OrderGroup({ group, startIdx, onChanged }) {
                 </div>
                 <b>₹{inr(combined)}</b>
             </div>
+            {unpaid.length > 0 && (
+                <div style={{ padding: "0 14px 12px" }}>
+                    <ResumePaymentButton
+                        orderId={unpaid[0].id}
+                        groupId={group.groupId}
+                        label={`Complete payment · ₹${inr(unpaidTotal)}`}
+                    />
+                </div>
+            )}
             <div className="sh-og">
-                {group.orders.map((o, i) => <OrderCard key={o.id} order={o} idx={startIdx + i} onChanged={onChanged} />)}
+                {group.orders.map((o, i) => <OrderCard key={o.id} order={o} idx={startIdx + i} onChanged={onChanged} inGroup />)}
             </div>
         </div>
     );
