@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import SavePage from "./SavePage.jsx";
 import SaveDashboardPage from "./SaveDashboardPage.jsx";
 import "../components/save/save-home.css";
+import "../components/save/save.css";
 
 export default function SaveEntry() {
     const { isLoggedIn, initializing } = useAuth();

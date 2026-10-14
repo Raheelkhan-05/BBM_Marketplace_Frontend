@@ -5,6 +5,8 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { goTo } from "../components/grow/scrollTo.js";
 import { MENU_ROUTES } from "../components/menuItems.js";
+import "../components/save/save.css";
+import "../components/save/save-home.css";
 
 const BUY_TO = MENU_ROUTES.home;
 const EXPLORE_TO = "/MENU_ROUTES.home";
@@ -330,7 +332,7 @@ export default function SavePage() {
     }, []);
 
     return (
-        <>
+        <div className="sv">
             {/* Hero */}
             <section className="hero">
                 <div className="wrap">
@@ -414,6 +416,6 @@ export default function SavePage() {
                     </div>
                 </div>
             </section>
-        </>
+        </div>
     );
 }

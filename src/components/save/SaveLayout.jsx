@@ -13,6 +13,8 @@ import { ShoppingCart } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import SmartLink from "../SmartLink.jsx";
 import SaveTabs from "./SaveTabs.jsx";
+import { goTo } from "../grow/scrollTo.js";
+import { MENU_ROUTES } from "../menuItems.js";
 import useSaveBadges from "./useSaveBadges.js";
 import "./save.css";
 import "./save-home.css";
@@ -34,6 +36,80 @@ function Skeleton() {
     );
 }
 
+// Same header for buyers and visitors. SaveTabs (logged-in only) finds it as its sibling.
+function SaveHeader() {
+    return (
+        <header className="hd">
+            <div className="wrap">
+                <SmartLink
+                    to="/"
+                    aria-label="BBM home"
+                    style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, textDecoration: "none", color: "#08222B" }}
+                >
+                    <span style={{ display: "flex", alignItems: "center", flexShrink: 0, background: "#FFFFFF", padding: "4px 0px" }}>
+                        <img src="/Logo.png" alt="BBM" style={{ display: "block", height: "28px", width: "auto", objectFit: "contain" }} />
+                    </span>
+                    <span
+                        style={{
+                            fontFamily: '"Bricolage Grotesque", "Figtree", system-ui, sans-serif',
+                            fontWeight: 800, fontSize: "1.125rem", lineHeight: 1, letterSpacing: "0.02em", whiteSpace: "nowrap",
+                        }}
+                    >
+                        BBM
+                    </span>
+                </SmartLink>
+            </div>
+        </header>
+    );
+}
+
+// Section links match the topic ids rendered in SavePage (save-find, save-info, ...).
+const PUBLIC_NAV = [
+    ["Find", "save-find"],
+    ["Info", "save-info"],
+    ["Price", "save-price"],
+    ["Delivery", "save-delivery"],
+    ["Orders", "save-orders"],
+    ["Credit", "save-credit"],
+    ["Repeat", "save-repeat"],
+];
+
+// Header for logged-out visitors on the /save brochure: logo + section nav + CTA (same layout as GROW details).
+function SavePublicHeader() {
+    return (
+        <header className="hd hd-pub">
+            <div className="wrap">
+                <a
+                    href="#save-top"
+                    onClick={goTo("save-top")}
+                    aria-label="BBM home"
+                    style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, textDecoration: "none", color: "#08222B" }}
+                >
+                    <span style={{ display: "flex", alignItems: "center", flexShrink: 0, background: "#FFFFFF", padding: "4px 0px" }}>
+                        <img src="/Logo.png" alt="BBM" style={{ display: "block", height: "28px", width: "auto", objectFit: "contain" }} />
+                    </span>
+                    <span
+                        style={{
+                            fontFamily: '"Bricolage Grotesque", "Figtree", system-ui, sans-serif',
+                            fontWeight: 800, fontSize: "1.125rem", lineHeight: 1, letterSpacing: "0.02em", whiteSpace: "nowrap",
+                        }}
+                    >
+                        BBM
+                    </span>
+                </a>
+
+                <nav aria-label="Page sections">
+                    {PUBLIC_NAV.map(([label, id]) => (
+                        <a key={id} href={`#${id}`} onClick={goTo(id)}>{label}</a>
+                    ))}
+                </nav>
+
+                <Link className="btn" to={MENU_ROUTES.home}>Start buying</Link>
+            </div>
+        </header>
+    );
+}
+
 // Everything that needs the shell lives here so hooks are only mounted for logged-in buyers.
 function Shell() {
     const { pathname } = useLocation();
@@ -46,32 +122,7 @@ function Shell() {
     return (
         <div className="sv svl pb-20">
             {/* `.hd` + `.wrap` come from save.css; SaveTabs finds this header as its sibling to pin itself under it. */}
-            <header className="hd">
-                <div className="wrap">
-                    <SmartLink
-                        to="/"
-                        aria-label="BBM home"
-                        style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, textDecoration: "none", color: "#08222B" }}
-                    >
-                        <span style={{ display: "flex", alignItems: "center", flexShrink: 0, background: "#FFFFFF", padding: "4px 0px" }}>
-                            <img src="/Logo.png" alt="BBM" style={{ display: "block", height: "28px", width: "auto", objectFit: "contain" }} />
-                        </span>
-                        <span
-                            style={{
-                                fontFamily: '"Bricolage Grotesque", "Figtree", system-ui, sans-serif',
-                                fontWeight: 800, fontSize: "1.125rem", lineHeight: 1, letterSpacing: "0.02em", whiteSpace: "nowrap",
-                            }}
-                        >
-                            BBM
-                        </span>
-                    </SmartLink>
-
-                    {/* <Link to="/save/cart" className="svl-cart" aria-label={cart > 0 ? `Cart, ${cart} item${cart === 1 ? "" : "s"}` : "Cart"}>
-                        <ShoppingCart size={20} aria-hidden="true" />
-                        {cart > 0 && <span className="bdg">{cart > 9 ? "9+" : cart}</span>}
-                    </Link> */}
-                </div>
-            </header>
+            <SaveHeader />
 
             <SaveTabs />
 
@@ -91,8 +142,16 @@ export default function SaveLayout() {
     if (initializing) return <div className="sv"><Skeleton /></div>;
 
     if (!isLoggedIn) {
-        // /save (and /save/) is the public brochure; anything deeper needs a login.
-        if (pathname.replace(/\/+$/, "") === "/save") return <Outlet />;
+        if (pathname.replace(/\/+$/, "") === "/save") {
+            return (
+                <div className="sv svl svl-pub pb-20" id="save-top">
+                    <SavePublicHeader />
+                    <main>
+                        <Outlet />
+                    </main>
+                </div>
+            );
+        }
         return <Navigate to="/save" replace />;
     }
     return <Shell />;

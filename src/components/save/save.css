@@ -1300,3 +1300,24 @@
         transition: none
     }
 }
+
+/* Sticky top bar for logged-out visitors on /save only */
+.sv.svl-pub .hd.hd-pub {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: #fff;
+    /* opaque, so content doesn't show through while scrolling */
+}
+
+/* Sticky stops working if an ancestor clips overflow; `clip` avoids that while still hiding sideways scroll */
+.sv.svl-pub {
+    overflow: visible;
+    overflow-x: clip;
+}
+
+/* Section links shouldn't land underneath the sticky bar */
+.sv.svl-pub [id^="save-"] {
+    scroll-margin-top: 72px;
+    /* adjust to your header height */
+}
