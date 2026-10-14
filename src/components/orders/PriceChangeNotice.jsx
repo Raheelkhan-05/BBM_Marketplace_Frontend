@@ -63,7 +63,7 @@ export default function PriceChangeNotice({ id, from, to }) {
             title={up ? `Price increased: ${money(from)} → ${money(to)}` : `Price dropped: ${money(from)} → ${money(to)}`}
             onDismiss={() => { remember(key); setDismissed(key); }}
         >
-            The seller updated the price after you placed this order. You'll pay the updated amount ({money(to)}).
+            {/* The seller updated the price after you placed this order. You'll pay the updated amount ({money(to)}). */}
         </NoticeBox>
     );
 }
