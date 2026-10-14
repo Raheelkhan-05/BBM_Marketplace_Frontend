@@ -165,7 +165,7 @@
 
 /* header (same as grow) */
 .sv .hd {
-    position: sticky;
+    position: relative;
     top: env(safe-area-inset-top, 0px);
     z-index: 20;
     background: rgba(255, 255, 255, .86);

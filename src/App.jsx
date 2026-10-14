@@ -21,6 +21,8 @@ import OnboardingGate from "./components/OnboardingGate.jsx";
 import AppShell from "./components/AppShell.jsx";
 import SaveLayout from "./components/save/SaveLayout.jsx";
 import PaymentReturnPage from "./pages/PaymentReturnPage.jsx";
+import SaveChatPage from "./pages/SaveChatPage.jsx";
+import SaveTransportPage from "./pages/SaveTransportPage.jsx";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -102,6 +104,8 @@ const SaveEntry = lazy(() => import("./pages/SaveEntry.jsx"));
 const SaveOrdersPage = lazy(() => import("./pages/SaveOrdersPage.jsx"));
 const SaveCartPage = lazy(() => import("./pages/SaveCartPage.jsx"));
 const SaveOrderDetailPage = lazy(() => import("./pages/SaveOrderDetailPage.jsx"));
+const SaveCreditPage = lazy(() => import("./pages/SaveCreditPage.jsx"));
+const SaveHomePage = lazy(() => import("./pages/SaveHomePage.jsx"));
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -272,11 +276,15 @@ function App() {
                     <Route path="/grow/customers" element={<GrowCustomersPage />} />
                   </Route>
 
-                  <Route element={<SaveLayout />}>
-                    <Route path="/save" element={<SaveEntry />} />
-                    <Route path="/save/orders" element={<SaveOrdersPage />} />
-                    <Route path="/save/orders/:id" element={<SaveOrderDetailPage />} />
-                    <Route path="/save/cart" element={<SaveCartPage />} />
+                  <Route path="/save" element={<SaveLayout />}>
+                    <Route index element={<SaveEntry />} />
+                    <Route path="rfq" element={<SaveHomePage />} />
+                    <Route path="orders" element={<SaveOrdersPage />} />
+                    <Route path="chat/:conversationId?" element={<SaveChatPage />} />
+                    <Route path="transport" element={<SaveTransportPage />} />
+                    <Route path="orders/:id" element={<SaveOrderDetailPage />} />
+                    <Route path="cart" element={<SaveCartPage />} />
+                    <Route path="credit" element={<SaveCreditPage />} />
                   </Route>
                 </Route>
               </Route>

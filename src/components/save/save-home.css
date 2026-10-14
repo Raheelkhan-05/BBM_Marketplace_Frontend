@@ -2551,7 +2551,7 @@
     position: fixed;
     left: 0;
     right: 0;
-    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(0px + env(safe-area-inset-bottom, 0px));
     z-index: 40;
     padding: 12px 16px;
     background: color-mix(in srgb, var(--s) 92%, transparent);

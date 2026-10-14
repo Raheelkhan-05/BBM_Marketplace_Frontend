@@ -7,7 +7,7 @@
 // Quote prices are shown per individual unit too (e.g. ₹2.47 / Kg), with the total for the buyer's quantity below.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
     Send, ArrowRight, Upload, Share2, Pencil, XCircle, Search, X, ShoppingCart, Package, ChevronRight,
@@ -36,7 +36,6 @@ const mergeUnique = (prev, incoming) => {
     return [...prev, ...incoming.filter((i) => !seen.has(i.id))];
 };
 const CACHE = new Map();
-const greeting = () => { const h = new Date().getHours(); return h < 12 ? "morning" : h < 17 ? "afternoon" : "evening"; };
 
 const EASE = [0.16, 1, 0.3, 1];
 const toTitle = (str = "") => str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
@@ -205,9 +204,7 @@ function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onCl
 
 export default function SaveHomePage() {
     const nav = useNavigate();
-    const { token, profile } = useAuth();
-    // Shop name only (never the person's own name). Same source the Home page uses.
-    let ctxShopName = profile?.shop_name || profile?.display_name || profile?.businessProfile?.trade_name || profile?.businessProfile?.display_name || profile?.name || "your shop";
+    const { token } = useAuth();
 
     const columnCount = useColumnCount();
 
@@ -231,6 +228,13 @@ export default function SaveHomePage() {
     const [wizard, setWizard] = useState(null); // { mode, initial }
     const [bulkOpen, setBulkOpen] = useState(false);
     const [toast, setToast] = useState("");
+    const [searchParams, setSearchParams] = useSearchParams();
+    useEffect(() => {
+        if (searchParams.get("new")) {
+            setWizard({ mode: "create", initial: null });
+            setSearchParams({}, { replace: true });
+        }
+    }, [searchParams, setSearchParams]);
 
     const abortRef = useRef(null);
     const seqRef = useRef(0);
@@ -341,8 +345,6 @@ export default function SaveHomePage() {
     };
     const startPost = () => setWizard({ mode: "create", initial: null });
 
-    const shopLabel = ctxShopName || profile?.shop_name || profile?.shopName || "your shop";
-
     const openPage = (item) => nav(enquiryPath(item.id), { state: { enquiry: item } });
     const showInfo = (item) => { setInfoId(item.id); setInfoSnap(item); };
     const editItem = (item) => { setInfoId(null); setWizard({ mode: "edit", initial: item }); };
@@ -358,8 +360,12 @@ export default function SaveHomePage() {
 
     return (
         <div className="sh-w">
-            <h1 className="sh-gr">Good {greeting()},<span>{shopLabel}</span></h1>
-            <p className="sh-sub">Your buying at a glance.</p>
+            <div className="sh-sec" style={{ marginTop: 22 }}>
+                <div>
+                    <h1 className="sh-pt">RFQs</h1>
+                    <p className="sh-sub" style={{ marginTop: 4 }}>Ask suppliers for prices and compare their quotes.</p>
+                </div>
+            </div>
 
             <div className="sh-kp">
                 <button type="button" style={{ "--a": "var(--or)" }} onClick={openFilter}>
@@ -367,19 +373,6 @@ export default function SaveHomePage() {
                 </button>
                 <button type="button" style={{ "--a": "var(--bl)" }} onClick={openFilter}>
                     <b>{quotesTile ?? "–"}</b><span>Quotes received</span>
-                </button>
-            </div>
-
-            <div className="sh-nvs">
-                <button type="button" className="sh-nv" style={{ "--a": "var(--gr)" }} onClick={() => nav("/save/orders")}>
-                    <span className="ico"><Package size={20} /></span>
-                    <span className="tx"><b>My orders</b><small>Track and review purchases</small></span>
-                    <ChevronRight className="ch" size={20} />
-                </button>
-                <button type="button" className="sh-nv" style={{ "--a": "#D9A800" }} onClick={() => nav("/save/cart")}>
-                    <span className="ico"><ShoppingCart size={20} /></span>
-                    <span className="tx"><b>My cart</b><small>Items waiting for checkout</small></span>
-                    <ChevronRight className="ch" size={20} />
                 </button>
             </div>
 

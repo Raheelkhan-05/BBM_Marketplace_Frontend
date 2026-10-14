@@ -458,6 +458,8 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     // A chat thread is open: /grow/chat/:id (hide the dock for an immersive view)
     const inChatThread = /^\/grow\/chat\/[^/]+/.test(pathname);
+    const inSaveChatThread = /^\/save\/chat\/[^/]+/.test(pathname);
+    const inSaveCart = /^\/save\/cart+/.test(pathname);
 
     const menuButton = (
         <DockItem
@@ -506,7 +508,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
             {/* ===================== DOCK ===================== */}
             <div
-                data-hidden={inChatThread ? "true" : undefined}
+                data-hidden={(inChatThread || inSaveChatThread || inSaveCart) ? "true" : undefined}
                 className={`bbm-dock pointer-events-none fixed inset-x-0 flex justify-center transition-opacity duration-150 ${typing ? "opacity-0" : ""}`}
                 style={{ zIndex: Z_DOCK, bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
             >

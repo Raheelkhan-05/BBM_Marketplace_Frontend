@@ -1,7 +1,9 @@
-// Gate for /save: visitors see the brochure, logged-in users see their purchase price list.
+// src/pages/SaveEntry.jsx
+// Gate for /save: visitors see the brochure, logged-in buyers see their Dashboard (inside SaveLayout).
+// The RFQ / price list now lives at /save/rfq (SaveHomePage).
 import { useAuth } from "../context/AuthContext.jsx";
 import SavePage from "./SavePage.jsx";
-import SaveHomePage from "./SaveHomePage.jsx";
+import SaveDashboardPage from "./SaveDashboardPage.jsx";
 import "../components/save/save-home.css";
 
 export default function SaveEntry() {
@@ -15,5 +17,5 @@ export default function SaveEntry() {
             </div>
         );
     }
-    return isLoggedIn ? <SaveHomePage /> : <SavePage />;
+    return isLoggedIn ? <SaveDashboardPage /> : <SavePage />;
 }

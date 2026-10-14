@@ -348,7 +348,7 @@ function ConversationList({ conversations, loading, activeId, onSelect, reload, 
     );
 }
 
-export default function GrowChatPage() {
+export default function GrowChatPage({ basePath = "/grow/chat" }) {
     const { conversationId } = useParams();
     const navigate = useNavigate();
     const { conversations, loading, reload, markLocalRead } = useChatContext();
@@ -369,7 +369,7 @@ export default function GrowChatPage() {
 
     const handleSelect = (id) => {
         markLocalRead(id);
-        navigate(`/grow/chat/${id}`);
+        navigate(`${basePath}/${id}`);
     };
 
     const avatarSize = wide ? 72 : desktop ? 52 : 58;
@@ -385,7 +385,7 @@ export default function GrowChatPage() {
             <section className="gc-pane" data-lenis-prevent>
                 {conversationId ? (
                     phoneThread ? null : (
-                        <GrowChatThread conversationId={conversationId} meta={activeMeta} onBack={() => navigate("/grow/chat")} />
+                        <GrowChatThread conversationId={conversationId} meta={activeMeta} onBack={() => navigate(basePath)} />
                     )
                 ) : (
                     <div className="gc-blank">
@@ -411,7 +411,7 @@ export default function GrowChatPage() {
                     <GrowChatThread
                         conversationId={conversationId}
                         meta={activeMeta}
-                        onBack={() => navigate("/grow/chat")}
+                        onBack={() => navigate(basePath)}
                         style={{ flex: 1, minHeight: 0, height: "100%" }}
                     />
                 </div>,
