@@ -194,6 +194,7 @@ export default function GrowStartPage() {
                 )}
                 {view === "prod" && (
                     <Wizard token={token} say={say} onExit={exitWizard} prefill={sellPrefill} enquiryId={sellPrefill ? (enquiry?.id || null) : null}
+                        enquiryBuyer={sellPrefill?.buyerId ? { buyerId: sellPrefill.buyerId, name: sellPrefill.buyerName || "" } : null}
                         onNeedOnboarding={() => setView("onb")} onNeedLogin={() => setView("auth")}
                         onSubmitted={onListed} />
                 )}
@@ -513,7 +514,7 @@ function CertRow({ c, busy, onRename, onReplace, onRemove }) {
 //   submitFn  - async (payload) => response. Replaces the default create call (e.g. createSellerListingForBrand).
 //   onStep    - called with the step index whenever it changes (lets a host scroll its own container to the top).
 // onSubmitted(card, res) receives the raw API response as a 2nd argument.
-export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted, locked = null, prefill = null, enquiryId = null, submitFn = null, onStep, quiet = false }) {
+export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted, locked = null, prefill = null, enquiryId = null, enquiryBuyer = null, submitFn = null, onStep, quiet = false }) {
     const { seller } = useSellerProfileStatus(token);
     const [P, setP] = useState(() => (locked ? lockedBlank(locked) : prefill ? prefillBlank(prefill) : blank()));
     const [ps, setPs] = useState(0);
@@ -851,7 +852,8 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
         {
             t: "Who can buy, and at what price?", s: "Optional. Control who sees this listing and give chosen buyers their own price.",
             ok: P.ba.mode === "public" || P.ba.buyers.length > 0,
-            h: () => <GrowBuyerAccessDraft token={token} product={buyerProduct} value={P.ba} onChange={(v) => set("ba", v)} />
+            h: () => <GrowBuyerAccessDraft token={token} product={buyerProduct} value={P.ba} onChange={(v) => set("ba", v)}
+                quickBuyer={fixedEnq ? enquiryBuyer : null} />
         },
 
         {

@@ -50,11 +50,18 @@ const needIn = (n, word) => {
     return `${Math.abs(n - Math.round(n)) < 0.005 ? "=" : "≈"} ${fmtNum(r)} ${word}${r === 1 ? "" : "s"}`;
 };
 
+// "5%", "2.35%", "12.5%": up to 2 decimals, no trailing zeros.
+const fmtPct = (p) => `${Number(Math.abs(p).toFixed(2))}%`;
+
 // The enquiry owner (the buyer). Checks every field name this API could plausibly use.
 const pickBuyerId = (e) => (e
     ? (e.buyerId ?? e.buyer_id ?? e.userId ?? e.user_id ?? e.ownerId ?? e.owner_id ?? e.createdBy ?? e.created_by
         ?? e.requesterId ?? e.postedBy ?? e.buyer?.id ?? e.buyer?.buyerId ?? e.user?.id ?? e.owner?.id ?? null)
     : null);
+
+const pickBuyerName = (e) => (e
+    ? String(e.buyerName ?? e.buyer_name ?? e.shopName ?? e.shop_name ?? e.buyer?.shopName ?? e.buyer?.name ?? e.user?.name ?? "").trim()
+    : "");
 
 // The brand typed on the enquiry (string), whatever the API calls it.
 const pickBrandName = (e) => {
@@ -191,6 +198,8 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
                 brandName: enqBrand,
                 unit: enquiry.unit || "",
                 image: enqImage,
+                buyerId: pickBuyerId(enquiry) ?? pickBuyerId(opts?.enquiry) ?? null,
+                buyerName: pickBuyerName(enquiry) || pickBuyerName(opts?.enquiry),
             },
         },
     });
@@ -255,6 +264,13 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
     const isMine = !!sel && opts?.myQuote?.submissionId === sel.submissionId;
     const belowMoq = !!sel && sel.moqUnits > 0 && totalUnits < sel.moqUnits;     // same unit, so the numbers are comparable
     const buyerId = pickBuyerId(enquiry) ?? pickBuyerId(opts?.enquiry);
+
+    // How far the entered price is from the regular listing price (both per sale unit, incl. GST).
+    const pctVsList = sel && sel.listPrice > 0 && saleIncl > 0
+        ? ((saleIncl - sel.listPrice) / sel.listPrice) * 100 : null;
+    const pctVsCustom = sel && sel.customPrice > 0 && saleIncl > 0 && !sameAsCustom
+        ? ((saleIncl - sel.customPrice) / sel.customPrice) * 100 : null;
+    const dirTone = pctVsList == null || sameAsList ? "same" : pctVsList < 0 ? "down" : "up";
 
     const submit = async () => {
         if (busy || !sel) return;
@@ -432,6 +448,29 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
                                     <input id="rqm-price" inputMode="decimal" value={f.price}
                                         onChange={(e) => set({ price: e.target.value.replace(/[^\d.]/g, "") })} />
                                 </div>
+                                {sel.listPrice != null && saleIncl > 0 && (
+                                    <div className={`rqm-pc ${dirTone}`} role="status" aria-live="polite">
+                                        {sameAsList ? (
+                                            <>
+                                                <b>Same as your listing price</b>
+                                                <span>{inr(sel.listPrice)} per {saleLabel(sel)} (incl. GST). {resetCustom ? "This buyer's custom price will be removed." : "No custom price will be saved."}</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <b>{pctVsList < 0 ? "▼" : "▲"} {fmtPct(pctVsList)} {pctVsList < 0 ? "lower" : "higher"} than your listing price</b>
+                                                <span>
+                                                    Listing {inr(sel.listPrice)} → this buyer {inr(saleIncl)} per {saleLabel(sel)} (incl. GST).
+                                                    {" "}It is saved as a fixed price for this buyer and will not change if you edit the listing price later.
+                                                </span>
+                                                {pctVsCustom != null && (
+                                                    <span>
+                                                        Their current custom price is {inr(sel.customPrice)}; this is {fmtPct(pctVsCustom)} {pctVsCustom < 0 ? "lower" : "higher"} than that.
+                                                    </span>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                                 <p className="rqm-n">
                                     {sel.customPrice != null ? `Started from your custom price for this buyer (${inr(sel.customPrice)} per ${saleLabel(sel)}, incl. GST), shown here per ${sel.unit}. `
                                         : sel.listPrice != null ? `Started from your regular listing price (${inr(sel.listPrice)} per ${saleLabel(sel)}, incl. GST), shown here per ${sel.unit}. ` : ""}
@@ -448,6 +487,9 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
 
                             <div className="rqm-bk">
                                 {calc ? (<>
+                                    {pctVsList != null && !sameAsList && (
+                                        <div><span>Vs your listing price</span><b>{pctVsList < 0 ? "−" : "+"}{fmtPct(pctVsList)}</b></div>
+                                    )}
                                     <div><span>Price per {sel.unit} (excl. GST)</span><b>{inr(calc.perUnitExcl, 2)}</b></div>
                                     {Number(sel.packSize) > 1 && <div><span>Price per pack (excl. GST)</span><b>{inr(calc.perPackExcl, 2)}</b></div>}
                                     {calc.perMasterExcl != null && <div><span>Price per master pack (excl. GST)</span><b>{inr(calc.perMasterExcl, 2)}</b></div>}

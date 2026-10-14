@@ -569,3 +569,34 @@
     place-items: center;
     margin: 4px auto 0
 }
+
+.rqm-pc {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 9px 11px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.4;
+    background: var(--soft);
+    color: var(--mute)
+}
+
+.rqm-pc b {
+    font-size: 13px;
+    font-weight: 800
+}
+
+.rqm-pc.down {
+    background: #e3f5ec;
+    color: #12794a
+}
+
+.rqm-pc.up {
+    background: #fef6e7;
+    color: #92600a
+}
+
+.rqm-pc.same b {
+    color: var(--ink)
+}

@@ -255,12 +255,26 @@ const SlabNote = () => (
 );
 
 /* ---------------- DRAFT (create flow) ---------------- */
-export function GrowBuyerAccessDraft({ token, product, value, onChange }) {
+export function GrowBuyerAccessDraft({ token, product, value, onChange, quickBuyer = null }) {
     const [openId, setOpenId] = useState(null);
     const [drafts, setDrafts] = useState({});
     const mode = value?.mode || "public";
     const buyers = value?.buyers || [];
     const set = (patch) => onChange({ mode, buyers, ...patch });
+
+    const onlyQuick = !!quickBuyer && mode === "restricted"
+        && buyers.length === 1 && String(buyers[0].buyerId) === String(quickBuyer.buyerId);
+
+    const showOnlyToEnquirer = () => {
+        onChange({
+            mode: "restricted",
+            buyers: [{
+                buyerId: quickBuyer.buyerId, name: quickBuyer.name || "Buyer", shopName: quickBuyer.name || "",
+                phone: null, email: null, override: null,
+            }],
+        });
+        setOpenId(null);
+    };
 
     const openBuyer = (b) => {
         setDrafts((d) => ({ ...d, [b.buyerId]: d[b.buyerId] || (b.override ? { ...emptyDraft(), ...b.override } : emptyDraft()) }));
@@ -296,6 +310,15 @@ export function GrowBuyerAccessDraft({ token, product, value, onChange }) {
     return (
         <div className="gax gax-stack">
             <Intro />
+            {quickBuyer && (
+                onlyQuick ? (
+                    <p className="gax-sum info">Only {quickBuyer.name || "the buyer who posted this enquiry"} can see this listing.</p>
+                ) : (
+                    <button type="button" className="gax-btn" onClick={showOnlyToEnquirer}>
+                        Show only to {quickBuyer.name || "the buyer who posted this enquiry"}
+                    </button>
+                )
+            )}
             <Field label="Who can see this listing?"><Seg fill v={mode} on={(m) => set({ mode: m })} o={MODES} /></Field>
 
             {mode === "restricted" && !buyers.length && (
