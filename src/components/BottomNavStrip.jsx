@@ -16,10 +16,11 @@
 // Only ONE instance ever renders (an extra copy renders nothing).
 //
 // Dock layout is the SAME on every page: [Grow] [Save] [Menu | Home | Sign in].
-//  - every button now carries a text LABEL under its circle (see DockItem)
+//  - every button carries a text LABEL under its circle (see DockItem)
 //  - the ACTIVE module (Grow / Save) gets a soft colour ring + a small bar under its label
 //  - outside the Grow / Save modules the third button is Menu (logged in) or Sign in
 //  - inside the Grow / Save modules the third button is Home (same position)
+//  - the dock is a compact, wide rounded rectangle (20px corners), not a full pill
 import { Fragment, useEffect, useId, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -42,8 +43,8 @@ const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(
 const HIDDEN_MENU_IDS = ["list-product", "manage-products", "sales-orders"];
 
 const FAB_BOTTOM_HOME = 12;
-// 60 (tallest circle) + 4 gap + 11 label + 18 padding + 3 border + 4 ring + ~2 slack
-const DOCK_HEIGHT = 102;
+// 52 (tallest circle) + 4 gap + 11 label + 12 padding + 3 border + 4 ring + ~2 slack
+const DOCK_HEIGHT = 88;
 
 // Layers (portal on document.body). Kept very high so page-level fixed bars sit underneath.
 const Z_BACKDROP = 9990;
@@ -66,8 +67,8 @@ const FAB_THEME = {
 };
 
 const SLOT = [
-    { size: 52, icon: 22 },
-    { size: 60, icon: 26, raised: true }, // the "Save" slot: bigger, raised, with the ping ring
+    { size: 44, icon: 20 },
+    { size: 52, icon: 22, raised: true }, // the "Save" slot: bigger, raised, with the ping ring
 ];
 
 const svgBase = { viewBox: "0 0 24 24", width: 24, height: 24, fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
@@ -309,10 +310,10 @@ function DockBadge({ n }) {
 //                an open menu is not a page)
 //  - `ping`    : the attention ring on the raised "Save" slot
 //  - `badge`   : number for the corner badge (omit for none)
-// Fixed 64px width keeps every column the same size, so the collapse-measuring logic
+// Fixed 72px width keeps every column the same size, so the collapse-measuring logic
 // (tilesInnerRef) stays exact.
 function DockItem({
-    label, active = false, current, theme, size = 52, ping = false, badge,
+    label, active = false, current, theme, size = 44, ping = false, badge,
     onClick, ariaLabel, title, tabIndex, className = "", children, ...rest
 }) {
     return (
@@ -325,7 +326,7 @@ function DockItem({
             tabIndex={tabIndex}
             whileTap={{ scale: 0.94 }}
             transition={{ type: "spring", stiffness: 500, damping: 32 }}
-            className={`bbm-item relative flex w-16 shrink-0 flex-col items-center gap-1 bg-transparent p-0 ${className}`}
+            className={`bbm-item relative flex w-[72px] shrink-0 flex-col items-center gap-1 bg-transparent p-0 ${className}`}
             {...rest}
         >
             <span
@@ -414,7 +415,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const tilesInnerRef = useRef(null);
     const pillRef = useRef(null);
     const [tilesW, setTilesW] = useState(0);   // natural width of the tiles group
-    const [pillH, setPillH] = useState(0);     // dock pill height while closed
+    const [pillH, setPillH] = useState(0);     // dock height while closed
     const [clipTiles, setClipTiles] = useState(false);
 
     useEffect(() => {
@@ -462,6 +463,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
         <DockItem
             label={pageOpen ? "Close" : "Menu"}
             theme={FAB_THEME.menu}
+            size={SLOT[0].size}
             active={pageOpen}
             current={false}
             onClick={() => setPageOpen((v) => !v)}
@@ -478,21 +480,21 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     transition={{ duration: 0.08 }}
                     className="flex"
                 >
-                    {pageOpen ? <X size={22} strokeWidth={2.4} /> : <Menu size={22} strokeWidth={2.4} />}
+                    {pageOpen ? <X size={SLOT[0].icon} strokeWidth={2.4} /> : <Menu size={SLOT[0].icon} strokeWidth={2.4} />}
                 </motion.span>
             </AnimatePresence>
         </DockItem>
     );
 
     const homeButton = (
-        <DockItem label="Home" theme={FAB_THEME.home} onClick={() => navigate("/home")}>
-            <HomeIcon size={22} />
+        <DockItem label="Home" theme={FAB_THEME.home} size={SLOT[0].size} onClick={() => navigate("/home")}>
+            <HomeIcon size={SLOT[0].icon} />
         </DockItem>
     );
 
     const signInButton = (
-        <DockItem label="Sign in" theme={FAB_THEME.login} active={inLogin} onClick={() => navigate("/login")}>
-            <LogIn size={22} strokeWidth={2.4} />
+        <DockItem label="Sign in" theme={FAB_THEME.login} size={SLOT[0].size} active={inLogin} onClick={() => navigate("/login")}>
+            <LogIn size={SLOT[0].icon} strokeWidth={2.4} />
         </DockItem>
     );
 
@@ -508,28 +510,29 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 className={`bbm-dock pointer-events-none fixed inset-x-0 flex justify-center transition-opacity duration-150 ${typing ? "opacity-0" : ""}`}
                 style={{ zIndex: Z_DOCK, bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
             >
-                {/* Slides sideways by half the removed width, so the Menu button stays put. */}
+                {/* Slides sideways by half the removed width, so the Menu button stays put.
+                    Outer radius 22 = inner radius 20 + the 2px margin, so the comet ring hugs the corners. */}
                 <motion.div
-                    className={`${typing ? "pointer-events-none" : "pointer-events-auto"} relative isolate rounded-full`}
+                    className={`${typing ? "pointer-events-none" : "pointer-events-auto"} relative isolate rounded-[22px]`}
                     initial={false}
                     animate={{ x: pageOpen ? (tilesW + tileGap) / 2 : 0 }}
                     transition={DOCK_COLLAPSE}
                 >
-                    {/* aura: blurred halo */}
-                    <span aria-hidden className={`pointer-events-none absolute -inset-[4px] -z-10 overflow-hidden rounded-full blur-[8px] transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-70"}`}>
+                    {/* aura: blurred halo (22 + 4 inset = 26) */}
+                    <span aria-hidden className={`pointer-events-none absolute -inset-[4px] -z-10 overflow-hidden rounded-[26px] blur-[8px] transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-70"}`}>
                         <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
                     </span>
 
                     {/* aura: comet ring */}
-                    <span aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden rounded-full transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-100"}`} style={{ background: DOCK_RING }}>
+                    <span aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[22px] transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-100"}`} style={{ background: DOCK_RING }}>
                         <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
                     </span>
 
-                    {/* the dock pill (no backdrop blur). items-end keeps labels on one baseline
-                        and keeps the Menu/X button in the same spot whether the tiles are open or not. */}
+                    {/* the dock body (rounded rectangle, no backdrop blur). items-end keeps labels on one
+                        baseline and keeps the Menu/X button in the same spot whether the tiles are open or not. */}
                     <div
                         ref={pillRef}
-                        className="relative m-[2px] flex items-end justify-center rounded-full border-[1.5px] px-[14px] pb-[10px] pt-[5px] transition-[background-color,box-shadow] duration-200"
+                        className="relative m-[2px] flex items-end justify-center rounded-[20px] border-[1.5px] px-[20px] pb-[8px] pt-[4px] transition-[background-color,box-shadow] duration-200"
                         style={{
                             background: pageOpen ? "transparent" : "rgba(255,255,255,.92)",
                             borderColor: pageOpen ? "transparent" : "#DFE7EA",

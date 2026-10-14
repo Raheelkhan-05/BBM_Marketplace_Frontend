@@ -7,11 +7,26 @@
 //   4. WHERE / HOW        -> delivery address (shared BuyerAddressContext), transport, estimate
 //   5. DETAILS            -> seller terms + full product details (both closed by default)
 //
-// STICKY FOOTER (thumb zone): quantity stepper + total, Add to cart, and ONE primary button:
+// STICKY FOOTER (thumb zone): quantity stepper + total, MOQ note, credit strip, Add to cart,
+// and ONE primary button:
 //   - no transport preference yet -> "Select transport & Buy now"
 //   - transport already set       -> "Buy now"
-// Quantity warnings (below MOQ / out of stock / exceeds stock) show in the footer, right
-// next to the stepper being tapped.
+//
+// MOQ NOTE (footer): right under the stepper the buyer is told which MOQ is selected and that
+// the quantity can't go below it for this seller's product (turns red if a typed value is below it).
+//
+// CREDIT (this revision):
+//   - Approved buyers: "Pay on credit" is now PRE-SELECTED. The buyer can still switch to
+//     "Pay now" (that choice is respected and never overridden). Buyers without approved credit
+//     stay on "Pay now".
+//   - Everyone else gets a quick "Ask for credit" button in the footer (not shown for samples):
+//       none / declined (cooldown over) / turned off -> "Ask for credit" button
+//       requested                                    -> "Credit request sent" status
+//       declined (cooldown running)                  -> "ask again after <date>" status
+//   - If a credit order is above the remaining limit, the footer says so and offers
+//     "Pay now instead" / "Ask for higher limit" without scrolling.
+//   - The credit status refreshes live on the socket event `credit:changed`, so the moment the
+//     seller approves, the modal switches to credit by itself (unless the buyer already chose).
 //
 // PAYMENT: a standard order is created in "awaiting_payment", then the buyer is sent to JioPay's
 // hosted checkout (utils/paymentsApi.js). They come back through /payment/return, which shows the
@@ -26,13 +41,14 @@ import ImageLightbox from "./ImageLightbox.jsx";
 import {
     Loader2, Lock, CheckCircle2, X, Plus, MapPin, Minus, Layers, FileText, Calendar, Beaker,
     Package, Truck, ReceiptText, CreditCard, Boxes, ShoppingCart, ChevronDown, AlertCircle,
-    Share2, Info, Zap, Store, Maximize2,
+    Share2, Info, Zap, Store, Maximize2, Clock,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { BuyerAddressProvider, useBuyerAddress } from "../context/BuyerAddressContext.jsx";
 import {
     fetchCheckoutStatus, fetchOrderQuote,
     placeOrder, cancelMyOrder, fetchCreditStatus,
+    requestCredit as requestCreditApi,
     requestCreditIncrease as requestCreditIncreaseApi, fetchBrandItemDetail, fetchOrderConstraints,
     fetchOrderById,
 } from "../utils/api.js";
@@ -212,23 +228,25 @@ const isHiddenLabel = (name) => typeof name === "string" && name.trim().toLowerC
    Presentational primitives
    ============================================================ */
 
-function Stepper({ value, onChange, min = 1, max }) {
+function Stepper({ value, onChange, min = 1, max, compact = false }) {
     const atMax = max != null && Number(value) >= Number(max);
     const atMin = Number(value) <= Number(min);
+    const h = compact ? "h-9" : "h-11";
+    const w = compact ? "w-9" : "w-11";
     return (
         <div className="flex items-center overflow-hidden rounded-xl border bg-white" style={{ borderColor: C.hair }}>
             <button type="button" aria-label="Decrease quantity" disabled={atMin} onClick={() => onChange(Math.max(min, Number(value) - 1))}
-                className="flex h-11 w-11 shrink-0 items-center justify-center transition-colors duration-150 active:bg-black/[0.06] hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent">
+                className={`flex ${h} ${w} shrink-0 items-center justify-center transition-colors duration-150 active:bg-black/[0.06] hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent`}>
                 <Minus className="h-4 w-4" style={{ color: C.ink }} />
             </button>
-            <div className="h-11 w-px" style={{ background: C.hair }} />
+            <div className={`${h} w-px`} style={{ background: C.hair }} />
             <input type="text" inputMode="numeric" value={value} aria-label="Quantity"
                 onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
-                className="h-11 w-full min-w-0 flex-1 bg-transparent text-center text-[16px] font-extrabold tabular-nums tracking-wide focus:outline-none"
+                className={`${h} w-full min-w-0 flex-1 bg-transparent text-center text-[15px] font-extrabold tabular-nums focus:outline-none`}
                 style={{ color: C.ink }} />
-            <div className="h-11 w-px" style={{ background: C.hair }} />
+            <div className={`${h} w-px`} style={{ background: C.hair }} />
             <button type="button" aria-label="Increase quantity" disabled={atMax} onClick={() => onChange(Number(value) + 1)}
-                className="flex h-11 w-11 shrink-0 items-center justify-center transition-colors duration-150 active:bg-black/[0.06] hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent">
+                className={`flex ${h} ${w} shrink-0 items-center justify-center transition-colors duration-150 active:bg-black/[0.06] hover:bg-black/[0.03] disabled:opacity-30 disabled:hover:bg-transparent`}>
                 <Plus className="h-4 w-4" style={{ color: C.ink }} />
             </button>
         </div>
@@ -377,6 +395,13 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const isSample = orderMode === "sample";
     const isCredit = orderMode === "credit";
 
+    // What the buyer explicitly picked between "Pay now" and "Pay on credit":
+    //   null       = never chosen -> follow the default (credit when approved, otherwise pay now)
+    //   "standard" = chose Pay now      "credit" = chose Pay on credit
+    // A resumed order also counts as a choice. This is what stops the credit default from
+    // overriding the buyer's own decision.
+    const payModeChoiceRef = useRef(null);
+
     const defaultBasis = useMemo(
         () => (Number(seller?.masterPackSize) >= 1 ? "per_master_pack" : "per_pack"),
         [seller?.masterPackSize]
@@ -472,12 +497,41 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         return () => { cancelled = true; };
     }, [product?.id]);
 
-    // ---- Credit (pay on credit for approved buyers; requesting credit is NOT offered here) ----
+    // ---- Credit ----
+    // creditState: "loading" -> "ready" (credit row, or null = never asked) | "error" (couldn't load).
+    // The footer only offers "Ask for credit" once the state is "ready", so a buyer who already has
+    // (or has requested) credit is never shown a wrong button while the status is still loading.
     const [creditStatus, setCreditStatus] = useState(null);
-    useEffect(() => {
-        if (!seller?.offerId || !token) return;
-        fetchCreditStatus(token, { submissionId: seller.offerId }).then((res) => setCreditStatus(res?.credit || null));
+    const [creditState, setCreditState] = useState("loading");
+    const [requestingCredit, setRequestingCredit] = useState(false);
+    const [creditAskError, setCreditAskError] = useState(null);
+
+    // keepIfEmpty: a refresh must never wipe a status we already know about with an empty reply.
+    const loadCreditStatus = useCallback(async ({ keepIfEmpty = false } = {}) => {
+        if (!seller?.offerId || !token) { setCreditState("error"); return; }
+        try {
+            const res = await fetchCreditStatus(token, { submissionId: seller.offerId });
+            if (!res || res.success === false) {
+                setCreditState((s) => (s === "ready" ? s : "error"));
+                return;
+            }
+            if (res.credit || !keepIfEmpty) setCreditStatus(res.credit || null);
+            setCreditState("ready");
+        } catch {
+            setCreditState((s) => (s === "ready" ? s : "error"));
+        }
     }, [seller?.offerId, token]);
+
+    useEffect(() => { loadCreditStatus(); }, [loadCreditStatus]);
+
+    // Live: the server emits `credit:changed` on every credit action (approve, decline, limit,
+    // usage…). Refetch so the modal reacts the moment the seller answers.
+    useEffect(() => {
+        if (!socket) return undefined;
+        const onCredit = () => loadCreditStatus({ keepIfEmpty: true });
+        socket.on("credit:changed", onCredit);
+        return () => socket.off("credit:changed", onCredit);
+    }, [socket, loadCreditStatus]);
 
     const canBuyOnCredit = creditStatus?.status === "approved";
     const [requestingIncrease, setRequestingIncrease] = useState(false);
@@ -490,16 +544,78 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         && new Date(creditStatus.limit_increase_cooldown_until) > new Date();
     const fmtDate = (d) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
+    // Buyer picks between "Pay now" and "Pay on credit" (remembered, so the default never overrides it).
+    const pickPayMode = (mode) => {
+        payModeChoiceRef.current = mode;
+        setOrderMode(mode);
+    };
+
+    // The mode to use for a "standard order" (i.e. when leaving sample mode).
+    const standardPayMode = () => {
+        const chosen = payModeChoiceRef.current;
+        if (chosen === "standard") return "standard";
+        return canBuyOnCredit ? "credit" : "standard";
+    };
+
+    // DEFAULT PAYMENT METHOD: once the credit status is known, approved buyers start on
+    // "Pay on credit" instead of "Pay now". Skipped if the buyer (or a resumed order) already chose,
+    // and never touches sample orders.
+    useEffect(() => {
+        if (creditState !== "ready" || payModeChoiceRef.current) return;
+        setOrderMode((m) => (m === "sample" ? m : canBuyOnCredit ? "credit" : "standard"));
+    }, [creditState, canBuyOnCredit]);
+
+    // Credit is no longer available (turned off / revoked while open): fall back to Pay now and
+    // forget any "credit" choice so the default applies again if it comes back.
+    useEffect(() => {
+        if (creditState !== "loading" && isCredit && !canBuyOnCredit) {
+            payModeChoiceRef.current = null;
+            setOrderMode("standard");
+        }
+    }, [isCredit, canBuyOnCredit, creditState]);
+
+    useEffect(() => { setCreditAskError(null); }, [creditStatus?.status, orderMode]);
+
     const handleRequestCreditIncrease = async () => {
         if (!creditStatus?.id) return;
+        setCreditAskError(null);
         setRequestingIncrease(true);
-        const res = await requestCreditIncreaseApi(token, creditStatus.id);
+        let res;
+        try { res = await requestCreditIncreaseApi(token, creditStatus.id); } catch { res = null; }
         setRequestingIncrease(false);
-        if (!res?.success) { setError(res?.message || "Couldn't send the request for a higher limit."); return; }
+        if (!res?.success) { setCreditAskError(res?.message || "Couldn't send the request for a higher limit."); return; }
         setCreditStatus((prev) => (prev ? { ...prev, limit_increase_request_message_id: "pending" } : prev));
     };
 
-    useEffect(() => { if (isCredit && !canBuyOnCredit) setOrderMode("standard"); }, [isCredit, canBuyOnCredit]);
+    // Quick "Ask for credit" from the footer. requestCredit takes the seller's USER id
+    // (same call the Credit page makes); `sellerUserId` is used when the seller payload has it,
+    // otherwise `sellerId`.
+    const handleAskCredit = async () => {
+        if (requestingCredit) return;
+        const sellerUserId = seller?.sellerUserId ?? seller?.sellerId;
+        if (!sellerUserId && !seller?.offerId) {
+            setCreditAskError("Couldn't identify the seller for a credit request.");
+            return;
+        }
+        setCreditAskError(null);
+        setRequestingCredit(true);
+        let res;
+        try {
+            res = await requestCreditApi(token, { sellerUserId, submissionId: seller.offerId });
+        } catch (e) {
+            res = { success: false, message: e?.message };
+        }
+        if (!res?.success) {
+            setRequestingCredit(false);
+            setCreditAskError(res?.message || "Couldn't send the credit request. Please try again.");
+            return;
+        }
+        setCreditStatus((prev) => ({ ...(prev || {}), status: "pending" }));
+        setCreditState("ready");
+        setToast("Credit request sent to the seller");
+        await loadCreditStatus({ keepIfEmpty: true });
+        setRequestingCredit(false);
+    };
 
     // Instant local quote, then the confirmed server quote below.
     useEffect(() => {
@@ -809,6 +925,8 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         userPickedBasis.current = true;
         setBasis(ri.basis);
         setOrderMode(ri.orderMode || "standard");
+        // A resumed order keeps exactly the payment method it had (no credit default on top of it).
+        payModeChoiceRef.current = ri.orderMode === "credit" || ri.orderMode === "standard" ? ri.orderMode : null;
         setNotes(ri.notes || "");
         restoreAddressIdRef.current = ri.addressId || null;
 
@@ -954,12 +1072,38 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const hasTerms = seller && (seller.deliveryTimeline || seller.paymentTerms || seller.returnPolicy || seller.warranty || seller.freightIncluded != null || seller.dispatchOrigin);
     const hasProductDetails = !!(manufacturer || modelNo || gradeVariant || description || manufacturingDetails || specifications.length || galleryImages.length > 1);
 
-    // One quantity warning at a time, shown in the footer next to the stepper.
+    // One quantity warning at a time, shown in the body next to the quantity rules.
     const qtyNotice = isSample ? null
         : outOfStock ? "This item is currently out of stock with this seller."
             : exceedsStock ? `You can order at most ${maxQuantity} ${saleUnitLabel(seller?.masterPackSize)}${Number(maxQuantity) === 1 ? "" : "s"} from this seller. Please reduce the quantity.`
                 : quote && quote.meetsMoq === false ? `Below the seller's MOQ of ${formatMoqForBasis(quote.moq, seller)}.`
                     : null;
+
+    /* ---------------- footer: MOQ note ---------------- */
+    // Tells the buyer which MOQ is selected and that they can't go below it for this seller's product.
+    const hasMoqNote = !isSample && Number(seller?.moq) > 0 && minQuantity > 0;
+    const moqQtyText = `${minQuantity} ${moqUnitLabel}${minQuantity === 1 ? "" : "s"}`;
+    const moqBaseText = Number(seller?.packSize) > 0 && seller?.unit
+        ? ` (${toBaseUnits(seller, minQuantity, basis)} ${seller.unit})`
+        : "";
+    const atMoq = !belowMoq && Number(quantity) === minQuantity;
+    const moqNoteText = belowMoq
+        ? `Minimum is ${moqQtyText}${moqBaseText} for this seller.`
+        : `MOQ ${moqQtyText}${moqBaseText} · can't order below this from this seller.`;
+
+    /* ---------------- footer: credit strip ---------------- */
+    // none | retry | revoked -> can ask;  pending -> waiting;  cooldown -> declined recently;
+    // approved -> nothing to ask;  unknown -> status still loading / failed (no button shown).
+    const creditKind = creditState !== "ready" ? "unknown"
+        : !creditStatus ? "none"
+            : creditStatus.status === "approved" ? "approved"
+                : creditStatus.status === "pending" ? "pending"
+                    : creditStatus.status === "rejected"
+                        ? (creditStatus.cooldown_until && new Date(creditStatus.cooldown_until) > new Date() ? "cooldown" : "retry")
+                        : creditStatus.status === "revoked" ? "revoked"
+                            : "none";
+    const canAskCredit = creditKind === "none" || creditKind === "retry" || creditKind === "revoked";
+    const sellerLabel = seller?.display_name || "the seller";
 
     /* ---------------- primary CTA ---------------- */
     const needsTransport = !transportPreference;
@@ -1144,7 +1288,10 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                 {canSample && (
                                     <div className="flex gap-1 rounded-xl bg-[#FCFBF9] p-1">
                                         {[{ v: "standard", t: "Standard order" }, { v: "sample", t: "Order a sample", icon: Beaker }].map(({ v, t, icon: Icon }) => (
-                                            <button key={v} type="button" onClick={() => setOrderMode(v)}
+                                            <button key={v} type="button"
+                                                // Leaving sample mode returns to the buyer's payment method
+                                                // (credit by default when approved, otherwise Pay now).
+                                                onClick={() => setOrderMode(v === "sample" ? "sample" : standardPayMode())}
                                                 className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-bold tracking-wide transition-all duration-150"
                                                 style={(v === "sample" ? isSample : !isSample)
                                                     ? { background: "#fff", color: v === "sample" ? "#D2462B" : C.secondary, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
@@ -1297,12 +1444,13 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                         <p className="text-[12.5px] font-medium" style={{ color: C.muted }}>Enter a quantity to see the total.</p>
                                     )}
 
-                                    {/* Pay now / Pay on credit — only for buyers already approved for credit */}
+                                    {/* Pay now / Pay on credit — only for buyers already approved for credit.
+                                        "Pay on credit" is pre-selected for them; the choice is theirs to change. */}
                                     {!isSample && canBuyOnCredit && (
                                         <div className="flex flex-col gap-2">
                                             <div className="flex gap-1 rounded-xl bg-[#FCFBF9] p-1">
                                                 {[{ v: "standard", t: "Pay now" }, { v: "credit", t: "Pay on credit", icon: CreditCard }].map(({ v, t, icon: Icon }) => (
-                                                    <button key={v} type="button" onClick={() => setOrderMode(v)}
+                                                    <button key={v} type="button" onClick={() => pickPayMode(v)}
                                                         className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[12.5px] font-bold tracking-wide transition-all duration-150"
                                                         style={orderMode === v
                                                             ? { background: "#fff", color: v === "credit" ? "#7c3aed" : C.secondary, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }
@@ -1481,72 +1629,108 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                         </div>
 
                         {/* ============ STICKY FOOTER (thumb zone) ============ */}
-                        <div className="shrink-0 border-t bg-white px-4 pb-3 pt-3 sm:px-5" style={{ borderColor: C.hairSoft }}>
-                            <div className="mb-3 grid grid-cols-2 gap-3">
-                                {/* Quantity */}
-                                <div className="min-w-0">
+                        <div className="shrink-0 border-t bg-white px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2.5 sm:px-5" style={{ borderColor: C.hairSoft }}>
+                            {/* Row 1: quantity + total */}
+                            <div className="flex items-center gap-3">
+                                <div className="min-w-0 flex-1">
                                     {isSample ? (
-                                        <>
-                                            <p
-                                                className="mb-1 text-[10px] font-extrabold uppercase tracking-[0.1em]"
-                                                style={{ color: C.muted }}
-                                            >
-                                                Sample quantity
-                                            </p>
-                                            <p
-                                                className="text-[15px] font-extrabold tabular-nums"
-                                                style={{ color: C.ink }}
-                                            >
-                                                {quantity} {seller?.unit}
-                                            </p>
-                                        </>
+                                        <p className="text-[14px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                            {quantity} {seller?.unit} <span className="text-[11px] font-semibold" style={{ color: C.muted }}>sample</span>
+                                        </p>
                                     ) : (
-                                        <>
-                                            <p
-                                                className="mb-1 truncate text-[10px] font-extrabold uppercase tracking-[0.1em]"
-                                                style={{ color: C.muted }}
-                                            >
-                                                Quantity · {basisLabel}
-                                            </p>
-                                            <Stepper
-                                                value={quantity}
-                                                onChange={setQuantity}
-                                                min={minQuantity}
-                                                max={maxQuantity}
-                                            />
-                                        </>
+                                        <Stepper compact value={quantity} onChange={setQuantity} min={minQuantity} max={maxQuantity} />
                                     )}
                                 </div>
-
-                                {/* Total payable */}
-                                <div className="min-w-0 text-right">
-                                    <p
-                                        className="mb-1 text-[10px] font-extrabold uppercase tracking-[0.1em]"
-                                        style={{ color: C.muted }}
-                                    >
-                                        Total payable
-                                    </p>
-                                    <p
-                                        className="text-[21px] font-extrabold leading-none tabular-nums tracking-wide"
-                                        style={{ color: C.ink }}
-                                    >
-                                        {priceLoading ? <SkeletonBar width="90px" /> : quote ? `₹${inr(quote.subtotal)}` : "—"}
+                                <div className="shrink-0 text-right leading-none">
+                                    <p className="text-[9.5px] font-extrabold uppercase tracking-[0.1em]" style={{ color: C.muted }}>Total</p>
+                                    <p className="mt-1 text-[19px] font-extrabold tabular-nums" style={{ color: C.ink }}>
+                                        {priceLoading ? <SkeletonBar width="80px" /> : quote ? `₹${inr(quote.subtotal)}` : "—"}
                                     </p>
                                 </div>
                             </div>
 
+                            {/* Row 2: MOQ note (one quiet line; red only when below MOQ) */}
+                            {hasMoqNote && (
+                                <p role={belowMoq ? "alert" : undefined}
+                                    className="mt-1.5 flex items-start gap-1 text-[11px] font-semibold leading-snug tracking-wide"
+                                    style={{ color: belowMoq ? "#B3261E" : C.muted }}>
+                                    {belowMoq ? <AlertCircle className="mt-[1px] h-3 w-3 shrink-0" /> : <Info className="mt-[1px] h-3 w-3 shrink-0" />}
+                                    <span className="line-clamp-2">{moqNoteText}</span>
+                                </p>
+                            )}
 
-                            <div className="flex gap-2.5">
+                            {/* Row 3: credit (inline, compact; not for samples) */}
+                            {!isSample && (
+                                <>
+                                    {crossesCreditLimit && (
+                                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-lg px-2.5 py-1.5" style={{ background: "#FEF6E7" }}>
+                                            <span className="flex min-w-0 flex-1 items-center gap-1 text-[11.5px] font-semibold leading-snug" style={{ color: "#92600A" }}>
+                                                <AlertCircle className="h-3 w-3 shrink-0" />
+                                                Above your remaining credit (₹{inr(creditRemaining)})
+                                            </span>
+                                            <button type="button" onClick={() => pickPayMode("standard")}
+                                                className="h-7 rounded-md border bg-white px-2.5 text-[11.5px] font-bold" style={{ borderColor: C.hair, color: C.ink }}>
+                                                Pay now
+                                            </button>
+                                            {limitIncreasePending ? (
+                                                <span className="text-[11px] font-semibold" style={{ color: "#92600A" }}>Higher limit requested</span>
+                                            ) : limitIncreaseCooldownActive ? (
+                                                <span className="text-[11px] font-semibold" style={{ color: "#92600A" }}>Ask again after {fmtDate(creditStatus.limit_increase_cooldown_until)}</span>
+                                            ) : (
+                                                <button type="button" onClick={handleRequestCreditIncrease} disabled={requestingIncrease}
+                                                    className="inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-[11.5px] font-bold disabled:opacity-50"
+                                                    style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                                    {requestingIncrease ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
+                                                    Higher limit
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {canAskCredit && (
+                                        <div className="mt-2 flex items-center justify-between gap-2">
+                                            <span className="min-w-0 truncate text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                Want to pay later?
+                                            </span>
+                                            <button type="button" onClick={handleAskCredit} disabled={requestingCredit || submitting}
+                                                aria-label={`Ask ${sellerLabel} for credit`}
+                                                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border px-3 text-[11.5px] font-bold tracking-wide disabled:opacity-50"
+                                                style={{ borderColor: "#7c3aed40", color: "#7c3aed", background: "#7c3aed08" }}>
+                                                {requestingCredit ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
+                                                {requestingCredit ? "Sending…" : "Ask for credit"}
+                                            </button>
+                                        </div>
+                                    )}
+                                    {creditKind === "pending" && (
+                                        <p className="mt-2 flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: "#92600A" }}>
+                                            <Clock className="h-3 w-3 shrink-0" /> Credit request sent · waiting for {sellerLabel}
+                                        </p>
+                                    )}
+                                    {creditKind === "cooldown" && (
+                                        <p className="mt-2 flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: C.muted }}>
+                                            <Info className="h-3 w-3 shrink-0" /> Credit declined · ask again after {fmtDate(creditStatus.cooldown_until)}
+                                        </p>
+                                    )}
+                                    {creditAskError && (
+                                        <p role="alert" className="mt-2 flex items-start gap-1 text-[11.5px] font-semibold leading-snug" style={{ color: "#B3261E" }}>
+                                            <AlertCircle className="mt-[1px] h-3 w-3 shrink-0" /> <span>{creditAskError}</span>
+                                        </p>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Row 4: actions */}
+                            <div className="mt-2.5 flex gap-2">
                                 {!isSample && (
-                                    <button type="button" onClick={handleAddToCart} aria-label="Add to cart"
+                                    <button type="button" onClick={handleAddToCart} aria-label="Add to cart" title="Add to cart"
                                         disabled={submitting || belowMoq || outOfStock || exceedsStock || priceLoading}
-                                        className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border px-4 py-3.5 text-[13.5px] font-bold disabled:opacity-50"
+                                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border disabled:opacity-50"
                                         style={{ borderColor: C.hair, color: C.ink }}>
-                                        <ShoppingCart className="h-4 w-4" /> <span className="inline">Add to cart</span>
+                                        <ShoppingCart className="h-[18px] w-[18px]" />
                                     </button>
                                 )}
                                 <button type="button" onClick={handlePrimary} disabled={ctaDisabled}
-                                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl px-5 py-3.5 text-[14px] font-bold text-white shadow-sm transition-opacity duration-150 disabled:opacity-50"
+                                    className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl px-4 text-[14px] font-bold text-white shadow-sm transition-opacity duration-150 disabled:opacity-50"
                                     style={{ background: ctaBackground }}>
                                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : ctaLabel}
                                 </button>
