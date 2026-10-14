@@ -456,8 +456,20 @@ const AddressBook = forwardRef(function AddressBook({ onChange, disabled, varian
             {modalOpen && createPortal(
                 <div className="fixed inset-0 z-[1100] flex items-end justify-center sm:items-center" onClick={stopBubble}>
                     <div onClick={closeModal} className="absolute inset-0 bg-black/40" />
-                    <div className="relative z-10 flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl sm:rounded-2xl"
-                        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={
+                            formMode
+                                ? formMode === "edit"
+                                    ? "Edit address"
+                                    : "Add a new address"
+                                : "Choose a delivery address"
+                        }
+                        className="relative z-10 flex max-h-[80vh] w-full max-w-md flex-col rounded-t-3xl bg-white shadow-2xl sm:rounded-2xl"
+                        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+                    >
                         <div className="flex items-center justify-between border-b px-4 py-3.5" style={{ borderColor: C.hair }}>
                             <span className="text-[14px] font-bold" style={{ color: C.ink }}>
                                 {formMode ? (formMode === "edit" ? "Edit address" : "Add a new address") : "Choose a delivery address"}
