@@ -1,46 +1,39 @@
 // components/BottomNavStrip.jsx
 //
-// Floating dock (FABs) + menu sheet. Menu items come from the shared ./menuItems.js.
+// Floating dock (FABs) + CONSOLE sheet.
 //
-// Menu: a bottom sheet list on mobile, a wide card with a grid of tiles on desktop (md+).
-// A dimmed backdrop sits behind it; tapping the backdrop (or pressing Escape) closes it.
+// CONSOLE = persistent notifications list + Helpline + Sign out. Nothing else.
+//   Mobile : a bottom sheet (same height / open / close as before). Helpline + Sign out
+//            sit under the title, the notifications list fills the rest.
+//   Desktop (md+): a single wide-ish panel above the dock. Only Sign out is shown
+//            (Helpline is reachable another way on desktop), top-right.
+// Notifications are read from NotificationsContext (no extra fetching). Popups / toasts
+// still appear as before; the Console is where they can be re-read afterwards.
+// Chat notifications are not listed (Chats has its own badge elsewhere).
 //
-// "List a product", "Manage products" and "Sales orders" are NOT in the menu any more
-// (see HIDDEN_MENU_IDS): sellers reach them from the Grow module. Their notification
-// counts are added together and shown as one badge on the Grow button in the dock.
-//
-// While the menu is open the other FABs collapse OUT of the dock (they take no space),
-// so the dock shrinks to just the X button, which stays exactly where the Menu button was.
+// While the Console is open the other FABs collapse OUT of the dock (they take no space),
+// so the dock shrinks to just the X button, which stays exactly where the Console button was.
 //
 // Dock, backdrop and sheet are rendered through a portal on document.body.
 // Only ONE instance ever renders (an extra copy renders nothing).
 //
-// Dock layout is the SAME on every page: [Grow] [Save] [Menu | Home | Sign in].
-//  - every button carries a text LABEL under its circle (see DockItem)
-//  - the ACTIVE module (Grow / Save) gets a soft colour ring + a small bar under its label
-//  - outside the Grow / Save modules the third button is Menu (logged in) or Sign in
-//  - inside the Grow / Save modules the third button is Home (same position)
-//  - the dock is a compact, wide rounded rectangle (20px corners), not a full pill
-import { Fragment, useEffect, useId, useRef, useState, useCallback } from "react";
+// Dock layout is the SAME on every page: [Grow] [Save] [Console | Home | Sign in].
+import { Fragment, useEffect, useId, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, LogOut, Home, LogIn } from "lucide-react";
+import { LayoutGrid, X, LogOut, Home, LogIn, BellOff, CheckCheck } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
-import { useCart } from "../context/CartContext.jsx";
-import { useChatContext } from "../context/ChatContext.jsx";
-import { useListings } from "../context/ListingsContext.jsx";
+import { isChatNotification } from "../utils/notificationTypes.js";
 import HelpBulb from "./HelpBulb.jsx";
-import { buildMenuItems } from "./menuItems.js";
 import { isSellerReady } from "./growSeller/growSeller.js";
 import useGrowBadges from "./growSeller/useGrowBadges.js";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)", tile: "rgba(20,27,34,0.06)" };
 
-// Menu rows that now live in the Grow module (ids come from menuItems.js).
-const HIDDEN_MENU_IDS = ["list-product", "manage-products", "sales-orders"];
+const NOTIF_PAGE = 30;
 
 const FAB_BOTTOM_HOME = 12;
 // 52 (tallest circle) + 4 gap + 11 label + 12 padding + 3 border + 4 ring + ~2 slack
@@ -54,8 +47,7 @@ const Z_DOCK = 9992;
 // Same timing for the tiles collapsing and the dock sliding, so they move together.
 const DOCK_COLLAPSE = { duration: 0.22, ease: "easeOut" };
 
-// Page elements that must disappear while the menu is open. Add selectors here
-// if some page has its own bottom bar that stays visible over the dimmed page.
+// Page elements that must disappear while the Console is open.
 const HIDE_WHEN_MENU_OPEN = [".gl .dock"];
 
 const FAB_THEME = {
@@ -78,7 +70,6 @@ const HomeIcon = ({ size = 22 }) => <Home size={size} strokeWidth={1.8} aria-hid
 
 // Labels shown under each dock circle live here, change them in one place.
 const TILES = {
-    home: { key: "home", label: "Home", Icon: HomeIcon, to: "/home", theme: FAB_THEME.home },
     grow: { key: "grow", label: "Sell", Icon: GrowIcon, to: "/grow", theme: FAB_THEME.grow },
     save: { key: "save", label: "Buy", Icon: SaveIcon, to: "/save", theme: FAB_THEME.save },
 };
@@ -123,17 +114,13 @@ const DOCK_AURA_CSS = `
 .bbm-item:focus-visible .bbm-ic { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #141B22 !important; }
 `;
 
-// While the menu is open: our own tiles are forced hidden, plus any selectors listed above.
+// While the Console is open: our own tiles are forced hidden, plus any selectors listed above.
 const MENU_OPEN_CSS = `
 body[data-bbm-menu="open"] .bbm-tile { opacity: 0 !important; pointer-events: none !important; }
 ${HIDE_WHEN_MENU_OPEN.map((s) => `body[data-bbm-menu="open"] ${s}`).join(",\n")} { visibility: hidden !important; }
 `;
 
-// Hide the dock while a screen with its own sticky action bar, or any modal dialog, is open:
-//  - .gs .app.hb       = seller onboarding + Add Product wizard
-//  - .gax-edit         = the edit-listing sheet opened from My products
-//  - .sh-portal        = Save module modals ("Add to my price list" wizard, enquiry details)
-//  - [aria-modal=true] = any other proper modal dialog (create / edit / info)
+// Hide the dock while a screen with its own sticky action bar, or any modal dialog, is open.
 const HIDE_DOCK_CSS = `
 .bbm-dock[data-hidden="true"],
 body:has(.gs .app.hb) .bbm-dock,
@@ -143,7 +130,7 @@ body:has(.bbm-buynow) .bbm-dock,
 body:has([role="dialog"][aria-modal="true"]) .bbm-dock { display: none !important; }
 `;
 
-// Mobile: bottom sheet. Desktop (md+): a wide card above the dock.
+// Mobile: bottom sheet (unchanged height + motion). Desktop (md+): one panel above the dock.
 const SHEET_CSS = `
 .bbm-sheet {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: ${Z_SHEET};
@@ -163,7 +150,8 @@ const SHEET_CSS = `
     .bbm-sheet {
         left: 50%; right: auto; margin-inline: 0;
         bottom: calc(${FAB_BOTTOM_HOME + DOCK_HEIGHT + 16}px + env(safe-area-inset-bottom, 0px));
-        width: min(820px, calc(100vw - 64px));
+        width: min(560px, calc(100vw - 64px));
+        height: min(680px, 78dvh, calc(100dvh - 170px));
         max-height: min(78dvh, calc(100dvh - 170px));
         border-radius: 28px; border: 1px solid rgba(20,27,34,.08);
         opacity: 0; transform: translate(-50%, 14px) scale(.98);
@@ -176,20 +164,9 @@ const SHEET_CSS = `
 }
 `;
 
-// Menu rows: a slim list row on mobile, a bordered tile on desktop.
-const ROW_BASE =
-    "relative flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors duration-150 " +
-    "md:flex-col md:items-start md:gap-4 md:rounded-2xl md:border md:p-4";
-const ROW_IDLE = "md:border-[rgba(20,27,34,0.09)]";
-const ROW_ACTIVE = "md:border-black";
-const ROW_INTERACTIVE =
-    "active:opacity-60 md:hover:border-[rgba(20,27,34,0.28)] md:hover:bg-black/[0.03] " +
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B7285]/40";
-const ICON_TILE = "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl md:h-11 md:w-11 md:rounded-2xl";
-const ROW_LABEL = "flex-1 text-[14px] tracking-wide md:flex-none md:text-[15px]";
+const ICON_TILE = "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl";
 
-// Start loading the seller home page code as soon as a finger / cursor touches the Grow button,
-// so the page is usually ready by the time the tap completes (no blank flash while the chunk loads).
+// Start loading the seller home page code as soon as a finger / cursor touches the Grow button.
 let growWarmed = false;
 const warmGrow = () => {
     if (growWarmed) return;
@@ -206,6 +183,24 @@ function formatShopName(slug) {
         .filter(Boolean)
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ");
+}
+
+// The server's timestamp field name is not known here, so a few common ones are tried.
+const stampOf = (n) => n?.created_at ?? n?.createdAt ?? n?.timestamp ?? null;
+
+function timeAgo(v) {
+    if (!v) return "";
+    const t = new Date(v).getTime();
+    if (!Number.isFinite(t)) return "";
+    const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (s < 60) return "Just now";
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    const d = Math.floor(h / 24);
+    if (d < 7) return `${d}d ago`;
+    return new Date(t).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 }
 
 // True while any text field is focused (i.e. the mobile keyboard is up).
@@ -248,45 +243,6 @@ function useIsPrimaryInstance() {
     return primary;
 }
 
-function MenuRow({ item, active }) {
-    const Icon = item.icon;
-    return (
-        <button
-            onClick={item.onClick}
-            aria-current={active ? "page" : undefined}
-            className={`${ROW_BASE} ${active ? ROW_ACTIVE : ROW_IDLE} ${ROW_INTERACTIVE}`}
-        >
-            {/* Mobile only: thin bar flush with the sheet's left edge (-left-5 cancels the list's px-5). */}
-            {active && (
-                <span
-                    aria-hidden="true"
-                    className="absolute -left-5 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-r-full md:hidden"
-                    style={{ background: "#000" }}
-                />
-            )}
-            <span className={ICON_TILE} style={{ background: active ? "#000" : C.tile }}>
-                <Icon className="h-4 w-4 md:h-5 md:w-5" style={{ color: active ? "#fff" : C.ink }} />
-            </span>
-            <span
-                className={`${ROW_LABEL} ${active ? "font-extrabold" : "font-semibold"}`}
-                style={{ color: active ? "#000" : C.ink }}
-            >
-                {item.label}
-            </span>
-            {item.badge != null && (
-                <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#d2462b] px-1.5 text-[9.5px] font-bold text-white md:absolute md:right-3 md:top-3">
-                    {item.badge}
-                </span>
-            )}
-        </button>
-    );
-}
-
-function Divider() {
-    // Dividers only make sense in the mobile list; the desktop grid has none.
-    return <div className="-mx-5 my-2 h-px md:hidden" style={{ background: C.hair }} />;
-}
-
 const countLabel = (n) => (n > 99 ? "99+" : n);
 
 // Dock badge: always in the DOM, absolutely positioned. It only fades/scales, so a count
@@ -305,13 +261,6 @@ function DockBadge({ n }) {
 }
 
 // One dock button = coloured circle + text label underneath.
-//  - `active`  : soft ring in the button's own colour + a small bar under the label
-//  - `current` : sets aria-current="page" (defaults to `active`; Menu passes false because
-//                an open menu is not a page)
-//  - `ping`    : the attention ring on the raised "Save" slot
-//  - `badge`   : number for the corner badge (omit for none)
-// Fixed 72px width keeps every column the same size, so the collapse-measuring logic
-// (tilesInnerRef) stays exact.
 function DockItem({
     label, active = false, current, theme, size = 44, ping = false, badge,
     onClick, ariaLabel, title, tabIndex, className = "", children, ...rest
@@ -359,43 +308,161 @@ function DockItem({
     );
 }
 
+/* ---------------- notifications ---------------- */
+
+function NotificationRow({ n, onOpen }) {
+    const when = timeAgo(stampOf(n));
+    return (
+        <button
+            type="button"
+            onClick={() => onOpen(n)}
+            className="relative flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B7285]/40"
+            style={{ background: n.read ? "transparent" : "rgba(11,114,133,0.06)" }}
+        >
+            <span
+                aria-hidden="true"
+                className="mt-[7px] h-2 w-2 shrink-0 rounded-full"
+                style={{ background: n.read ? "transparent" : "#d2462b" }}
+            />
+            <span className="min-w-0 flex-1">
+                <span className="flex items-start justify-between gap-3">
+                    <span
+                        className={`min-w-0 text-[13px] leading-snug tracking-wide ${n.read ? "font-semibold" : "font-extrabold"}`}
+                        style={{ color: C.ink }}
+                    >
+                        {n.title}
+                    </span>
+                    {when && <span className="shrink-0 pt-px text-[10.5px] font-semibold tabular-nums" style={{ color: C.muted }}>{when}</span>}
+                </span>
+                {n.body && (
+                    <span className="mt-0.5 line-clamp-2 block text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                        {n.body}
+                    </span>
+                )}
+            </span>
+        </button>
+    );
+}
+
+function NotificationsPane({ items, unreadCount, onOpen, onMarkAll, scrollProps, className = "" }) {
+    const [filter, setFilter] = useState("all"); // all | unread
+    const [limit, setLimit] = useState(NOTIF_PAGE);
+
+    const shown = useMemo(() => (filter === "unread" ? items.filter((n) => !n.read) : items), [items, filter]);
+    const visible = shown.slice(0, limit);
+
+    return (
+        <section className={className} aria-label="Notifications">
+            <div className="shrink-0 px-5 pb-2 pt-3 md:px-7 md:pb-3 md:pt-4">
+                <div className="flex items-center justify-between gap-2">
+                    <h3 className="flex items-center gap-2 text-[15px] font-extrabold tracking-wide md:text-[16px]" style={{ color: C.ink }}>
+                        Notifications
+                        {unreadCount > 0 && (
+                            <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#d2462b] px-1.5 text-[9.5px] font-bold text-white">
+                                {countLabel(unreadCount)}
+                            </span>
+                        )}
+                    </h3>
+
+                    <div className="flex items-center gap-1.5">
+                        <div role="group" aria-label="Filter notifications" className="flex gap-1 rounded-full p-0.5" style={{ background: C.tile }}>
+                            {[["all", "All"], ["unread", "Unread"]].map(([k, l]) => (
+                                <button
+                                    key={k} type="button" aria-pressed={filter === k}
+                                    onClick={() => { setFilter(k); setLimit(NOTIF_PAGE); }}
+                                    className="rounded-full px-3 py-1 text-[11.5px] font-bold tracking-wide transition-colors duration-150"
+                                    style={filter === k ? { background: "#000", color: "#fff" } : { color: C.muted }}
+                                >
+                                    {l}
+                                </button>
+                            ))}
+                        </div>
+
+                        <button
+                            type="button" onClick={onMarkAll} disabled={unreadCount === 0}
+                            aria-label="Mark all as read" title="Mark all as read"
+                            className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/5 disabled:opacity-40 disabled:hover:bg-transparent"
+                            style={{ color: C.secondary }}
+                        >
+                            <CheckCheck className="h-4 w-4" strokeWidth={2.4} />
+                            <span className="hidden sm:inline">Mark all read</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                className="min-h-[min(380px,50dvh)] flex-1 overflow-y-auto px-2 pb-[var(--sheet-pb)] md:min-h-0 md:px-4 md:pb-6"
+                style={{ overscrollBehavior: "contain" }}
+                {...scrollProps}
+            >
+                {visible.length === 0 ? (
+                    <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-full" style={{ background: C.tile }}>
+                            <BellOff className="h-5 w-5" style={{ color: C.muted }} />
+                        </span>
+                        <p className="text-[13px] font-bold" style={{ color: C.ink }}>
+                            {filter === "unread" ? "You're all caught up" : "No notifications yet"}
+                        </p>
+                        <p className="max-w-[240px] text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>
+                            {filter === "unread" ? "Nothing unread right now." : "Order, credit and account updates will stay here so you can read them later."}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-0.5">
+                        {visible.map((n) => <NotificationRow key={n.id} n={n} onOpen={onOpen} />)}
+                        {shown.length > limit && (
+                            <button
+                                type="button" onClick={() => setLimit((l) => l + NOTIF_PAGE)}
+                                className="mx-auto mt-2 h-9 rounded-full border px-4 text-[12px] font-bold tracking-wide transition-colors hover:bg-black/[0.03]"
+                                style={{ borderColor: C.hair, color: C.ink }}
+                            >
+                                Show more
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+        </section>
+    );
+}
+
 export default function BottomNavStrip({ onOpenRfq }) {
     const primary = useIsPrimaryInstance();
     const navigate = useNavigate();
-    const { pathname, search } = useLocation();
+    const { pathname } = useLocation();
     const { token, effectiveLoggedIn, profile, signOut } = useAuth();
-    const { purchaseUnreadCount, salesUnreadCount, creditUnreadCount } = useNotifications();
-    const { cartCount } = useCart();
-    const { unreadTotal: chatUnreadTotal } = useChatContext();
-    const { totalBadgeCount: productsBadgeCount } = useListings();
-    const isApprovedSeller = profile?.seller_status === "approved";
+    const { notifications, markRead, markAllRead } = useNotifications();
 
     const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
-
-    const allItems = buildMenuItems({
-        isApprovedSeller, navigate,
-        cartCount,
-        chatUnread: chatUnreadTotal,
-        purchaseUnread: purchaseUnreadCount,
-        salesUnread: salesUnreadCount,
-        productsBadge: productsBadgeCount,
-        creditUnread: creditUnreadCount,
-    });
+    const scrollProps = useMemo(() => ({
+        "data-lenis-prevent": "",
+        onWheel: stopScrollPropagation,
+        onTouchStart: stopScrollPropagation,
+        onTouchMove: stopScrollPropagation,
+    }), [stopScrollPropagation]);
 
     const growBadges = useGrowBadges();
 
-    const isHome = pathname === "/home" || pathname === "/home/";
+    // Everything except chat, newest first (stable order when the server sends no timestamps).
+    const consoleNotifs = useMemo(
+        () => (notifications || [])
+            .filter((n) => !isChatNotification(n))
+            .sort((a, b) => (Date.parse(stampOf(b)) || 0) - (Date.parse(stampOf(a)) || 0)),
+        [notifications]
+    );
+    const unreadNotifCount = useMemo(() => consoleNotifs.filter((n) => !n.read).length, [consoleNotifs]);
+
     const inGrow = pathname === "/grow" || pathname.startsWith("/grow/");
     const inSave = pathname === "/save" || pathname.startsWith("/save/");
     const inLogin = pathname === "/login" || pathname.startsWith("/login/");
-    const inModule = inGrow || inSave; // third slot is Home inside Grow / Save, Menu everywhere else
+    const inModule = inGrow || inSave; // third slot is Home inside Grow / Save, Console everywhere else
     const activeKey = inGrow ? "grow" : inSave ? "save" : null;
     const fabBottom = FAB_BOTTOM_HOME;
     const shopName = profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM";
     const tileGap = 8;
 
     // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
-    // (Going via /grow made the screen render the start layout first and then redirect = visible jump.)
     const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/grow/dashboard" : "/grow";
 
     // Always the same two tiles, in the same order: Grow, Save.
@@ -403,15 +470,11 @@ export default function BottomNavStrip({ onOpenRfq }) {
         ...t, to: t.key === "grow" ? growTo : t.to, slot: SLOT[i], badge: t.key === "grow" ? growBadges.total : 0,
     }));
 
-    // Menu rows: drop the seller rows that now live in Grow, and Home while already on Home.
-    const items = allItems.filter(
-        (it) => !HIDDEN_MENU_IDS.includes(it.id) && !(it.id === "home" && isHome)
-    );
-
     const [pageOpen, setPageOpen] = useState(false);
+    const [everOpened, setEverOpened] = useState(false); // notifications list mounts on first open only
     const typing = useTypingActive();
 
-    // Measurements used to keep the Menu button exactly where it was while the dock shrinks.
+    // Measurements used to keep the Console button exactly where it was while the dock shrinks.
     const tilesInnerRef = useRef(null);
     const pillRef = useRef(null);
     const [tilesW, setTilesW] = useState(0);   // natural width of the tiles group
@@ -431,12 +494,12 @@ export default function BottomNavStrip({ onOpenRfq }) {
         if (!pageOpen && pillRef.current) setPillH(pillRef.current.offsetHeight);
     }, [pageOpen, primary, tiles.length, inModule]);
 
-    useEffect(() => { if (pageOpen) setClipTiles(true); }, [pageOpen]);
+    useEffect(() => { if (pageOpen) { setClipTiles(true); setEverOpened(true); } }, [pageOpen]);
 
     // Close automatically on route change so it never lingers over the next page.
     useEffect(() => { setPageOpen(false); }, [pathname]);
 
-    // Lock background scroll, close on Escape, and flag <body> while the menu is open.
+    // Lock background scroll, close on Escape, and flag <body> while the Console is open.
     useEffect(() => {
         if (!primary) return undefined;
         document.body.dataset.bbmMenu = pageOpen ? "open" : "closed";
@@ -452,37 +515,45 @@ export default function BottomNavStrip({ onOpenRfq }) {
         };
     }, [pageOpen, primary]);
 
-    // Menu button badge = only the rows still shown in the menu (no double counting with Grow).
-    const badgeTotal = items.reduce((sum, it) => sum + (it.rawBadge || 0), 0);
-    const badgeDisplay = badgeTotal > 0 ? (badgeTotal > 9 ? "9+" : badgeTotal) : null;
+    // Console button badge = unread notifications only.
+    const badgeTotal = unreadNotifCount;
+
+    const openNotification = useCallback((n) => {
+        if (!n.read) markRead(n.id);
+        setPageOpen(false);
+        const link = n.link;
+        if (!link || link === "#") return;
+        if (link.startsWith("/")) navigate(link);
+        else window.location.assign(link);
+    }, [markRead, navigate]);
 
     // A chat thread is open: /grow/chat/:id (hide the dock for an immersive view)
     const inChatThread = /^\/grow\/chat\/[^/]+/.test(pathname);
     const inSaveChatThread = /^\/save\/chat\/[^/]+/.test(pathname);
     const inSaveCart = /^\/save\/cart+/.test(pathname);
 
-    const menuButton = (
+    const consoleButton = (
         <DockItem
-            label={pageOpen ? "Close" : "Menu"}
+            label={pageOpen ? "Close" : "Console"}
             theme={FAB_THEME.menu}
             size={SLOT[0].size}
             active={pageOpen}
             current={false}
             onClick={() => setPageOpen((v) => !v)}
-            ariaLabel={badgeDisplay ? `${pageOpen ? "Close" : "Open"} menu, ${badgeTotal} unread` : `${pageOpen ? "Close" : "Open"} menu`}
+            ariaLabel={badgeTotal > 0 ? `${pageOpen ? "Close" : "Open"} console, ${badgeTotal} unread` : `${pageOpen ? "Close" : "Open"} console`}
             aria-expanded={pageOpen}
             badge={pageOpen ? 0 : badgeTotal}
         >
             <AnimatePresence mode="wait" initial={false}>
                 <motion.span
-                    key={pageOpen ? "x" : "menu"}
+                    key={pageOpen ? "x" : "console"}
                     initial={{ rotate: pageOpen ? -90 : 90, opacity: 0, scale: 0.6 }}
                     animate={{ rotate: 0, opacity: 1, scale: 1 }}
                     exit={{ rotate: pageOpen ? 90 : -90, opacity: 0, scale: 0.6 }}
                     transition={{ duration: 0.08 }}
                     className="flex"
                 >
-                    {pageOpen ? <X size={SLOT[0].icon} strokeWidth={2.4} /> : <Menu size={SLOT[0].icon} strokeWidth={2.4} />}
+                    {pageOpen ? <X size={SLOT[0].icon} strokeWidth={2.4} /> : <LayoutGrid size={SLOT[0].icon} strokeWidth={2.4} />}
                 </motion.span>
             </AnimatePresence>
         </DockItem>
@@ -512,7 +583,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 className={`bbm-dock pointer-events-none fixed inset-x-0 flex justify-center transition-opacity duration-150 ${typing ? "opacity-0" : ""}`}
                 style={{ zIndex: Z_DOCK, bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
             >
-                {/* Slides sideways by half the removed width, so the Menu button stays put.
+                {/* Slides sideways by half the removed width, so the Console button stays put.
                     Outer radius 22 = inner radius 20 + the 2px margin, so the comet ring hugs the corners. */}
                 <motion.div
                     className={`${typing ? "pointer-events-none" : "pointer-events-auto"} relative isolate rounded-[22px]`}
@@ -530,8 +601,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
                     </span>
 
-                    {/* the dock body (rounded rectangle, no backdrop blur). items-end keeps labels on one
-                        baseline and keeps the Menu/X button in the same spot whether the tiles are open or not. */}
+                    {/* the dock body */}
                     <div
                         ref={pillRef}
                         className="relative m-[2px] flex items-end justify-center rounded-[20px] border-[1.5px] px-[20px] pb-[8px] pt-[4px] transition-[background-color,box-shadow] duration-200"
@@ -542,7 +612,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             minHeight: pageOpen && pillH ? pillH : undefined,
                         }}
                     >
-                        {/* Tiles group: collapses to 0 width (and 0 gap) while the menu is open */}
+                        {/* Tiles group: collapses to 0 width (and 0 gap) while the Console is open */}
                         <motion.div
                             className="relative"
                             initial={false}
@@ -579,8 +649,8 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         </motion.div>
 
                         {/* Instant swap (no exit/enter animation): the key makes React replace the button at once */}
-                        <Fragment key={inModule ? "home" : effectiveLoggedIn ? "menu" : "login"}>
-                            {inModule ? homeButton : effectiveLoggedIn ? menuButton : signInButton}
+                        <Fragment key={inModule ? "home" : effectiveLoggedIn ? "console" : "login"}>
+                            {inModule ? homeButton : effectiveLoggedIn ? consoleButton : signInButton}
                         </Fragment>
                     </div>
                 </motion.div>
@@ -594,84 +664,73 @@ export default function BottomNavStrip({ onOpenRfq }) {
                 className={`fixed inset-0 bg-black/35 transition-opacity duration-300 md:bg-black/20 ${pageOpen ? "opacity-100" : "pointer-events-none opacity-0"}`}
             />
 
-            {/* ===================== MENU SHEET ===================== */}
+            {/* ===================== CONSOLE SHEET ===================== */}
             <div
                 className="bbm-sheet"
                 data-open={String(pageOpen)}
                 role="dialog"
-                aria-label="Menu"
+                aria-label="Console"
                 aria-hidden={!pageOpen}
             >
-                {/* Grab handle (mobile) + shop title */}
-                <div className="shrink-0 px-5 pt-2.5 md:px-7 md:pt-7">
+                {/* Grab handle (mobile) + title + actions.
+                    Mobile: title, then Helpline + Sign out in a row under it.
+                    Desktop: title and Sign out share one row, vertically centered. */}
+                <div className="shrink-0 px-5 pt-2.5 md:px-7 md:pt-6">
                     <div className="mx-auto h-1 w-10 rounded-full md:hidden" style={{ background: C.hair }} />
-                    <div role="heading" aria-level={2} className="mt-3 truncate text-[20px] font-extrabold leading-tight tracking-tight md:mt-0 md:text-[24px]" style={{ color: C.ink }}>
-                        {shopName}
-                    </div>
-                </div>
 
-                {/* List on mobile, tile grid on desktop. min-h-0 lets it scroll at max height.
-                    Bottom padding on mobile clears the floating dock. */}
-                <div
-                    className="min-h-0 flex-1 overflow-y-auto px-5 pt-3 pb-[var(--sheet-pb)] md:px-7 md:pb-7 md:pt-5"
-                    style={{
-                        overscrollBehavior: "contain",
-                        "--sheet-pb": `calc(${fabBottom + DOCK_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))`,
-                    }}
-                    data-lenis-prevent=""
-                    onWheel={stopScrollPropagation}
-                    onTouchStart={stopScrollPropagation}
-                    onTouchMove={stopScrollPropagation}
-                >
-                    <div className="flex flex-col gap-1 md:grid md:grid-cols-2 md:gap-3 lg:grid-cols-3">
-                        {items.map((it, i) => {
-                            const showDivider = i > 0 && items[i - 1].group !== it.group;
-                            return (
-                                <Fragment key={it.id}>
-                                    {showDivider && <Divider />}
-                                    <MenuRow
-                                        item={{
-                                            ...it,
-                                            onClick: () => {
-                                                setPageOpen(false);
-                                                it.onClick();
-                                            },
-                                        }}
-                                        active={it.match(pathname, search)}
-                                    />
-                                </Fragment>
-                            );
-                        })}
+                    <div className="mt-3 md:mt-0 md:flex md:items-center md:justify-between md:gap-4">
+                        <div
+                            role="heading" aria-level={2}
+                            className="truncate text-[20px] font-extrabold leading-tight tracking-tight md:min-w-0 md:flex-1 md:text-[24px]"
+                            style={{ color: C.ink }}
+                        >
+                            {shopName}
+                        </div>
 
                         {effectiveLoggedIn && (
-                            <>
-                                {items.length > 0 && items[items.length - 1].group !== 2 && <Divider />}
-
-                                {/* Helpline: mobile only (hidden on desktop). HelpBulb keeps its own tap behaviour */}
-                                <div className={`${ROW_BASE} ${ROW_IDLE} md:hidden`}>
+                            <div className="mt-3 flex gap-2 md:mt-0 md:shrink-0">
+                                {/* Helpline: mobile only. HelpBulb keeps its own tap behaviour */}
+                                <div
+                                    className="flex flex-1 items-center gap-2 rounded-xl border px-2 py-1.5 md:hidden"
+                                    style={{ borderColor: C.hair }}
+                                >
                                     <span className={ICON_TILE} style={{ background: C.tile }}>
                                         <HelpBulb inline />
                                     </span>
-                                    <span className={`${ROW_LABEL} font-semibold`} style={{ color: C.ink }}>
-                                        Helpline
-                                    </span>
+                                    <span className="text-[13px] font-semibold tracking-wide" style={{ color: C.ink }}>Helpline</span>
                                 </div>
 
-                                {/* Sign out */}
                                 <button
+                                    type="button"
                                     onClick={() => { setPageOpen(false); signOut(); }}
-                                    className={`${ROW_BASE} ${ROW_IDLE} ${ROW_INTERACTIVE}`}
+                                    className="flex flex-1 items-center gap-2 rounded-xl border px-2 py-1.5 text-left transition-colors duration-150 active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B7285]/40 md:flex-none md:px-3 md:py-1.5 md:hover:bg-black/[0.04]"
+                                    style={{ borderColor: C.hair }}
                                 >
-                                    <span className={ICON_TILE} style={{ background: C.tile }}>
-                                        <LogOut className="h-4 w-4 md:h-5 md:w-5" style={{ color: C.ink }} />
+                                    <span className={`${ICON_TILE} md:h-7 md:w-7 md:rounded-lg`} style={{ background: C.tile }}>
+                                        <LogOut className="h-4 w-4" style={{ color: C.ink }} />
                                     </span>
-                                    <span className={`${ROW_LABEL} font-semibold`} style={{ color: C.ink }}>
-                                        Sign out
-                                    </span>
+                                    <span className="text-[13px] font-semibold tracking-wide" style={{ color: C.ink }}>Sign out</span>
                                 </button>
-                            </>
+                            </div>
                         )}
                     </div>
+                </div>
+
+                {/* Body: notifications only. --sheet-pb clears the floating dock on mobile. */}
+                <div
+                    className="flex min-h-0 flex-1 flex-col"
+                    style={{ "--sheet-pb": `calc(${fabBottom + DOCK_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))` }}
+                >
+                    {everOpened && effectiveLoggedIn && (
+                        <NotificationsPane
+                            className="flex min-h-0 flex-1 flex-col"
+                            items={consoleNotifs}
+                            unreadCount={unreadNotifCount}
+                            onOpen={openNotification}
+                            onMarkAll={markAllRead}
+                            scrollProps={scrollProps}
+                        />
+                    )}
                 </div>
             </div>
         </>,
