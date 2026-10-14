@@ -14,6 +14,8 @@ import { fetchMyOrders } from "../utils/api.js";
 import PurchaseCardActions from "../components/orders/PurchaseCardActions.jsx";
 import ResumePaymentButton from "../components/orders/ResumePaymentButton.jsx";
 import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
+import PriceChangeNotice, { OrderBlockedNotice } from "../components/orders/PriceChangeNotice.jsx";
+import { orderPriceInfo, groupPriceInfo } from "../utils/orderPrice.js";
 import { transportLabel } from "../../shared/transportOptions.js";
 import {
     displayStatus, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote,
@@ -72,7 +74,6 @@ function GroupTags({ orders }) {
 }
 
 /* ---------- order card ---------- */
-// inGroup: the order belongs to a cart group, so payment is offered once on the group header instead.
 function OrderCard({ order, idx, onChanged, inGroup = false }) {
     const navigate = useNavigate();
     const { purchaseOrderUnreadCounts } = useNotifications();
@@ -83,10 +84,14 @@ function OrderCard({ order, idx, onChanged, inGroup = false }) {
     const status = displayStatus(order);
     const open = () => navigate(`/save/orders/${order.id}`);
 
+    const price = orderPriceInfo(order); // null unless awaiting payment
+    const amount = price ? price.current : order.total_amount;
+    const payBlocked = !!price?.blocked;
+
     const showDelivery = !!item && shouldShowDelivery(order, item);
     const showShortfall = shouldShowShortfall(order);
     const showRequested = !!order.buyer_transport_mode && !order.transport_mode;
-    const showPay = isUnpaid(order) && !inGroup;
+    const showPay = isUnpaid(order) && !inGroup && !payBlocked;
 
     return (
         <motion.article
@@ -107,6 +112,13 @@ function OrderCard({ order, idx, onChanged, inGroup = false }) {
             <OrderTags order={order} isSample={isSample} />
             <div className="sh-tw" onClick={stop}><OrderTimingNote order={order} viewer="buyer" /></div>
 
+            {!inGroup && price?.changed && (
+                <div className="sh-tw" onClick={stop}><PriceChangeNotice id={order.id} from={price.from} to={price.to} /></div>
+            )}
+            {!inGroup && price?.blocked && (
+                <div className="sh-tw" onClick={stop}><OrderBlockedNotice code={price.blocked.code} product={price.blocked.product} /></div>
+            )}
+
             <div className="sh-ocp">
                 <div className="sh-th">
                     {item?.image_snapshot ? <img src={item.image_snapshot} alt="" loading="lazy" /> : <Package size={22} />}
@@ -119,7 +131,7 @@ function OrderCard({ order, idx, onChanged, inGroup = false }) {
                         {extraCount > 0 ? ` +${extraCount} more item${extraCount === 1 ? "" : "s"}` : ""}
                     </p>
                 </div>
-                <b className={`sh-oca${isSample ? " smp" : ""}`}>{displayAmount(order.total_amount, { isSample })}</b>
+                <b className={`sh-oca${isSample ? " smp" : ""}`}>{displayAmount(amount, { isSample })}</b>
             </div>
 
             {(showDelivery || showShortfall || showRequested) && (
@@ -132,7 +144,13 @@ function OrderCard({ order, idx, onChanged, inGroup = false }) {
 
             <div className="sh-tw sh-oa" onClick={stop} style={showPay ? { display: "flex", flexDirection: "column", gap: 10 } : undefined}>
                 {showPay && (
-                    <ResumePaymentButton orderId={order.id} groupId={order.order_group_id || null} label={`Complete payment · ₹${inr(order.total_amount)}`} />
+                    <ResumePaymentButton
+                        orderId={order.id}
+                        groupId={order.order_group_id || null}
+                        label={`Complete payment · ₹${inr(amount)}`}
+                        expectedTotal={price?.current}
+                        onPriceChanged={() => onChanged?.({ silent: true })}
+                    />
                 )}
                 <PurchaseCardActions order={order} onChanged={onChanged} />
             </div>
@@ -143,9 +161,8 @@ function stop(e) { e.stopPropagation(); }
 
 function OrderGroup({ group, startIdx, onChanged }) {
     if (!group.groupId) return <OrderCard order={group.orders[0]} idx={startIdx} onChanged={onChanged} />;
-    const combined = group.orders.reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
+    const gp = groupPriceInfo(group.orders);
     const unpaid = group.orders.filter(isUnpaid);
-    const unpaidTotal = unpaid.reduce((s, o) => s + (Number(o.total_amount) || 0), 0);
     return (
         <div className="sh-grp">
             <div className="sh-grh">
@@ -153,14 +170,22 @@ function OrderGroup({ group, startIdx, onChanged }) {
                     <p>Order group {group.groupNumber ? `#${group.groupNumber}` : ""} · {group.orders.length} sellers</p>
                     <GroupTags orders={group.orders} />
                 </div>
-                <b>₹{inr(combined)}</b>
+                <b>₹{inr(gp.combined)}</b>
             </div>
-            {unpaid.length > 0 && (
-                <div style={{ padding: "0 14px 12px" }}>
+            {(gp.changed || gp.blocked) && (
+                <div style={{ padding: "0 14px" }}>
+                    {gp.changed && <PriceChangeNotice id={group.groupId} from={gp.from} to={gp.to} />}
+                    {gp.blocked && <OrderBlockedNotice code={gp.blocked.code} product={gp.blocked.product} />}
+                </div>
+            )}
+            {unpaid.length > 0 && !gp.blocked && (
+                <div style={{ padding: "10px 14px 12px" }}>
                     <ResumePaymentButton
                         orderId={unpaid[0].id}
                         groupId={group.groupId}
-                        label={`Complete payment · ₹${inr(unpaidTotal)}`}
+                        label={`Complete payment · ₹${inr(gp.unpaidTotal)}`}
+                        expectedTotal={gp.unpaidTotal}
+                        onPriceChanged={() => onChanged?.({ silent: true })}
                     />
                 </div>
             )}

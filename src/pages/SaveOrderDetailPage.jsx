@@ -15,6 +15,8 @@ import ResumePaymentButton from "../components/orders/ResumePaymentButton.jsx";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
+import PriceChangeNotice, { OrderBlockedNotice } from "../components/orders/PriceChangeNotice.jsx";
+import { orderPriceInfo, applyRepricedView } from "../utils/orderPrice.js";
 import OrderTimingNote from "../components/orders/OrderTimingNote.jsx";
 import {
     displayStatus, ItemQuantityLine, DeliveryEstimate, displayAmount, StockShortfallNote,
@@ -92,7 +94,8 @@ export default function SaveOrderDetailPage() {
     const { markOrderRead } = useNotifications();
 
     const fetcher = useCallback((orderId) => fetchOrderById(token, orderId), [token]);
-    const { order, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
+    const { order: rawOrder, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
+
 
     // Steps down the My Orders badge for this order the moment its detail page is opened.
     useEffect(() => {
@@ -101,7 +104,7 @@ export default function SaveOrderDetailPage() {
 
     const goBack = () => (location.key !== "default" ? navigate(-1) : navigate("/orders"));
 
-    if (loading && !order) {
+    if (loading && !rawOrder) {
         return (
             <div className="sh-w" aria-busy="true">
                 <div className="sh-sk line" style={{ marginTop: 28, width: "55%" }} />
@@ -109,7 +112,7 @@ export default function SaveOrderDetailPage() {
             </div>
         );
     }
-    if (!order) {
+    if (!rawOrder) {
         return (
             <div className="sh-w" style={{ marginTop: 28 }}>
                 <div className="sh-emp">
@@ -120,6 +123,9 @@ export default function SaveOrderDetailPage() {
             </div>
         );
     }
+    const price = orderPriceInfo(rawOrder);                 // live price info (null unless unpaid)
+    const order = applyRepricedView(rawOrder, price);       // everything below displays the live price
+    const blocked = !!price?.blocked;
 
     const isSample = order.order_type === "sample";
     const firstItem = order.items?.[0];
@@ -145,19 +151,27 @@ export default function SaveOrderDetailPage() {
             <div className="sh-dgrid">
                 <div className="sh-dcol">
                     {unpaid && (
-                        <Section title="Complete your payment">
-                            <p className="sh-cap" style={{ margin: "0 0 12px" }}>
-                                {inCart
-                                    ? `This order is part of a cart checkout${order.group_number ? ` (#${order.group_number})` : ""}, so you pay for the whole cart in one payment. The seller is notified once the payment is confirmed.`
-                                    : `Your order of ₹${inr(order.total_amount)} is created but not paid yet. The seller is notified once the payment is confirmed.`}
-                            </p>
-                            <ResumePaymentButton
-                                orderId={order.id}
-                                groupId={order.order_group_id || null}
-                                label={inCart ? "Pay for the whole cart" : `Pay ₹${inr(order.total_amount)}`}
-                                className="sh-btn go"
-                            />
-                        </Section>
+                        <>
+                            {price?.changed && <PriceChangeNotice id={rawOrder.id} from={price.from} to={price.to} />}
+                            {blocked && <OrderBlockedNotice code={price.blocked.code} product={price.blocked.product} />}
+                            {!blocked && (
+                                <Section title="Complete your payment">
+                                    <p className="sh-cap" style={{ margin: "0 0 12px" }}>
+                                        {inCart
+                                            ? `This order is part of a cart checkout${order.group_number ? ` (#${order.group_number})` : ""}, so you pay for the whole cart in one payment. The seller is notified once the payment is confirmed.`
+                                            : `Your order of ₹${inr(order.total_amount)} is created but not paid yet. The seller is notified once the payment is confirmed.`}
+                                    </p>
+                                    <ResumePaymentButton
+                                        orderId={order.id}
+                                        groupId={order.order_group_id || null}
+                                        label={inCart ? "Pay for the whole cart" : `Pay ₹${inr(order.total_amount)}`}
+                                        className="sh-btn go"
+                                        expectedTotal={inCart ? null : price?.current}
+                                        onPriceChanged={() => reload({ silent: true })}
+                                    />
+                                </Section>
+                            )}
+                        </>
                     )}
 
                     <Section title="Payment & freight">

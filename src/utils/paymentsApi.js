@@ -8,11 +8,14 @@ import { apiGet, apiPost } from "./api.js";
 // can send them back to the right place afterwards (wallet vs cart vs order).
 const RETURN_KEY = "bbm_payment_return_to";
 
-export const startOrderPayment = (token, orderId) =>
-    apiPost(`/payments/orders/${encodeURIComponent(orderId)}/checkout`, token, {});
+const expectedBody = (expectedTotal) =>
+    expectedTotal != null && Number.isFinite(Number(expectedTotal)) ? { expectedTotal: Number(expectedTotal) } : {};
 
-export const startGroupPayment = (token, groupId) =>
-    apiPost(`/payments/groups/${encodeURIComponent(groupId)}/checkout`, token, {});
+export const startOrderPayment = (token, orderId, expectedTotal = null) =>
+    apiPost(`/payments/orders/${encodeURIComponent(orderId)}/checkout`, token, expectedBody(expectedTotal));
+
+export const startGroupPayment = (token, groupId, expectedTotal = null) =>
+    apiPost(`/payments/groups/${encodeURIComponent(groupId)}/checkout`, token, expectedBody(expectedTotal));
 
 export const startWalletPayment = (token, amount) =>
     apiPost(`/payments/wallet/checkout`, token, { amount: String(amount) });
