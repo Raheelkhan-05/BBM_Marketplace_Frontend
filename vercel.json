@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/sitemap.xml",
+      "destination": "https://bbm-marketplace-backend.onrender.com/api/seo/sitemap"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

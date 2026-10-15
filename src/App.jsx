@@ -176,9 +176,10 @@ function App() {
                 <Route element={<Layout />}>
                   <Route path="/" element={<Navigate to="/home" replace />} />
 
-                  <Route path="/search" element={<SearchResultsPage />} />
+                  {/* <Route path="/search" element={<SearchResultsPage />} /> */}
                   <Route path="/home" element={<HomePage />} />
-                  <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
+                  <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
+                  {/* <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
                   <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
 
                   <Route path="/category/:idOrSlug/browse" element={<BrowsePage />} />
@@ -186,7 +187,7 @@ function App() {
 
                   <Route path="/category/:idOrSlug/products" element={<CategoryProductsPage />} />
                   <Route path="/product/:idOrSlug/brands" element={<GenericProductBrandsPage />} />
-                  <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
+                  
 
                   <Route path="/orders" element={<OrdersPage />} />
                   <Route path="/seller/orders" element={<SalesOrdersPage />} />
@@ -197,22 +198,24 @@ function App() {
                   <Route path="/admin/payments" element={<PaymentVerificationPage />} />
 
                   <Route path="/chat" element={<ChatPage />} />
-                  <Route path="/chat/:conversationId" element={<ChatPage />} />
-
+                  <Route path="/chat/:conversationId" element={<ChatPage />} /> */}
+                  {/* 
                   <Route path="/seller/onboarding" element={<RequireAuth><SellerOnboardingPage /></RequireAuth>} />
                   <Route path="/seller/status" element={<RequireAuth><SellerStatusPage /></RequireAuth>} />
                   <Route path="/seller/store" element={<RequireAuth><SellerStorePage /></RequireAuth>} />
-                  <Route path="/credit" element={<RequireAuth><CreditPage /></RequireAuth>} />
+                  <Route path="/credit" element={<RequireAuth><CreditPage /></RequireAuth>} /> */}
                   <Route path="/seller/marketing" element={<RequireAuth><SellerMarketingPage /></RequireAuth>} />
 
                   {/* <Route path="/rfq" element={<RequireAuth><RFQPage_ComingSoon /></RequireAuth>} /> */}
-                  <Route path="/rfq" element={<RequireAuth><RFQPage /></RequireAuth>} />
-                  <Route path="/admin/rfq" element={<AdminRfqPage />} />
+                  {/* <Route path="/rfq" element={<RequireAuth><RFQPage /></RequireAuth>} /> */}
+                  {/* <Route path="/admin/rfq" element={<AdminRfqPage />} /> */}
 
                   <Route path="/brands" element={<BrandsPage />} />
+                  <Route path="/brands/:brandName" element={<HomePage />} />
 
                   <Route path="/sellers" element={<SellersPage />} />
-
+                  <Route path="/sellers/:shopSlug" element={<HomePage />} />
+                  {/* 
                   <Route path="/seller/sell" element={<SellPublishProductPage />} />
                   <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />
 
@@ -235,18 +238,18 @@ function App() {
                   <Route path="/admin/sellers/:id" element={<RequireAdmin><AdminSellerDetailPage /></RequireAdmin>} />
                   <Route path="/admin/admins" element={<RequireAdmin><AdminManageAdminsPage /></RequireAdmin>} />
 
-                  <Route path="/admin/support" element={<RequireAdmin><AdminHelpRequestsPage /></RequireAdmin>} />
+                  <Route path="/admin/support" element={<RequireAdmin><AdminHelpRequestsPage /></RequireAdmin>} /> */}
 
                   <Route path="/shop/:slug" element={<ShopRoute />} />
                   <Route path="/product/:id" element={<ProductDetailPage />} />
-
+                  {/* 
                   <Route path="/admin/catalog" element={<RequireAdmin><AdminCatalogReviewPage /></RequireAdmin>} />
-                  <Route path="/admin/catalog/:level/:id" element={<RequireAdmin><AdminCatalogDetailPage /></RequireAdmin>} />
+                  <Route path="/admin/catalog/:level/:id" element={<RequireAdmin><AdminCatalogDetailPage /></RequireAdmin>} /> */}
 
-                  <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
+                  {/* <Route path="/category/:idOrSlug" element={<CategoryLandingPage />} />
                   <Route path="/subcategory/:idOrSlug" element={<SubcategoryLandingPage />} />
                   <Route path="/brand/:idOrSlug" element={<BrandDetailPage />} />
-                  <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} />
+                  <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} /> */}
 
                   <Route path="/p/:submissionId" element={<SharedProductPage />} />
 

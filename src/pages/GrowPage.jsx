@@ -6,6 +6,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { MENU_ROUTES } from "../components/menuItems.js";
 import { goTo } from "../components/grow/scrollTo.js";
+import Seo from "../components/Seo.jsx";
+
 
 const slug = (n) => n.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
@@ -245,6 +247,11 @@ export default function GrowPage() {
 
     return (
         <>
+            <Seo
+                title="Sell B2B online with BBM Marketplace – Reach buyers, manage orders"
+                description="List your products, set your own prices, MOQs and delivery terms, and reach verified B2B buyers. Transaction fees start as low as 0.25%."
+                path="/grow/details"
+            />
             {/* Hero */}
             <section className="hero">
                 <div className="wrap">

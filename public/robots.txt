@@ -1,0 +1,26 @@
+User-agent: *
+
+# Private or logged-in areas
+Disallow: /admin
+Disallow: /login
+Disallow: /cart
+Disallow: /orders
+Disallow: /chat
+Disallow: /seller/
+Disallow: /payment/
+Disallow: /p/
+Disallow: /account
+
+# GROW: only the public brochure (/grow/details) is crawlable
+Disallow: /grow/
+Allow: /grow/details
+
+# SAVE: only the public brochure (/save) is crawlable
+Disallow: /save/
+
+# Old filter URLs that now have clean versions (/brands/X, /sellers/X)
+Disallow: /*?brand=
+Disallow: /*?shop=
+Disallow: /*?start=
+
+Sitemap: https://www.bbm.business/sitemap.xml

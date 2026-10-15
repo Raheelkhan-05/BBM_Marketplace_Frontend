@@ -24,6 +24,8 @@ import { ArrowLeft, ArrowUp, Search, X, Loader2, Tags } from "lucide-react";
 import { fetchBrandsPage } from "../utils/api";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import { resizedImageUrl } from "../utils/imageUrl";
+import Seo from "../components/Seo.jsx";
+
 
 // const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 const INK = "#0B1116";
@@ -293,6 +295,12 @@ export default function BrandsPage() {
 
     return (
         <div className="min-h-screen bg-white text-slate-900 antialiased">
+            <Seo
+                title="Brands on BBM – Shop wholesale products by brand"
+                description="Browse industrial and wholesale brands on BBM. Compare verified sellers, MOQs and delivery times for every brand."
+                path="/brands"
+                noindex={!!q}
+            />
             <header
                 className={`sticky top-0 z-30 bg-white/95 backdrop-blur transition-shadow duration-200 ${scrolled ? "shadow-[0_6px_16px_-12px_rgba(11,17,22,0.35)]" : ""}`}
                 style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
@@ -308,6 +316,9 @@ export default function BrandsPage() {
                             <ArrowLeft className="h-5 w-5" strokeWidth={2.2} style={{ color: INK }} />
                         </Link>
                         <h1 className="text-[17px] font-extrabold tracking-wide" style={{ color: INK }}>Brands</h1>
+                        <p className="mt-1 px-1 text-[12px] font-medium sr-only" style={{ color: MUTED }}>
+                            Browse wholesale products by brand and compare verified sellers on BBM.
+                        </p>
                     </div>
 
                     <div className="relative mt-3" role="search">
@@ -397,7 +408,7 @@ export default function BrandsPage() {
                         {brands.map((b) => (
                             <Link
                                 key={b.brand_name.toLowerCase()}
-                                to={`/home?brand=${encodeURIComponent(b.brand_name)}`}
+                                to={`/brands/${encodeURIComponent(b.brand_name)}`}
                                 className="group flex min-w-0 flex-col items-center rounded-xl text-center transition-transform duration-200 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                                 style={{ outlineColor: ACCENT }}
                             >

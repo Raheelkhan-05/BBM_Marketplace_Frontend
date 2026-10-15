@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import Seo from "../components/Seo.jsx";
 import { ArrowLeft, ArrowUp, Search, X, Loader2, Store } from "lucide-react";
 import { fetchSellersPage } from "../utils/api";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
@@ -279,6 +280,12 @@ export default function SellersPage() {
 
     return (
         <div className="min-h-screen bg-white text-slate-900 antialiased">
+            <Seo
+                title="Sellers on BBM – Verified wholesale suppliers"
+                description="Find verified wholesale sellers and suppliers on BBM. See their products, MOQs and delivery locations."
+                path="/sellers"
+                noindex={!!q}
+            />
             <header
                 className={`sticky top-0 z-30 bg-white/95 backdrop-blur transition-shadow duration-200 ${scrolled ? "shadow-[0_6px_16px_-12px_rgba(11,17,22,0.35)]" : ""}`}
                 style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
@@ -294,6 +301,9 @@ export default function SellersPage() {
                             <ArrowLeft className="h-5 w-5" strokeWidth={2.2} style={{ color: INK }} />
                         </Link>
                         <h1 className="text-[17px] font-extrabold tracking-wide" style={{ color: INK }}>Sellers</h1>
+                        <p className="mt-1 px-1 text-[12px] font-medium sr-only" style={{ color: MUTED }}>
+                            Browse wholesale products by brand and compare verified sellers on BBM.
+                        </p>
                     </div>
 
                     <div className="relative mt-3" role="search">
@@ -383,7 +393,7 @@ export default function SellersPage() {
                             return (
                                 <Link
                                     key={s.shop_slug}
-                                    to={`/home?shop=${encodeURIComponent(s.shop_slug)}&via=sellers`}
+                                    to={`/sellers/${encodeURIComponent(s.shop_slug)}`}
                                     className="group flex min-w-0 flex-col items-center rounded-xl text-center transition-transform duration-200 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                                     style={{ outlineColor: ACCENT }}
                                 >

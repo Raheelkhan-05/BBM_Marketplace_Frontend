@@ -156,7 +156,8 @@
 //   greenInk) so they can be tuned in one place.
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
-import { useNavigate, useLocation, Link, useSearchParams } from "react-router-dom";
+import { useNavigate, useLocation, Link, useSearchParams, useParams } from "react-router-dom";
+import Seo from "../Seo.jsx";
 import FeedQuickActions from "./FeedQuickActions.jsx";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
@@ -490,7 +491,8 @@ function OwnListingPriceModal({ seller, includeGst, submitting, token, onApply, 
 
 // Shares the public store link (same format the login-return note uses).
 async function shareShopLink({ shopSlug, shopName }) {
-    const url = `${window.location.origin}/home/?shop=${encodeURIComponent(shopSlug)}`;
+
+    const url = `${window.location.origin}/sellers/${encodeURIComponent(shopSlug)}`;
     try {
         if (navigator.share) {
             await navigator.share({ title: shopName || "My shop", text: `Check out ${shopName || "my shop"} on BBM`, url });
@@ -2543,7 +2545,10 @@ function RowSkeleton() {
 // same unfiltered behavior as before. Passing it wires up live search.
 // `toolbar` is optional too: HomePage passes the Category strip + search bar,
 // which this component renders inside its sticky block (see header note).
-export default function HomeProductFeed({ category, q = "", shopSlug = null, brandName = null, toolbar = null }) {
+export default function HomeProductFeed({ category, q = "", shopSlug = null, brandName = null, toolbar = null, viaSellers = false }) {
+    const params = useParams();
+    const pathBrand = !!params.brandName;
+    const pathShop = !!params.shopSlug;
     const navigate = useNavigate();
     const location = useLocation();
     const { profile, token, effectiveLoggedIn, needsOnboarding } = useAuth();
@@ -2570,9 +2575,22 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const { selectedAddress: buyerAddress, shopName: myShopName } = useBuyerAddress();
 
     const clearBrand = () => {
+        if (pathBrand) { navigate("/home"); return; }
         const next = new URLSearchParams(searchParams);
         next.delete("brand");
         setSearchParams(next, { replace: true });
+    };
+
+    const clearShop = () => {
+        if (pathShop) { navigate("/home"); return; }
+        const params = new URLSearchParams(location.search);
+        params.delete("shop"); params.delete("via");
+        setSearchParams(params);
+    };
+
+    const handleBrands = () => {
+        if (brandName) { clearBrand(); return; }
+        navigate("/brands");
     };
 
     // If the buyer's address becomes unavailable (logged out, fetch
@@ -2618,16 +2636,9 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     const myShopSlug = profile?.shop_slug || null;
     const myShopActive = !!shopSlug && shopSlug === myShopSlug;
-    const fromSellers = searchParams.get("via") === "sellers";
+    const fromSellers = viaSellers;
     // Only one quick-action view is active at a time. Any store view lights up the Sellers tile.
     const activeTile = brandName ? "brands" : shopSlug ? "shop" : null;
-
-    const clearShop = () => {
-        const params = new URLSearchParams(location.search);
-        params.delete("shop");
-        params.delete("via");
-        setSearchParams(params);
-    };
 
     // Sellers tile: inside a store -> back to all products; otherwise open the Sellers page.
     const handleSellers = () => {
@@ -2646,16 +2657,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             .catch(() => { /* banner falls back to the slug */ });
         return () => c.abort();
     }, [shopSlug]);
-
-    const handleBrands = () => {
-        if (brandName) {
-            const params = new URLSearchParams(location.search);
-            params.delete("brand");
-            setSearchParams(params);
-            return;
-        }
-        navigate("/brands");
-    };
 
     const [followToast, setFollowToast] = useState(null); // { message, actionLabel?, onAction? }
     const [tipDismissed, setTipDismissed] = useState(() => readFlag(FOLLOW_TIP_KEY));
@@ -3390,8 +3391,42 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const columnCount = useResponsiveColumnCount();
     const columns = bucketItemsByColumn(displayItems, columnCount);
 
+    const seoPath = pathBrand ? `/brands/${encodeURIComponent(brandName)}`
+        : pathShop ? `/sellers/${encodeURIComponent(shopSlug)}`
+            : brandName ? `/brands/${encodeURIComponent(brandName)}`   // legacy ?brand= URL → canonical points to clean URL
+                : shopSlug ? `/sellers/${encodeURIComponent(shopSlug)}`
+                    : "/home";
+
+    const sellerName = shopInfo?.display_name || shopSlug;
+    const place = [shopInfo?.city, shopInfo?.state].filter(Boolean).join(", ");
+    const thin = !!q || (!loading && items.length === 0);
+
+    let seo;
+    if (brandName) {
+        seo = {
+            title: `${brandName} Products – Wholesale Prices & Verified Sellers | BBM`,
+            description: `Buy ${brandName} products wholesale on BBM. Compare verified sellers, MOQs and delivery times.`,
+            jsonLd: { "@context": "https://schema.org", "@type": "CollectionPage", name: `${brandName} products`, about: { "@type": "Brand", name: brandName } },
+        };
+    } else if (shopSlug) {
+        seo = {
+            title: `${sellerName}${place ? ` – ${place}` : ""} | Wholesale Seller on BBM`,
+            description: `Shop wholesale products from ${sellerName}${place ? ` in ${place}` : ""} on BBM. View MOQs, delivery and order directly.`,
+            jsonLd: {
+                "@context": "https://schema.org", "@type": "LocalBusiness", name: sellerName,
+                address: { "@type": "PostalAddress", addressLocality: shopInfo?.city, addressRegion: shopInfo?.state, addressCountry: "IN" }
+            },
+        };
+    } else {
+        seo = {
+            title: "BBM – Wholesale marketplace to buy & sell from verified sellers",
+            description: "Compare wholesale prices, MOQs and delivery from verified sellers across India. Buy or sell on BBM.",
+        };
+    }
+
     return (
         <>
+            <Seo {...seo} path={seoPath} noindex={thin} />
             <FeedQuickActions
                 active={activeTile}
                 brandLabel={brandName}

@@ -1,6 +1,6 @@
 // src/pages/HomePage.jsx
 import { useState, useEffect } from "react";
-import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams, useParams } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import ShopBanner from "../components/home/ShopBanner.jsx";
 import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
@@ -35,11 +35,14 @@ export default function HomePage() {
     const { effectiveLoggedIn, needsOnboarding } = useAuth();
 
     const [searchParams, setSearchParams] = useSearchParams();
-    const shopSlug = searchParams.get("shop")?.trim() || null;
-    const brandName = searchParams.get("brand")?.trim() || null;
-    const viaSellers = searchParams.get("via") === "sellers";
+    const { brandName: brandParam, shopSlug: shopParam } = useParams();
+
+    const shopSlug = shopParam || searchParams.get("shop")?.trim() || null;
+    const brandName = brandParam || searchParams.get("brand")?.trim() || null;
+    const viaSellers = !!shopParam || searchParams.get("via") === "sellers";
 
     const clearShop = () => {
+        if (shopParam) { navigate("/home"); return; }
         const next = new URLSearchParams(searchParams);
         next.delete("shop");
         setSearchParams(next, { replace: true });
@@ -87,7 +90,9 @@ export default function HomePage() {
     return (
         // overflow-x-clip (NOT hidden): overflow-x-hidden breaks `position: sticky` inside.
         <div className="min-h-screen bg-[#FFFFFF] pt-3 text-slate-900 antialiased overflow-x-clip" style={{ fontFamily: FONT_BODY }}>
-
+            <h1 className="sr-only">
+                {brandName ? `${brandName} products` : shopSlug ? "Seller store" : "BBM – Wholesale marketplace for verified sellers"}
+            </h1>
             <SmoothScrollProvider>
                 <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20">
 
@@ -111,6 +116,7 @@ export default function HomePage() {
                         shopSlug={shopSlug}
                         brandName={brandName}
                         toolbar={toolbar}
+                        viaSellers={viaSellers}
                     />
                 </main>
             </SmoothScrollProvider>

@@ -5,11 +5,12 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { goTo } from "../components/grow/scrollTo.js";
 import { MENU_ROUTES } from "../components/menuItems.js";
+import Seo from "../components/Seo.jsx";
 import "../components/save/save.css";
 import "../components/save/save-home.css";
 
 const BUY_TO = MENU_ROUTES.home;
-const EXPLORE_TO = "/MENU_ROUTES.home";
+const EXPLORE_TO = MENU_ROUTES.home;
 const GROW_TO = "/grow/details";
 
 const slug = (n) => n.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -333,6 +334,11 @@ export default function SavePage() {
 
     return (
         <div className="sv">
+            <Seo
+                title="Buy B2B with confidence – Compare sellers, prices and MOQs | BBM"
+                description="Find industrial and wholesale products, compare verified sellers, prices, MOQs and delivery terms, and buy at the right terms on BBM."
+                path="/save"
+            />
             {/* Hero */}
             <section className="hero">
                 <div className="wrap">
