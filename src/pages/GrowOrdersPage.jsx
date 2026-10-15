@@ -1,8 +1,9 @@
 // src/pages/GrowOrdersPage.jsx — sales orders in the new UI (same data/actions as OrdersPage "Sales" tab).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
+import { useNotificationActions } from "../context/NotificationActionsContext.jsx";
 import {
     fetchSellerOrders, confirmSellerOrder, rejectSellerOrder, deliverSellerOrder,
 } from "../utils/api.js";
@@ -120,6 +121,9 @@ export default function GrowOrdersPage() {
     const { token, profile } = useAuth();
     const { say } = useGrowSeller();
     const { salesOrderUnreadCounts, markOrderRead } = useNotifications();
+    // markOrderHandled: tells the Console this order was decided here (its buttons disappear there).
+    // ordersVersion: bumps when an order is decided from the Console, so this list refreshes at once.
+    const { markOrderHandled, ordersVersion } = useNotificationActions();
     const [status, setStatus] = useState("");
     const [type, setType] = useState("");
     const [busy, setBusy] = useState(null);
@@ -134,6 +138,14 @@ export default function GrowOrdersPage() {
 
     useEffect(() => { window.scrollTo({ top: 0 }); }, []);
 
+    // An order was confirmed / rejected from the Console: reload the list (not on first render).
+    const seenVersion = useRef(ordersVersion);
+    useEffect(() => {
+        if (ordersVersion === seenVersion.current) return;
+        seenVersion.current = ordersVersion;
+        reload();
+    }, [ordersVersion, reload]);
+
     const onAction = async (order, a) => {
         if (a.needsShipModal) { setShipFor(order); return; }
         let reason;
@@ -146,6 +158,7 @@ export default function GrowOrdersPage() {
         setBusy(null);
         if (res?.success) {
             if (a.key === "reject" || a.key === "deliver") await markOrderRead(order.id, "seller");
+            if (a.key === "confirm" || a.key === "reject") markOrderHandled(order.id, a.key === "confirm" ? "confirmed" : "rejected");
             say(a.key === "confirm" ? "Order confirmed" : a.key === "reject" ? "Order rejected" : "Marked as delivered");
             reload();
         } else say(res?.message || "Couldn't update the order.");

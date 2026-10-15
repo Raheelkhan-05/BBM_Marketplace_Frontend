@@ -6,13 +6,17 @@
 // Why link and not type: most order notifications do use a
 // "order_status_*" / "order_placed" type convention, but that convention
 // isn't reliable on its own — e.g. cancelMyOrder() in orders.controller.js
-// sends a notification typed "order_status_cancelled" to the SELLER (with
-// link "/seller/orders/:id"), which would land in the wrong bucket if we
-// classified by type prefix. The link the notification points to is always
-// correct for "which orders list does this belong on", since it's built
-// from the exact route the recipient is meant to land on.
-const PURCHASE_LINK_RE = /^\/orders\/[^/?#]+/;
-const SALES_LINK_RE = /^\/seller\/orders\/[^/?#]+/;
+// sends a notification typed "order_status_cancelled" to the SELLER, which
+// would land in the wrong bucket if we classified by type prefix. The link
+// the notification points to is always correct for "which orders list does
+// this belong on", since it's built from the exact route the recipient is
+// meant to land on.
+//
+// CHANGED: the server now links seller notifications to /grow/orders/:id and
+// buyer notifications to /save/orders/:id (the older /seller/orders/:id and
+// /orders/:id are still recognised), so all four shapes are matched here.
+const PURCHASE_LINK_RE = /^\/(?:save\/)?orders\/[^/?#]+/;
+const SALES_LINK_RE = /^\/(?:seller|grow)\/orders\/[^/?#]+/;
 const CHAT_LINK_RE = /^\/chat\/[^/?#]+/;
 const LISTINGS_LINK_RE = /^\/seller\/listings/;
 const WALLET_LINK_RE = /^\/seller\/wallet/;
@@ -35,7 +39,7 @@ export function isOrderNotification(n) {
 
 export function orderIdFromLink(link) {
     if (typeof link !== "string") return null;
-    const m = link.match(/^\/(?:seller\/)?orders\/([^/?#]+)/);
+    const m = link.match(/^\/(?:seller\/|grow\/|save\/)?orders\/([^/?#]+)/);
     return m ? m[1] : null;
 }
 

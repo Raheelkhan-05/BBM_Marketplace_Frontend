@@ -11,6 +11,11 @@
 // still appear as before; the Console is where they can be re-read afterwards.
 // Chat notifications are not listed (Chats has its own badge elsewhere).
 //
+// QUICK ACTIONS: a notification about something that still waits for the seller (a new order, a
+// transport route proposal) carries its buttons right in the list (Confirm / Reject, Approve /
+// Decline). Whether the buttons show is decided by NotificationActionsContext from live data, so an
+// action taken here or on the page removes the buttons in both places at once.
+//
 // While the Console is open the other FABs collapse OUT of the dock (they take no space),
 // so the dock shrinks to just the X button, which stays exactly where the Console button was.
 //
@@ -22,18 +27,19 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState, useCallback } fr
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { LayoutGrid, X, LogOut, Home, LogIn, BellOff, CheckCheck } from "lucide-react";
+import { LayoutGrid, X, LogOut, Home, LogIn } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
+import { useNotificationActions } from "../context/NotificationActionsContext.jsx";
 import { isChatNotification } from "../utils/notificationTypes.js";
 import HelpBulb from "./HelpBulb.jsx";
+import NotificationTimeline from "./NotificationTimeline.jsx";
+import { stampOf } from "../utils/notificationDisplay.js";
 import { isSellerReady } from "./growSeller/growSeller.js";
 import useGrowBadges from "./growSeller/useGrowBadges.js";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)", tile: "rgba(20,27,34,0.06)" };
-
-const NOTIF_PAGE = 30;
 
 const FAB_BOTTOM_HOME = 12;
 // 52 (tallest circle) + 4 gap + 11 label + 12 padding + 3 border + 4 ring + ~2 slack
@@ -185,24 +191,6 @@ function formatShopName(slug) {
         .join(" ");
 }
 
-// The server's timestamp field name is not known here, so a few common ones are tried.
-const stampOf = (n) => n?.created_at ?? n?.createdAt ?? n?.timestamp ?? null;
-
-function timeAgo(v) {
-    if (!v) return "";
-    const t = new Date(v).getTime();
-    if (!Number.isFinite(t)) return "";
-    const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
-    if (s < 60) return "Just now";
-    const m = Math.floor(s / 60);
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    if (d < 7) return `${d}d ago`;
-    return new Date(t).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-}
-
 // True while any text field is focused (i.e. the mobile keyboard is up).
 function useTypingActive() {
     const [active, setActive] = useState(false);
@@ -308,131 +296,13 @@ function DockItem({
     );
 }
 
-/* ---------------- notifications ---------------- */
-
-function NotificationRow({ n, onOpen }) {
-    const when = timeAgo(stampOf(n));
-    return (
-        <button
-            type="button"
-            onClick={() => onOpen(n)}
-            className="relative flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors duration-150 hover:bg-black/[0.03] active:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B7285]/40"
-            style={{ background: n.read ? "transparent" : "rgba(11,114,133,0.06)" }}
-        >
-            <span
-                aria-hidden="true"
-                className="mt-[7px] h-2 w-2 shrink-0 rounded-full"
-                style={{ background: n.read ? "transparent" : "#d2462b" }}
-            />
-            <span className="min-w-0 flex-1">
-                <span className="flex items-start justify-between gap-3">
-                    <span
-                        className={`min-w-0 text-[13px] leading-snug tracking-wide ${n.read ? "font-semibold" : "font-extrabold"}`}
-                        style={{ color: C.ink }}
-                    >
-                        {n.title}
-                    </span>
-                    {when && <span className="shrink-0 pt-px text-[10.5px] font-semibold tabular-nums" style={{ color: C.muted }}>{when}</span>}
-                </span>
-                {n.body && (
-                    <span className="mt-0.5 line-clamp-2 block text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
-                        {n.body}
-                    </span>
-                )}
-            </span>
-        </button>
-    );
-}
-
-function NotificationsPane({ items, unreadCount, onOpen, onMarkAll, scrollProps, className = "" }) {
-    const [filter, setFilter] = useState("all"); // all | unread
-    const [limit, setLimit] = useState(NOTIF_PAGE);
-
-    const shown = useMemo(() => (filter === "unread" ? items.filter((n) => !n.read) : items), [items, filter]);
-    const visible = shown.slice(0, limit);
-
-    return (
-        <section className={className} aria-label="Notifications">
-            <div className="shrink-0 px-5 pb-2 pt-3 md:px-7 md:pb-3 md:pt-4">
-                <div className="flex items-center justify-between gap-2">
-                    <h3 className="flex items-center gap-2 text-[15px] font-extrabold tracking-wide md:text-[16px]" style={{ color: C.ink }}>
-                        Notifications
-                        {unreadCount > 0 && (
-                            <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#d2462b] px-1.5 text-[9.5px] font-bold text-white">
-                                {countLabel(unreadCount)}
-                            </span>
-                        )}
-                    </h3>
-
-                    <div className="flex items-center gap-1.5">
-                        <div role="group" aria-label="Filter notifications" className="flex gap-1 rounded-full p-0.5" style={{ background: C.tile }}>
-                            {[["all", "All"], ["unread", "Unread"]].map(([k, l]) => (
-                                <button
-                                    key={k} type="button" aria-pressed={filter === k}
-                                    onClick={() => { setFilter(k); setLimit(NOTIF_PAGE); }}
-                                    className="rounded-full px-3 py-1 text-[11.5px] font-bold tracking-wide transition-colors duration-150"
-                                    style={filter === k ? { background: "#000", color: "#fff" } : { color: C.muted }}
-                                >
-                                    {l}
-                                </button>
-                            ))}
-                        </div>
-
-                        <button
-                            type="button" onClick={onMarkAll} disabled={unreadCount === 0}
-                            aria-label="Mark all as read" title="Mark all as read"
-                            className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/5 disabled:opacity-40 disabled:hover:bg-transparent"
-                            style={{ color: C.secondary }}
-                        >
-                            <CheckCheck className="h-4 w-4" strokeWidth={2.4} />
-                            <span className="hidden sm:inline">Mark all read</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div
-                className="min-h-[min(380px,50dvh)] flex-1 overflow-y-auto px-2 pb-[var(--sheet-pb)] md:min-h-0 md:px-4 md:pb-6"
-                style={{ overscrollBehavior: "contain" }}
-                {...scrollProps}
-            >
-                {visible.length === 0 ? (
-                    <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-                        <span className="flex h-11 w-11 items-center justify-center rounded-full" style={{ background: C.tile }}>
-                            <BellOff className="h-5 w-5" style={{ color: C.muted }} />
-                        </span>
-                        <p className="text-[13px] font-bold" style={{ color: C.ink }}>
-                            {filter === "unread" ? "You're all caught up" : "No notifications yet"}
-                        </p>
-                        <p className="max-w-[240px] text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>
-                            {filter === "unread" ? "Nothing unread right now." : "Order, credit and account updates will stay here so you can read them later."}
-                        </p>
-                    </div>
-                ) : (
-                    <div className="flex flex-col gap-0.5">
-                        {visible.map((n) => <NotificationRow key={n.id} n={n} onOpen={onOpen} />)}
-                        {shown.length > limit && (
-                            <button
-                                type="button" onClick={() => setLimit((l) => l + NOTIF_PAGE)}
-                                className="mx-auto mt-2 h-9 rounded-full border px-4 text-[12px] font-bold tracking-wide transition-colors hover:bg-black/[0.03]"
-                                style={{ borderColor: C.hair, color: C.ink }}
-                            >
-                                Show more
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-        </section>
-    );
-}
-
 export default function BottomNavStrip({ onOpenRfq }) {
     const primary = useIsPrimaryInstance();
     const navigate = useNavigate();
     const { pathname } = useLocation();
     const { token, effectiveLoggedIn, profile, signOut } = useAuth();
     const { notifications, markRead, markAllRead } = useNotifications();
+    const { refresh: refreshActions } = useNotificationActions();
 
     const stopScrollPropagation = useCallback((e) => { e.stopPropagation(); }, []);
     const scrollProps = useMemo(() => ({
@@ -495,6 +365,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
     }, [pageOpen, primary, tiles.length, inModule]);
 
     useEffect(() => { if (pageOpen) { setClipTiles(true); setEverOpened(true); } }, [pageOpen]);
+
+    // Opening the Console re-checks what still waits for a decision, so the buttons are never stale.
+    useEffect(() => { if (pageOpen) refreshActions({ force: true }); }, [pageOpen, refreshActions]);
 
     // Close automatically on route change so it never lingers over the next page.
     useEffect(() => { setPageOpen(false); }, [pathname]);
@@ -722,7 +595,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     style={{ "--sheet-pb": `calc(${fabBottom + DOCK_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))` }}
                 >
                     {everOpened && effectiveLoggedIn && (
-                        <NotificationsPane
+                        <NotificationTimeline
                             className="flex min-h-0 flex-1 flex-col"
                             items={consoleNotifs}
                             unreadCount={unreadNotifCount}

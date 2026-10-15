@@ -1,15 +1,20 @@
 // src/pages/SaveCartPage.jsx — buyer cart in the Save (sh-) UI.
-// Same data/actions as the old CartPage: fetchCart / updateCartItem / removeFromCart / checkoutCart,
+// Same data/actions as before: fetchCart / updateCartItem / removeFromCart / checkoutCart,
 // order constraints, per-seller transport preference (+ proposals, socket + polling), debounced qty writes.
-// Only the presentation changed. Render it inside the same ".sv" wrapper as SaveHomePage.
 //
-// PAYMENT: checkout creates the order group, then the buyer is sent to JioPay's hosted checkout for the
-// whole cart in one payment (utils/paymentsApi.js) and returns via /payment/return. If starting the
-// payment fails, tapping the button again resumes the same pending group.
+// NEW: SELECTIVE CHECKOUT. Every cart line has a checkbox (all selected by default). Only the selected
+// lines are priced in the total, validated (stock / delivery / transport) and sent to checkout.
+// Unselected lines stay in the cart. Selection is tracked as a "deselected" set so newly loaded items
+// are selected automatically.
+// NEW: "Explore more products" button -> /home.
+//
+// PAYMENT: checkout creates the order group, then the buyer is sent to JioPay's hosted checkout
+// (utils/paymentsApi.js) and returns via /payment/return. If starting the payment fails, tapping
+// the button again retries.
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Loader2, Store, ShoppingCart, MapPin, Minus, Plus, Clock, Truck, AlertCircle, X, ArrowRight } from "lucide-react";
+import { Trash2, Loader2, ShoppingCart, MapPin, Minus, Plus, Clock, Truck, AlertCircle, X, ArrowRight, Compass } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
 import { startGroupPayment, redirectToGateway } from "../utils/paymentsApi.js";
@@ -24,6 +29,9 @@ import { useCart } from "../context/CartContext.jsx";
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
 import { routeTransportModeLabel } from "../../shared/routeTransportFields.js";
+import "../components/save/save-cart.css";
+
+const EXPLORE_ROUTE = "/home";
 
 /* ---------------- pricing helpers (unchanged) ---------------- */
 function resolveSlabUnitPrice(slabs, saleQty, fallbackPrice) {
@@ -83,7 +91,6 @@ const stopEvent = (e) => e.stopPropagation();
 // The Save routes may not be mounted under <OrderResumeProvider> (the old app layout was).
 // useOrderResume throws without it, so fall back to stable no-ops: this page still tracks
 // transport approvals itself (socket + polling); only the cross-page "resume" banner is skipped.
-// Best fix: also mount <OrderResumeProvider> in the Save layout, then the real one is used.
 const NOOP = () => { };
 const NOOP_RESUME = { registerActive: NOOP, unregisterActive: NOOP, reportApproved: NOOP, reportRejected: NOOP };
 function useOrderResumeSafe() {
@@ -108,6 +115,21 @@ function QtyStepper({ value, onChange, min, disabled, maxed }) {
             <span>{value}</span>
             <button type="button" aria-label="Increase quantity" disabled={disabled || maxed} onClick={() => onChange(Number(value) + 1)}><Plus size={16} /></button>
         </div>
+    );
+}
+
+// Checkbox with an optional text label and tri-state (indeterminate) support.
+function Check({ checked, indeterminate = false, onChange, disabled, label, children }) {
+    const ref = useRef(null);
+    useEffect(() => {
+        if (ref.current) ref.current.indeterminate = !!indeterminate && !checked;
+    }, [indeterminate, checked]);
+    return (
+        <label className="sh-pick">
+            <input ref={ref} type="checkbox" checked={checked} disabled={disabled} aria-label={label}
+                onChange={(e) => onChange(e.target.checked)} />
+            {children && <span>{children}</span>}
+        </label>
     );
 }
 
@@ -231,6 +253,9 @@ function CartPageInner() {
     const pendingWritePromises = useRef({});
     const { setCountOptimistic } = useCart();
 
+    // Selection: everything is selected unless its submission_id is in this set.
+    const [deselected, setDeselected] = useState(() => new Set());
+
     // Coming back with the browser's Back button from the payment page can restore this page from the
     // back/forward cache with the button stuck on its spinner. Unfreeze it.
     useEffect(() => {
@@ -250,6 +275,16 @@ function CartPageInner() {
 
     useEffect(() => { load(); }, [load]);
 
+    // Forget deselections for items that are no longer in the cart.
+    useEffect(() => {
+        setDeselected((prev) => {
+            if (!prev.size) return prev;
+            const live = new Set(items.map((i) => i.submission_id));
+            const next = new Set([...prev].filter((id) => live.has(id)));
+            return next.size === prev.size ? prev : next;
+        });
+    }, [items]);
+
     const grouped = useMemo(() => (
         items.reduce((acc, it) => {
             (acc[it.seller_id] ||= { seller: it, items: [] }).items.push(it);
@@ -258,7 +293,27 @@ function CartPageInner() {
     ), [items]);
     const sellerIds = Object.keys(grouped);
 
-    const grandTotal = items.reduce((sum, it) => sum + priceFor(it).lineTotal, 0);
+    // ---- Selection helpers ----
+    const selectedItems = useMemo(() => items.filter((it) => !deselected.has(it.submission_id)), [items, deselected]);
+    const selectedCount = selectedItems.length;
+    const itemCount = items.length;
+    const allSelected = itemCount > 0 && selectedCount === itemCount;
+    const noSelection = selectedCount === 0;
+    // sellers that have at least one selected line (only these need transport + serviceability to check out)
+    const selectedSellerIds = sellerIds.filter((id) => grouped[id].items.some((it) => !deselected.has(it.submission_id)));
+
+    const toggleItem = (submissionId) => setDeselected((prev) => {
+        const next = new Set(prev);
+        if (next.has(submissionId)) next.delete(submissionId); else next.add(submissionId);
+        return next;
+    });
+    const setSelectionFor = (ids, on) => setDeselected((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => (on ? next.delete(id) : next.add(id)));
+        return next;
+    });
+
+    const grandTotal = selectedItems.reduce((sum, it) => sum + priceFor(it).lineTotal, 0);
 
     // ---- Order-window + delivery-serviceability constraints (backend re-checks at checkout) ----
     const submissionIds = useMemo(() => [...new Set(items.map((i) => i.submission_id).filter(Boolean))], [items]);
@@ -305,7 +360,11 @@ function CartPageInner() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [grouped, constraintsBySubmission, selectedAddress?.state, selectedAddress?.city, clockTick]);
 
-    const anyGroupBlocked = !!selectedAddress && Object.values(groupConstraintStatus).some((g) => g.blocked);
+    // Only SELECTED lines that can't be delivered block checkout.
+    const blockedSelected = !selectedAddress ? [] : selectedItems
+        .map((it) => groupConstraintStatus[it.seller_id]?.blockedItems.find((b) => b.item.cart_item_id === it.cart_item_id))
+        .filter(Boolean);
+    const anyGroupBlocked = blockedSelected.length > 0;
 
     // ---- Per-seller transport preference (keyed by sellerId) ----
     const [transportPreferences, setTransportPreferences] = useState({});
@@ -491,7 +550,8 @@ function CartPageInner() {
         });
     };
 
-    const hasStockBlock = items.some((it) => { const s = stockInfoFor(it); return s.outOfStock || s.exceeds; });
+    // Only the selected lines matter for stock blocking.
+    const hasStockBlock = selectedItems.some((it) => { const s = stockInfoFor(it); return s.outOfStock || s.exceeds; });
 
     // prefsOverride lets the "Select transport & pay" flow check out right after the
     // last seller is chosen, before React has committed that state.
@@ -499,17 +559,17 @@ function CartPageInner() {
         setError(null);
         const prefs = prefsOverride || transportPreferences;
 
+        if (noSelection) { setError("Select at least one item to check out."); return; }
         if (hasStockBlock) {
-            setError("One or more items in your cart exceed what's available from the seller. Please adjust the quantities.");
+            setError("One or more selected items exceed what's available from the seller. Please adjust the quantities.");
             return;
         }
         if (!selectedAddressId) { setError("Please add a delivery address first."); return; }
         if (anyGroupBlocked) {
-            const blockedGroup = Object.values(groupConstraintStatus).find((g) => g.blocked);
-            setError(blockedGroup.blockedItems[0]?.status.message || "One or more sellers in your cart don't deliver to your selected address.");
+            setError(blockedSelected[0]?.status.message || "One or more selected items aren't deliverable to your address.");
             return;
         }
-        const missingSellerId = sellerIds.find((id) => !prefs[id]);
+        const missingSellerId = selectedSellerIds.find((id) => !prefs[id]);
         if (missingSellerId) {
             const sellerName = grouped[missingSellerId]?.seller?.seller_name || "one of your sellers";
             setError(pendingTransportProposals[missingSellerId]
@@ -522,15 +582,25 @@ function CartPageInner() {
         let navigating = false;
         try {
             await flushPendingWrites();
+
+            const selectedSellerSet = new Set(selectedSellerIds.map(String));
             const transportPreferencesPayload = Object.entries(prefs)
-                .filter(([, pref]) => pref?.routeOptionId)
+                .filter(([sellerId, pref]) => pref?.routeOptionId && selectedSellerSet.has(String(sellerId)))
                 .map(([sellerId, pref]) => ({ sellerId, routeOptionId: pref.routeOptionId }));
 
-            const res = await checkoutCart(token, { shippingAddressId: selectedAddressId, transportPreferences: transportPreferencesPayload });
-            if (!res?.success) { setError(res?.message || "Couldn't place the order."); return; }
+            const res = await checkoutCart(token, {
+                shippingAddressId: selectedAddressId,
+                transportPreferences: transportPreferencesPayload,
+                submissionIds: selectedItems.map((it) => it.submission_id),
+            });
+            if (!res?.success) {
+                setError(res?.message || "Couldn't place the order.");
+                if (res?.code === "CART_CHANGED") load(); // cart moved under us: refresh it
+                return;
+            }
 
-            // The order group exists (awaiting payment). Send the buyer to JioPay for the whole cart.
-            // If this step fails, tapping the button again resumes the same pending group.
+            // The order group exists (awaiting payment). Send the buyer to JioPay for the selected items.
+            // If this step fails, tapping the button again retries.
             const pay = await startGroupPayment(token, res.orderGroupId);
             if (!pay?.success) { setError(pay?.message || "Couldn't start the payment. Tap the button again to retry."); return; }
             navigating = redirectToGateway(pay.redirectUrl);
@@ -556,28 +626,30 @@ function CartPageInner() {
                 setActiveTransportSellerId(null);
                 return;
             }
-            const nextNeeds = sellerIds.filter((id) => !nextPrefs[id] && !nextPending[id]);
+            const nextNeeds = selectedSellerIds.filter((id) => !nextPrefs[id] && !nextPending[id]);
             if (nextNeeds.length) { setActiveTransportSellerId(nextNeeds[0]); return; }
             checkoutAfterTransportRef.current = false;
             setActiveTransportSellerId(null);
-            if (sellerIds.every((id) => nextPrefs[id])) handleCheckout(nextPrefs);
+            if (selectedSellerIds.every((id) => nextPrefs[id])) handleCheckout(nextPrefs);
             return;
         }
         setActiveTransportSellerId(null);
     };
 
-    /* ---- primary CTA ---- */
-    const missingIds = sellerIds.filter((id) => !transportPreferences[id]);
+    /* ---- primary CTA (only sellers with selected items need transport) ---- */
+    const missingIds = selectedSellerIds.filter((id) => !transportPreferences[id]);
     const needSelectIds = missingIds.filter((id) => !pendingTransportProposals[id]);
     const waitingIds = missingIds.filter((id) => pendingTransportProposals[id]);
-    const ctaLabel = !selectedAddressId ? "Add delivery address"
-        : needSelectIds.length ? "Select transport & pay"
-            : waitingIds.length ? "Waiting for seller approval"
-                : "Proceed to pay";
-    const ctaDisabled = checking || hasStockBlock || anyGroupBlocked || (!needSelectIds.length && waitingIds.length > 0);
+    const ctaLabel = noSelection ? "Select items to continue"
+        : !selectedAddressId ? "Add delivery address"
+            : needSelectIds.length ? "Select transport & pay"
+                : waitingIds.length ? "Waiting for seller approval"
+                    : "Proceed to pay";
+    const ctaDisabled = checking || noSelection || hasStockBlock || anyGroupBlocked || (!needSelectIds.length && waitingIds.length > 0);
 
     const handlePrimary = () => {
         setError(null);
+        if (noSelection) return;
         if (!selectedAddressId) { addressBookRef.current?.openChange(); return; }
         if (needSelectIds.length) {
             checkoutAfterTransportRef.current = true;
@@ -596,14 +668,12 @@ function CartPageInner() {
         );
     }
 
-    const itemCount = items.length;
-
     return (
         <div className="sh-w" style={{ paddingBottom: "calc(200px + env(safe-area-inset-bottom, 0px))" }}>
             <div className="sh-sec" style={{ marginTop: 22 }}>
                 <div>
                     <h1 className="sh-pt">My cart</h1>
-                    <p className="sh-sub" style={{ marginTop: 4 }}>Review items, pick transport and pay.</p>
+                    <p className="sh-sub" style={{ marginTop: 4 }}>Choose the items you want, pick transport and pay.</p>
                 </div>
                 {itemCount > 0 && <span className="sh-cntp">{itemCount} item{itemCount === 1 ? "" : "s"}</span>}
             </div>
@@ -613,7 +683,7 @@ function CartPageInner() {
                     <ShoppingCart size={34} style={{ margin: "0 auto 10px", display: "block" }} />
                     <b>Your cart is empty</b>
                     Add products from sellers and they will wait for you here.
-                    <div><button type="button" className="sh-btn go" style={{ marginTop: 16 }} onClick={() => navigate("/")}>Continue shopping<ArrowRight size={16} /></button></div>
+                    <div><button type="button" className="sh-btn go" style={{ marginTop: 16 }} onClick={() => navigate(EXPLORE_ROUTE)}>Explore products<ArrowRight size={16} /></button></div>
                 </div>
             ) : (
                 <>
@@ -623,22 +693,43 @@ function CartPageInner() {
                         <div className="sh-tw"><AddressBook ref={addressBookRef} disabled={checking} /></div>
                     </section>
 
+                    {/* Select all */}
+                    <div className="sh-selbar">
+                        <Check checked={allSelected} indeterminate={selectedCount > 0 && !allSelected} disabled={checking}
+                            label="Select all items" onChange={(on) => setSelectionFor(items.map((i) => i.submission_id), on)}>
+                            Select all
+                        </Check>
+                        <span className="sh-selcnt" aria-live="polite">{selectedCount} of {itemCount} selected</span>
+                    </div>
+
                     {Object.entries(grouped).map(([sellerId, g]) => {
                         const groupStatus = groupConstraintStatus[sellerId];
                         const pref = transportPreferences[sellerId];
                         const pendingProposal = pendingTransportProposals[sellerId];
                         const removedNotice = transportRemovedNotices[sellerId];
-                        const sellerTotal = g.items.reduce((s, it) => s + priceFor(it).lineTotal, 0);
+                        const groupIds = g.items.map((it) => it.submission_id);
+                        const groupSelected = g.items.filter((it) => !deselected.has(it.submission_id));
+                        const sellerSelCount = groupSelected.length;
+                        const sellerAll = sellerSelCount === g.items.length;
+                        const sellerTotal = groupSelected.reduce((s, it) => s + priceFor(it).lineTotal, 0);
 
                         return (
                             <section key={g.seller.seller_id} className="sh-card">
                                 <div className="sh-chd">
-                                    <span className="sh-chi"><Store size={18} /></span>
                                     <div className="sh-chn">
                                         <b>{g.seller.seller_name}</b>
-                                        <small>{g.items.length} item{g.items.length === 1 ? "" : "s"}</small>
+                                        <div className="sh-chm">
+                                            <small>{sellerSelCount} of {g.items.length} selected</small>
+                                            <button type="button" className="sh-sela" disabled={checking}
+                                                aria-label={`${sellerAll ? "Unselect" : "Select"} all items from ${g.seller.seller_name}`}
+                                                onClick={() => setSelectionFor(groupIds, !sellerAll)}>
+                                                {sellerAll ? "Unselect all" : "Select all"}
+                                            </button>
+                                        </div>
                                     </div>
-                                    <b className="sh-chs2">₹{inr(sellerTotal)}</b>
+                                    {sellerSelCount > 0
+                                        ? <b className="sh-chs2">₹{inr(sellerTotal)}</b>
+                                        : <span className="sh-muted">Not selected</span>}
                                 </div>
 
                                 {g.items.map((it) => {
@@ -649,44 +740,51 @@ function CartPageInner() {
                                     const atCeiling = stock.capped && it.quantity >= stock.max;
                                     const unitLbl = saleUnitLabel(it.units_per_master_pack);
                                     const itemBlockedByLocation = groupStatus?.blockedItems?.some((b) => b.item.cart_item_id === it.cart_item_id);
+                                    const picked = !deselected.has(it.submission_id);
                                     const open = () => setViewingItem(it);
                                     return (
-                                        <div key={it.cart_item_id} className="sh-ci">
-                                            <div className="sh-cim" role="button" tabIndex={0} onClick={open}
-                                                onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}>
-                                                <div className="sh-th">
-                                                    {it.product_image ? <img src={it.product_image} alt="" loading="lazy" /> : (it.product_name || "?").trim()[0]?.toUpperCase()}
-                                                </div>
-                                                <div className="sh-cin">
-                                                    <p className="sh-rn">{it.product_name}</p>
-                                                    <p className="sh-cps">₹{inr(p.unitPrice)} / {unitLbl}{p.discountPercent > 0 ? ` · ${p.discountPercent}% off` : ""}</p>
-                                                    <p className="sh-cdt">View price details</p>
-                                                </div>
-                                                <b className="sh-cam">₹{inr(p.lineTotal)}</b>
-                                            </div>
+                                        <div key={it.cart_item_id} className={`sh-ci${picked ? "" : " off"}`}>
+                                            <div className="sh-cirow">
+                                                <Check checked={picked} disabled={checking} label={`Select ${it.product_name}`}
+                                                    onChange={() => toggleItem(it.submission_id)} />
+                                                <div className="sh-cibody">
+                                                    <div className="sh-cim" role="button" tabIndex={0} onClick={open}
+                                                        onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}>
+                                                        <div className="sh-th">
+                                                            {it.product_image ? <img src={it.product_image} alt="" loading="lazy" /> : (it.product_name || "?").trim()[0]?.toUpperCase()}
+                                                        </div>
+                                                        <div className="sh-cin">
+                                                            <p className="sh-rn">{it.product_name}</p>
+                                                            <p className="sh-cps">₹{inr(p.unitPrice)} / {unitLbl}{p.discountPercent > 0 ? ` · ${p.discountPercent}% off` : ""}</p>
+                                                            <p className="sh-cdt">View price details</p>
+                                                        </div>
+                                                        <b className="sh-cam">₹{inr(p.lineTotal)}</b>
+                                                    </div>
 
-                                            <div className="sh-cir">
-                                                <QtyStepper value={it.quantity} min={floor} disabled={atCeiling && atFloor} maxed={atCeiling}
-                                                    onChange={(v) => {
-                                                        if (stock.capped && v > stock.max) return;
-                                                        handleQty(it.submission_id, v, it.moq);
-                                                    }} />
-                                                <span className="sh-cun">{unitLbl}(s)</span>
-                                                <button type="button" className="sh-ic sh-rm" aria-label={`Remove ${it.product_name}`} onClick={() => handleRemove(it.submission_id)}>
-                                                    <Trash2 size={18} />
-                                                </button>
-                                            </div>
+                                                    <div className="sh-cir">
+                                                        <QtyStepper value={it.quantity} min={floor} disabled={atCeiling && atFloor} maxed={atCeiling}
+                                                            onChange={(v) => {
+                                                                if (stock.capped && v > stock.max) return;
+                                                                handleQty(it.submission_id, v, it.moq);
+                                                            }} />
+                                                        <span className="sh-cun">{unitLbl}(s)</span>
+                                                        <button type="button" className="sh-ic sh-rm" aria-label={`Remove ${it.product_name}`} onClick={() => handleRemove(it.submission_id)}>
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </div>
 
-                                            {atFloor && floor > 1 && (
-                                                <p className="sh-wn">At the seller's MOQ ({floor} {unitLbl}{floor === 1 ? "" : "s"}). Remove the item instead of going lower.</p>
-                                            )}
-                                            {stock.outOfStock && <p className="sh-wn bad">Out of stock with this seller. Remove to continue.</p>}
-                                            {!stock.outOfStock && stock.exceeds && (
-                                                <p className="sh-wn bad">Only {stock.max} {unitLbl}{stock.max === 1 ? "" : "s"} available from this seller. Reduce quantity to continue.</p>
-                                            )}
-                                            {itemBlockedByLocation && (
-                                                <p className="sh-wn bad"><MapPin size={12} />Not deliverable to your selected address.</p>
-                                            )}
+                                                    {atFloor && floor > 1 && (
+                                                        <p className="sh-wn">At the seller's MOQ ({floor} {unitLbl}{floor === 1 ? "" : "s"}). Remove the item instead of going lower.</p>
+                                                    )}
+                                                    {stock.outOfStock && <p className="sh-wn bad">Out of stock with this seller. Remove it or uncheck it to continue.</p>}
+                                                    {!stock.outOfStock && stock.exceeds && (
+                                                        <p className="sh-wn bad">Only {stock.max} {unitLbl}{stock.max === 1 ? "" : "s"} available from this seller. Reduce quantity to continue.</p>
+                                                    )}
+                                                    {itemBlockedByLocation && (
+                                                        <p className="sh-wn bad"><MapPin size={12} />Not deliverable to your selected address.</p>
+                                                    )}
+                                                </div>
+                                            </div>
                                         </div>
                                     );
                                 })}
@@ -699,6 +797,7 @@ function CartPageInner() {
                                         {groupStatus.blockedItems.length === 1
                                             ? groupStatus.blockedItems[0].status.message
                                             : `${groupStatus.blockedItems.length} items from this seller aren't deliverable to your selected address.`}
+                                        {" "}Uncheck or remove them to continue.
                                     </Notice>
                                 )}
 
@@ -706,7 +805,7 @@ function CartPageInner() {
                                 <div className="sh-trn">
                                     <div className="sh-trh">
                                         <p className="sh-lbl" style={{ margin: 0 }}><Truck size={14} />Preferred transport</p>
-                                        <button type="button" className="sh-lnk" disabled={!selectedAddressId}
+                                        <button type="button" className="sh-lnk" disabled={!selectedAddressId || checking}
                                             onClick={() => { checkoutAfterTransportRef.current = false; setActiveTransportSellerId(sellerId); }}>
                                             {pref || pendingProposal ? "Change" : "Select"}
                                         </button>
@@ -718,8 +817,10 @@ function CartPageInner() {
                                             <b className="sh-trv">{routeTransportModeLabel(pendingProposal.mode)}</b>
                                             <p className="sh-trw">Awaiting the seller's approval. You can check out with this seller once it's approved.</p>
                                         </>
-                                    ) : (
+                                    ) : sellerSelCount > 0 ? (
                                         <p className="sh-cap" style={{ margin: 0 }}>Not selected yet. We'll ask when you tap "Select transport &amp; pay".</p>
+                                    ) : (
+                                        <p className="sh-cap" style={{ margin: 0 }}>Not needed. None of this seller's items are selected for checkout.</p>
                                     )}
                                     {removedNotice && <Notice tone="warn">{removedNotice}</Notice>}
                                 </div>
@@ -727,13 +828,18 @@ function CartPageInner() {
                         );
                     })}
 
+                    {/* Keep shopping */}
+                    <button type="button" className="sh-explore" disabled={checking} onClick={() => navigate(EXPLORE_ROUTE)}>
+                        <Compass size={18} />Explore more products
+                    </button>
+
                     {/* Sticky checkout bar */}
                     <div className="sh-cbar">
                         <div className="sh-cbi">
                             {error && <p className="sh-err sh-cber" role="alert">{error}</p>}
                             <div className="sh-cbr">
                                 <div>
-                                    <small>Total</small>
+                                    <small>Total · {selectedCount} of {itemCount} item{itemCount === 1 ? "" : "s"}</small>
                                     <b>₹{inr(grandTotal)}</b>
                                 </div>
                                 <button type="button" className="sh-btn go" onClick={handlePrimary} disabled={ctaDisabled}>

@@ -1,11 +1,14 @@
 // src/pages/GrowTransportPage.jsx — Transport Library in the GROW UI (route: /grow/transport).
 // Same API calls and behaviour as TransportLibraryPage: browse, manage own routes, approve / reject buyer proposals.
-import { useCallback, useEffect, useMemo, useState } from "react";
+// Proposals can also be approved / declined straight from the Console notification (BottomNavStrip). Both places
+// share NotificationActionsContext, so a decision made in either one removes it from the other at once.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Truck, Search, Plus, Check, X, Trash2, Loader2, ArrowRight, Inbox } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useTransportLibrary } from "../context/TransportLibraryContext.jsx";
+import { useNotificationActions } from "../context/NotificationActionsContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
 import {
@@ -277,6 +280,9 @@ function ManageTab() {
     const { socket } = useSocket();
     const { say } = useGrowSeller();
     const { markProposalResolved, syncPendingCount } = useTransportLibrary();
+    // markProposalHandled: tells the Console this proposal was decided here (its buttons disappear there).
+    // transportVersion: bumps when a proposal is decided from the Console, so this list refreshes at once.
+    const { markProposalHandled, transportVersion } = useNotificationActions();
     const [options, setOptions] = useState([]);
     const [proposals, setProposals] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -310,12 +316,21 @@ function ManageTab() {
         return () => socket.off("notification:new", onNotif);
     }, [socket, load]);
 
+    // A proposal was approved / declined from the Console: refresh quietly (not on first render).
+    const seenVersion = useRef(transportVersion);
+    useEffect(() => {
+        if (transportVersion === seenVersion.current) return;
+        seenVersion.current = transportVersion;
+        load({ silent: true });
+    }, [transportVersion, load]);
+
     const handleApprove = async (id) => {
         setBusyId(id);
         const res = await approveProposal(id, token);
         setBusyId(null);
         if (res?.success === false) { say(res.message || "Couldn't approve this proposal."); return; }
         markProposalResolved();
+        markProposalHandled(id, "approved");
         say("Proposal approved.");
         load({ silent: true });
     };
@@ -327,6 +342,7 @@ function ManageTab() {
         setBusyId(null);
         if (res?.success === false) { say(res.message || "Couldn't decline this proposal."); return; }
         markProposalResolved();
+        markProposalHandled(id, "declined");
         say("Proposal declined.");
         load({ silent: true });
     };

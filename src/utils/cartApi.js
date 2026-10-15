@@ -65,8 +65,8 @@ export async function submitGroupPaymentProof(token, groupId, { utr, method, scr
     return res.json();
 }
 
-export async function checkoutCart(token, { shippingAddressId, notes, transportPreferences } = {}) {
-    return request("POST", "/cart/checkout", token, { shippingAddressId, notes, transportPreferences });
+export async function checkoutCart(token, { shippingAddressId, notes, transportPreferences, submissionIds } = {}) {
+    return request("POST", "/cart/checkout", token, { shippingAddressId, notes, transportPreferences, submissionIds });
 }
 
 // export async function submitGroupPaymentProof(token, groupId, { utr, screenshotUrl }) {

@@ -1,8 +1,9 @@
 // src/pages/GrowOrderDetailPage.jsx — sales order detail in the new UI (same data/actions as SellerOrderDetailPage).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
+import { useNotificationActions } from "../context/NotificationActionsContext.jsx";
 import { fetchSellerOrderById, fetchSellerOwnGstin } from "../utils/api.js";
 import { shipSellerOrderWithTransport } from "../utils/api.transport.js";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
@@ -59,6 +60,9 @@ export default function GrowOrderDetailPage() {
     const { token, profile } = useAuth();
     const { say } = useGrowSeller();
     const { markOrderRead } = useNotifications();
+    // markOrderHandled: tells the Console this order was decided here (its buttons disappear there).
+    // ordersVersion: bumps when an order is decided from the Console, so this page refreshes at once.
+    const { markOrderHandled, ordersVersion } = useNotificationActions();
     const [busy, setBusy] = useState(null);
     const [shipOpen, setShipOpen] = useState(false);
     const [gstin, setGstin] = useState(null);
@@ -74,6 +78,14 @@ export default function GrowOrderDetailPage() {
     useEffect(() => {
         if (order?.id) markOrderRead(order.id, "seller");
     }, [order?.id, markOrderRead]);
+
+    // The order was confirmed / rejected from the Console: reload it (not on first render).
+    const seenVersion = useRef(ordersVersion);
+    useEffect(() => {
+        if (ordersVersion === seenVersion.current) return;
+        seenVersion.current = ordersVersion;
+        reload();
+    }, [ordersVersion, reload]);
 
     if (loading && !order) return <div className="v"><div className="sk line" style={{ marginTop: 28, width: "55%" }} /><div className="sk tall" style={{ marginTop: 18 }} /></div>;
     if (!order) return (
@@ -106,6 +118,7 @@ export default function GrowOrderDetailPage() {
         setBusy(null);
         if (res?.success) {
             if (a.key === "reject" || a.key === "deliver") await markOrderRead(id, "seller");
+            if (a.key === "confirm" || a.key === "reject") markOrderHandled(id, a.key === "confirm" ? "confirmed" : "rejected");
             say(a.key === "confirm" ? "Order confirmed" : a.key === "reject" ? "Order rejected" : "Marked as delivered");
             reload();
         } else say(res?.message || "Couldn't update the order.");
