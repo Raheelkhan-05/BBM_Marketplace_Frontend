@@ -451,7 +451,7 @@ const ActivityRow = memo(function ActivityRow({ e, isLast, onOpen }) {
     const color = CAT_COLOR[e.category] || C.muted;
     const count = Number(e.meta?.count) > 1 ? Number(e.meta.count) : 0;
     const preview = e.meta?.preview;
-    const showRef = e.entityId && e.category !== "team" && e.category !== "chat";
+    const showRef = e.entityId && e.category !== "team" && e.category !== "chat" && !e.meta?.counterpart && !e.meta?.orderNo;
     const Card = link ? "button" : "div";
 
     return (
@@ -474,7 +474,7 @@ const ActivityRow = memo(function ActivityRow({ e, isLast, onOpen }) {
 
             <div className="min-w-0 pb-1">
                 <Card
-                    {...(link ? { type: "button", onClick: () => onOpen(link), "aria-label": `${e.label}. Open conversation` } : {})}
+                    {...(link ? { type: "button", onClick: () => onOpen(link), "aria-label": `${e.label}. Open` } : {})}
                     className={`block w-full rounded-xl px-2.5 py-2 text-left ${link ? "cursor-pointer transition-colors duration-150 hover:bg-black/[0.035] active:bg-black/[0.05]" : ""}`}
                 >
                     <div className="flex items-center gap-2">
