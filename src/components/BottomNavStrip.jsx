@@ -2,14 +2,17 @@
 //
 // Floating dock (FABs) + CONSOLE sheet.
 //
-// CONSOLE = persistent notifications list + Helpline + Sign out. Nothing else.
+// CONSOLE = notifications list + Team + Helpline + Sign out.
 //   Mobile : a bottom sheet (same height / open / close as before). Helpline + Sign out
-//            sit under the title, the notifications list fills the rest.
+//            sit under the title, then a Notifications | Team switch, then the content.
 //   Desktop (md+): a single wide-ish panel above the dock. Only Sign out is shown
 //            (Helpline is reachable another way on desktop), top-right.
 // Notifications are read from NotificationsContext (no extra fetching). Popups / toasts
 // still appear as before; the Console is where they can be re-read afterwards.
 // Chat notifications are not listed (Chats has its own badge elsewhere).
+//
+// TEAM: the Team tab (components/team/TeamPanel.jsx) lets the company admin invite people by
+// phone / email, manage members and read the activity log. Team members see the team list.
 //
 // QUICK ACTIONS: a notification about something that still waits for the seller (a new order, a
 // transport route proposal) carries its buttons right in the list (Confirm / Reject, Approve /
@@ -35,6 +38,7 @@ import { useNotificationActions } from "../context/NotificationActionsContext.js
 import { isChatNotification } from "../utils/notificationTypes.js";
 import HelpBulb from "./HelpBulb.jsx";
 import NotificationTimeline from "./NotificationTimeline.jsx";
+import TeamPanel from "./team/TeamPanel.jsx";
 import { stampOf } from "../utils/notificationDisplay.js";
 import { isSellerReady } from "./growSeller/growSeller.js";
 import useGrowBadges from "./growSeller/useGrowBadges.js";
@@ -196,7 +200,7 @@ function useTypingActive() {
     const [active, setActive] = useState(false);
     useEffect(() => {
         const isField = (el) =>
-            !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+            !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable);
         const onIn = (e) => { if (isField(e.target)) setActive(true); };
         const onOut = () => setTimeout(() => { if (!isField(document.activeElement)) setActive(false); }, 50);
         document.addEventListener("focusin", onIn);
@@ -342,6 +346,8 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     const [pageOpen, setPageOpen] = useState(false);
     const [everOpened, setEverOpened] = useState(false); // notifications list mounts on first open only
+    const [tab, setTab] = useState("notifications"); // notifications | team
+    const [teamOpened, setTeamOpened] = useState(false); // Team panel mounts on first visit only
     const typing = useTypingActive();
 
     // Measurements used to keep the Console button exactly where it was while the dock shrinks.
@@ -399,6 +405,8 @@ export default function BottomNavStrip({ onOpenRfq }) {
         if (link.startsWith("/")) navigate(link);
         else window.location.assign(link);
     }, [markRead, navigate]);
+
+    const showTab = (k) => { setTab(k); if (k === "team") setTeamOpened(true); };
 
     // A chat thread is open: /grow/chat/:id (hide the dock for an immersive view)
     const inChatThread = /^\/grow\/chat\/[^/]+/.test(pathname);
@@ -587,14 +595,37 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             </div>
                         )}
                     </div>
+
+                    {/* Notifications | Team */}
+                    {effectiveLoggedIn && (
+                        <div role="tablist" aria-label="Console sections" className="mt-3 grid grid-cols-2 gap-1 rounded-xl p-1" style={{ background: C.tile }}>
+                            {[["notifications", "Notifications"], ["team", "Team"]].map(([k, t]) => {
+                                const on = tab === k;
+                                return (
+                                    <button
+                                        key={k} type="button" role="tab" aria-selected={on} onClick={() => showTab(k)}
+                                        className="flex items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] font-bold transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B7285]/40"
+                                        style={on ? { background: "#fff", color: C.ink, boxShadow: "0 1px 3px rgba(20,27,34,.12)" } : { color: C.muted }}
+                                    >
+                                        {t}
+                                        {k === "notifications" && unreadNotifCount > 0 && (
+                                            <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[10px] font-bold text-white">
+                                                {countLabel(unreadNotifCount)}
+                                            </span>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
-                {/* Body: notifications only. --sheet-pb clears the floating dock on mobile. */}
+                {/* Body: notifications or team. --sheet-pb clears the floating dock on mobile. */}
                 <div
                     className="flex min-h-0 flex-1 flex-col"
                     style={{ "--sheet-pb": `calc(${fabBottom + DOCK_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))` }}
                 >
-                    {everOpened && effectiveLoggedIn && (
+                    {everOpened && effectiveLoggedIn && tab === "notifications" && (
                         <NotificationTimeline
                             className="flex min-h-0 flex-1 flex-col"
                             items={consoleNotifs}
@@ -603,6 +634,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
                             onMarkAll={markAllRead}
                             scrollProps={scrollProps}
                         />
+                    )}
+                    {teamOpened && effectiveLoggedIn && tab === "team" && (
+                        <TeamPanel token={token} active={pageOpen} scrollProps={scrollProps} />
                     )}
                 </div>
             </div>

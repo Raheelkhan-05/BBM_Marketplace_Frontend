@@ -1441,7 +1441,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
         )}
 
         <div className="fm">
-          <div ref={nameRef} className="fd sc">
+          <div ref={nameRef} className="sc">
             <label className="fl" htmlFor="bbm-name">Full name</label>
             <input
               id="bbm-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} onBlur={saveName}

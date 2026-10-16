@@ -13,7 +13,7 @@ import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
 import PendingSubmissionWatcher from "./components/PendingSubmissionWatcher.jsx";
 import { SocketProvider } from "./context/SocketContext.jsx";
 import PendingPaymentGate from './components/PendingPaymentGate.jsx';
-import ContactsBootstrapper from "./components/ContactsBootstrapper.jsx";
+// import ContactsBootstrapper from "./components/ContactsBootstrapper.jsx";
 import DeferredMount from "./components/DeferredMount.jsx";
 import { routeImports, preloadRoutesWhenIdle } from "./routePreload.js";
 import GrowProviders from "./components/grow/GrowProviders.jsx";
@@ -98,6 +98,7 @@ const GrowTransportPage = lazy(() => import("./pages/GrowTransportPage.jsx"));
 const GrowDashboardPage = lazy(() => import("./pages/GrowDashboardPage.jsx"));
 const GrowCustomersPage = lazy(() => import("./pages/GrowCustomersPage.jsx"));
 const GrowQuoteProductPage = lazy(() => import("./pages/GrowQuoteProductPage.jsx"));
+const JoinTeamPage = lazy(() => import("./pages/JoinTeamPage.jsx"));
 
 // const SavePage = lazy(() => import("./pages/SavePage.jsx"));
 const SaveEntry = lazy(() => import("./pages/SaveEntry.jsx"));
@@ -156,7 +157,7 @@ function App() {
             <InstallAppPrompt />
             <PendingSubmissionWatcher />
             <PendingPaymentGate />
-            <ContactsBootstrapper />
+            {/* <ContactsBootstrapper /> */}
           </DeferredMount>
 
           <Suspense fallback={<RouteFallback />}>
@@ -165,6 +166,7 @@ function App() {
                 <Route element={<AuthLayout />}>
                   <Route path="/login" element={<AuthPage />} />
                 </Route>
+                <Route path="/join-team" element={<JoinTeamPage />} />
                 <Route path="/terms" element={<TermsPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPage />} />
                 <Route path="/payment/return" element={<PaymentReturnPage />} />
@@ -178,6 +180,7 @@ function App() {
 
                   {/* <Route path="/search" element={<SearchResultsPage />} /> */}
                   <Route path="/home" element={<HomePage />} />
+
                   <Route path="/brand-item/:idOrSlug/sellers" element={<BrandItemSellersPage />} />
                   {/* <Route path="/product/:idOrSlug/sellers" element={<GenericProductSellersPage />} />
                   <Route path="/categories" element={<CatalogLevelPageWithKey configKey="categories" />} />
