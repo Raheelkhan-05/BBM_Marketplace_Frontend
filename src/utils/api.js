@@ -711,6 +711,29 @@ export async function adminDownloadCatalogTemplate(token, level) {
   return res.blob();
 }
 
+export async function reportGstinConflict(token, gstin, note) {
+  const res = await fetch(`${API_BASE}/auth/gstin-report`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ gstin, note }),
+  });
+  return res.json();
+}
+export async function adminListGstinReports(token, status = "pending") {
+  const res = await fetch(`${API_BASE}/admin/gstin-reports?status=${encodeURIComponent(status)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.json();
+}
+export async function adminResolveGstinReport(token, id, message) {
+  const res = await fetch(`${API_BASE}/admin/gstin-reports/${id}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ message }),
+  });
+  return res.json();
+}
+
 export async function adminBulkUploadCatalog(token, level, file, parentId) {
   const form = new FormData();
   form.append("file", file);

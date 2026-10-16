@@ -6,7 +6,7 @@ import {
     fetchMe, requestOtp, verifyOtp, completeProfile,
     requestContactOtp, verifyContactOtp, lookupGstin, saveProgress,
 } from "../../utils/api.js";
-
+import GstinReportBox from "../GstinReportBox.jsx";
 const PHONE = /^[6-9]\d{9}$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
@@ -124,14 +124,16 @@ function GstStep({ tok, name0, onDone, say }) {
     const [d, setD] = useState(null);
     const [err, setErr] = useState("");
     const [busy, setBusy] = useState(false);
+    const [code, setCode] = useState("");
     useEffect(() => { toTop(); }, [d]);
     const nameOk = name.trim().length >= 2, gOk = GSTIN.test(g);
 
     const look = async () => {
         if (!nameOk || !gOk || busy) return; setBusy(true); setErr("");
+        setBusy(true); setErr(""); setCode("");
         let r; try { r = await lookupGstin(tok, g); } catch { r = { success: false }; }
         setBusy(false);
-        if (!r?.success) return setErr(r?.message || "Could not verify this GSTIN.");
+        if (!r?.success) { setCode(r?.code || ""); return setErr(r?.message || "Could not verify this GSTIN."); }
         setD(r.data);
     };
     const fin = async () => {
@@ -140,7 +142,11 @@ function GstStep({ tok, name0, onDone, say }) {
         try {
             r = await completeProfile(tok, { name: name.trim(), gstin: g, displayName: (d.trade_name || d.legal_name || "").trim(), dispatchSameAsRegistered: true });
         } catch { r = { success: false }; }
-        if (!r?.success) { setBusy(false); return say(r?.message || "Could not save your details. Try again."); }
+        if (!r?.success) {
+            setBusy(false);
+            if (r?.code === "GSTIN_TAKEN") { setD(null); setCode("GSTIN_TAKEN"); return setErr(r.message); }
+            return say(r?.message || "Could not save your details. Try again.");
+        }
         await onDone();
     };
 
@@ -162,9 +168,10 @@ function GstStep({ tok, name0, onDone, say }) {
             <div className="f">
                 <label htmlFor="gs-gst">GST number (GSTIN)</label>
                 <div className="inp"><input id="gs-gst" maxLength={15} autoCapitalize="characters" autoComplete="off" placeholder="22AAAAA0000A1Z5" value={g}
-                    onChange={(e) => { setErr(""); setG(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")); }}
+                    onChange={(e) => { setErr(""); setCode(""); setG(e.target.value.toUpperCase().replace(/[^0-9A-Z]/g, "")); }}
                     onKeyDown={(e) => { if (e.key === "Enter") look(); }} /></div>
                 <p className="err" role="alert">{err || (g.length === 15 && !gOk ? "A GSTIN has 15 characters, like 22AAAAA0000A1Z5." : "")}</p>
+                {code === "GSTIN_TAKEN" && GSTIN.test(g) && <GstinReportBox variant="gs" token={tok} gstin={g} />}
             </div>
             <button className="sbtn" type="button" disabled={!nameOk || !gOk || busy} onClick={look}>{busy ? "Checking GST record…" : "Verify GST"}</button>
             <p className="note">We fetch your registration details from the GST record.</p>

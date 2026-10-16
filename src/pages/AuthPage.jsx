@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-
+import GstinReportBox from "../components/GstinReportBox.jsx";
 import {
   ArrowRight, Loader2, Mail, Phone, CheckCircle2, Pencil, RotateCw,
   Building2, User, Check, Lock, Zap, ShieldCheck, Tag, Send,
@@ -1325,6 +1325,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
   const [gstin, setGstin] = useState("");
   const [gstStage, setGstStage] = useState("idle");
   const [gstError, setGstError] = useState(null);
+  const [gstCode, setGstCode] = useState(null);
   const [gstData, setGstData] = useState(null);
   const [displayName, setDisplayName] = useState("");
 
@@ -1376,9 +1377,11 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
     if (!isValidGstinShape(gstin)) return;
     setGstStage("looking_up");
     setGstError(null);
+    setGstCode(null);
     const res = await lookupGstin(token, gstin);
     if (!res.success) {
       setGstError(res.message || "Couldn't verify this GSTIN.");
+      setGstCode(res.code || null);
       setGstStage("error");
       setGstData(null);
       return;
@@ -1479,7 +1482,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
               <div className="rel">
                 <input
                   id="bbm-gstin" maxLength={15} value={gstin} autoCapitalize="characters" spellCheck={false}
-                  onChange={(e) => { setGstin(e.target.value.toUpperCase().replace(/\s/g, "")); setGstStage("idle"); setGstData(null); }}
+                  onChange={(e) => { setGstin(e.target.value.toUpperCase().replace(/\s/g, "")); setGstStage("idle"); setGstData(null); setGstCode(null); }}
                   placeholder="22AAAAA0000A1Z5"
                   className={`fx mono${(touched && !gstinOk) || (gstin.length === 15 && !isValidGstinShape(gstin)) ? " er" : ""}`}
                 />
@@ -1491,6 +1494,9 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
             </div>
             {gstin.length === 15 && !isValidGstinShape(gstin) && <p className="em">That doesn't match a GSTIN's format.</p>}
             {gstStage === "error" && <p className="em">{gstError}</p>}
+            {gstStage === "error" && gstCode === "GSTIN_TAKEN" && (
+              <GstinReportBox variant="ba" token={token} gstin={gstin} />
+            )}
             {touched && !gstinOk && gstStage !== "error" && gstin.length !== 15 && (
               <p className="em">Enter and verify your GSTIN to continue.</p>
             )}
@@ -1515,6 +1521,9 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
           </AnimatePresence>
 
           {serverError && <p className="em" style={{ marginTop: 0 }}>{serverError}</p>}
+          {/already registered to another account/i.test(serverError || "") && isValidGstinShape(gstin) && (
+            <GstinReportBox variant="ba" token={token} gstin={gstin} />
+          )}
         </div>
 
         <div className="ofoot">
