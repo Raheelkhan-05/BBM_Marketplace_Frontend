@@ -216,7 +216,7 @@ export default function GrowDashboardPage() {
         if (newOrders.length) return { tone: "bl", kicker: "Your next step", title: `Confirm ${newOrders.length} new order${newOrders.length > 1 ? "s" : ""}`, text: "Buyers are waiting. Confirm to start dispatch.", cta: "Review orders", to: "/grow/orders", Icon: Receipt };
         if (toDispatch.length) return { tone: "gr", kicker: "Your next step", title: `Dispatch ${toDispatch.length} confirmed order${toDispatch.length > 1 ? "s" : ""}`, text: "Add the transport details and mark them as shipped.", cta: "Go to orders", to: "/grow/orders", Icon: Truck };
         if (quotable.length || openEnq > 0) return { tone: "or", kicker: "Your next step", title: `Quote on ${openEnq || quotable.length} open enquir${(openEnq || quotable.length) > 1 ? "ies" : "y"}`, text: quotable[0] ? `${toTitleCase(quotable[0].productName)} · deliver to ${quotable[0].deliveryCity}` : "Buyers are asking for products you sell.", cta: "See enquiries", to: "/grow/enquiries", Icon: Megaphone };
-        return { tone: "gr", kicker: "You are all caught up", title: "Add more products", text: "More live products means more buyers can find and order from you.", cta: "Add product", to: "/grow/products", Icon: Plus };
+        return { tone: "gr", kicker: "You are all caught up", title: "Add more products", text: "More live products means more buyers can find and order from you.", cta: "Add product", to: "/grow?start=1", Icon: Plus };
     })();
 
     const attention = [];

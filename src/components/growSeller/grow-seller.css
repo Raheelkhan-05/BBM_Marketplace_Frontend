@@ -381,7 +381,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 4px;
     min-height: 44px;
     padding: 0 18px;
     border-radius: 999px;
@@ -1764,11 +1764,13 @@
 }
 
 .gsl .products-heading {
+    letter-spacing: 0.5px;
     flex: 1;
     min-width: 0;
 }
 
 .gsl .products-heading .h2 {
+    letter-spacing: 0.2px;
     margin: 0;
 }
 
@@ -1780,6 +1782,7 @@
 .gsl .products-actions {
     display: flex;
     align-items: center;
+    letter-spacing: 0.3px;
     justify-content: flex-end;
     gap: 8px;
     flex-shrink: 0;
