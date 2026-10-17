@@ -169,17 +169,29 @@ export async function searchGeoLocationsByType(q, type) {
     return res.json();
 }
 
-export async function fetchAllMySubmissions(token) {
-    const items = [];
-    let page = 1, totalPages = 1;
-    do {
-        const res = await authedJson(`/seller/catalog/submissions?page=${page}&pageSize=100`, token);
-        if (!res?.success) return { success: false, message: res?.message || "Couldn't load listings." };
-        items.push(...(res.items || []));
-        totalPages = res.pagination?.totalPages || 1;
-        page += 1;
-    } while (page <= totalPages && page <= 30);
-    return { success: true, items };
+// Loads EVERY listing of the seller (the server returns at most 100 per page).
+// Page 1 is reported at once through onFirstPage so the screen fills quickly; the rest load in parallel.
+export async function fetchAllMySubmissions(token, { onFirstPage } = {}) {
+    const PAGE_SIZE = 100, MAX_PAGES = 30;
+    const url = (p) => `/seller/catalog/submissions?page=${p}&pageSize=${PAGE_SIZE}`;
+
+    const first = await authedJson(url(1), token);
+    if (!first?.success) return { success: false, message: first?.message || "Couldn't load listings." };
+
+    const items = [...(first.items || [])];
+    onFirstPage?.(items.slice());
+
+    const totalPages = Math.min(first.pagination?.totalPages || 1, MAX_PAGES);
+    if (totalPages > 1) {
+        const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => authedJson(url(i + 2), token)));
+        for (const r of rest) {
+            if (!r?.success) return { success: false, message: r?.message || "Couldn't load listings." };
+            items.push(...(r.items || []));
+        }
+    }
+    // a listing created while we were loading can shift pages: never show the same one twice
+    const seen = new Set();
+    return { success: true, items: items.filter((it) => (seen.has(it.id) ? false : seen.add(it.id))) };
 }
 
 export async function bulkUpdateMarketing(token, { submissionIds, mode, services }) {

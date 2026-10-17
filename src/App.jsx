@@ -23,6 +23,7 @@ import SaveLayout from "./components/save/SaveLayout.jsx";
 import PaymentReturnPage from "./pages/PaymentReturnPage.jsx";
 import SaveChatPage from "./pages/SaveChatPage.jsx";
 import SaveTransportPage from "./pages/SaveTransportPage.jsx";
+import GrowBulkUploadPage from "./pages/GrowBulkUploadPage.jsx";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -275,6 +276,7 @@ function App() {
                     <Route path="/grow/transport" element={<GrowTransportPage />} />
                     <Route path="/grow/chat/:conversationId?" element={<GrowChatPage />} />
                     <Route path="/grow/products" element={<GrowProductsPage />} />
+                    <Route path="/grow/bulk" element={<GrowBulkUploadPage />} />
                     <Route path="/grow/orders" element={<GrowOrdersPage />} />
                     <Route path="/grow/orders/:id" element={<GrowOrderDetailPage />} />
                     <Route path="/grow/wallet" element={<GrowWalletPage />} />

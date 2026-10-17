@@ -2,6 +2,7 @@
 // Same data and actions as SellerManageListingsPage: fetchMySellerSubmissions, live/paused switch,
 // one-tap reactivate, price + promotion editor, full edit form, share, GST toggle, realtime updates.
 // Rejected listings are never shown as live: they get a Rejected badge, the reason, and "Edit & resubmit".
+// Bulk upload: a "Bulk upload" button, plus a banner that resumes unfinished (soft-saved) bulk products.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -11,8 +12,10 @@ import { useListings } from "../context/ListingsContext.jsx";
 import { shareProductLink } from "../utils/share.js";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import {
-    fetchMySellerSubmissions, updateSellerProductSubmission, setSellerSubmissionActive, refreshSellerSubmission,
+    updateSellerProductSubmission, setSellerSubmissionActive, refreshSellerSubmission,
 } from "../utils/api.js";
+import { fetchAllMySubmissions } from "../utils/sellerListingApi.js";
+import { fetchBulkSummary } from "../utils/bulkApi.js";
 import ImageLightbox from "../components/ImageLightbox.jsx";
 import GrowEditListing from "../components/grow/GrowEditListing.jsx";
 import { savePromotionPlan, saveResultMessage } from "../components/seller/listingForm/PromotionPlanModal.jsx";
@@ -195,25 +198,42 @@ export default function GrowProductsPage() {
     const [edit, setEdit] = useState(null);      // { id, section }
     const [priceFor, setPriceFor] = useState(null);
     const [lightbox, setLightbox] = useState(null);
+    const [bulkPending, setBulkPending] = useState(0); // unfinished bulk-upload products waiting to be submitted
 
     const { listingApprovalUnreadCount, listingRejectionUnreadCount } = useNotifications();
     const unreadListingNotifs = (listingApprovalUnreadCount || 0) + (listingRejectionUnreadCount || 0);
 
     useEffect(() => { const t = setInterval(() => setNowMs(Date.now()), 60000); return () => clearInterval(t); }, []);
 
+    useEffect(() => {
+        if (!token) return undefined;
+        let live = true;
+        fetchBulkSummary(token).then((r) => { if (live && r?.success) setBulkPending(r.pending || 0); });
+        return () => { live = false; };
+    }, [token]);
+
+    const reloadSeq = useRef(0);
     const reload = useCallback(() => {
         if (!token) return;
-        fetchMySellerSubmissions(token).then((res) => {
-            if (res?.success) { const list = res.items || []; CACHE = { token, items: list }; setItems(list); }
-            setLoading(false);
+        const seq = ++reloadSeq.current; // an older, slower reload must never overwrite a newer one
+        const apply = (list) => {
+            if (seq !== reloadSeq.current) return;
+            CACHE = { token, items: list };
+            setItems(list);
+        };
+        fetchAllMySubmissions(token, { onFirstPage: (first) => { apply(first); setLoading(false); } }).then((res) => {
+            if (res?.success) apply(res.items);
+            if (seq === reloadSeq.current) setLoading(false);
         });
     }, [token]);
 
     useEffect(() => { reload(); }, [reload]);
     useEffect(() => {
         if (!socket) return undefined;
-        socket.on("submissions_changed", reload);
-        return () => socket.off("submissions_changed", reload);
+        let t;
+        const onChange = () => { clearTimeout(t); t = setTimeout(reload, 800); }; // many events in a row -> one reload
+        socket.on("submissions_changed", onChange);
+        return () => { clearTimeout(t); socket.off("submissions_changed", onChange); };
     }, [socket, reload]);
     useEffect(() => registerResyncHandler?.(() => { setNowMs(Date.now()); reload(); }), [registerResyncHandler, reload]);
 
@@ -362,17 +382,41 @@ export default function GrowProductsPage() {
 
     return (
         <div className="v">
-            <div className="sh" style={{ marginTop: 22 }}>
-                <div>
+
+            <div className="sh products-header" style={{ marginTop: 22 }}>
+                <div className="products-heading">
                     <h2 className="h2">My products</h2>
                     <p className="sub2">
                         {stats.total} listing{stats.total === 1 ? "" : "s"} · {stats.live} live
-                        {stats.expired > 0 && <> · <span style={{ color: "var(--red)" }}>{stats.expired} expired</span></>}
-                        {stats.rejected > 0 && <> · <span style={{ color: "var(--red)" }}>{stats.rejected} rejected</span></>}
+                        {stats.expired > 0 && (
+                            <> · <span style={{ color: "var(--red)" }}>{stats.expired} expired</span></>
+                        )}
+                        {stats.rejected > 0 && (
+                            <> · <span style={{ color: "var(--red)" }}>{stats.rejected} rejected</span></>
+                        )}
                     </p>
                 </div>
-                <button className="bt go" type="button" onClick={addProduct}><Ic n="plus" />Add product</button>
+
+                <div className="products-actions">
+                    <button className="bt" type="button" onClick={() => nav("/grow/bulk")}>
+                        Bulk upload
+                    </button>
+                    <button className="bt go" type="button" onClick={addProduct}>
+                        <Ic n="plus" /> Add product
+                    </button>
+                </div>
             </div>
+
+
+            {bulkPending > 0 && (
+                <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "12px 16px", marginBottom: 12 }}>
+                    <div>
+                        <b>{bulkPending} product{bulkPending === 1 ? "" : "s"} waiting from your bulk upload</b>
+                        <small style={{ display: "block", opacity: 0.7 }}>Saved automatically. Add photos, confirm and submit them one by one.</small>
+                    </div>
+                    <button className="bt go sm" type="button" onClick={() => nav("/grow/bulk?resume=1")}>Continue bulk upload</button>
+                </div>
+            )}
 
             <label className="srch" style={{ marginBottom: 12 }}>
                 <Ic n="search" />

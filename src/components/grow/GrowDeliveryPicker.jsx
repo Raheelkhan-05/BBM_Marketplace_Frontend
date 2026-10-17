@@ -1,14 +1,19 @@
 // src/components/grow/GrowDeliveryPicker.jsx
-// "Where do you deliver?" for the /grow wizard. Same data model and payload format as
+// "Where do you deliver?" for the /grow wizard and the bulk review page. Same data model and payload format as
 // DispatchingLocationsPicker (all India / exclude states+cities / include states+cities),
 // restyled for the compact /grow design. Nothing is preselected.
+//
+// "Select all" is now ONE toggle button: it reads "Select all" while something in the list is unticked and
+// "Unselect all" once everything shown is ticked. It acts on what is currently visible, so after typing in the
+// filter box it only affects the matching states / cities.
 import { useEffect, useRef, useState } from "react";
 import { fetchGeoCities } from "../../utils/sellerListingApi.js";
 import { useScrollLock } from "./growUi.js";
+import "./grow-delivery.css";
 
 export const blankDelivery = () => ({ mode: "", exS: [], exC: {}, inS: [], inC: {} });
 
-const MODES = [["all", "All of India"], ["exclude", "All except some"], ["include", "Only some places"]];
+const MODES = [["all", "All of India"], ["exclude", "All India except some"], ["include", "Only some places"]];
 const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
 
 /** Returns an error message, or "" when the selection is complete. `total` = number of states loaded. */
@@ -52,11 +57,12 @@ export function buildDispatching(dl, c) {
     return [{ ...base, excludedStates: [] }];
 }
 
+const uniq = (a) => [...new Set(a)];
+
 /* ------------------------------- cities ------------------------------- */
 function CityPanel({ stateName, stateId, mode, value, onSet, cache }) {
     const [all, setAll] = useState(cache.current[stateId] || null); // null = loading
     const [f, setF] = useState("");
-    const [custom, setCustom] = useState("");
     const scroll = useScrollLock();
 
     useEffect(() => {
@@ -84,19 +90,19 @@ function CityPanel({ stateName, stateId, mode, value, onSet, cache }) {
         const next = cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c];
         onSet(sameAsAll(next) ? undefined : next);
     };
-    const addCustom = () => {
-        const raw = custom.trim();
-        if (!raw) return;
-        const name = rows.find((c) => c.toLowerCase() === raw.toLowerCase()) || raw;
-        setCustom("");
-        if (mode === "exclude") { if (!sel.includes(name)) onSet([...sel, name]); return; }
-        const cur = value === undefined ? all : sel;
-        if (cur.includes(name)) return;
-        const next = [...cur, name];
-        onSet(sameAsAll(next) ? undefined : next);
-    };
 
     const shown = f.trim() ? rows.filter((c) => c.toLowerCase().includes(f.trim().toLowerCase())) : rows;
+    const allOn = shown.length > 0 && shown.every(isOn);
+    const toggleAll = () => {
+        if (!shown.length) return;
+        if (mode === "exclude") {
+            onSet(allOn ? uniq([...sel, ...shown]) : sel.filter((c) => !shown.includes(c)));
+            return;
+        }
+        const cur = value === undefined ? all : sel;
+        const next = allOn ? cur.filter((c) => !shown.includes(c)) : uniq([...cur, ...shown]);
+        onSet(sameAsAll(next) ? undefined : next);
+    };
     const onCount = rows.filter(isOn).length;
 
     return (
@@ -104,13 +110,12 @@ function CityPanel({ stateName, stateId, mode, value, onSet, cache }) {
             <div className="gx-bar" style={{ marginTop: 0 }}>
                 <span>{mode === "exclude" ? (sel.length ? `${plural(sel.length, "city", "cities")} excluded` : "All cities included") : `${onCount} of ${rows.length} cities`}</span>
                 <div className="gx-links">
-                    <button type="button" className="gx-link" onClick={() => onSet(mode === "exclude" ? [] : undefined)}>Select all</button>
-                    {mode === "include" && <button type="button" className="gx-link" onClick={() => onSet([])}>Clear all</button>}
+                    <button type="button" className="gx-link" disabled={!shown.length} onClick={toggleAll}>{allOn ? "Unselect all" : "Select all"}</button>
                 </div>
             </div>
             {rows.length > 8 && <div className="inp"><input value={f} onChange={(e) => setF(e.target.value)} placeholder={`Filter cities in ${stateName}…`} aria-label="Filter cities" /></div>}
             {rows.length === 0
-                ? <p className="gx-msg">No cities on file for {stateName}. Add one below.</p>
+                ? <p className="gx-msg">No cities on file for {stateName}.</p>
                 : (
                     <div className="gx-cg" ref={scroll} data-lenis-prevent>
                         {shown.map((c) => (
@@ -154,11 +159,32 @@ export default function GrowDeliveryPicker({ value, onChange, states, status, on
         if (next === undefined || (mode === "exclude" && !next.length)) delete copy[name]; else copy[name] = next;
         onChange({ ...value, [key]: copy });
     };
-    const selectAll = () => onChange(mode === "exclude" ? { ...value, exS: [], exC: {} } : { ...value, inS: states.map((s) => s.name), inC: {} });
-    const clearAll = () => onChange({ ...value, inS: [], inC: {} });
 
     const list = q.trim() ? states.filter((s) => s.name.toLowerCase().includes(q.trim().toLowerCase())) : states;
     const picked = mode === "exclude" ? states.length - value.exS.length : value.inS.length;
+    const allOn = list.length > 0 && list.every((s) => isOn(s.name));
+
+    // One button: selects everything shown, or unselects everything shown, depending on the current ticks.
+    const toggleAll = () => {
+        if (!list.length) return;
+        const names = list.map((s) => s.name);
+        setOpenSt("");
+        if (mode === "exclude") {
+            if (allOn) { // untick all shown = exclude them
+                onChange({ ...value, exS: uniq([...value.exS, ...names]) });
+            } else {
+                const exC = { ...value.exC };
+                if (!q.trim()) Object.keys(exC).forEach((k) => delete exC[k]); // full "select all" also clears city exclusions
+                onChange({ ...value, exS: value.exS.filter((n) => !names.includes(n)), exC });
+            }
+        } else if (allOn) {
+            const inC = { ...value.inC };
+            names.forEach((n) => delete inC[n]);
+            onChange({ ...value, inS: value.inS.filter((n) => !names.includes(n)), inC });
+        } else {
+            onChange({ ...value, inS: uniq([...value.inS, ...names]) });
+        }
+    };
 
     return (
         <div>
@@ -183,8 +209,7 @@ export default function GrowDeliveryPicker({ value, onChange, states, status, on
                         <div className="gx-bar">
                             <span>{picked} of {states.length} states selected</span>
                             <div className="gx-links">
-                                <button type="button" className="gx-link" onClick={selectAll}>Select all</button>
-                                {mode === "include" && <button type="button" className="gx-link" onClick={clearAll}>Clear all</button>}
+                                <button type="button" className="gx-link" disabled={!list.length} onClick={toggleAll}>{allOn ? "Unselect all" : "Select all"}</button>
                             </div>
                         </div>
                         <div className="gx-states" ref={scroll} data-lenis-prevent>
