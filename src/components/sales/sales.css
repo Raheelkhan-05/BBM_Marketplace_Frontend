@@ -1,0 +1,197 @@
+.gs {
+    --gs-hd: 60px;
+    min-height: 100dvh;
+    background: var(--k-bg);
+}
+
+.gs-hd {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    height: var(--gs-hd);
+    background: var(--k-s);
+    border-bottom: 1px solid var(--k-line);
+}
+
+.gs-hd-in {
+    height: 100%;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.gs-hd-in img {
+    height: 28px;
+    width: auto;
+    flex: none;
+}
+
+.gs-co {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+}
+
+.gs-co b {
+    font: 900 1rem var(--k-f);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gs-co small {
+    color: var(--k-mute);
+    font-weight: 700;
+    font-size: .72rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gs-main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 16px 48px;
+}
+
+/* two tiles, same look as GrowTabs */
+.gk.gn.gs-nav {
+    --gn-top: var(--gs-hd);
+}
+
+.gk.gn.gs-nav .gn-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 8px 12px;
+}
+
+.gs-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    transform: translate(-50%, 20px);
+    z-index: 90;
+    padding: 12px 18px;
+    border-radius: 999px;
+    background: var(--k-ink);
+    color: var(--k-bg);
+    font: 800 .88rem var(--k-f);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s, transform .25s var(--k-ease);
+    max-width: calc(100vw - 32px);
+}
+
+.gs-toast.on {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+.gs-list {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 720px) {
+    .gs-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1100px) {
+    .gs-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+.gs-card h3 {
+    font: 800 1.05rem/1.25 var(--k-f);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.gs-card .q {
+    display: block;
+    margin-top: 4px;
+    font-weight: 800;
+    font-size: .85rem;
+    color: var(--k-tt);
+}
+
+.gs-card small {
+    display: block;
+    color: var(--k-mute);
+    font-weight: 600;
+    font-size: .84rem;
+    margin-top: 2px;
+}
+
+.gs-lines {
+    display: grid;
+    gap: 6px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--k-line);
+}
+
+.gs-lines a,
+.gs-lines span {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--k-ink);
+    font-weight: 600;
+    font-size: .88rem;
+    text-decoration: none;
+    min-width: 0;
+}
+
+.gs-lines svg {
+    color: var(--k-mute);
+}
+
+.gs-form {
+    display: grid;
+    gap: 14px;
+}
+
+.gs-found {
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid color-mix(in srgb, var(--k-gr) 45%, var(--k-line));
+    background: color-mix(in srgb, var(--k-gr) 9%, var(--k-s));
+}
+
+.gs-found b {
+    display: block;
+    letter-spacing: 0.2px;
+}
+
+.gs-found small {
+    color: var(--k-mute);
+    letter-spacing: 0.4px;
+    font-weight: 600;
+}
+
+.gs-err {
+    color: var(--k-red);
+    font-weight: 700;
+    font-size: .88rem;
+}
+
+.gs-hint {
+    color: var(--k-mute);
+    font-size: .8rem;
+    font-weight: 600;
+}

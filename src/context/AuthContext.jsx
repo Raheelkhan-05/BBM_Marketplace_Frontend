@@ -179,6 +179,7 @@ export function AuthProvider({ children }) {
         effectiveLoggedIn: isLoggedIn,
         // TEAM
         isTeamMember: !!profile?.team && !profile.team.isAdmin,
+        isSalesperson: profile?.team?.role === "salesperson",
         isTeamAdmin: !profile?.team || !!profile.team.isAdmin,
         signOut,
         clearSession,

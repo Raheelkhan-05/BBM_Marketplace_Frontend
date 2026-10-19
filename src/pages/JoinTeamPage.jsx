@@ -86,6 +86,8 @@ export default function JoinTeamPage() {
     }, [stage, seconds]);
 
     const invitedByEmail = info?.channel === "email";
+    const isSales = info?.role === "salesperson";
+
     const extraKind = invitedByEmail ? "mobile number" : "email address";
     const nameOk = name.trim().length >= 2;
     const extraOk = invitedByEmail ? PHONE_RE.test(cleanPhone(extra)) : EMAIL_RE.test(extra.trim());
@@ -115,7 +117,7 @@ export default function JoinTeamPage() {
         setStage("joining");
         try {
             await setAuthSession?.(res.token);
-            navigate("/home", { replace: true });
+            navigate(res.role === "salesperson" ? "/sales/dashboard" : "/home", { replace: true });
         } catch {
             setBusy(false);
             setStage("invalid");
@@ -157,15 +159,19 @@ export default function JoinTeamPage() {
                             <div className="jt-head">
                                 <span className="jt-pi"><Users className="ic" style={{ width: 26, height: 26 }} /></span>
                                 <h1>Join {info.companyName}'s team</h1>
-                                <p>You've been invited to join <b>{info.companyName}</b> on BBM as a team member.</p>
+                                <p>You've been invited to join <b>{info.companyName}</b> on BBM as a <b>{isSales ? "salesperson" : "team member"}</b>.</p>
+
                             </div>
 
                             <div className="jt-note">
                                 <ShieldCheck className="ic" />
-                                <div>
-                                    <b>You'll be added to this company's team.</b> You'll work inside the company's account, with the same
-                                    access as the company: orders, chats, enquiries and products. Your team admin can see the actions you take.
-                                </div>
+                                {isSales ? (
+                                    <div><b>You'll get your own sales workspace for {info.companyName}.</b> You'll see only the customers
+                                        assigned to you or added by you. Marketplace, orders and chats are not part of this role.</div>
+                                ) : (
+                                    <div><b>You'll be added to this company's team.</b> You'll work inside the company's account, with the same
+                                        access as the company: orders, chats, enquiries and products. Your team admin can see the actions you take.</div>
+                                )}
                             </div>
 
                             {stage === "ready" ? (

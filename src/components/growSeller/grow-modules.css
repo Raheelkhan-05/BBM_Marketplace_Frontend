@@ -247,6 +247,7 @@
 .gk-field {
     display: flex;
     flex-direction: column;
+    letter-spacing: 0.4px;
     gap: 6px;
     min-width: 0;
 }

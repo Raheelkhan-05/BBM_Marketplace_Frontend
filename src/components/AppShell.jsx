@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { NotificationsProvider } from "../context/NotificationsContext.jsx";
 import { CartProvider } from "../context/CartContext.jsx";
@@ -28,6 +28,13 @@ export default function AppShell() {
     }, []);
 
     const show = !HIDE.some((r) => r.test(pathname));
+
+    const { profile } = useAuth();
+    const isSales = profile?.team?.role === "salesperson";
+    // const salesExempt = /^\/(login|terms|privacy-policy)(\/|$)/.test(pathname);
+    const salesExempt = /^\/(login|terms|privacy-policy|sales|payment\/return)(\/|$)/.test(pathname);
+    if (isSales && !salesExempt) return <Navigate to="/sales/dashboard" replace />;
+
     return (
         <NotificationsProvider><CartProvider><ChatProvider><ListingsProvider><HelpRequestProvider><TransportLibraryProvider>
             <NotificationActionsProvider>

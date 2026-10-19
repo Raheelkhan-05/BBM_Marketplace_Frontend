@@ -4,7 +4,7 @@
 //   Realtime: credit:changed + orders_changed (socket) -> silent refetch; also on reconnect / tab focus.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Send, Trash2, UserPlus, Upload as UploadIcon, Check, Clock, TrendingUp, Tag } from "lucide-react";
+import { Send, User, UsersRound, Trash2, UserPlus, Upload as UploadIcon, Check, Clock, TrendingUp, Tag, ChevronDown, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
@@ -15,11 +15,14 @@ import Ic from "../components/growSeller/Ic.jsx";
 import { Empty, ListSkeleton } from "../components/growSeller/ui.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
 import { toTitleCase } from "../components/growSeller/sellerHelpers.js";
+import AssignSalespersonSheet from "../components/growSeller/AssignSalespersonSheet.jsx";
+import { fetchCustomersAdmin, fetchSalespeople, assignCustomerTo } from "../utils/salesApi.js";
 import {
-    fetchCustomers, markCustomerInvited, removeCustomer, shareInvite,
+    markCustomerInvited, removeCustomer, shareInvite,
     approveCredit, declineCredit, grantCredit, changeCreditLimit, declineLimitIncrease, setCreditEnabled,
 } from "../utils/sellerCustomersApi.js";
 import "../components/growSeller/grow-store.css";
+import "../components/growSeller/salesperson-filter.css";
 
 const PAGE = 12;
 const FILTERS = ["all", "active", "invited", "requests", "credit"];
@@ -37,7 +40,7 @@ const initialFilter = () => {
 // ── credit block on a customer card ─────────────────────────────────────────
 function CreditBlock({ c, busy, on }) {
     if (!c.userId) {
-        return <p className="cr-note" style={{ marginTop: 12 }}>Credit and custom pricing become available once they join BBM.</p>;
+        return <p className="cr-note tracking-wide" style={{ marginTop: 12 }}>Credit and custom pricing become available once they join BBM.</p>;
     }
     const cr = c.credit || { status: "none", limit: 0, used: 0 };
     const pct = cr.limit > 0 ? Math.min(100, Math.round((cr.used / cr.limit) * 100)) : 0;
@@ -111,7 +114,7 @@ function CreditBlock({ c, busy, on }) {
     );
 }
 
-function CustomerCard({ c, hl, busy, on }) {
+function CustomerCard({ c, hl, busy, on, canAssign }) {
     const active = c.status === "active";
     return (
         <article className={`card${hl ? " hl" : ""}`} id={c.credit?.id ? `customer-credit-${c.credit.id}` : undefined}>
@@ -119,18 +122,33 @@ function CustomerCard({ c, hl, busy, on }) {
                 <div className="in">
                     <h3>
                         {toTitleCase(c.name)}
-                        <span className={`stt rfq ${active ? "approved" : "pending_review"}`}>{active ? "Customer" : "Invited"}</span>
+                        <span className={`stt rfq ${active ? "approved" : "pending_review"}`}>{active ? "Customer" : "Invite"}</span>
                     </h3>
                     {c.gstin && <b className="q">GSTIN {c.gstin}</b>}
                     {c.location && <small>{c.location}</small>}
                 </div>
             </div>
+            {c.assignment !== undefined && (canAssign || c.assignment) && (
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "0 0 12px" }}>
+                    {c.assignment ? (<>
+                        <span className="tg g"><User size={14} />{c.assignment.name}</span>
+                        <span className={`tg ${c.assignment.kind === "self" ? "o" : "g"}`}>{c.assignment.kind === "self" ? "Self added" : "Admin assigned"}</span>
+                    </>) : <span className="cr-note">Not assigned</span>}
+                    {canAssign && <button type="button" className="bt sm" style={{ marginLeft: "auto" }} onClick={() => on.assign(c)}>{c.assignment ? "Change" : "Assign"}</button>}
+                </div>
+            )}
+            {c.savedContact && (
+                <p className="cr-note" style={{ margin: "0 0 10px" }}>
+                    {[c.savedContact.name, c.savedContact.phone, c.savedContact.email].filter(Boolean).join(" · ")}
+                </p>
+            )}
             <ul className="mt">
                 {active ? (<>
                     <li><Ic n="repeat" /><span>{c.ordersCount ? `${c.ordersCount} order${c.ordersCount === 1 ? "" : "s"} · ${inr(c.totalSpent)}` : "No orders yet"}</span></li>
                     {c.lastOrderAt && <li><Ic n="clock" /><span>Last order {day(c.lastOrderAt)}</span></li>}
                 </>) : (
-                    <li><Ic n="clock" /><span>{c.invitedAt ? `Invited ${day(c.invitedAt)} · waiting to join BBM` : "Not on BBM yet · send an invite"}</span></li>
+                    // <li><Ic n="clock" /><span>{c.invitedAt ? `Invited ${day(c.invitedAt)} · waiting to join BBM` : "Not on BBM yet · send an invite"}</span></li>
+                    <li><Ic n="clock" /><span>{c.invitedAt ? `Invited ${day(c.invitedAt)} · waiting to join BBM` : "Not on BBM yet"}</span></li>
                 )}
             </ul>
 
@@ -175,6 +193,11 @@ export default function GrowCustomersPage() {
     const [busy, setBusy] = useState({});     // customerId -> true
     const [hlId, setHlId] = useState(null);
 
+    const [assignee, setAssignee] = useState("all");
+    const [salespeople, setSalespeople] = useState([]);
+    const [assignFor, setAssignFor] = useState(null);
+
+
     const abortRef = useRef(null);
     const seqRef = useRef(0);
     const itemsRef = useRef([]);
@@ -196,7 +219,7 @@ export default function GrowCustomersPage() {
         try {
             // a silent refresh re-reads everything already on screen, so infinite-scrolled pages don't collapse
             const limit = silent && !append ? Math.min(Math.max(PAGE, itemsRef.current.length), 100) : PAGE;
-            const res = await fetchCustomers(token, { q, filter, limit, offset, sync: skipSync ? 0 : undefined, signal: ctl.signal });
+            const res = await fetchCustomersAdmin(token, { q, filter, limit, offset, sync: skipSync ? 0 : undefined, assignee: assignee === "all" ? undefined : assignee, signal: ctl.signal });
             if (seq !== seqRef.current) return;
             if (!res.success) { if (!silent) { setError(res.message || "Couldn't load your customers."); setHasMore(false); } return; }
             setItems(append ? mergeUnique(itemsRef.current, res.items || []) : res.items || []);
@@ -209,7 +232,7 @@ export default function GrowCustomersPage() {
         } finally {
             if (seq === seqRef.current) { setLoading(false); setLoadingMore(false); }
         }
-    }, [token, q, filter]);
+    }, [token, q, filter, assignee]);
 
     const loadRef = useRef(load);
     loadRef.current = load;
@@ -231,7 +254,8 @@ export default function GrowCustomersPage() {
         if (!socket) return undefined;
         socket.on("credit:changed", scheduleRefresh);  // approve / decline / limit / toggle / request / usage given back
         socket.on("orders_changed", scheduleRefresh);  // a credit order was placed or cancelled -> usage moved
-        return () => { socket.off("credit:changed", scheduleRefresh); socket.off("orders_changed", scheduleRefresh); clearTimeout(timerRef.current); };
+        socket.on("sales:customers_changed", scheduleRefresh);
+        return () => { socket.off("credit:changed", scheduleRefresh); socket.off("orders_changed", scheduleRefresh); socket.off("sales:customers_changed", scheduleRefresh); clearTimeout(timerRef.current); };
     }, [socket, scheduleRefresh]);
 
     const prevConnected = useRef(connected);
@@ -239,6 +263,13 @@ export default function GrowCustomersPage() {
         if (connected && !prevConnected.current && token) loadRef.current(0, false, true); // missed events while offline
         prevConnected.current = connected;
     }, [connected, token]);
+
+    // load salespeople once (server returns 403 for non-admins, which we ignore)
+    useEffect(() => {
+        if (!token) return;
+        fetchSalespeople(token).then((r) => { if (r?.success) setSalespeople(r.items || []); });
+    }, [token]);
+
 
     // refresh when the tab comes back (new orders may have added customers)
     useEffect(() => {
@@ -292,6 +323,18 @@ export default function GrowCustomersPage() {
         refresh();
     };
 
+    const doAssign = async (c, sid) => {
+        setBusy((b) => ({ ...b, [c.id]: true }));
+        const res = await assignCustomerTo(token, c.id, sid);
+        setBusy((b) => { const n = { ...b }; delete n[c.id]; return n; });
+        if (res.success) {
+            setItems((prev) => prev.map((x) => (x.id === c.id ? { ...x, assignment: res.assignment } : x)));
+            say(sid ? `Assigned to ${res.assignment.name}.` : "Assignment removed.");
+            setAssignFor(null);
+        } else say(res.message || "Couldn't update the assignment.");
+        scheduleRefresh();
+    };
+
     // ---- credit actions ---------------------------------------------------------
     const runCredit = useCallback(async (c, fn, okMsg) => {
         setBusy((b) => ({ ...b, [c.id]: true }));
@@ -308,6 +351,7 @@ export default function GrowCustomersPage() {
         approve: (c) => setDlg({ kind: "approve", c }),
         grant: (c) => setDlg({ kind: "grant", c }),
         change: (c) => setDlg({ kind: "change", c }),
+        assign: (c) => setAssignFor(c),
         decline: (c) => runCredit(c, () => declineCredit(token, c.credit.id), "Credit request declined."),
         declineIncrease: (c) => runCredit(c, () => declineLimitIncrease(token, c.credit.id), "Higher-limit request declined."),
         toggle: (c, enabled) => runCredit(c, () => setCreditEnabled(token, c.userId, enabled), enabled ? "Credit turned on." : "Credit turned off."),
@@ -366,12 +410,51 @@ export default function GrowCustomersPage() {
                     <button key={v} type="button" aria-pressed={filter === v} onClick={() => setFilter(v)}>{l} · {n}</button>
                 ))}
             </div>
+            {salespeople.length > 0 && (
+                <section className={`sp-filter${assignee !== "all" ? " sp-filter--active" : ""}`} aria-label="Customer assignment filter">
+                    <div className="sp-filter__intro">
+                        <span className="sp-filter__icon" aria-hidden="true"><UsersRound size={18} strokeWidth={2.1} /></span>
+                        <div className="sp-filter__copy">
+                            <label className="sp-filter__label" htmlFor="customer-salesperson-filter">Salesperson</label>
+                            <span className="sp-filter__hint">Filter customers by who manages them</span>
+                        </div>
+                    </div>
+
+                    <div className="sp-filter__control">
+                        <select
+                            id="customer-salesperson-filter"
+                            className="sp-filter__select"
+                            value={assignee}
+                            onChange={(e) => setAssignee(e.target.value)}
+                        >
+                            <option value="all">All salespeople</option>
+                            <option value="unassigned">Unassigned customers</option>
+                            {salespeople.map((s) => <option key={s.userId} value={s.userId}>{s.name}</option>)}
+                        </select>
+                        <ChevronDown className="sp-filter__chevron" size={17} strokeWidth={2.2} aria-hidden="true" />
+                    </div>
+
+                    {assignee !== "all" && (
+                        <button
+                            className="sp-filter__clear"
+                            type="button"
+                            onClick={() => setAssignee("all")}
+                            aria-label="Clear salesperson filter"
+                            title="Clear salesperson filter"
+                        >
+                            <X size={14} strokeWidth={2.3} aria-hidden="true" />
+                            Clear
+                        </button>
+                    )}
+                </section>
+            )}
+
 
             {!loading && !error && <p className="cnt">{total} customer{total === 1 ? "" : "s"}</p>}
 
             {loading && items.length === 0 ? <ListSkeleton n={4} tall /> : (
                 <div className="grid c3">
-                    {items.map((c) => <CustomerCard key={c.id} c={c} hl={!!hlId && c.credit?.id === hlId} busy={!!busy[c.id]} on={credit} />)}
+                    {items.map((c) => <CustomerCard key={c.id} c={c} hl={!!hlId && c.credit?.id === hlId} busy={!!busy[c.id]} on={credit} canAssign={salespeople.length > 0} />)}
                     {!loading && !error && items.length === 0 && (
                         <Empty title={emptyTitle} text={emptyText}>
                             {!q && filter === "all" && (<><br /><button className="bt or" type="button" onClick={() => setModal("single")}><UserPlus size={16} />Add customer</button></>)}
@@ -414,6 +497,10 @@ export default function GrowCustomersPage() {
                 buyerId={pricingFor?.userId}
                 buyerLabel={toTitleCase(pricingFor?.name || "") || "this customer"}
                 onClose={() => setPricingFor(null)}
+            />
+            <AssignSalespersonSheet
+                customer={assignFor} salespeople={salespeople} busy={!!(assignFor && busy[assignFor.id])}
+                onClose={() => setAssignFor(null)} onPick={(sid) => doAssign(assignFor, sid)}
             />
         </div>
     );

@@ -23,7 +23,7 @@ async function call(path, { token, method = "GET", body } = {}) {
 }
 
 export const fetchTeam = (token) => call("", { token });
-export const createTeamInvite = (token, value) => call("/invites", { token, method: "POST", body: { value } });
+export const createTeamInvite = (token, value, role = "member") => call("/invites", { token, method: "POST", body: { value, role } });
 export const resendTeamInvite = (token, id) => call(`/invites/${id}/resend`, { token, method: "POST" });
 export const revokeTeamInvite = (token, id) => call(`/invites/${id}`, { token, method: "DELETE" });
 export const removeTeamMember = (token, userId) => call(`/members/${userId}`, { token, method: "DELETE" });

@@ -23,11 +23,17 @@ const C = {
 const CAT_COLOR = {
     orders: "#114072", catalog: "#22A06B", shop: "#0B7285", pricing: "#8A6500",
     credit: "#7A3EB1", chat: "#5B6672", team: "#d2462b", general: "#5B6672",
+    sales: "#B45309",
 };
 const CAT_LABEL = {
     orders: "Orders", catalog: "Catalog", shop: "Shop", pricing: "Pricing",
     credit: "Credit", chat: "Chat", team: "Team", general: "General",
+    sales: "Sales",
 };
+
+const ROLE_PHRASE = { admin: "an admin", member: "a member", salesperson: "a salesperson" };
+const roleLabel = (m) => (m.isOwner ? "Owner" : m.role === "admin" ? "Admin" : m.role === "salesperson" ? "Salesperson" : "Member");
+
 
 const MAX_KEEP = 300; // rows kept in memory; older ones come back via "Show older activity"
 
@@ -75,7 +81,10 @@ function Avatar({ m }) {
 const Pill = ({ children, tone = "muted" }) => (
     <span
         className="shrink-0 rounded-full px-2 py-[3px] text-[10.5px] font-bold uppercase leading-none tracking-wide"
-        style={tone === "green" ? { background: "rgba(34,160,107,.14)", color: "#12794A" } : { background: C.tile, color: C.muted }}
+        style={tone === "green" ? { background: "rgba(34,160,107,.14)", color: "#12794A" }
+            : tone === "blue" ? { background: "rgba(30,120,214,.14)", color: "#0F63B5" }
+                : { background: C.tile, color: C.muted }}
+
     >{children}</span>
 );
 
@@ -220,6 +229,7 @@ export default function TeamPanel({ token, active, scrollProps }) {
 function PeopleView({ token, data, isAdmin, reload }) {
     const [value, setValue] = useState("");
     const [sending, setSending] = useState(false);
+    const [role, setRole] = useState("member");
     const [error, setError] = useState("");
     const [sent, setSent] = useState(null); // { link, delivered, label }
     const [copied, setCopied] = useState(false);
@@ -238,7 +248,7 @@ function PeopleView({ token, data, isAdmin, reload }) {
         e?.preventDefault();
         if (inFlight.current || !value.trim()) return;
         inFlight.current = true; setSending(true); setError(""); setSent(null);
-        const res = await createTeamInvite(token, value.trim());
+        const res = await createTeamInvite(token, value.trim(), role);
         inFlight.current = false; setSending(false);
         if (!res.success) { setError(res.message || "Couldn't send the invite."); return; }
         setSent({ link: res.link, delivered: res.delivered, label: res.invite.maskedValue });
@@ -294,6 +304,19 @@ function PeopleView({ token, data, isAdmin, reload }) {
                         <label htmlFor="team-invite" className="flex items-center gap-1.5 text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>
                             <UserPlus className="h-4 w-4" style={{ color: C.secondary }} /> Add a teammate
                         </label>
+                        <div role="group" aria-label="Role" className="mt-2 inline-flex gap-1 rounded-full p-0.5" style={{ background: C.tile }}>
+                            {[["member", "Team member"], ["salesperson", "Salesperson"]].map(([k, t]) => (
+                                <button key={k} type="button" aria-pressed={role === k} onClick={() => setRole(k)}
+                                    className="rounded-full px-3 py-1 text-[11.5px] font-bold tracking-wide"
+                                    style={role === k ? { background: "#000", color: "#fff" } : { color: C.muted }}>{t}</button>
+                            ))}
+                        </div>
+                        {role === "salesperson" && (
+                            <p className="mt-1.5 text-[12px] font-medium leading-snug tracking-wide" style={{ color: C.muted }}>
+                                Gets a separate sales workspace with only their own customers.
+                            </p>
+                        )}
+
                         <div className="mt-2 flex gap-2">
                             <input
                                 id="team-invite" value={value} onChange={(e) => { setValue(e.target.value); setError(""); }}
@@ -351,6 +374,7 @@ function PeopleView({ token, data, isAdmin, reload }) {
                                 </span>
                                 <div className="min-w-0 flex-1">
                                     <div className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{i.value}</div>
+                                    {i.role === "salesperson" && <Pill tone="blue">Salesperson</Pill>}
                                     <div className="mt-0.5 flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: i.status === "expired" ? C.red : C.muted }}>
                                         <Clock className="h-3 w-3" />{expiresIn(i.expiresAt)}
                                     </div>
@@ -378,7 +402,10 @@ function PeopleView({ token, data, isAdmin, reload }) {
                         const canRemove = isAdmin && !m.isOwner && (!!data.canManageRoles || m.role !== "admin");
                         const asking = pending?.id === m.userId ? pending : null;
                         const busy = busyId === m.userId;
-                        const nextRole = m.role === "admin" ? "member" : "admin";
+                        const roleOptions = m.role === "admin" ? [["member", "Make member"]]
+                            : m.role === "salesperson" ? [["member", "Make member"], ["admin", "Make admin"]]
+                                : [["admin", "Make admin"], ["salesperson", "Make salesperson"]];
+
                         return (
                             <li key={m.userId} className="rounded-2xl border p-3" style={{ borderColor: C.hair }}>
                                 <div className="flex items-center gap-3">
@@ -386,7 +413,7 @@ function PeopleView({ token, data, isAdmin, reload }) {
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-center gap-1.5">
                                             <span className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{m.name || "Unnamed"}{m.isMe ? " (you)" : ""}</span>
-                                            <Pill tone={m.role === "admin" ? "green" : "muted"}>{m.isOwner ? "Owner" : m.role === "admin" ? "Admin" : "Member"}</Pill>
+                                            <Pill tone={m.role === "admin" ? "green" : m.role === "salesperson" ? "blue" : "muted"}>{roleLabel(m)}</Pill>
                                         </div>
                                         <div className="truncate text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>{m.email || (m.phone ? `+91 ${m.phone}` : "")}</div>
                                     </div>
@@ -398,7 +425,7 @@ function PeopleView({ token, data, isAdmin, reload }) {
                                             <>
                                                 <span className="text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
                                                     {asking.type === "role"
-                                                        ? `Make ${firstName(m)} ${asking.role === "admin" ? "an admin" : "a member"}?`
+                                                        ? `Make ${firstName(m)} ${ROLE_PHRASE[asking.role]}?`
                                                         : `Remove ${firstName(m)} from the team?`}
                                                 </span>
                                                 <button
@@ -415,14 +442,10 @@ function PeopleView({ token, data, isAdmin, reload }) {
                                             </>
                                         ) : (
                                             <>
-                                                {canRole && (
-                                                    <button
-                                                        type="button" onClick={() => setPending({ id: m.userId, type: "role", role: nextRole })}
-                                                        className="text-[11.5px] font-bold tracking-wide" style={{ color: C.secondary }}
-                                                    >
-                                                        {m.role === "admin" ? "Make member" : "Make admin"}
-                                                    </button>
-                                                )}
+                                                {canRole && roleOptions.map(([r, t]) => (
+                                                    <button key={r} type="button" onClick={() => setPending({ id: m.userId, type: "role", role: r })}
+                                                        className="text-[11.5px] font-bold tracking-wide" style={{ color: C.secondary }}>{t}</button>
+                                                ))}
                                                 {canRemove && (
                                                     <button
                                                         type="button" onClick={() => setPending({ id: m.userId, type: "remove" })}

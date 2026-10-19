@@ -8,6 +8,7 @@ import ScrollToTop from "./lib/ScrollToTop.jsx";
 import Layout from "./components/Layout.jsx";
 import GrowLayout from "./components/grow/GrowLayout.jsx";
 import GrowSellerRoot from "./components/growSeller/GrowSellerRoot.jsx";
+import SalesLayout from "./components/sales/SalesLayout.jsx";
 import AuthLayout from "./components/AuthLayout.jsx";
 import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
 import PendingSubmissionWatcher from "./components/PendingSubmissionWatcher.jsx";
@@ -108,6 +109,10 @@ const SaveCartPage = lazy(() => import("./pages/SaveCartPage.jsx"));
 const SaveOrderDetailPage = lazy(() => import("./pages/SaveOrderDetailPage.jsx"));
 const SaveCreditPage = lazy(() => import("./pages/SaveCreditPage.jsx"));
 const SaveHomePage = lazy(() => import("./pages/SaveHomePage.jsx"));
+
+const SalesDashboardPage = lazy(() => import("./pages/SalesDashboardPage.jsx"));
+const SalesCustomersPage = lazy(() => import("./pages/SalesCustomersPage.jsx"));
+
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -293,6 +298,12 @@ function App() {
                     <Route path="orders/:id" element={<SaveOrderDetailPage />} />
                     <Route path="cart" element={<SaveCartPage />} />
                     <Route path="credit" element={<SaveCreditPage />} />
+                  </Route>
+
+                  <Route path="/sales" element={<SalesLayout />}>
+                    <Route index element={<Navigate to="dashboard" replace />} />
+                    <Route path="dashboard" element={<SalesDashboardPage />} />
+                    <Route path="customers" element={<SalesCustomersPage />} />
                   </Route>
                 </Route>
               </Route>
