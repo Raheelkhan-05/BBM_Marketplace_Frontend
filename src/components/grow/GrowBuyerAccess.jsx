@@ -5,13 +5,15 @@
 //  - GrowBuyerAccessLive  : edit flow. Uses the existing per-listing APIs, same as the old BuyerAccessPricing.
 // Both share the same price editor and the same shared/customPricing.js math as the old UI,
 // so a price set here resolves to the same stored number.
+// BuyerPriceEditor / Seg / Field / emptyDraft are exported so GrowCustomerPricing (per-buyer, many products,
+// opened from the Customers page) uses the exact same editor and math.
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
     searchEligibleBuyers, fetchListingAccess, setListingVisibilityMode, addListingVisibilityBuyer,
     removeListingVisibilityBuyer, saveCustomPricingForBuyer, deleteCustomPricingForBuyer,
 } from "../../utils/sellerListingApi.js";
 import {
-    derivePriceBreakdown, percentFromCustomPrice, priceFromLevel,
+    derivePriceBreakdown, percentFromCustomPrice, priceFromLevel, violatesMinUnitPrice,
     MIN_UNIT_PRICE, LEVEL_LABEL, LEVEL_FIELD, levelsFor,
 } from "../../../shared/customPricing.js";
 import "./grow-access.css";
@@ -53,14 +55,16 @@ function draftFromOverride(buyer, product) {
 }
 
 /* ---------------- price editor (same math as the old BuyerPriceEditor) ---------------- */
-function BuyerPriceEditor({ product, draft, setDraft }) {
+export function BuyerPriceEditor({ product, draft, setDraft }) {
     const levels = levelsFor(product);
     const gst = Number(product.gstPercent) || 0;
     const gstMode = draft.gstMode || "incl";
     const hasPct = draft.percentValue !== "" && draft.percentValue != null;
     const direction = draft.percentDirection ?? (hasPct && Number(draft.percentValue) < 0 ? "increase" : "decrease");
     const pctAbs = hasPct ? String(draft.percentValue).replace("-", "") : "";
-    const invalid = draft.canonicalPrice != null && !(draft.canonicalPrice > 0);
+    // not a positive number, or below the minimum per-unit price the backend accepts
+    const invalid = draft.canonicalPrice != null
+        && (!(draft.canonicalPrice > 0) || violatesMinUnitPrice(draft.canonicalPrice, product.packSize, product.masterPackSize));
     const preview = draft.canonicalPrice != null && !invalid ? derivePriceBreakdown(draft.canonicalPrice, product.packSize, product.masterPackSize) : null;
     const applied = draft.canonicalPrice != null ? percentFromCustomPrice(product.defaultPrice, draft.canonicalPrice) : null;
 

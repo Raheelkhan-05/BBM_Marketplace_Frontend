@@ -2,7 +2,7 @@
 // Reads from the same endpoints as the other GROW pages: fetchSellerOrders (live via useRealtimeOrders),
 // fetchRfqList, fetchWalletStatus, fetchPendingProposals, plus the existing stats / notification / chat contexts.
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
     ArrowRight, ChevronRight, Receipt, Megaphone, Package, Truck, MessageSquare, Wallet, Plus, IndianRupee, Inbox, AlertTriangle, Route as RouteIcon,
 } from "lucide-react";
@@ -146,6 +146,7 @@ export default function GrowDashboardPage() {
     const nav = useNavigate();
     const { token, profile } = useAuth();
     const stats = useSellerStats();
+    const location = useLocation();
     const { conversations } = useChatContext();
 
     const fetcher = useCallback(async () => {
@@ -211,12 +212,15 @@ export default function GrowDashboardPage() {
 
     const ordersReady = !loading || orders != null;
 
+    const addProduct = () => nav("/grow?start=1", { state: { from: location.pathname + location.search } });
+
+    // Each hero has either a route (`to`) or a custom handler (`onClick`).
     const hero = (() => {
         if (blocked) return { tone: "red", kicker: "Action needed", title: "New orders are paused", text: "Add credits to your wallet to start receiving orders again.", cta: "Add credits", to: "/grow/wallet", Icon: Wallet };
         if (newOrders.length) return { tone: "bl", kicker: "Your next step", title: `Confirm ${newOrders.length} new order${newOrders.length > 1 ? "s" : ""}`, text: "Buyers are waiting. Confirm to start dispatch.", cta: "Review orders", to: "/grow/orders", Icon: Receipt };
         if (toDispatch.length) return { tone: "gr", kicker: "Your next step", title: `Dispatch ${toDispatch.length} confirmed order${toDispatch.length > 1 ? "s" : ""}`, text: "Add the transport details and mark them as shipped.", cta: "Go to orders", to: "/grow/orders", Icon: Truck };
         if (quotable.length || openEnq > 0) return { tone: "or", kicker: "Your next step", title: `Quote on ${openEnq || quotable.length} open enquir${(openEnq || quotable.length) > 1 ? "ies" : "y"}`, text: quotable[0] ? `${toTitleCase(quotable[0].productName)} · deliver to ${quotable[0].deliveryCity}` : "Buyers are asking for products you sell.", cta: "See enquiries", to: "/grow/enquiries", Icon: Megaphone };
-        return { tone: "gr", kicker: "You are all caught up", title: "Add more products", text: "More live products means more buyers can find and order from you.", cta: "Add product", to: "/grow?start=1", Icon: Plus };
+        return { tone: "gr", kicker: "You are all caught up", title: "Add more products", text: "More live products means more buyers can find and order from you.", cta: "Add product", onClick: addProduct, Icon: Plus };
     })();
 
     const attention = [];
@@ -247,7 +251,7 @@ export default function GrowDashboardPage() {
                         <h2>{hero.title}</h2>
                         <p>{hero.text}</p>
                     </div>
-                    <button type="button" className="gk-btn go" onClick={() => nav(hero.to)}>{hero.cta}<ArrowRight size={18} /></button>
+                    <button type="button" className="gk-btn go" onClick={() => (hero.onClick ? hero.onClick() : nav(hero.to))}>{hero.cta}<ArrowRight size={18} /></button>
                 </section>
             )}
 

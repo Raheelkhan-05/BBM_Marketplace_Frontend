@@ -1,14 +1,16 @@
-// src/pages/GrowCustomersPage.jsx — the seller's customers, with credit managed right on each customer.
+// src/pages/GrowCustomersPage.jsx — the seller's customers, with credit and custom pricing managed right on each customer.
 //   Auto-added from orders / credit requests, or added by GST number (optionally with a credit limit).
+//   Custom pricing: per buyer, many products (GrowCustomerPricing sheet). Needs the customer to be on BBM (has a userId).
 //   Realtime: credit:changed + orders_changed (socket) -> silent refetch; also on reconnect / tab focus.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Send, Trash2, UserPlus, Upload as UploadIcon, Check, Clock, TrendingUp } from "lucide-react";
+import { Send, Trash2, UserPlus, Upload as UploadIcon, Check, Clock, TrendingUp, Tag } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import CustomerAddModal from "../components/growSeller/CustomerAddModal.jsx";
 import LimitDialog from "../components/credit/LimitDialog.jsx";
+import GrowCustomerPricing from "../components/grow/GrowCustomerPricing.jsx";
 import Ic from "../components/growSeller/Ic.jsx";
 import { Empty, ListSkeleton } from "../components/growSeller/ui.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
@@ -35,7 +37,7 @@ const initialFilter = () => {
 // ── credit block on a customer card ─────────────────────────────────────────
 function CreditBlock({ c, busy, on }) {
     if (!c.userId) {
-        return <p className="cr-note" style={{ marginTop: 12 }}>Credit becomes available once they join BBM.</p>;
+        return <p className="cr-note" style={{ marginTop: 12 }}>Credit and custom pricing become available once they join BBM.</p>;
     }
     const cr = c.credit || { status: "none", limit: 0, used: 0 };
     const pct = cr.limit > 0 ? Math.min(100, Math.round((cr.used / cr.limit) * 100)) : 0;
@@ -137,6 +139,9 @@ function CustomerCard({ c, hl, busy, on }) {
             <div className="rf">
                 <div className="tm"><Ic n="clock" /><span><b>Added {day(c.addedAt)}</b></span></div>
                 <div className="rowa">
+                    {c.userId && (
+                        <button type="button" className="bt sm" onClick={() => on.pricing(c)}><Tag size={15} />Custom pricing</button>
+                    )}
                     {!active && (<>
                         <button type="button" className="bt go sm" onClick={() => on.invite(c)}><Send size={15} />{c.invitedAt ? "Invite again" : "Invite"}</button>
                         <button type="button" className="bt sm" onClick={() => on.remove(c)} aria-label={`Remove ${c.name}`}><Trash2 size={15} />Remove</button>
@@ -166,6 +171,7 @@ export default function GrowCustomersPage() {
     const [reloadKey, setReloadKey] = useState(0);
     const [modal, setModal] = useState(null); // null | "single" | "bulk"
     const [dlg, setDlg] = useState(null);     // { kind: "approve" | "grant" | "change", c }
+    const [pricingFor, setPricingFor] = useState(null); // customer whose custom prices are open
     const [busy, setBusy] = useState({});     // customerId -> true
     const [hlId, setHlId] = useState(null);
 
@@ -305,6 +311,7 @@ export default function GrowCustomersPage() {
         decline: (c) => runCredit(c, () => declineCredit(token, c.credit.id), "Credit request declined."),
         declineIncrease: (c) => runCredit(c, () => declineLimitIncrease(token, c.credit.id), "Higher-limit request declined."),
         toggle: (c, enabled) => runCredit(c, () => setCreditEnabled(token, c.userId, enabled), enabled ? "Credit turned on." : "Credit turned off."),
+        pricing: (c) => setPricingFor(c),
         invite, remove,
     };
 
@@ -339,7 +346,7 @@ export default function GrowCustomersPage() {
     return (
         <div className="v">
             <h2 className="h2" style={{ marginTop: 22 }}>Customers</h2>
-            <p className="sub2 tracking-wide">Buyers you serve. Anyone who orders from you is added automatically. Manage their credit here too.</p>
+            <p className="sub2 tracking-wide">Buyers you serve. Anyone who orders from you is added automatically. Manage their credit and custom prices here too.</p>
 
             <div className="act mt-3">
                 <button className="bt" type="button" onClick={() => setModal("bulk")}><UploadIcon size={16} />Bulk add</button>
@@ -398,6 +405,15 @@ export default function GrowCustomersPage() {
                 confirming={!!(dlg && busy[dlg.c.id])}
                 onClose={() => setDlg(null)}
                 onConfirm={confirmDlg}
+            />
+
+            <GrowCustomerPricing
+                open={!!pricingFor}
+                token={token}
+                say={say}
+                buyerId={pricingFor?.userId}
+                buyerLabel={toTitleCase(pricingFor?.name || "") || "this customer"}
+                onClose={() => setPricingFor(null)}
             />
         </div>
     );

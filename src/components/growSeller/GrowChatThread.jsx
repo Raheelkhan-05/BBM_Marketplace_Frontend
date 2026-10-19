@@ -12,7 +12,7 @@ import {
 import { useAuth } from "../../context/AuthContext.jsx";
 import useChatMessages, { usePresence, useCredit } from "../../hooks/useChat.js";
 import { useChatContext } from "../../context/ChatContext.jsx";
-import CustomPricingModal from "../chat/CustomPricingModal.jsx";
+// import CustomPricingModal from "../chat/CustomPricingModal.jsx";
 import { formatLastSeen } from "../../utils/formatLastSeen.js";
 import "./grow-modules.css";
 
@@ -184,7 +184,7 @@ export default function GrowChatThread({ conversationId, meta, onBack, style }) 
 
     const [isNearBottom, setIsNearBottom] = useState(true);
     const [newIncoming, setNewIncoming] = useState(0);
-    const [pricingOpen, setPricingOpen] = useState(false);
+    // const [pricingOpen, setPricingOpen] = useState(false);
 
     const scrollStateRef = useRef({ convId: null, placedAtBottom: false });
     const lastMessageIdRef = useRef(null);
@@ -306,9 +306,9 @@ export default function GrowChatThread({ conversationId, meta, onBack, style }) 
                         <div className="gk-skel" style={{ height: 10, width: 80 }} />
                     </div>
                 )}
-                {viewerRole === "seller" && (
+                {/* {viewerRole === "seller" && (
                     <button type="button" className="gk-btn sm" onClick={() => setPricingOpen(true)} aria-label="Custom pricing for this buyer"><Tag size={15} />Custom price</button>
-                )}
+                )} */}
             </header>
 
             <div className="gct-body">
@@ -373,13 +373,13 @@ export default function GrowChatThread({ conversationId, meta, onBack, style }) 
 
             <Composer onSend={send} onTypingChange={notifyTyping} disabled={isLockedOut} />
 
-            <CustomPricingModal
+            {/* <CustomPricingModal
                 open={pricingOpen}
                 onClose={() => setPricingOpen(false)}
                 buyerId={meta?.otherUserId}
                 buyerLabel={buyerInfo?.businessName || buyerInfo?.name || meta?.otherShopName || "this buyer"}
                 token={token}
-            />
+            /> */}
         </div>
     );
 }
