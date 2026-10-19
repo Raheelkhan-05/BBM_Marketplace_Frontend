@@ -5,6 +5,9 @@
 // page refreshes itself when a quote arrives (socket event, focus, light poll) - no manual refresh needed.
 // Each row shows ONE quantity: the total in the individual unit (e.g. 500 Kg), not packs x pack size.
 // Quote prices are shown per individual unit too (e.g. ₹2.47 / Kg), with the total for the buyer's quantity below.
+//
+// Delivery autofill: the page is wrapped in BuyerAddressProvider (safe to nest), so the wizard can always read the
+// buyer's saved address from BuyerAddressContext and prefill the delivery location by itself.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -14,6 +17,7 @@ import {
     ChevronDown, Info, ExternalLink, MapPin, Clock, Truck,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
+import { BuyerAddressProvider } from "../context/BuyerAddressContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import { inr as inrFmt, etaText, validText } from "../utils/rfqQuoteFmt.js";
 import useRfqLive from "../hooks/useRfqLive.js";
@@ -202,7 +206,7 @@ function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onCl
     );
 }
 
-export default function SaveHomePage() {
+function SaveHomePageInner() {
     const nav = useNavigate();
     const { token } = useAuth();
 
@@ -465,8 +469,14 @@ export default function SaveHomePage() {
             )}
 
             {wizard && (
-                <SavePostWizard key={wizard.initial?.id || "new"} mode={wizard.mode} initial={wizard.initial} token={token}
-                    onClose={() => setWizard(null)} onSubmitted={afterSubmit} />
+                <SavePostWizard
+                    key={wizard.initial?.id || "new"}
+                    token={token}
+                    mode={wizard.mode}
+                    initial={wizard.initial}
+                    onClose={() => setWizard(null)}
+                    onSubmitted={afterSubmit}
+                />
             )}
             {createPortal(
                 <AnimatePresence>
@@ -483,5 +493,14 @@ export default function SaveHomePage() {
 
             <div className={`sh-toast${toast ? " on" : ""}`} role="status">{toast}</div>
         </div>
+    );
+}
+
+// BuyerAddressProvider is safe to nest: if the app already mounts it higher up, this just renders the page.
+export default function SaveHomePage() {
+    return (
+        <BuyerAddressProvider>
+            <SaveHomePageInner />
+        </BuyerAddressProvider>
     );
 }

@@ -6,6 +6,16 @@
 // The form always carries packSize "1", so the backend (quantity x pack size) and every existing screen keep working,
 // and an older enquiry saved as "10 packs x 5 Kg" is opened for editing as "50 Kg".
 //
+// Frequency: right after the quantity the buyer picks ONE option in a single row: "One-time" (indigo group) or a
+// regular frequency (green group, taken from FREQ_OPTIONS). There is no separate "quantity per period" input.
+// For a regular enquiry, recurringQuantity is always set equal to the total quantity (see normalizeForm),
+// so the payload still has consumptionType / recurringFrequency / recurringQuantity exactly as the backend expects.
+//
+// Delivery autofill: in create mode the delivery pincode, city, state and address line are filled automatically from
+// a saved address. Source order: the optional `defaultAddress` prop, then the buyer's selected address from
+// BuyerAddressContext (fields address_line1, address_line2, city, state, pincode). Only empty fields are filled, so
+// anything the buyer types is never overwritten. The buyer can still change the location for this item.
+//
 // Scroll handling: the app uses Lenis (smooth scroll). Lenis listens on window and hijacks wheel/touch events,
 // which made the wizard body unscrollable/janky. While the wizard is open we (1) stop Lenis if it is reachable,
 // (2) mark the overlay with data-lenis-prevent so Lenis ignores events that start inside it, and
@@ -25,8 +35,8 @@ import {
 
 const STEPS = [
     { t: "What do you need?", s: "Start with the product. Add pictures and specs if you have them.", keys: ["productName"] },
-    { t: "How much, and on what terms?", s: "Tell suppliers the total quantity you need.", keys: ["quantity", "unit", "paymentTerms", "creditDays", "recurringFrequency", "recurringQuantity"] },
-    { t: "Where should it go?", s: "Pre-filled from your saved address. You can change it for this item.", keys: ["deliveryPincode", "deliveryCity", "deliveryState", "supplierLocations"] },
+    { t: "How much, and on what terms?", s: "Tell suppliers the total quantity you need and how often.", keys: ["quantity", "unit", "recurringFrequency", "paymentTerms", "creditDays"] },
+    { t: "Where should it go?", s: "Filled in from a saved address. You can change it for this item.", keys: ["deliveryPincode", "deliveryCity", "deliveryState", "supplierLocations"] },
     { t: "Review and submit", s: "One last look. You can edit any section.", keys: [] },
 ];
 
@@ -36,16 +46,57 @@ const ol = (o) => (o && typeof o === "object" ? o.label ?? o.value : o);
 const labelOf = (opts, v) => { const f = (opts || []).find((o) => ov(o) === v); return f ? ol(f) : v || ""; };
 const stepOf = (key) => { const i = STEPS.findIndex((s) => s.keys.includes(key)); return i < 0 ? 0 : i; };
 
+// Saved addresses can name their fields differently (BuyerAddressContext uses address_line1 / address_line2).
+// Read the known variants and return clean strings.
+const str = (v) => (v == null ? "" : String(v).trim());
+const readAddress = (a) => {
+    if (!a || typeof a !== "object") return null;
+    const pincode = str(a.pincode ?? a.pinCode ?? a.postalCode ?? a.zip).replace(/\D/g, "").slice(0, 6);
+    const city = str(a.city ?? a.district ?? a.town);
+    const state = str(a.state);
+    const line = [
+        a.address_line1 ?? a.addressLine1 ?? a.line1 ?? a.address ?? a.street,
+        a.address_line2 ?? a.addressLine2 ?? a.line2,
+        a.landmark,
+    ].map(str).filter(Boolean).join(", ");
+    if (!pincode && !city && !state && !line) return null;
+    return { pincode, city, state, line };
+};
+
 // One quantity only: the pack size is always 1. An older "packs x pack size" enquiry becomes its total in units.
+// For a regular enquiry the quantity per period is always the total quantity (no separate input);
+// for a one-time enquiry the recurring fields are cleared.
 const normalizeForm = (f) => {
+    let out = { ...f, packSize: "1" };
     const q = Number(f.quantity), p = Number(f.packSize);
-    if (q > 0 && p > 0 && p !== 1) return { ...f, quantity: String(Math.round(q * p * 1e6) / 1e6), packSize: "1" };
-    return { ...f, packSize: "1" };
+    if (q > 0 && p > 0 && p !== 1) out.quantity = String(Math.round(q * p * 1e6) / 1e6);
+    if (out.consumptionType === "regular") {
+        out.recurringQuantity = out.quantity;
+    } else {
+        out.consumptionType = "one_time";
+        out.recurringFrequency = "";
+        out.recurringQuantity = "";
+    }
+    return out;
 };
 
 // Lenis instance is usually exposed on window by the provider; try the common names.
 const getLenis = () => (typeof window !== "undefined" ? window.lenis || window.__lenis || null : null);
 const stopEvent = (e) => e.stopPropagation();
+
+// Styles for the frequency picker only (kept here so it does not depend on the existing stylesheet).
+const FQ_CSS = `
+.sv .sh-fq{width:100%;min-width:0;max-width:100%}
+.sv .sh-ch.sh-fq-ch{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;width:100%;min-width:0;max-width:100%;overflow-x:auto;padding:0 0 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.sv .sh-ch.sh-fq-ch::-webkit-scrollbar{display:none}
+.sv .sh-ch.sh-fq-ch button{flex:none;min-height:36px;height:36px;padding:0 12px;font:700 .84rem var(--f);white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+.sv .sh-fq-divider{flex:none;width:1px;height:20px;margin:0 2px;background:var(--line)}
+.sv .sh-fq-label{flex:none;padding:0 2px;color:var(--mute);font:700 .78rem var(--f);white-space:nowrap}
+.sv .sh-fq-ch button:focus-visible{outline:3px solid color-mix(in srgb,var(--bl) 55%,transparent);outline-offset:2px}
+@media(max-width:380px){.sv .sh-ch.sh-fq-ch{gap:4px}.sv .sh-ch.sh-fq-ch button{padding:0 10px;font-size:.82rem}.sv .sh-fq-label{font-size:.74rem}}
+@media(prefers-reduced-motion:reduce){.sv .sh-fq-ch button{transition:none}}
+`;
+
 
 function Field({ k, label, hint, error, children }) {
     return (
@@ -68,9 +119,42 @@ const Chips = ({ value, onChange, options }) => (
     </div>
 );
 
-export default function SavePostWizard({ mode = "create", initial = null, token, onClose, onSubmitted }) {
-    let addr = null;
-    try { addr = useBuyerAddress()?.selectedAddress || null; } catch { /* provider not mounted: no prefill */ }
+// One line: [ One-time ]  [ REGULAR  Monthly  Quarterly  Yearly ... ]  (two colour groups, one selection overall)
+const FreqPicker = ({ value, onChange, options }) => (
+    <div className="sh-fq" role="group" aria-label="How often do you need this?">
+        <div className="sh-ch sh-fq-ch">
+            <button
+                type="button"
+                aria-pressed={value === "one_time"}
+                onClick={() => onChange("one_time")}
+            >
+                One-time
+            </button>
+            <span className="sh-fq-divider" aria-hidden="true" />
+            {/* <span className="sh-fq-label" aria-hidden="true">Regular</span> */}
+            {(options || []).map((o) => (
+                <button
+                    key={String(ov(o))}
+                    type="button"
+                    aria-pressed={value === ov(o)}
+                    onClick={() => onChange(ov(o))}
+                >
+                    {ol(o)}
+                </button>
+            ))}
+        </div>
+    </div>
+);
+
+
+
+// defaultAddress (optional): a saved address to prefill delivery from, used before the context's selected address.
+// defaultAddressSource (optional): "team" words the hint as "your team admin's saved address".
+export default function SavePostWizard({ mode = "create", initial = null, token, onClose, onSubmitted, defaultAddress = null, defaultAddressSource = "" }) {
+    let ctxAddr = null;
+    try { ctxAddr = useBuyerAddress()?.selectedAddress || null; } catch { /* provider not mounted: no prefill */ }
+    const addr = useMemo(() => readAddress(defaultAddress) || readAddress(ctxAddr), [defaultAddress, ctxAddr]);
+    const fromTeam = !!readAddress(defaultAddress) && defaultAddressSource === "team";
 
     const [form, setForm] = useState(() => normalizeForm(initial ? fromDto(initial) : { ...EMPTY_RFQ_FORM }));
     const [step, setStep] = useState(0);
@@ -81,21 +165,35 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
     const [uploading, setUploading] = useState(false);
     const [imgError, setImgError] = useState(null);
     const [lookingUp, setLookingUp] = useState(false);
+    const [prefilled, setPrefilled] = useState(false);
     const bodyRef = useRef(null);
     const fileRef = useRef(null);
 
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-    useEffect(() => { // prefill delivery from the saved address (create mode, only empty fields)
+    // One-time, or a regular frequency. Regular quantity per period is filled automatically from the total quantity.
+    const setFrequency = (v) => setForm((f) => (
+        v === "one_time"
+            ? { ...f, consumptionType: "one_time", recurringFrequency: "", recurringQuantity: "" }
+            : { ...f, consumptionType: "regular", recurringFrequency: v, recurringQuantity: f.quantity }
+    ));
+
+    // Prefill delivery from the saved address (create mode, only empty fields). Runs again if the address loads late.
+    useEffect(() => {
         if (mode !== "create" || !addr) return;
-        setForm((f) => ({
-            ...f,
-            deliveryPincode: f.deliveryPincode || addr.pincode || "",
-            deliveryCity: f.deliveryCity || addr.city || "",
-            deliveryState: f.deliveryState || addr.state || "",
-        }));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, addr?.pincode, addr?.city, addr?.state]);
+        setForm((f) => {
+            const next = {
+                ...f,
+                deliveryPincode: f.deliveryPincode || addr.pincode,
+                deliveryCity: f.deliveryCity || addr.city,
+                deliveryState: f.deliveryState || addr.state,
+                deliveryAddress: f.deliveryAddress || addr.line,
+            };
+            const changed = ["deliveryPincode", "deliveryCity", "deliveryState", "deliveryAddress"].some((k) => next[k] !== f[k]);
+            if (changed) setPrefilled(true);
+            return changed ? next : f;
+        });
+    }, [mode, addr]);
 
     useEffect(() => { // lock page scroll (native + Lenis) while open
         const root = document.documentElement;
@@ -124,7 +222,8 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
         return () => document.removeEventListener("keydown", onKey);
     }, []);
 
-    const errs = useMemo(() => validateRfqForm(form), [form]);
+    // Validate the normalized form so recurringQuantity (= total quantity) always satisfies the existing validation.
+    const errs = useMemo(() => validateRfqForm(normalizeForm(form)), [form]);
     const show = (k) => (attempted ? errs[k] : undefined);
     const stepErrKeys = STEPS[step].keys.filter((k) => errs[k]);
 
@@ -171,7 +270,7 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
 
     const submit = async () => {
         if (submitting) return;
-        const clean = normalizeForm(form); // pack size is always 1
+        const clean = normalizeForm(form); // pack size is 1; recurring quantity = total quantity
         const all = validateRfqForm(clean);
         const first = Object.keys(all)[0];
         if (first) { goto(stepOf(first)); setAttempted(true); setError("Please fix the highlighted fields."); return; }
@@ -185,12 +284,16 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
         } finally { setSubmitting(false); }
     };
 
-    const again = () => { setForm({ ...EMPTY_RFQ_FORM, packSize: "1", deliveryPincode: form.deliveryPincode, deliveryCity: form.deliveryCity, deliveryState: form.deliveryState }); setDone(null); goto(0); };
+    // "Add another" keeps the delivery location from the form, so the next item starts with the same address.
+    const again = () => { setForm({ ...EMPTY_RFQ_FORM, packSize: "1", deliveryPincode: form.deliveryPincode, deliveryCity: form.deliveryCity, deliveryState: form.deliveryState, deliveryAddress: form.deliveryAddress }); setDone(null); goto(0); };
 
     const qty = Number(form.quantity);
     const totalQty = qty > 0 ? qty : 0;
     const eq = form.acceptEquivalent;
     const unitOpts = (RFQ_UNITS || []).map((o) => ({ value: ov(o), label: ol(o) }));
+    const isRegular = form.consumptionType === "regular";
+    const freqValue = isRegular ? form.recurringFrequency : "one_time";
+    const freqLabel = labelOf(FREQ_OPTIONS, form.recurringFrequency);
 
     const body = (() => {
         if (done) {
@@ -256,11 +359,23 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
                     <Field k="quantity" label={form.unit ? `Total quantity needed (${form.unit}) *` : "Total quantity needed *"} hint="Enter the final quantity you need in total. No packs or cartons to work out." error={show("quantity")}>
                         <Inp inputMode="decimal" placeholder="e.g. 500" value={form.quantity} onChange={(e) => set("quantity", e.target.value.replace(/[^\d.]/g, ""))} />
                     </Field>
-                    <div className="sh-brk">
-                        {totalQty && form.unit
-                            ? <div><span>You need</span><b>{fmtNum(totalQty)} {form.unit}</b></div>
-                            : "Choose the unit and enter your total quantity."}
-                    </div>
+
+                    {totalQty > 0 && (<>
+                        <Field
+                            k="recurringFrequency"
+                            label="How often do you need this? *"
+                            hint={isRegular && form.recurringFrequency && form.unit ? `Same quantity (${fmtNum(totalQty)} ${form.unit}) each period.` : undefined}
+                            error={show("recurringFrequency")}
+                        >
+                            <FreqPicker value={freqValue} onChange={setFrequency} options={FREQ_OPTIONS || []} />
+                        </Field>
+                        <div className="sh-brk">
+                            {form.unit
+                                ? <div><span>You need</span><b>{fmtNum(totalQty)} {form.unit}{isRegular && form.recurringFrequency ? `, ${freqLabel}` : ""}</b></div>
+                                : "Choose the unit to see your total."}
+                        </div>
+                    </>)}
+
                     <Field k="paymentTerms" label="Expected payment terms *" error={show("paymentTerms")}>
                         <Chips value={form.paymentTerms} onChange={(v) => set("paymentTerms", v)} options={PAYMENT_OPTIONS} />
                     </Field>
@@ -269,17 +384,6 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
                             <Inp inputMode="numeric" placeholder="e.g. 30" value={form.creditDays} onChange={(e) => set("creditDays", e.target.value.replace(/\D/g, "").slice(0, 3))} />
                         </Field>
                     )}
-                    <Field k="consumptionType" label="Is this regular consumption?">
-                        <Chips value={form.consumptionType} onChange={(v) => set("consumptionType", v)} options={[{ value: "one_time", label: "One-time" }, { value: "regular", label: "Regular" }]} />
-                    </Field>
-                    {form.consumptionType === "regular" && (<>
-                        <Field k="recurringFrequency" label="How often? *" error={show("recurringFrequency")}>
-                            <Chips value={form.recurringFrequency} onChange={(v) => set("recurringFrequency", v)} options={FREQ_OPTIONS} />
-                        </Field>
-                        <Field k="recurringQuantity" label={`Quantity per period${form.unit ? ` (${form.unit})` : ""} *`} error={show("recurringQuantity")}>
-                            <Inp inputMode="decimal" placeholder="e.g. 200" value={form.recurringQuantity} onChange={(e) => set("recurringQuantity", e.target.value.replace(/[^\d.]/g, ""))} />
-                        </Field>
-                    </>)}
                 </>)}
 
                 {step === 2 && (<>
@@ -311,7 +415,7 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
                     const R = (i, l, v) => <div className="sh-rv" key={i}><div><small>{l}</small><b>{v}</b></div><button type="button" className="sh-lnk" onClick={() => goto(i)}>Edit</button></div>;
                     return (<>
                         {R(0, "Product", `${form.productName}${form.images.length ? ` · ${form.images.length} photo${form.images.length > 1 ? "s" : ""}` : ""} · ${eq ? "equivalents OK" : "exact product"}`)}
-                        {R(1, "Quantity", `${fmtNum(totalQty)} ${form.unit} · ${labelOf(PAYMENT_OPTIONS, form.paymentTerms)}${form.paymentTerms === "credit" && form.creditDays ? ` (${form.creditDays} days)` : ""} · ${form.consumptionType === "regular" ? `Regular, ${form.recurringQuantity} ${form.unit} ${labelOf(FREQ_OPTIONS, form.recurringFrequency)}` : "One-time"}`)}
+                        {R(1, "Quantity", `${fmtNum(totalQty)} ${form.unit} · ${isRegular ? freqLabel : "One-time"} · ${labelOf(PAYMENT_OPTIONS, form.paymentTerms)}${form.paymentTerms === "credit" && form.creditDays ? ` (${form.creditDays} days)` : ""}`)}
                         {R(2, "Delivery", `${form.deliveryCity}, ${form.deliveryState} – ${form.deliveryPincode} · suppliers: ${form.supplierScope === "specific" ? "chosen locations" : "anywhere in India"}`)}
                     </>);
                 })()}
@@ -321,6 +425,7 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
 
     return createPortal(
         <div className="sv sh-portal">
+            <style>{FQ_CSS}</style>
             <div
                 className="sh-ov"
                 data-lenis-prevent
