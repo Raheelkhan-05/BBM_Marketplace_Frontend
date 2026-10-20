@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
-import { LayoutGrid, Users, LogOut } from "lucide-react";
+import { LayoutGrid, Users, Send, LogOut } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import "../growSeller/grow-modules.css";
 import "./sales.css";
@@ -8,6 +8,7 @@ import "./sales.css";
 const TABS = [
     { to: "/sales/dashboard", label: "Dashboard", Icon: LayoutGrid, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)" },
     { to: "/sales/customers", label: "Customers", Icon: Users, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)" },
+    { to: "/sales/enquiries", label: "RFQs", Icon: Send, a: "var(--or, #E8590C)", ai: "var(--or, #E8590C)" },
 ];
 const tabStyle = (t) => ({ "--a": t.a, "--c": "#fff", "--ai": t.ai });
 

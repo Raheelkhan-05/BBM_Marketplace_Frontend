@@ -112,7 +112,7 @@ const SaveHomePage = lazy(() => import("./pages/SaveHomePage.jsx"));
 
 const SalesDashboardPage = lazy(() => import("./pages/SalesDashboardPage.jsx"));
 const SalesCustomersPage = lazy(() => import("./pages/SalesCustomersPage.jsx"));
-
+const SalesEnquiriesPage = lazy(() => import("./pages/SalesEnquiriesPage.jsx"));
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -304,6 +304,7 @@ function App() {
                     <Route index element={<Navigate to="dashboard" replace />} />
                     <Route path="dashboard" element={<SalesDashboardPage />} />
                     <Route path="customers" element={<SalesCustomersPage />} />
+                    <Route path="enquiries" element={<SalesEnquiriesPage />} />
                   </Route>
                 </Route>
               </Route>

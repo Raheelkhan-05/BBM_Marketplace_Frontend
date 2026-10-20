@@ -75,9 +75,10 @@ export default function SalesDashboardPage() {
                     )}
             </section>
 
-            <button type="button" className="gk-btn or blk" style={{ marginTop: 16 }} onClick={() => nav("/sales/customers?add=1")}>
-                <UserPlus size={18} />Add customer
-            </button>
+            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", marginTop: 16 }}>
+                <button type="button" className="gk-btn or blk" onClick={() => nav("/sales/customers?add=1")}><UserPlus size={18} />Add customer</button>
+                <button type="button" className="gk-btn blk" onClick={() => nav("/sales/enquiries?new=1")}><Send size={18} />Post RFQ</button>
+            </div>
         </div>
     );
 }

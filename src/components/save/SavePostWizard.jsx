@@ -150,7 +150,7 @@ const FreqPicker = ({ value, onChange, options }) => (
 
 // defaultAddress (optional): a saved address to prefill delivery from, used before the context's selected address.
 // defaultAddressSource (optional): "team" words the hint as "your team admin's saved address".
-export default function SavePostWizard({ mode = "create", initial = null, token, onClose, onSubmitted, defaultAddress = null, defaultAddressSource = "" }) {
+export default function SavePostWizard({ mode = "create", initial = null, token, onClose, onSubmitted, defaultAddress = null, defaultAddressSource = "", api = null, allowImages = true }) {
     let ctxAddr = null;
     try { ctxAddr = useBuyerAddress()?.selectedAddress || null; } catch { /* provider not mounted: no prefill */ }
     const addr = useMemo(() => readAddress(defaultAddress) || readAddress(ctxAddr), [defaultAddress, ctxAddr]);
@@ -265,8 +265,10 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
         try {
             const res = await lookupPincode(pin);
             if (res?.success) setForm((f) => (f.deliveryPincode === pin ? { ...f, deliveryCity: res.district || f.deliveryCity, deliveryState: res.state || f.deliveryState } : f));
-        } finally { setLookingUp(false); }
+        } catch { /* the buyer can type city and state */ }
+        finally { setLookingUp(false); }
     };
+
 
     const submit = async () => {
         if (submitting) return;
@@ -277,7 +279,9 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
         setSubmitting(true); setError(null);
         try {
             const payload = toPayload(clean);
-            const res = mode === "edit" ? await updateRfq(token, initial.id, payload) : await createRfq(token, payload);
+            const create = api?.create || createRfq;
+            const update = api?.update || updateRfq;
+            const res = mode === "edit" ? await update(token, initial.id, payload) : await create(token, payload);
             if (!res.success) { setError(res.message || "Couldn't submit. Please try again."); return; }
             setDone(res);
             onSubmitted?.(res);
@@ -323,21 +327,23 @@ export default function SavePostWizard({ mode = "create", initial = null, token,
                     <Field k="productName" label="Product name *" error={show("productName")}>
                         <Inp value={form.productName} placeholder="e.g. Stainless Steel Hinges 4 inch" onChange={(e) => set("productName", e.target.value)} />
                     </Field>
-                    <Field k="images" label={`Product images (optional)${form.images.length ? ` · ${form.images.length}/5` : ""}`} error={imgError}>
-                        <div className="sh-pho">
-                            {form.images.map((src, i) => (
-                                <div className="pt" key={src + i} style={{ backgroundImage: `url(${src})` }}>
-                                    <button type="button" className="x" aria-label="Remove image" onClick={() => setForm((f) => ({ ...f, images: f.images.filter((_, j) => j !== i) }))}><X size={14} /></button>
-                                </div>
-                            ))}
-                            {form.images.length < 5 && (
-                                <label className="add">
-                                    {uploading ? <Loader2 size={18} className="sh-spin" /> : <ImagePlus size={18} />}<span>{uploading ? "…" : "Add"}</span>
-                                    <input ref={fileRef} type="file" accept="image/*" multiple hidden disabled={uploading} onChange={handleFiles} />
-                                </label>
-                            )}
-                        </div>
-                    </Field>
+                    {allowImages && (
+                        <Field k="images" label={`Product images (optional)${form.images.length ? ` · ${form.images.length}/5` : ""}`} error={imgError}>
+                            <div className="sh-pho">
+                                {form.images.map((src, i) => (
+                                    <div className="pt" key={src + i} style={{ backgroundImage: `url(${src})` }}>
+                                        <button type="button" className="x" aria-label="Remove image" onClick={() => setForm((f) => ({ ...f, images: f.images.filter((_, j) => j !== i) }))}><X size={14} /></button>
+                                    </div>
+                                ))}
+                                {form.images.length < 5 && (
+                                    <label className="add">
+                                        {uploading ? <Loader2 size={18} className="sh-spin" /> : <ImagePlus size={18} />}<span>{uploading ? "…" : "Add"}</span>
+                                        <input ref={fileRef} type="file" accept="image/*" multiple hidden disabled={uploading} onChange={handleFiles} />
+                                    </label>
+                                )}
+                            </div>
+                        </Field>
+                    )}
                     <Field k="specifications" label="Specifications (optional)">
                         <textarea value={form.specifications} placeholder="Grade, size, material, brand preference, standards…" onChange={(e) => set("specifications", e.target.value)} />
                     </Field>
