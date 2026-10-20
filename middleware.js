@@ -46,13 +46,14 @@ export default async function middleware(request) {
         const linkTags = (seo.link || []).map((l) => `<link data-rh="true" rel="${esc(l.rel)}" href="${esc(l.href)}">`).join("");
 
         html = html
-            .replace(/<title>[\s\S]*?<\/title>/i, `<title data-rh="true">${esc(seo.title)}</title>`)
-            .replace("</head>", `${metaTags}${linkTags}</head>`);
+            .replace(/<title>[\s\S]*?<\/title>/i, () => `<title data-rh="true">${esc(seo.title)}</title>`)
+            .replace("</head>", () => `${metaTags}${linkTags}</head>`);
 
         return new Response(html, {
             headers: {
                 "content-type": "text/html; charset=utf-8",
                 "cache-control": "public, s-maxage=300, stale-while-revalidate=600",
+                "vary": "user-agent",
             },
         });
     } catch {
