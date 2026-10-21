@@ -612,7 +612,7 @@
     height: 72px;
     border-radius: 18px;
     background: #fff;
-    border: 1px solid var(--line);
+    /* border: 1px solid var(--line); */
     display: grid;
     place-items: center;
     overflow: hidden;
