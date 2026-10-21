@@ -1,24 +1,38 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
-import { LayoutGrid, Users, Send, LogOut } from "lucide-react";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { LogOut } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { toTitleCase } from "../growSeller/sellerHelpers.js";
+import SalesTabs from "./SalesTabs.jsx";
 import "../growSeller/grow-modules.css";
 import "./sales.css";
-
-const TABS = [
-    { to: "/sales/dashboard", label: "Dashboard", Icon: LayoutGrid, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)" },
-    { to: "/sales/customers", label: "Customers", Icon: Users, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)" },
-    { to: "/sales/enquiries", label: "RFQs", Icon: Send, a: "var(--or, #E8590C)", ai: "var(--or, #E8590C)" },
-];
-const tabStyle = (t) => ({ "--a": t.a, "--c": "#fff", "--ai": t.ai });
 
 export default function SalesLayout() {
     const { isLoggedIn, profile, initializing, signOut, refreshProfile } = useAuth();
     const { pathname } = useLocation();
     const [toast, setToast] = useState("");
+    const [menu, setMenu] = useState(false);
+    const [logoFailed, setLogoFailed] = useState(false);
     const tt = useRef(null);
+    const menuRef = useRef(null);
     const say = useCallback((m) => { setToast(m); clearTimeout(tt.current); tt.current = setTimeout(() => setToast(""), 2600); }, []);
     useEffect(() => () => clearTimeout(tt.current), []);
+
+    const logoUrl = profile?.businessProfile?.logo_url || "";
+    useEffect(() => { setLogoFailed(false); }, [logoUrl]);
+
+    // Close the profile menu on page change.
+    useEffect(() => { setMenu(false); }, [pathname]);
+
+    // Outside tap / Esc closes the profile menu.
+    useEffect(() => {
+        if (!menu) return undefined;
+        const down = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenu(false); };
+        const key = (e) => { if (e.key === "Escape") setMenu(false); };
+        document.addEventListener("pointerdown", down);
+        document.addEventListener("keydown", key);
+        return () => { document.removeEventListener("pointerdown", down); document.removeEventListener("keydown", key); };
+    }, [menu]);
 
     if (!isLoggedIn) return <Navigate to="/login" replace state={{ from: pathname }} />;
     if (!profile) {
@@ -37,29 +51,60 @@ export default function SalesLayout() {
     if (profile.team?.role !== "salesperson") return <Navigate to="/home" replace />;
 
     const bp = profile.businessProfile;
-    const company = bp?.display_name || bp?.trade_name || bp?.legal_name || "Your company";
-    const me = profile.team.actor?.name || "";
+    const company = toTitleCase(bp?.display_name || bp?.trade_name || bp?.legal_name || "Your company");
+    const me = (profile.team.actor?.name || "").trim();
+    const initial = (company || "C").charAt(0).toUpperCase();
+    const showLogo = !!logoUrl && !logoFailed;
+
+    const mark = (cls) => (
+        <span className={`gs-mark ${cls}${showLogo ? "" : " ini"}`} aria-hidden="true">
+            {showLogo
+                ? <img src={logoUrl} alt="" onError={() => setLogoFailed(true)} />
+                : initial}
+        </span>
+    );
 
     return (
         <div className="gk gs">
             <header className="gs-hd">
                 <div className="gs-hd-in">
-                    <img src="/Logo.png" alt="BBM" />
-                    <div className="gs-co"><b>{company}</b><small>Sales{me ? ` · ${me}` : ""}</small></div>
-                    <button type="button" className="gk-icbtn" aria-label="Sign out" title="Sign out" onClick={signOut}><LogOut size={18} /></button>
+                    <div className="gs-brand">
+                        <img src="/Logo.png" alt="" />
+                        <div className="gs-co"><b>BBM</b><small>Sales</small></div>
+                    </div>
+
+                    <div className="gs-menu" ref={menuRef}>
+                        <button
+                            type="button"
+                            className="gs-prof"
+                            aria-label="Open profile menu"
+                            aria-haspopup="menu"
+                            aria-expanded={menu}
+                            onClick={() => setMenu((v) => !v)}
+                        >
+                            {mark("sm")}
+                        </button>
+
+                        {menu && (
+                            <div className="gs-pop" role="menu">
+                                <div className="gs-pop-top">
+                                    {mark("lg")}
+                                    <div className="gs-pop-who">
+                                        <b>{me || "Salesperson"}</b>
+                                        <small>{company}</small>
+                                    </div>
+                                </div>
+                                <button type="button" role="menuitem" className="gs-out" onClick={() => { setMenu(false); signOut(); }}>
+                                    <LogOut size={16} aria-hidden="true" />Sign out
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </header>
 
-            <nav className="gk gn gs-nav" aria-label="Sales sections">
-                <div className="gn-panel"><div className="gn-gridwrap"><div className="gn-clip"><div className="gn-tiles">
-                    {TABS.map((t) => (
-                        <NavLink key={t.to} to={t.to} className="gn-tab" style={tabStyle(t)} draggable={false}>
-                            <span className="gn-ico2"><t.Icon aria-hidden="true" /></span>
-                            <span className="gn-lb">{t.label}</span>
-                        </NavLink>
-                    ))}
-                </div></div></div></div>
-            </nav>
+            {/* Same component behaviour as GrowTabs; finds .gs-hd above as its sibling to pin itself under it. */}
+            <SalesTabs />
 
             <main className="gs-main">
                 <Suspense fallback={<div className="gk-skel" style={{ height: 140, marginTop: 24 }} aria-busy="true" />}>

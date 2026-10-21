@@ -13,7 +13,7 @@ import BottomNavStrip from "./BottomNavStrip.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 
-const HIDE = [/^\/admin/, /^\/seller\/wallet/, /^\/grow\/bulk/, /^\/chat\/[^/]+/, /^\/orders\//, /^\/seller\/orders\//, /^\/login/, /^\/terms/, /^\/privacy-policy/, /^\/payment\/return/];
+const HIDE = [/^\/admin/, /^\/seller\/wallet/, /^\/grow\/bulk/, /^\/chat\/[^/]+/, /^\/orders\//, /^\/seller\/orders\//, /^\/login/, /^\/terms/, /^\/privacy-policy/, /^\/payment\/return/, /^\/sales(\/|$)/];
 
 export default function AppShell() {
     const { pathname } = useLocation();
