@@ -5,12 +5,13 @@
 // Scroll up   -> expands back. The nav's layout height never changes, so the page never jumps.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutGrid, Users, Send, ChevronDown } from "lucide-react";
+import { LayoutGrid, Users, TrendingUp, Send, ChevronDown } from "lucide-react";
 import "../growSeller/grow-modules.css";
 
 export const SALES_TABS = [
     { key: "dashboard", to: "/sales/dashboard", label: "Dashboard", Icon: LayoutGrid, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/sales/dashboard"] },
     { key: "customers", to: "/sales/customers", label: "Customers", Icon: Users, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/sales/customers"] },
+    { key: "pipeline", to: "/sales/pipeline", label: "Pipeline", Icon: TrendingUp, a: "var(--gr, #22A06B)", ai: "var(--gt, #12794A)", match: ["/sales/pipeline"] },
     { key: "enquiries", to: "/sales/enquiries", label: "RFQs", Icon: Send, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/sales/enquiries"] },
 ];
 

@@ -6,6 +6,7 @@
 // Each card shows ONE quantity at the top: the buyer's total in the individual unit (e.g. 500 Kg), with the price basis
 // per individual unit. The pack / master pack breakdown is shown inside the quote popup, where the seller's product is known.
 // Prices are always shown per individual unit, including the "Quote sent" chip (e.g. ₹2.47/Kg).
+// The product image opens full screen (ImageLightbox) when tapped.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
@@ -15,6 +16,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import RfqFormModal from "../components/rfq/RfqFormModal.jsx";
 import RfqBulkUploadModal from "../components/rfq/RfqBulkUploadModal.jsx";
 import RfqQuoteModal from "../components/rfq/RfqQuoteModal.jsx";
+import ImageLightbox from "../components/ImageLightbox.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import useRfqLive from "../hooks/useRfqLive.js";
 import useQuoteResume from "../hooks/useQuoteResume.js";
@@ -37,6 +39,9 @@ const STATUS_FILTERS = [
     { value: "closed", label: "Closed" },
 ];
 const STATUS_LABEL = { pending_review: "In review", approved: "Live", rejected: "Needs changes", closed: "Closed" };
+
+// Wrapper that makes the thumbnail tappable without changing how it looks.
+const ZOOM_BTN = { border: 0, background: "none", padding: 0, margin: 0, cursor: "zoom-in", flex: "none", display: "block", borderRadius: 18 };
 
 const mergeUnique = (prev, incoming) => {
     const seen = new Set(prev.map((i) => i.id));
@@ -64,7 +69,7 @@ const unitPriceOf = (quote, totalUnits) => {
     return null;
 };
 
-function EnquiryCard({ item, onQuote, onEdit, onClose, onShare }) {
+function EnquiryCard({ item, onQuote, onEdit, onClose, onShare, onZoom }) {
     const mine = item.isMine;
     const total = Math.round(item.quantity * item.packSize * 1e6) / 1e6; // the buyer's quantity in the individual unit
     const published = item.publishedAt || item.createdAt;
@@ -72,10 +77,22 @@ function EnquiryCard({ item, onQuote, onEdit, onClose, onShare }) {
     const live = item.status === "approved";
     const myQuote = item.myQuote || null;
     const myUnitPrice = unitPriceOf(myQuote, total);
+    const images = (item.images || []).filter(Boolean);
     return (
         <article className="card">
             <div className="top">
-                <Thumb src={item.images?.[0]} name={item.productName} />
+                {images.length > 0 ? (
+                    <button
+                        type="button"
+                        style={ZOOM_BTN}
+                        aria-label={`View image of ${item.productName}`}
+                        onClick={() => onZoom(images, 0, toTitleCase(item.productName))}
+                    >
+                        <Thumb src={images[0]} name={item.productName} />
+                    </button>
+                ) : (
+                    <Thumb src={item.images?.[0]} name={item.productName} />
+                )}
                 <div className="in">
                     <h3>
                         <Link to={enquiryPath(item.id)} state={{ enquiry: item }} style={{ color: "inherit", textDecoration: "none" }}>
@@ -158,6 +175,7 @@ export default function GrowEnquiriesPage() {
     const [formState, setFormState] = useState(null); // { mode, initial }
     const [bulkOpen, setBulkOpen] = useState(false);
     const [quoteFor, setQuoteFor] = useState(null);   // { enquiry, submissionId }
+    const [lightbox, setLightbox] = useState(null);   // { images, index, alt }
 
     const abortRef = useRef(null);
     const seqRef = useRef(0);
@@ -264,6 +282,9 @@ export default function GrowEnquiriesPage() {
         load(0, false, true);
     };
 
+    const openLightbox = useCallback((images, index, alt) => setLightbox({ images, index, alt }), []);
+    const closeLightbox = useCallback(() => setLightbox(null), []);
+
     return (
         <div className="v">
             <h2 className="h2" style={{ marginTop: 22 }}>Requests for quotation</h2>
@@ -291,7 +312,8 @@ export default function GrowEnquiriesPage() {
                             onQuote={(it) => setQuoteFor({ enquiry: it, submissionId: null })}
                             onEdit={(it) => setFormState({ mode: "edit", initial: it })}
                             onClose={handleClose}
-                            onShare={handleShare} />
+                            onShare={handleShare}
+                            onZoom={openLightbox} />
                     ))}
                 </div>
             )}
@@ -319,6 +341,9 @@ export default function GrowEnquiriesPage() {
                     {quoteFor && (
                         <RfqQuoteModal key="quote" enquiry={quoteFor.enquiry} initialSubmissionId={quoteFor.submissionId}
                             onClose={() => setQuoteFor(null)} onDone={handleQuoteDone} />
+                    )}
+                    {lightbox && (
+                        <ImageLightbox key="lightbox" images={lightbox.images} initialIndex={lightbox.index} alt={lightbox.alt} onClose={closeLightbox} />
                     )}
                 </AnimatePresence>,
                 document.body

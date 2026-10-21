@@ -2,14 +2,18 @@
 //   Buyer (owner): requirement + every quote received, sortable, with a Buy button per quote.
 //   Seller:        requirement + clear "quote sent" state + quote / edit action.
 //   Visitor:       requirement + sign-in prompt.
+// Product images (the big one and the ones on quote cards) open full screen in ImageLightbox.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 import {
     Share2, Send, Shuffle, Equal, Wallet, Repeat, MapPin, Clock, Check, Package, Truck, Building2,
     ShoppingCart, ChevronDown, BadgeCheck, Zap, Users,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import RfqQuoteModal from "../components/rfq/RfqQuoteModal.jsx";
+import ImageLightbox from "../components/ImageLightbox.jsx";
 import * as rfqApi from "../utils/rfqApi.js";
 import useRfqLive from "../hooks/useRfqLive.js";
 import useQuoteResume from "../hooks/useQuoteResume.js";
@@ -32,12 +36,25 @@ async function findEnquiry(token, id, signal) {
     return { success: false, message: "Couldn't load this enquiry." };
 }
 
-function QuoteCard({ q, tags, enquiryId }) {
+function QuoteCard({ q, tags, enquiryId, onZoom }) {
     const place = [q.city, q.state].filter(Boolean).join(", ");
+    const zoomName = [q.productName, q.brandName].filter(Boolean).join(" · ") || q.sellerName;
     return (
         <article className="rqp-q">
             <div className="rqp-qh">
-                <span className="rqp-qav">{q.image ? <img src={q.image} alt="" loading="lazy" /> : (q.sellerName || "S")[0].toUpperCase()}</span>
+                {q.image ? (
+                    <button
+                        type="button"
+                        className="rqp-qav"
+                        aria-label={`View image of ${zoomName}`}
+                        style={{ cursor: "zoom-in", border: 0, padding: 0 }}
+                        onClick={() => onZoom([q.image], 0, zoomName)}
+                    >
+                        <img src={q.image} alt="" loading="lazy" />
+                    </button>
+                ) : (
+                    <span className="rqp-qav">{(q.sellerName || "S")[0].toUpperCase()}</span>
+                )}
                 <div className="rqp-qwho">
                     <b>{q.sellerName}</b>
                     {place && <small><MapPin size={12} />{place}</small>}
@@ -107,6 +124,7 @@ export default function GrowEnquiryDetailPage() {
     const [toast, setToast] = useState("");
     const [sort, setSort] = useState("price");
     const [imgIdx, setImgIdx] = useState(0);
+    const [lightbox, setLightbox] = useState(null); // { images, index, alt }
     const toastTimer = useRef(null);
     const abortRef = useRef(null);
 
@@ -166,6 +184,9 @@ export default function GrowEnquiryDetailPage() {
         setItem((it) => (it ? { ...it, myQuote: meta?.withdrawn ? null : quote || it.myQuote } : it));
         loadItem({ silent: true });
     };
+
+    const openLightbox = useCallback((images, index, alt) => setLightbox({ images, index, alt }), []);
+    const closeLightbox = useCallback(() => setLightbox(null), []);
 
     const isMine = !!item?.isMine;
     const live = item?.status === "approved";
@@ -228,6 +249,9 @@ export default function GrowEnquiryDetailPage() {
         </>
     );
 
+    const mainImage = images[imgIdx] || null;
+    const zoomMain = () => { if (images.length) openLightbox(images, imgIdx, item ? toTitleCase(item.productName) : ""); };
+
     return (
         <div className="rqp">
             <header className="rqp-hd">
@@ -267,7 +291,21 @@ export default function GrowEnquiryDetailPage() {
                             <section className="rqp-card">
                                 <div className="rqp-prod">
                                     <div className="rqp-gal">
-                                        <div className="rqp-img">{images[imgIdx] ? <img src={images[imgIdx]} alt={item.productName} /> : <Package size={40} aria-hidden="true" />}</div>
+                                        {mainImage ? (
+                                            <div
+                                                className="rqp-img"
+                                                role="button"
+                                                tabIndex={0}
+                                                aria-label="View image full screen"
+                                                style={{ cursor: "zoom-in" }}
+                                                onClick={zoomMain}
+                                                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); zoomMain(); } }}
+                                            >
+                                                <img src={mainImage} alt={item.productName} />
+                                            </div>
+                                        ) : (
+                                            <div className="rqp-img"><Package size={40} aria-hidden="true" /></div>
+                                        )}
                                         {images.length > 1 && (
                                             <div className="rqp-thumbs">
                                                 {images.map((src, i) => (
@@ -328,7 +366,7 @@ export default function GrowEnquiryDetailPage() {
                                     {quotes.length === 0 ? (
                                         <div className="rqp-none"><Send size={22} /><b>No quotes yet</b><span>{live ? "Share this enquiry to get quotes faster." : "Quotes open once the enquiry is live."}</span></div>
                                     ) : (
-                                        <div className="rqp-qs">{quotes.map((q) => <QuoteCard key={q.id} q={q} tags={tagsFor(q)} enquiryId={item.id} />)}</div>
+                                        <div className="rqp-qs">{quotes.map((q) => <QuoteCard key={q.id} q={q} tags={tagsFor(q)} enquiryId={item.id} onZoom={openLightbox} />)}</div>
                                     )}
                                 </section>
                             )}
@@ -364,6 +402,16 @@ export default function GrowEnquiryDetailPage() {
             {quoteOpen && item && (
                 <RfqQuoteModal key="quote" enquiry={item} initialSubmissionId={quoteOpen.submissionId}
                     onClose={() => setQuoteOpen(null)} onDone={onQuoteDone} />
+            )}
+
+            {/* Portal on <body> so the fullscreen layer is never trapped inside a transformed parent. */}
+            {createPortal(
+                <AnimatePresence>
+                    {lightbox && (
+                        <ImageLightbox key="lightbox" images={lightbox.images} initialIndex={lightbox.index} alt={lightbox.alt} onClose={closeLightbox} />
+                    )}
+                </AnimatePresence>,
+                document.body
             )}
         </div>
     );

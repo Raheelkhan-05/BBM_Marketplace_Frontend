@@ -254,7 +254,7 @@
 /* Tabs: everything comes from grow-modules.css so it matches GrowTabs.
    Only the columns differ: 3 fixed-width tiles, centered. */
 .gk.gn.gs-nav .gn-tiles {
-    grid-template-columns: repeat(3, minmax(0, 96px)) !important;
+    grid-template-columns: repeat(4, minmax(0, 96px)) !important;
     justify-content: center;
     gap: 8px 6px;
 }

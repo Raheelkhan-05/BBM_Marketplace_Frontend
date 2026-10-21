@@ -5,6 +5,7 @@
 // page refreshes itself when a quote arrives (socket event, focus, light poll) - no manual refresh needed.
 // Each row shows ONE quantity: the total in the individual unit (e.g. 500 Kg), not packs x pack size.
 // Quote prices are shown per individual unit too (e.g. ₹2.47 / Kg), with the total for the buyer's quantity below.
+// The product image on each row opens full screen (ImageLightbox) when tapped.
 //
 // Delivery autofill: the page is wrapped in BuyerAddressProvider (safe to nest), so the wizard can always read the
 // buyer's saved address from BuyerAddressContext and prefill the delivery location by itself.
@@ -24,6 +25,7 @@ import useRfqLive from "../hooks/useRfqLive.js";
 import RfqBulkUploadModal from "../components/rfq/RfqBulkUploadModal.jsx";
 import SavePostWizard from "../components/save/SavePostWizard.jsx";
 import SaveEnquiryInfoModal, { STATUS_LABEL } from "../components/save/SaveEnquiryInfoModal.jsx";
+import ImageLightbox from "../components/ImageLightbox.jsx";
 import { fetchRfqList, closeRfq } from "../utils/rfqApi.js";
 import { fmtNum, timeAgo } from "../utils/rfqUtils.js";
 import { shareEnquiry, enquiryPath } from "../utils/rfqShare.js";
@@ -169,18 +171,33 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
     );
 }
 
-function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onClose }) {
+function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onClose, onZoom }) {
     const total = Math.round(item.quantity * item.packSize * 1e6) / 1e6; // one quantity, in the individual unit
     const count = quoteCountOf(item);
+    const images = (item.images || []).filter(Boolean);
+    const hasImage = images.length > 0;
     const toggleKey = (e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
     };
+
+    // The thumbnail sits inside the row's toggle (also a role="button"), so it stops the click from toggling the row.
+    const zoom = (e) => { e.stopPropagation(); onZoom(images, 0, toTitle(item.productName)); };
+    const zoomKey = (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onZoom(images, 0, toTitle(item.productName)); }
+    };
+
     return (
         <div className={`sh-row${isOpen ? " open" : ""}`}>
             <div className="sh-rh" role="button" tabIndex={0} aria-expanded={isOpen} onClick={onToggle} onKeyDown={toggleKey}>
-                <div className="sh-th">
-                    {item.images?.[0] ? <img src={item.images[0]} alt="" loading="lazy" /> : (item.productName || "?").trim()[0]?.toUpperCase()}
+                <div
+                    className="sh-th"
+                    {...(hasImage ? {
+                        role: "button", tabIndex: 0, "aria-label": `View image of ${item.productName}`,
+                        onClick: zoom, onKeyDown: zoomKey, style: { cursor: "zoom-in" },
+                    } : {})}
+                >
+                    {hasImage ? <img src={images[0]} alt="" loading="lazy" /> : (item.productName || "?").trim()[0]?.toUpperCase()}
                 </div>
                 <div className="sh-in">
                     <p className="sh-rn">{toTitle(item.productName)}</p>
@@ -231,6 +248,7 @@ function SaveHomePageInner() {
     const [infoSnap, setInfoSnap] = useState(null);
     const [wizard, setWizard] = useState(null); // { mode, initial }
     const [bulkOpen, setBulkOpen] = useState(false);
+    const [lightbox, setLightbox] = useState(null); // { images, index, alt }
     const [toast, setToast] = useState("");
     const [searchParams, setSearchParams] = useSearchParams();
     useEffect(() => {
@@ -354,6 +372,8 @@ function SaveHomePageInner() {
     const editItem = (item) => { setInfoId(null); setWizard({ mode: "edit", initial: item }); };
     const closeItem = async (item) => { await handleClose(item); setInfoId(null); };
     const shareItem = (item) => handleShare(item);
+    const openLightbox = useCallback((images, index, alt) => setLightbox({ images, index, alt }), []);
+    const closeLightbox = useCallback(() => setLightbox(null), []);
     const columns = bucket(items, columnCount);
 
     // The details dialog follows the live list, so its quote count updates while it is open.
@@ -430,6 +450,7 @@ function SaveHomePageInner() {
                                             onShare={() => shareItem(it)}
                                             onEdit={() => editItem(it)}
                                             onClose={() => handleClose(it)}
+                                            onZoom={openLightbox}
                                         />
                                     ))}
                                 </div>
@@ -486,6 +507,9 @@ function SaveHomePageInner() {
                                 setBulkOpen(false);
                                 afterSubmit({ message: `${res.message}${skipped ? ` ${skipped} row${skipped === 1 ? " was" : "s were"} skipped.` : ""}` });
                             }} />
+                    )}
+                    {lightbox && (
+                        <ImageLightbox key="lightbox" images={lightbox.images} initialIndex={lightbox.index} alt={lightbox.alt} onClose={closeLightbox} />
                     )}
                 </AnimatePresence>,
                 document.body

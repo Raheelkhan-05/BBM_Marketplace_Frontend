@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useOutletContext, useSearchParams } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
 import { Send, Search, X, ChevronDown, Pencil, XCircle, MapPin, Package, Clock, Truck } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import useSalesRealtime from "../hooks/useSalesRealtime.js";
 import useRfqLive from "../hooks/useRfqLive.js";
 import SavePostWizard from "../components/save/SavePostWizard.jsx";
+import ImageLightbox from "../components/ImageLightbox.jsx";
 import { STATUS_LABEL } from "../components/save/SaveEnquiryInfoModal.jsx";
 import { fetchSalesEnquiries, createSalesEnquiry, updateSalesEnquiry, closeSalesEnquiry } from "../utils/salesEnquiryApi.js";
 import { etaText, validText, inr as inrFmt } from "../utils/rfqQuoteFmt.js";
@@ -57,23 +60,39 @@ function QuoteItem({ q, unit, units }) {
     );
 }
 
-function EnquiryCard({ it, open, onToggle, onEdit, onClose }) {
+function EnquiryCard({ it, open, onToggle, onEdit, onClose, onZoom }) {
     const units = totalUnitsOf(it);
     const count = quoteCountOf(it);
     const quotes = quotesOf(it);
     const canEdit = it.postedByMe && ["pending_review", "rejected"].includes(it.status);
     const canClose = it.postedByMe && ["pending_review", "approved"].includes(it.status);
     const where = [it.deliveryCity, it.deliveryState].filter(Boolean).join(", ");
+    const images = (it.images || []).filter(Boolean);
+    const hasImage = images.length > 0;
 
     let note = null;
     if (it.status === "pending_review") note = ["Waiting for review", "Suppliers can send quotes once our team approves this RFQ."];
     else if (it.status === "closed") note = ["This RFQ is closed", "Suppliers can no longer send quotes."];
     else if (!quotes.length) note = count > 0 ? [`${count} quote${count === 1 ? "" : "s"} received`, "Refresh in a moment to see them."] : ["No quotes yet", "Quotes appear here as soon as suppliers send them."];
 
+    // The thumbnail lives inside the card's toggle button, so it is a span (a button inside a button is invalid).
+    const zoom = (e) => { e.stopPropagation(); onZoom(images, 0, toTitle(it.productName)); };
+    const zoomKey = (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onZoom(images, 0, toTitle(it.productName)); }
+    };
+
     return (
         <article className={`gk-card se-card${open ? " open" : ""}`}>
             <button type="button" className="se-head" aria-expanded={open} onClick={onToggle}>
-                <span className="gd-th">{it.images?.[0] ? <img src={it.images[0]} alt="" loading="lazy" /> : (it.productName || "?").trim()[0]?.toUpperCase()}</span>
+                <span
+                    className="gd-th"
+                    {...(hasImage ? {
+                        role: "button", tabIndex: 0, "aria-label": `View image of ${it.productName}`,
+                        onClick: zoom, onKeyDown: zoomKey, style: { cursor: "zoom-in" },
+                    } : {})}
+                >
+                    {hasImage ? <img src={images[0]} alt="" loading="lazy" /> : (it.productName || "?").trim()[0]?.toUpperCase()}
+                </span>
                 <span className="se-t">
                     <b>{toTitle(it.productName)}</b>
                     <small>{fmtNum(units)} {it.unit}{where ? ` · ${where}` : ""}</small>
@@ -125,6 +144,7 @@ export default function SalesEnquiriesPage() {
     const [error, setError] = useState("");
     const [openId, setOpenId] = useState(null);
     const [wizard, setWizard] = useState(null); // { mode, initial }
+    const [lightbox, setLightbox] = useState(null); // { images, index, alt }
 
     const abortRef = useRef(null);
     const seqRef = useRef(0);
@@ -190,6 +210,9 @@ export default function SalesEnquiriesPage() {
         refreshSoon();
     };
 
+    const openLightbox = useCallback((images, index, alt) => setLightbox({ images, index, alt }), []);
+    const closeLightbox = useCallback(() => setLightbox(null), []);
+
     const scopes = [["all", "All RFQs", counts.all], ["mine", "Posted by me", counts.mine]];
 
     return (
@@ -222,7 +245,8 @@ export default function SalesEnquiriesPage() {
                         <EnquiryCard key={it.id} it={it} open={openId === it.id}
                             onToggle={() => setOpenId((c) => (c === it.id ? null : it.id))}
                             onEdit={() => setWizard({ mode: "edit", initial: it })}
-                            onClose={() => handleClose(it)} />
+                            onClose={() => handleClose(it)}
+                            onZoom={openLightbox} />
                     ))}
                     {!loading && !error && items.length === 0 && (
                         <div className="gk-empty" style={{ gridColumn: "1 / -1" }}>
@@ -249,6 +273,22 @@ export default function SalesEnquiriesPage() {
                     onClose={() => setWizard(null)}
                     onSubmitted={afterSubmit}
                 />
+            )}
+
+            {/* Portal on <body>: the cards animate with transforms, which would break a fixed fullscreen layer inside them. */}
+            {createPortal(
+                <AnimatePresence>
+                    {lightbox && (
+                        <ImageLightbox
+                            key="lightbox"
+                            images={lightbox.images}
+                            initialIndex={lightbox.index}
+                            alt={lightbox.alt}
+                            onClose={closeLightbox}
+                        />
+                    )}
+                </AnimatePresence>,
+                document.body
             )}
         </div>
     );
