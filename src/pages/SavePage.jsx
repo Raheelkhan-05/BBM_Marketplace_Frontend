@@ -1,5 +1,6 @@
 // Page content only. Header, footer and dock live in components/save/SaveLayout.jsx.
-// Optional images in /public: save_product.jpg (compare card) and brands/<slug>.jpg (same as GROW).
+// Optional images in /public: brands/<slug>.jpg (same as GROW).
+// The compare card below is SAMPLE data (industrial supplies, fictional sellers) shown to explain how comparison works.
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -22,32 +23,19 @@ const BRANDS = ["3M", "Aditya", "Asian Paints", "Bosch", "Castrol", "Ft Paint", 
 const ROW_1 = BRANDS.filter((_, i) => i % 2 === 0);
 const ROW_2 = BRANDS.filter((_, i) => i % 2 === 1);
 
-// Demo offers. Each one wins a different sort, so the re-ordering is easy to see.
+// SAMPLE offers (fictional sellers, close prices like a real market). Each one wins a different sort,
+// so the re-ordering is easy to see. Prices are per pack (1 pack = 26 litres).
+const SAMPLE_PRODUCT = {
+    name: "Flamix Hydraulic Oil AW68 - 26 Ltr",
+    meta: "Lubricant · Machine maintenance oil",
+    pack: "1 Pack = 26 Litres",
+    unit: "Pack",
+};
+
 const OFFERS = [
-    {
-        seller: "Vertex Industrial Supply",
-        city: "Rajkot, Gujarat",
-        moq: 5,
-        days: 4,
-        freight: false,
-        price: 5999,
-    },
-    {
-        seller: "Mehta Engineering Works",
-        city: "Rajkot, Gujarat",
-        moq: 1,
-        days: 3,
-        freight: true,
-        price: 10000,
-    },
-    {
-        seller: "Aarav Industrial Solutions",
-        city: "Ahmedabad, Gujarat",
-        moq: 2,
-        days: 1,
-        freight: true,
-        price: 60000,
-    },
+    { seller: "Sample Supplier A", city: "Rajkot, Gujarat", moq: 4, days: 4, freight: false, price: 3480 },
+    { seller: "Sample Supplier B", city: "Ahmedabad, Gujarat", moq: 1, days: 3, freight: true, price: 3540 },
+    { seller: "Sample Supplier C", city: "Surat, Gujarat", moq: 2, days: 1, freight: true, price: 3625 },
 ];
 
 const SORTS = [
@@ -160,15 +148,17 @@ const SETUP = [
 
 const inr = (n) => `₹${n.toLocaleString("en-IN")}`;
 
-const PRODUCT_IMG = "https://xbkqwpeuoruijrwxvqga.supabase.co/storage/v1/object/public/seller-assets/583fa876-fed6-46f2-84f2-7ed4b2b10f55/listings/1790835416258.jpg"; // change this one line if you store it elsewhere
+// Optional: put a real product image URL here (e.g. the Flamix Hydraulic Oil listing photo).
+// While it is empty, a simple drum icon is shown instead.
+const PRODUCT_IMG = "/Flamix_Hydraulic_Oil.png";
 
 function ProductThumb() {
     const [bad, setBad] = useState(false);
     return (
         <div className="cmp-th">
-            {bad
-                ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v8H3zM7 17v2M12 17v2M17 17v2M7 9h10" /></svg>
-                : <img src={PRODUCT_IMG} alt="Ac 1.5 Ton White Colour" onError={() => setBad(true)} />}
+            {bad || !PRODUCT_IMG
+                ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5c0-1.1 2.7-2 6-2s6 .9 6 2-2.7 2-6 2-6-.9-6-2zM6 5v14c0 1.1 2.7 2 6 2s6-.9 6-2V5M6 10c0 1.1 2.7 2 6 2s6-.9 6-2M6 15c0 1.1 2.7 2 6 2s6-.9 6-2" /></svg>
+                : <img src={PRODUCT_IMG} alt={SAMPLE_PRODUCT.name} onError={() => setBad(true)} />}
         </div>
     );
 }
@@ -187,9 +177,9 @@ function CompareCard() {
             <div className="cmp-top">
                 <ProductThumb />
                 <div>
-                    <h3>1.5 Ton Split Air Conditioner</h3>
-                    <small>Home Appliances · Cooling · {OFFERS.length} sellers</small>
-
+                    <h3>{SAMPLE_PRODUCT.name}</h3>
+                    <small>{SAMPLE_PRODUCT.meta} · {OFFERS.length} sellers</small>
+                    <small>{SAMPLE_PRODUCT.pack}</small>
                 </div>
             </div>
 
@@ -230,7 +220,7 @@ function CompareCard() {
                             </div>
                         </div>
                         <div className={`pr${sortKey === "price" ? " hl" : ""}`}>
-                            <b>{inr(o.price)}</b><small>/Pc</small>
+                            <b>{inr(o.price)}</b><small>/{SAMPLE_PRODUCT.unit}</small>
                         </div>
                     </motion.li>
                 ))}
@@ -238,7 +228,7 @@ function CompareCard() {
 
             <p className="nt">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>
-                The lowest listed price is not always the lowest buying cost. Compare MOQ, freight and delivery together.
+                The lowest listed price is not always the lowest buying cost. Compare MOQ, freight and delivery together. Sample data for illustration only.
             </p>
         </div>
     );

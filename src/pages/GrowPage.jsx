@@ -290,10 +290,10 @@ export default function GrowPage() {
 
                     <figure className="shot">
                         <img
-                            src="/grow_listing.png"
+                            src="/Flamix_Hydraulic_Oil Supplier_Marketplace.png"
                             width="760"
                             height="745"
-                            alt="GROW listing screen: Castrol Magnatec engine oil with master pack pricing, best price offer and a seller's own listing with promo"
+                            alt="Flamix Hydraulic Oil, Seller with master pack pricing, best price offer and a seller's own listing with promo"
                         />
                     </figure>
                 </div>
