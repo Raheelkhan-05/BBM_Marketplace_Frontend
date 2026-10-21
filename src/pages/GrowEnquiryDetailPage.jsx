@@ -1,4 +1,5 @@
 // src/pages/GrowEnquiryDetailPage.jsx — one shareable enquiry (route: /grow/enquiry/:id).
+//   Anyone can OPEN this page (guests included). Login / seller checks only happen when someone tries to quote.
 //   Buyer (owner): requirement + every quote received, sortable, with a Buy button per quote.
 //   Seller:        requirement + clear "quote sent" state + quote / edit action.
 //   Visitor:       requirement + sign-in prompt.
@@ -17,6 +18,8 @@ import ImageLightbox from "../components/ImageLightbox.jsx";
 import * as rfqApi from "../utils/rfqApi.js";
 import useRfqLive from "../hooks/useRfqLive.js";
 import useQuoteResume from "../hooks/useQuoteResume.js";
+import { loadAccess } from "../components/grow/growAccess.js";
+import { isSellerReady } from "../components/growSeller/growSeller.js";
 import { fmtNum, timeAgo, paymentLabel, consumptionLabel, locationSummary } from "../utils/rfqUtils.js";
 import { inr, validText, etaText, shortDate } from "../utils/rfqQuoteFmt.js";
 import { toTitleCase } from "../components/growSeller/sellerHelpers.js";
@@ -35,6 +38,10 @@ async function findEnquiry(token, id, signal) {
     if (typeof rfqApi.fetchRfqById === "function") return rfqApi.fetchRfqById(token, id, { signal });
     return { success: false, message: "Couldn't load this enquiry." };
 }
+
+// What kind of failure is this? Decides the message and which buttons are shown.
+const isAuthFail = (res) => res?.status === 401 || res?.status === 403 || /session|unauthor|sign in|log in|login|token/i.test(res?.message || "");
+const isMissing = (res) => res?.status === 404 || /not found|no longer|doesn't exist|does not exist/i.test(res?.message || "");
 
 function QuoteCard({ q, tags, enquiryId, onZoom }) {
     const place = [q.city, q.state].filter(Boolean).join(", ");
@@ -110,7 +117,7 @@ export default function GrowEnquiryDetailPage() {
     const { id } = useParams();
     const location = useLocation();
     const nav = useNavigate();
-    const { token, isLoggedIn, needsOnboarding, initializing } = useAuth();
+    const { token, isLoggedIn, needsOnboarding, initializing, profile } = useAuth();
     const [resume, clearResume] = useQuoteResume();
 
     const goToStart = () => nav("/grow?start=1", { state: { from: `${location.pathname}${location.search}` } });
@@ -118,9 +125,10 @@ export default function GrowEnquiryDetailPage() {
     const seeded = location.state?.enquiry && String(location.state.enquiry.id) === String(id) ? location.state.enquiry : null;
     const [item, setItem] = useState(seeded);
     const [loading, setLoading] = useState(!seeded);
-    const [error, setError] = useState(null);
+    const [error, setError] = useState(null); // null | { kind: "auth" | "missing" | "retry", message }
     const [reloadKey, setReloadKey] = useState(0);
     const [quoteOpen, setQuoteOpen] = useState(null); // null | { submissionId }
+    const [checking, setChecking] = useState(false);  // seller check in progress after "Quote now"
     const [toast, setToast] = useState("");
     const [sort, setSort] = useState("price");
     const [imgIdx, setImgIdx] = useState(0);
@@ -138,19 +146,30 @@ export default function GrowEnquiryDetailPage() {
     }, [item]);
 
     // The router-state snapshot may lack myQuote, so always refetch. silent = never flash skeleton/error.
+    // If the signed-in request is refused because of the session (expired token), retry once as a guest,
+    // so anyone can still open the page. Login is only asked for when they try to quote.
     const loadItem = useCallback(async ({ silent = false } = {}) => {
         abortRef.current?.abort();
         const ctrl = new AbortController();
         abortRef.current = ctrl;
         if (!silent) { setLoading(true); setError(null); }
         try {
-            const res = await findEnquiry(token, id, ctrl.signal);
+            let res = await findEnquiry(token, id, ctrl.signal);
             if (ctrl.signal.aborted) return;
+            if (!res?.success && token && isAuthFail(res)) {
+                res = await findEnquiry(null, id, ctrl.signal);
+                if (ctrl.signal.aborted) return;
+            }
             if (res?.success && res.item) { setItem(res.item); setError(null); }
-            else if (!silent) { setItem(null); setError(res?.message || "Couldn't load this enquiry."); }
+            else if (!silent) {
+                setItem(null);
+                if (isAuthFail(res)) setError({ kind: "auth", message: "This enquiry can only be viewed after you log in." });
+                else if (isMissing(res)) setError({ kind: "missing", message: "This enquiry was removed or the link is not correct." });
+                else setError({ kind: "retry", message: res?.message || "Something went wrong while loading this enquiry." });
+            }
         } catch (e) {
             if (e?.name === "AbortError") return;
-            if (!silent) { setItem(null); setError("Couldn't load this enquiry. Check your connection and try again."); }
+            if (!silent) { setItem(null); setError({ kind: "retry", message: "Couldn't load this enquiry. Check your connection and try again." }); }
         } finally { if (!ctrl.signal.aborted) setLoading(false); }
     }, [id, token]);
 
@@ -173,11 +192,25 @@ export default function GrowEnquiryDetailPage() {
         if (r === "copied") say("Link copied");
         else if (r === "failed") say("Copy the page address to share");
     };
-    const onQuoteClick = () => {
-        if (initializing) return;
+
+    // All the checks happen here, only when someone actually wants to quote.
+    const onQuoteClick = async () => {
+        if (initializing || checking) return;
+        // 1. must be logged in and finished onboarding (comes back to this page afterwards)
         if (!isLoggedIn || needsOnboarding) return goToStart();
+        // 2. sales accounts work for a company's buying side and cannot quote
+        if (profile?.team?.role === "salesperson") return say("Sales accounts can't send quotes.");
+        // 3. must be an approved, ready seller (same rule as the Grow seller area)
+        if (!isSellerReady(profile, token)) {
+            setChecking(true);
+            let ok = false;
+            try { const a = await loadAccess(token); ok = !!a?.canPublish; } catch { ok = false; }
+            setChecking(false);
+            if (!ok) { say("Set up your seller account to send quotes."); return goToStart(); }
+        }
         setQuoteOpen({ submissionId: null });
     };
+
     const onQuoteDone = (quote, meta) => {
         setQuoteOpen(null);
         say(meta?.withdrawn ? "Quote withdrawn" : "Quote saved");
@@ -191,11 +224,11 @@ export default function GrowEnquiryDetailPage() {
     const isMine = !!item?.isMine;
     const live = item?.status === "approved";
     const closed = item?.status === "closed";
-    const canQuote = !!item && live && !isMine;
     const myQuote = item && !isMine ? item.myQuote || null : null;
     const total = item ? Number(item.quantity) * Number(item.packSize) : 0;
     const published = item ? item.publishedAt || item.createdAt : null;
     const images = (item?.images || []).filter(Boolean);
+    const quoteBusy = initializing || checking;
 
     const quotes = useMemo(() => {
         const list = isMine ? [...(item?.quotes || [])] : [];
@@ -226,6 +259,8 @@ export default function GrowEnquiryDetailPage() {
         [item.acceptEquivalent ? Shuffle : Equal, "Product match", item.acceptEquivalent ? "Equivalent products accepted" : "Same product only"],
     ] : [];
 
+    const quoteLabel = checking ? "Checking…" : isLoggedIn ? "Quote now" : "Sign in to quote";
+
     // The primary action, reused in the sidebar and the mobile bar.
     const action = !item ? null : isMine ? (
         <>
@@ -240,17 +275,39 @@ export default function GrowEnquiryDetailPage() {
     ) : myQuote ? (
         <>
             <div className="rqp-done"><Check size={18} />You have quoted on this enquiry</div>
-            <button type="button" className="rqp-btn" onClick={onQuoteClick}>Edit quote</button>
+            <button type="button" className="rqp-btn" disabled={quoteBusy} onClick={onQuoteClick}>{checking ? "Checking…" : "Edit quote"}</button>
         </>
     ) : (
         <>
             <p className="rqp-note" style={{ margin: 0 }}>{isLoggedIn ? "Send your best price in about a minute." : "Sign in as a seller to send your price."}</p>
-            <button type="button" className="rqp-btn go" disabled={initializing} onClick={onQuoteClick}><Send size={16} />{isLoggedIn ? "Quote now" : "Sign in to quote"}</button>
+            <button type="button" className="rqp-btn go" disabled={quoteBusy} onClick={onQuoteClick}><Send size={16} />{quoteLabel}</button>
         </>
     );
 
     const mainImage = images[imgIdx] || null;
     const zoomMain = () => { if (images.length) openLightbox(images, imgIdx, item ? toTitleCase(item.productName) : ""); };
+
+    // Error card: message and buttons depend on what went wrong (retrying only makes sense for network / server errors).
+    const errorView = error && (
+        <div className="rqp-card rqp-empty" role="alert">
+            <h2>
+                {error.kind === "auth" ? "Log in to view this enquiry"
+                    : error.kind === "missing" ? "This enquiry isn't available"
+                        : "We couldn't open this enquiry"}
+            </h2>
+            <p>{error.message}</p>
+            <div className="rqp-row">
+                {error.kind === "auth" && <button type="button" className="rqp-btn go" onClick={goToStart}>Log in</button>}
+                {error.kind === "retry" && <button type="button" className="rqp-btn go" onClick={() => setReloadKey((k) => k + 1)}>Try again</button>}
+                {error.kind === "missing" && (
+                    isLoggedIn
+                        ? <button type="button" className="rqp-btn go" onClick={() => nav("/grow/enquiries")}>See all enquiries</button>
+                        : <button type="button" className="rqp-btn go" onClick={() => nav("/")}>Go to home</button>
+                )}
+                {error.kind === "retry" && !isLoggedIn && <button type="button" className="rqp-btn" onClick={goToStart}>Log in</button>}
+            </div>
+        </div>
+    );
 
     return (
         <div className="rqp">
@@ -267,123 +324,115 @@ export default function GrowEnquiryDetailPage() {
             <div className="rqp-w">
                 {loading && <div className="rqp-card rqp-skel" aria-busy="true"><i /><i /><i /></div>}
 
-                {!loading && error && (
-                    <div className="rqp-card rqp-empty" role="alert">
-                        <h2>We couldn't open this enquiry</h2><p>{error}</p>
-                        <div className="rqp-row">
-                            <button type="button" className="rqp-btn go" onClick={() => setReloadKey((k) => k + 1)}>Try again</button>
-                            {!isLoggedIn
-                                ? <button type="button" className="rqp-btn" onClick={goToStart}>Log in to view</button>
-                                : <button type="button" className="rqp-btn" onClick={() => nav("/grow/enquiries")}>See all enquiries</button>}
-                        </div>
-                    </div>
-                )}
+                {!loading && errorView}
 
                 {!loading && item && (
-                    <div className="rqp-grid">
-                        <main className="rqp-main">
-                            <div className="rqp-title">
-                                <span className={`rqp-st ${pill[1]}`}><i />{pill[0]}</span>
-                                <h1>{toTitleCase(item.productName)}</h1>
-                                <p>Posted {timeAgo(published)}{published ? ` · ${shortDate(published)}` : ""}</p>
-                            </div>
+                    <>
+                        <div className="rqp-title">
+                            <span className={`rqp-st ${pill[1]}`}><i />{pill[0]}</span>
+                            <h1>{toTitleCase(item.productName)}</h1>
+                            <p>Posted {timeAgo(published)}{published ? ` · ${shortDate(published)}` : ""}</p>
+                        </div>
 
-                            <section className="rqp-card">
-                                <div className="rqp-prod">
-                                    <div className="rqp-gal">
-                                        {mainImage ? (
-                                            <div
-                                                className="rqp-img"
-                                                role="button"
-                                                tabIndex={0}
-                                                aria-label="View image full screen"
-                                                style={{ cursor: "zoom-in" }}
-                                                onClick={zoomMain}
-                                                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); zoomMain(); } }}
-                                            >
-                                                <img src={mainImage} alt={item.productName} />
-                                            </div>
-                                        ) : (
-                                            <div className="rqp-img"><Package size={40} aria-hidden="true" /></div>
-                                        )}
-                                        {images.length > 1 && (
-                                            <div className="rqp-thumbs">
-                                                {images.map((src, i) => (
-                                                    <button key={src + i} type="button" aria-label={`Image ${i + 1}`} aria-pressed={i === imgIdx} onClick={() => setImgIdx(i)}><img src={src} alt="" loading="lazy" /></button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="rqp-req">
-                                        <p className="rqp-cap">Requirement</p>
-                                        <div className="rqp-stats">
-                                            <div><b>{fmtNum(item.quantity)}</b><span>pack{Number(item.quantity) === 1 ? "" : "s"}</span></div>
-                                            <div><b>{fmtNum(item.packSize)}</b><span>{item.unit} per pack</span></div>
-                                            <div className="hl"><b>{fmtNum(total)}</b><span>{item.unit} in total</span></div>
+                        <div className="rqp-grid">
+                            <main className="rqp-main">
+                                <section className="rqp-card">
+                                    <div className="rqp-prod">
+                                        <div className="rqp-gal">
+                                            {mainImage ? (
+                                                <div
+                                                    className="rqp-img"
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    aria-label="View image full screen"
+                                                    style={{ cursor: "zoom-in" }}
+                                                    onClick={zoomMain}
+                                                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); zoomMain(); } }}
+                                                >
+                                                    <img src={mainImage} alt={item.productName} />
+                                                </div>
+                                            ) : (
+                                                <div className="rqp-img"><Package size={40} aria-hidden="true" /></div>
+                                            )}
+                                            {images.length > 1 && (
+                                                <div className="rqp-thumbs">
+                                                    {images.map((src, i) => (
+                                                        <button key={src + i} type="button" aria-label={`Image ${i + 1}`} aria-pressed={i === imgIdx} onClick={() => setImgIdx(i)}><img src={src} alt="" loading="lazy" /></button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
-                                        {item.specifications && (<><p className="rqp-cap" style={{ marginTop: 16 }}>Specifications</p><p className="rqp-spec">{item.specifications}</p></>)}
-                                    </div>
-                                </div>
-
-                                <dl className="rqp-facts">
-                                    {facts.map(([Icon, k, v]) => (
-                                        <div key={k}><Icon size={17} aria-hidden="true" /><dt>{k}</dt><dd>{v || "–"}</dd></div>
-                                    ))}
-                                </dl>
-
-                                {isMine && item.status === "rejected" && item.reviewNote && <p className="rqp-alert">{item.reviewNote}</p>}
-                                {isMine && item.status === "pending_review" && <p className="rqp-alert info">Our team is reviewing this. It will go live once approved.</p>}
-                            </section>
-
-                            {myQuote && (
-                                <section className="rqp-card">
-                                    <div className="rqp-sh"><h2>Your quote</h2><span className="rqp-st ok"><i />Sent</span></div>
-                                    <dl className="rqp-bkt">
-                                        <div><dt>Product</dt><dd>{myQuote.productName}{myQuote.brandName ? ` · ${myQuote.brandName}` : ""}</dd></div>
-                                        <div><dt>Price per pack (incl. GST)</dt><dd>{inr(myQuote.price)}</dd></div>
-                                        <div><dt>Base price per {myQuote.unit} (excl. GST)</dt><dd>{inr(myQuote.unitPriceExGst, 4)}</dd></div>
-                                        <div><dt>Quantity</dt><dd>{fmtNum(myQuote.totalUnits)} {myQuote.unit}</dd></div>
-                                        <div><dt>Total before GST</dt><dd>{inr(myQuote.taxableValue)}</dd></div>
-                                        <div><dt>GST @ {myQuote.gstPercent}%</dt><dd>{inr(myQuote.gstAmount)}</dd></div>
-                                        <div className="t"><dt>Total incl. GST</dt><dd>{inr(myQuote.total)}</dd></div>
-                                        <div><dt>Validity</dt><dd>{validText(myQuote)}</dd></div>
-                                    </dl>
-                                </section>
-                            )}
-
-                            {isMine && (
-                                <section className="rqp-card">
-                                    <div className="rqp-sh">
-                                        <div><h2>Quotes received</h2><p>{quotes.length ? "Compare suppliers, then buy from the one you like." : "Suppliers' quotes will appear here as soon as they send them."}</p></div>
-                                        {quotes.length > 1 && (
-                                            <div className="rqp-seg" role="group" aria-label="Sort quotes">
-                                                {[["price", "Lowest price"], ["delivery", "Fastest"], ["newest", "Newest"]].map(([k, l]) => (
-                                                    <button key={k} type="button" aria-pressed={sort === k} onClick={() => setSort(k)}>{l}</button>
-                                                ))}
+                                        <div className="rqp-req">
+                                            <p className="rqp-cap">Requirement</p>
+                                            <div className="rqp-stats">
+                                                <div><b>{fmtNum(item.quantity)}</b><span>pack{Number(item.quantity) === 1 ? "" : "s"}</span></div>
+                                                <div><b>{fmtNum(item.packSize)}</b><span>{item.unit} per pack</span></div>
+                                                <div className="hl"><b>{fmtNum(total)}</b><span>{item.unit} in total</span></div>
                                             </div>
-                                        )}
+                                            {item.specifications && (<><p className="rqp-cap" style={{ marginTop: 16 }}>Specifications</p><p className="rqp-spec">{item.specifications}</p></>)}
+                                        </div>
                                     </div>
-                                    {quotes.length === 0 ? (
-                                        <div className="rqp-none"><Send size={22} /><b>No quotes yet</b><span>{live ? "Share this enquiry to get quotes faster." : "Quotes open once the enquiry is live."}</span></div>
-                                    ) : (
-                                        <div className="rqp-qs">{quotes.map((q) => <QuoteCard key={q.id} q={q} tags={tagsFor(q)} enquiryId={item.id} onZoom={openLightbox} />)}</div>
-                                    )}
-                                </section>
-                            )}
-                        </main>
 
-                        <aside className="rqp-side">
-                            <div className="rqp-card rqp-ac">{action}</div>
-                            {!isMine && (
-                                <div className="rqp-card">
-                                    <p className="rqp-cap">Why sellers join</p>
-                                    <div className="rqp-why">
-                                        {WHY.map(([t, d, Icon]) => (<div key={t}><span><Icon size={16} /></span><div><b>{t}</b><small>{d}</small></div></div>))}
+                                    <dl className="rqp-facts">
+                                        {facts.map(([Icon, k, v]) => (
+                                            <div key={k}><Icon size={17} aria-hidden="true" /><dt>{k}</dt><dd>{v || "–"}</dd></div>
+                                        ))}
+                                    </dl>
+
+                                    {isMine && item.status === "rejected" && item.reviewNote && <p className="rqp-alert">{item.reviewNote}</p>}
+                                    {isMine && item.status === "pending_review" && <p className="rqp-alert info">Our team is reviewing this. It will go live once approved.</p>}
+                                </section>
+
+                                {myQuote && (
+                                    <section className="rqp-card">
+                                        <div className="rqp-sh"><h2>Your quote</h2><span className="rqp-st ok"><i />Sent</span></div>
+                                        <dl className="rqp-bkt">
+                                            <div><dt>Product</dt><dd>{myQuote.productName}{myQuote.brandName ? ` · ${myQuote.brandName}` : ""}</dd></div>
+                                            <div><dt>Price per pack (incl. GST)</dt><dd>{inr(myQuote.price)}</dd></div>
+                                            <div><dt>Base price per {myQuote.unit} (excl. GST)</dt><dd>{inr(myQuote.unitPriceExGst, 4)}</dd></div>
+                                            <div><dt>Quantity</dt><dd>{fmtNum(myQuote.totalUnits)} {myQuote.unit}</dd></div>
+                                            <div><dt>Total before GST</dt><dd>{inr(myQuote.taxableValue)}</dd></div>
+                                            <div><dt>GST @ {myQuote.gstPercent}%</dt><dd>{inr(myQuote.gstAmount)}</dd></div>
+                                            <div className="t"><dt>Total incl. GST</dt><dd>{inr(myQuote.total)}</dd></div>
+                                            <div><dt>Validity</dt><dd>{validText(myQuote)}</dd></div>
+                                        </dl>
+                                    </section>
+                                )}
+
+                                {isMine && (
+                                    <section className="rqp-card">
+                                        <div className="rqp-sh">
+                                            <div><h2>Quotes received</h2><p>{quotes.length ? "Compare suppliers, then buy from the one you like." : "Suppliers' quotes will appear here as soon as they send them."}</p></div>
+                                            {quotes.length > 1 && (
+                                                <div className="rqp-seg" role="group" aria-label="Sort quotes">
+                                                    {[["price", "Lowest price"], ["delivery", "Fastest"], ["newest", "Newest"]].map(([k, l]) => (
+                                                        <button key={k} type="button" aria-pressed={sort === k} onClick={() => setSort(k)}>{l}</button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {quotes.length === 0 ? (
+                                            <div className="rqp-none"><Send size={22} /><b>No quotes yet</b><span>{live ? "Share this enquiry to get quotes faster." : "Quotes open once the enquiry is live."}</span></div>
+                                        ) : (
+                                            <div className="rqp-qs">{quotes.map((q) => <QuoteCard key={q.id} q={q} tags={tagsFor(q)} enquiryId={item.id} onZoom={openLightbox} />)}</div>
+                                        )}
+                                    </section>
+                                )}
+                            </main>
+
+                            <aside className="rqp-side">
+                                <div className="rqp-card rqp-ac">{action}</div>
+                                {!isMine && (
+                                    <div className="rqp-card">
+                                        <p className="rqp-cap">Why sellers join</p>
+                                        <div className="rqp-why mt-3">
+                                            {WHY.map(([t, d, Icon]) => (<div key={t}><span><Icon size={16} /></span><div><b>{t}</b><small>{d}</small></div></div>))}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                        </aside>
-                    </div>
+                                )}
+                            </aside>
+                        </div>
+                    </>
                 )}
 
                 <footer className="rqp-ft"><b>BBM Marketplace</b> · More buyers. More business. Less selling effort.</footer>
@@ -392,8 +441,8 @@ export default function GrowEnquiryDetailPage() {
             {!loading && item && !isMine && live && (
                 <div className="rqp-bar">
                     {myQuote
-                        ? <><span className="rqp-done"><Check size={16} />Quote sent</span><button type="button" className="rqp-btn" onClick={onQuoteClick}>Edit quote</button></>
-                        : <button type="button" className="rqp-btn go blk" disabled={initializing} onClick={onQuoteClick}><Send size={16} />{isLoggedIn ? "Quote now" : "Sign in to quote"}</button>}
+                        ? <><span className="rqp-done"><Check size={16} />Quote sent</span><button type="button" className="rqp-btn" disabled={quoteBusy} onClick={onQuoteClick}>{checking ? "Checking…" : "Edit quote"}</button></>
+                        : <button type="button" className="rqp-btn go blk" disabled={quoteBusy} onClick={onQuoteClick}><Send size={16} />{quoteLabel}</button>}
                 </div>
             )}
 
