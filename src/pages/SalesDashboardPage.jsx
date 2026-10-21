@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import { Users, BadgeCheck, Clock, Receipt, UserPlus, ChevronRight, Inbox } from "lucide-react";
+import { Users, BadgeCheck, Clock, Send, Receipt, UserPlus, ChevronRight, Inbox } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import useSalesRealtime from "../hooks/useSalesRealtime.js";
 import { fetchSalesSummary } from "../utils/salesApi.js";

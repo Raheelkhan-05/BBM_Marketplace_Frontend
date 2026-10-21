@@ -3,7 +3,7 @@ const BASE = String(import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BAS
 
 async function call(token, path, { method = "GET", body, signal } = {}) {
     try {
-        const res = await fetch(`${BASE}/api/sales${path}`, {
+        const res = await fetch(`${BASE}/sales${path}`, {
             method, signal,
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
             body: body ? JSON.stringify(body) : undefined,
