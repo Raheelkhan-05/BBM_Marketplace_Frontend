@@ -1,8 +1,15 @@
 // src/pages/SharedProductPage.jsx
+//
+// Shared product link (/p/:submissionId):
+//   - logged in                      -> full Buy Now modal
+//   - logged out, PUBLIC listing     -> read-only preview (no prices, no buy actions) + "Login to view price & buy"
+//   - logged out, RESTRICTED listing -> "Login to view this product"
+// After login the visitor returns here (state.from) and gets the full Buy Now modal.
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Loader2, PackageX, Lock } from "lucide-react";
 import BuyNowModal from "../components/BuyNowModal.jsx";
+import SharedProductPreviewModal from "../components/SharedProductPreviewModal.jsx";
 import HomePage from "./HomePage.jsx";
 import { fetchSharedProductLink, fetchBrandItemSellers } from "../utils/api.js";
 import { toBuyerSellerPayload } from "../utils/buyerSellerPayload";
@@ -12,8 +19,7 @@ const C = { ink: "#0B1116", muted: "#667077", secondary: "#006F83" };
 
 // If the shared-link payload is a leaner row than the home feed's seller list
 // (no pack size / slabs / sample fields), fill the gaps from the same seller
-// list the home page uses, so the modal is identical. Runs inside the single
-// loading phase; failures are ignored (we just use what we have).
+// list the home page uses, so the modal is identical. Logged-in only.
 const FULL_ROW_KEYS = ["pack_size", "units_per_master_pack", "price_slabs", "quantity_discounts"];
 async function hydrateSeller(seller, productId, token) {
     const isFull = FULL_ROW_KEYS.every((k) => Object.prototype.hasOwnProperty.call(seller, k));
@@ -52,28 +58,32 @@ export default function SharedProductPage() {
     useEffect(() => {
         if (authLoading) return; // don't decide anything until we know who the user is
 
-        if (!effectiveLoggedIn) {
-            setState({ loading: false, error: null, code: "LOGIN_REQUIRED", data: null });
-            return;
-        }
-
         let cancelled = false;
+        // Back to loading so a login (or logout) never shows data fetched for the other state.
+        setState({ loading: true, error: null, code: null, data: null });
+
         (async () => {
-            const res = await fetchSharedProductLink(submissionId, token);
+            // Logged out: ask WITHOUT a token. The server answers with a price-free preview if the
+            // listing is public, or LOGIN_REQUIRED if it is restricted.
+            const res = await fetchSharedProductLink(submissionId, effectiveLoggedIn ? token : null);
             if (cancelled) return;
             if (!res?.success) {
                 setState({ loading: false, error: res?.message || "This link is no longer available.", code: res?.code || null, data: null });
                 return;
             }
             const productId = res.product?.id ?? res.product?.brandItemId ?? res.product?.brand_item_id ?? null;
-            const seller = await hydrateSeller(res.seller, productId, token);
+            const preview = !effectiveLoggedIn;
+            const seller = preview ? res.seller : await hydrateSeller(res.seller, productId, token);
             if (cancelled) return;
-            setState({ loading: false, error: null, code: null, data: { ...res, seller } });
+            setState({ loading: false, error: null, code: null, data: { ...res, seller, preview } });
         })();
         return () => { cancelled = true; };
     }, [submissionId, token, effectiveLoggedIn, authLoading]);
 
     const goHome = () => navigate("/", { replace: true });
+    const back = `${location.pathname}${location.search}`;
+    // The login page sends the visitor back to this exact link afterwards.
+    const goLogin = () => navigate("/login", { state: { from: back, returnTo: location.pathname } });
     const loading = authLoading || state.loading;
 
     let overlay = null;
@@ -87,16 +97,13 @@ export default function SharedProductPage() {
             </div>
         );
     } else if (state.code === "LOGIN_REQUIRED") {
-        const back = `${location.pathname}${location.search}`;
+        // Restricted listing: only logged-in, allowed buyers can see it.
         overlay = (
             <Overlay onBackdrop={goHome}>
                 <Lock className="h-6 w-6" style={{ color: C.muted }} />
                 <p className="text-[14px] font-bold tracking-wide" style={{ color: C.ink }}>Login to view this product</p>
                 <p className="text-[12px] font-medium tracking-wide" style={{ color: C.muted }}>This link needs you to be signed in first.</p>
-                <button
-                    onClick={() => navigate("/login", { state: { from: back, returnTo: location.pathname } })}
-                    className="mt-2 rounded-xl px-4 py-2 text-[13px] font-bold tracking-wide text-white"
-                    style={{ background: C.secondary }}>
+                <button onClick={goLogin} className="mt-2 rounded-xl px-4 py-2 text-[13px] font-bold tracking-wide text-white" style={{ background: C.secondary }}>
                     Login
                 </button>
             </Overlay>
@@ -119,24 +126,30 @@ export default function SharedProductPage() {
             </Overlay>
         );
     } else if (state.data && showModal) {
-        const { product, seller } = state.data;
+        const { product, seller, preview } = state.data;
         // Same product shape HomeProductFeed passes to BuyNowModal.
-        modal = (
-            <BuyNowModal
-                deferPriceUntilConfirmed
+        const productProp = {
+            id: product.id ?? product.brandItemId ?? product.brand_item_id ?? null,
+            name: product.name,
+            brand_name: product.brand_name ?? product.brandName,
+            brand_image: product.brand_image ?? product.brandImage,
+            image: product.image ?? product.images?.[0] ?? null,
+            model_no: product.model_no ?? product.modelNo,
+            category_name: product.category_name ?? product.categoryName,
+            subcategory_name: product.subcategory_name ?? product.subcategoryName,
+        };
+        const close = () => { setShowModal(false); goHome(); };
+
+        modal = preview ? (
+            <SharedProductPreviewModal
                 seller={toBuyerSellerPayload(seller)}
-                product={{
-                    id: product.id ?? product.brandItemId ?? product.brand_item_id ?? null,
-                    name: product.name,
-                    brand_name: product.brand_name ?? product.brandName,
-                    brand_image: product.brand_image ?? product.brandImage,
-                    image: product.image ?? product.images?.[0] ?? null,
-                    model_no: product.model_no ?? product.modelNo,
-                    category_name: product.category_name ?? product.categoryName,
-                    subcategory_name: product.subcategory_name ?? product.subcategoryName,
-                }}
-                onClose={() => { setShowModal(false); goHome(); }}
+                product={productProp}
+                submissionId={submissionId}
+                onClose={close}
+                onLogin={goLogin}
             />
+        ) : (
+            <BuyNowModal deferPriceUntilConfirmed seller={toBuyerSellerPayload(seller)} product={productProp} onClose={close} />
         );
     }
 

@@ -38,6 +38,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import AddressBook from "./shipping/AddressBook.jsx";
 import ImageLightbox from "./ImageLightbox.jsx";
+import { shopNameOf } from "../utils/shopName.js";
 import {
     Loader2, Lock, CheckCircle2, X, Plus, MapPin, Minus, Layers, FileText, Calendar, Beaker,
     Package, Truck, ReceiptText, CreditCard, Boxes, ShoppingCart, ChevronDown, AlertCircle,
@@ -1103,7 +1104,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                         : creditStatus.status === "revoked" ? "revoked"
                             : "none";
     const canAskCredit = creditKind === "none" || creditKind === "retry" || creditKind === "revoked";
-    const sellerLabel = seller?.display_name || "the seller";
+    const sellerLabel = shopNameOf(seller);
 
     /* ---------------- primary CTA ---------------- */
     const needsTransport = !transportPreference;
@@ -1257,14 +1258,14 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                     )}
                                     {categoryLabel && <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>{categoryLabel}</p>}
                                     <p className="mt-1 flex items-center gap-1 truncate text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                        <Store className="h-3 w-3 shrink-0" /> <span className="truncate">Sold by {seller?.display_name}{seller?.dispatchOrigin ? ` · ${seller.dispatchOrigin}` : ""}</span>
+                                        <Store className="h-3 w-3 shrink-0" /> <span className="truncate">Sold by {shopNameOf(seller)}{seller?.dispatchOrigin ? ` · ${seller.dispatchOrigin}` : ""}</span>
                                     </p>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-0.5">
                                     <button
                                         onClick={async () => {
                                             const result = await shareProductLink({
-                                                submissionId: seller.offerId, productName: product?.name, sellerName: seller?.display_name,
+                                                submissionId: seller.offerId, productName: product?.name, sellerName: shopNameOf(seller),
                                             });
                                             if (result === "copied") setToast("Link copied!");
                                         }}
@@ -1466,7 +1467,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                             )}
                                             {crossesCreditLimit && (
                                                 limitIncreasePending ? (
-                                                    <Notice tone="info">You've asked {seller.display_name} for a higher credit limit — waiting for their response.</Notice>
+                                                    <Notice tone="info">You've asked {shopNameOf(seller)} for a higher credit limit — waiting for their response.</Notice>
                                                 ) : limitIncreaseCooldownActive ? (
                                                     <Notice tone="warn">This order is above your remaining credit. Your last request was declined — you can ask again after {fmtDate(creditStatus.limit_increase_cooldown_until)}.</Notice>
                                                 ) : (
@@ -1512,7 +1513,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                 <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{routeTransportModeLabel(pendingTransportProposal.mode)}</p>
                                                 <TransportFields mode={pendingTransportProposal.mode} fields={pendingTransportProposal.fields} />
                                                 <Notice tone="warn">
-                                                    Waiting for {seller?.display_name}'s approval. You can place the order once it's approved, or pick a different, already-approved option.
+                                                    Waiting for {shopNameOf(seller)}'s approval. You can place the order once it's approved, or pick a different, already-approved option.
                                                 </Notice>
                                             </div>
                                         ) : (

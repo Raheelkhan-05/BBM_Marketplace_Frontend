@@ -8,7 +8,9 @@ export function toBuyerSellerPayload(s) {
     return {
         offerId: s.submission_id,
         sellerId: s.seller_id,
-        display_name: s.display_name,
+        // Buyers see the SHOP name. Falls back to the seller name only when a shop has no name.
+        display_name: s.shop_name || s.display_name,
+        shop_name: s.shop_name || s.display_name,
         unit: s.unit,
         moq: s.moq,
         price: s.price,
