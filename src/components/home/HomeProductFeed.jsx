@@ -161,7 +161,7 @@ import Seo from "../Seo.jsx";
 import FeedQuickActions from "./FeedQuickActions.jsx";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
-import { ChevronDown, Package, Info, Store, Share2, Pointer, ChevronsUp, X, FileText, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
+import { ChevronDown, Layers, ArrowLeft, Package, Info, Store, Share2, Pointer, ChevronsUp, X, FileText, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
 import useFollowedItems from "../../hooks/useFollowedItems";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, observePriceTrends, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints, fetchShopInfo } from "../../utils/api";
 import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
@@ -214,6 +214,9 @@ const DEBOUNCE_MS = 250;
 // See "DUPLICATE-FETCH GUARD" note above.
 const DUPLICATE_GUARD_MS = 300;
 // Set to false to silence realtime debug logs.
+
+// How long the feed (items + scroll position) is remembered while a variants view is open.
+const SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 
 const OFFER_CACHE_MS = 15000;
 const SHOP_REFRESH_DELAY_MS = 400;
@@ -2528,6 +2531,193 @@ function SellerDropdown({
     );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GROUP CARD — one generic product with many variants. Deliberately unlike a
+// product row: inset card, brand-tinted, left accent, stacked thumbnails,
+// "N variants" pill and a "View all variants" bar. Tapping opens the variants
+// view; it never opens a seller list or starts a purchase.
+// ─────────────────────────────────────────────────────────────────────────────
+function GroupThumb({ src }) {
+    const [failed, setFailed] = useState(false);
+    if (!src || failed) return <Package className="h-5 w-5" style={{ color: C.muted }} />;
+    return (
+        <img
+            src={resizedImageUrl(src, { width: 256 })}
+            alt=""
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            decoding="async"
+            onError={() => setFailed(true)}
+            className="h-full w-full object-cover"
+        />
+    );
+}
+
+function StackedThumbs({ images }) {
+    const layers = (images || []).filter(Boolean).slice(0, 3);
+    const list = layers.length ? layers : [null];
+    return (
+        <span aria-hidden className="relative block h-20 w-[4.75rem] shrink-0">
+            {list.map((src, depth) => (
+                <span
+                    key={`${depth}-${src || "none"}`}
+                    className="absolute flex h-[4.5rem] w-[3.75rem] items-center justify-center overflow-hidden rounded-xl border shadow-[0_2px_6px_-2px_rgba(11,17,22,0.25)]"
+                    style={{
+                        left: depth * 8,
+                        top: 8 - depth * 4,
+                        zIndex: 3 - depth,
+                        background: C.imgBg,
+                        borderColor: "#fff",
+                    }}
+                >
+                    <GroupThumb src={src} />
+                </span>
+            ))}
+        </span>
+    );
+}
+
+function GroupRow({ item, idx, includeGst, isLoggedIn, animateEntrance, onOpen, onRequireLogin }) {
+    const count = Number(item.variant_count) || 0;
+    const title = String(item.name || "").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    const categoryLabel = isHiddenLabel(item.category_name) ? null : item.category_name;
+    const subcategoryLabel = isHiddenLabel(item.subcategory_name) ? null : item.subcategory_name;
+    const outOfStock = isFeedRowOutOfStock(item);
+    const images = Array.isArray(item.preview_images) && item.preview_images.length
+        ? item.preview_images
+        : item.image ? [item.image] : [];
+
+    const breakdown = useMemo(() => {
+        if (item.lowest_price == null) return null;
+        return computePriceBreakdown({
+            price: item.lowest_price,
+            packSize: item.lowest_price_pack_size,
+            masterPackSize: item.lowest_price_master_pack_size,
+            gstPercent: item.lowest_price_gst_percent,
+            includeGst,
+            isCustomPriced: item.lowest_price_is_custom,
+        });
+    }, [item.lowest_price, item.lowest_price_pack_size, item.lowest_price_master_pack_size, item.lowest_price_gst_percent, item.lowest_price_is_custom, includeGst]);
+
+    return (
+        <motion.div
+            initial={animateEntrance ? { opacity: 0, y: 6 } : false}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, delay: animateEntrance ? Math.min(idx * 0.012, 0.18) : 0, ease: EASE }}
+            className="px-2.5 py-2 sm:px-3"
+        >
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={onOpen}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+                aria-label={`${title}, ${count} variants. View all variants`}
+                className="group relative cursor-pointer overflow-hidden rounded-2xl border outline-none transition-shadow duration-150 hover:shadow-[0_8px_20px_-12px_rgba(196,71,5,0.55)] focus-visible:ring-2 focus-visible:ring-[#de3207] active:scale-[0.995]"
+                style={{
+                    borderColor: C.brandHair,
+                    background: `linear-gradient(135deg, ${C.brandTint} 0%, #FFFFFF 70%)`,
+                    opacity: outOfStock ? 0.6 : 1,
+                }}
+            >
+                <span aria-hidden className="absolute inset-y-0 left-0 w-1" style={{ background: C.brand }} />
+
+                <div className="grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-3 py-3 pl-4 pr-3">
+                    <StackedThumbs images={images} />
+
+                    <div className="min-w-0">
+                        <span className="inline-flex items-center gap-1 text-[9.5px] font-extrabold uppercase tracking-wider" style={{ color: C.brand }}>
+                            <Layers className="h-3 w-3" strokeWidth={2.5} />
+                            Product range
+                        </span>
+                        <p
+                            className="mt-0.5 text-[14px] font-bold leading-tight tracking-wide"
+                            style={{
+                                color: C.ink, overflowWrap: "anywhere",
+                                display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                            }}
+                        >
+                            {title}
+                        </p>
+                        {(categoryLabel || subcategoryLabel) && (
+                            <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                {categoryLabel ? `${categoryLabel} · ` : ""}{subcategoryLabel}
+                            </p>
+                        )}
+                        <span
+                            className="mt-1.5 inline-flex w-fit items-center rounded-full px-2 py-[3px] text-[10.5px] font-extrabold tracking-wide"
+                            style={{ background: "#fff", color: C.brandInk, border: `1px solid ${C.brandHair}` }}
+                        >
+                            {count} variants
+                        </span>
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-end justify-center gap-1 text-right">
+                        {outOfStock ? (
+                            <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
+                                OUT OF STOCK
+                            </span>
+                        ) : !isLoggedIn ? (
+                            <LockedPriceBlock seed={item.id} unit={item.lowest_price_unit} size="row" onClick={onRequireLogin} />
+                        ) : (
+                            <>
+                                <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
+                                <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
+                            </>
+                        )}
+                    </div>
+                </div>
+
+                <div
+                    className="flex items-center justify-between border-t px-4 py-2"
+                    style={{ borderColor: C.brandHair, background: `${C.brandTint2}80` }}
+                >
+                    <span className="text-[11.5px] font-bold tracking-wide" style={{ color: C.brandInk }}>View all variants</span>
+                    <span
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-white transition-transform duration-150 group-hover:translate-x-0.5"
+                        style={{ background: C.brand }}
+                    >
+                        <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.8} />
+                    </span>
+                </div>
+            </div>
+        </motion.div>
+    );
+}
+
+// Header shown while a group's variants are on screen.
+function GroupViewStrip({ name, count, onBack }) {
+    return (
+        <div
+            className="mb-1 mt-1.5 flex items-center gap-2.5 rounded-xl border px-2 py-1.5"
+            style={{ borderColor: C.brandHair, background: C.brandTint }}
+        >
+            <button
+                type="button"
+                onClick={onBack}
+                aria-label="Back to all products"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-white transition hover:bg-black/[0.04] active:scale-95"
+                style={{ borderColor: C.brandHair }}
+            >
+                <ArrowLeft className="h-4 w-4" style={{ color: C.brandInk }} strokeWidth={2.4} />
+            </button>
+            <div className="min-w-0 flex-1 leading-tight">
+                <p className="flex items-center gap-1 text-[9.5px] font-extrabold uppercase tracking-wider" style={{ color: C.brand }}>
+                    <Layers className="h-3 w-3" strokeWidth={2.5} /> Variants of
+                </p>
+                <p className="truncate text-[13px] font-extrabold tracking-wide" style={{ color: C.ink }}>{name}</p>
+            </div>
+            {count != null && (
+                <span
+                    className="shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-extrabold tracking-wide"
+                    style={{ background: "#fff", color: C.brandInk, border: `1px solid ${C.brandHair}` }}
+                >
+                    {count} {Number(count) === 1 ? "variant" : "variants"}
+                </span>
+            )}
+        </div>
+    );
+}
+
 function RowSkeleton() {
     return (
         <div className="flex items-center gap-3 border-b px-3 py-3 sm:px-4" style={{ borderColor: C.hairSoft }}>
@@ -2578,6 +2768,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         if (pathBrand) { navigate("/home"); return; }
         const next = new URLSearchParams(searchParams);
         next.delete("brand");
+        next.delete("group");
         setSearchParams(next, { replace: true });
     };
 
@@ -2585,6 +2776,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         if (pathShop) { navigate("/home"); return; }
         const params = new URLSearchParams(location.search);
         params.delete("shop"); params.delete("via");
+        params.delete("group");
         setSearchParams(params);
     };
 
@@ -2617,7 +2809,10 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         writeHintDismissedToday();
     }, []);
     // First in-stock row gets the highlight (an out-of-stock row would be a dead end).
-    const firstHintId = useMemo(() => items.find((it) => !isFeedRowOutOfStock(it))?.id ?? null, [items]);
+    const firstHintId = useMemo(
+        () => items.find((it) => it.row_type !== "group" && !isFeedRowOutOfStock(it))?.id ?? null,
+        [items]
+    );
     // Browse mode only: store views buy via the slider, so "tap a product" doesn't apply there.
     const showHint = !hintDismissed && !shopSlug && !loading && items.length > 0;
 
@@ -2627,6 +2822,15 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     }, [openItemId, dismissHint]);
 
     const [searchParams, setSearchParams] = useSearchParams();
+
+    // Variants view: ?group=<generic_product_id>
+    const groupId = searchParams.get("group")?.trim() || null;
+    const [groupInfo, setGroupInfo] = useState(null);
+    const groupIdRef = useRef(null);
+    groupIdRef.current = groupId;
+    const prevGroupRef = useRef(groupId);
+    const feedSnapshotRef = useRef(null);   // { key, items, total, hasMore, scrollY, t }
+    const restoreScrollRef = useRef(null);
 
     // Brand view comes from the URL (?brand=Name), set by the Brands page.
     const selectedBrands = useMemo(() => (brandName ? [brandName] : EMPTY), [brandName]);
@@ -2713,6 +2917,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                     limit: Math.min(Math.max(itemsRef.current.length, PAGE_SIZE), 96),
                     offset: 0, token, shopSlug: shop,
                     brands: brandsRef.current,
+                    groupId: groupIdRef.current,
                     destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
                 });
                 if (seq !== shopRefreshSeqRef.current) return;
@@ -2764,6 +2969,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const lastRunRef = useRef({ key: null, time: 0 });
 
     const shopDestKey = shopSlug ? (buyerAddress?.pincode || "") : "";
+
+    const feedKey = `${category?.id || ""}::${q}::${token || ""}::${shopSlug || ""}::${shopDestKey}::${brandsKey}`;
 
     const [highlightedItemId, setHighlightedItemId] = useState(null);
     const rowRefs = useRef({});
@@ -2888,6 +3095,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // visibility/wallet rules hold.
     const refreshLowest = useCallback((itemId) => {
         if (shopSlugRef.current) { refreshShopFeed(); return; }
+        const target = itemsRef.current.find((it) => String(it.id) === String(itemId));
+        if (target?.row_type === "group") return;
         clearTimeout(lowestTimersRef.current[itemId]);
         lowestTimersRef.current[itemId] = setTimeout(async () => {
             const seq = (lowestSeqRef.current[itemId] = (lowestSeqRef.current[itemId] || 0) + 1);
@@ -3134,7 +3343,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         const request = fetchBrandItemsFeed({
             categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset,
             signal: controller.signal, token, shopSlug,
-            brands: selectedBrands,
+            brands: selectedBrands, groupId,
             destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
         });
 
@@ -3146,6 +3355,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 setItems((prev) => (append ? mergeUnique(prev, incoming) : incoming));
                 setTotal(res.total ?? incoming.length ?? null);
                 setHasMore(!!res.hasMore);
+                if (groupId) setGroupInfo(res.group || null);
             })
             .catch((err) => { if (err?.name !== "AbortError") setHasMore(false); })
             .finally(() => {
@@ -3153,24 +3363,44 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [category?.id, q, token, shopSlug, brandsKey, isLoggedIn, verifyLowestFor]);
+    }, [category?.id, q, token, shopSlug, brandsKey, isLoggedIn, groupId, verifyLowestFor]);
 
     useEffect(() => {
-        const key = `${category?.id || ""}::${q}::${token || ""}::${shopSlug || ""}::${shopDestKey}::${brandsKey};`
+        const key = `${feedKey}::${groupId || ""};`;
         const now = Date.now();
         const isDuplicateInvocation =
             lastRunRef.current.key === key &&
             (now - lastRunRef.current.time) < DUPLICATE_GUARD_MS;
-
         if (isDuplicateInvocation) return;
-
         lastRunRef.current = { key, time: now };
 
         clearTimeout(debounceRef.current);
         queryTokenRef.current += 1;
         closeDropdown();
-
         abortRef.current?.abort();
+
+        const groupChanged = prevGroupRef.current !== groupId;
+        prevGroupRef.current = groupId;
+
+        // Back from a variants view: restore the feed exactly as it was (no refetch).
+        const snap = feedSnapshotRef.current;
+        if (!groupId && snap) {
+            feedSnapshotRef.current = null;
+            if (snap.key === feedKey && Date.now() - snap.t < SNAPSHOT_TTL_MS) {
+                restoreScrollRef.current = snap.scrollY;
+                isFirstRun.current = false;
+                setItems(snap.items);
+                setTotal(snap.total);
+                setHasMore(snap.hasMore);
+                setLoading(false);
+                setLoadingMore(false);
+                setGroupInfo(null);
+                return;
+            }
+        }
+
+        // Entering/leaving a variants view: don't flash the previous list while loading.
+        if (groupChanged) { setItems([]); setTotal(null); setGroupInfo(null); }
         setLoading(true);
 
         if (isFirstRun.current) {
@@ -3187,7 +3417,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         );
         return () => clearTimeout(debounceRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [category?.id, q, token, shopSlug, shopDestKey, brandsKey]);
+    }, [category?.id, q, token, shopSlug, shopDestKey, brandsKey, groupId]);
 
     useEffect(() => () => sellerAbortRef.current?.abort(), []);
 
@@ -3246,14 +3476,53 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     useEffect(() => {
         if (firstScrollRef.current) { firstScrollRef.current = false; return; }
+        if (restoreScrollRef.current != null) return;   // Back from variants: restore, don't jump
         scrollListToTop();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [q, category?.id, shopSlug, brandsKey]);
+    }, [q, category?.id, shopSlug, brandsKey, groupId]);
+
+    useLayoutEffect(() => {
+        const y = restoreScrollRef.current;
+        if (y == null || loading) return;
+        restoreScrollRef.current = null;
+        if (lenis && typeof lenis.scrollTo === "function") lenis.scrollTo(y, { immediate: true });
+        else window.scrollTo(0, y);
+    }, [items, loading, lenis]);
 
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && runQuery(displayItems.length, { append: true }),
         { lookahead: 800, disabled: loading || loadingMore || !hasMore }
     );
+
+    // ── Variants view ───────────────────────────────────────────────────────
+    const clearGroup = () => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("group");
+        setSearchParams(next, { replace: true });
+    };
+
+    const openGroup = (groupItem) => {
+        dismissHint();
+        closeDropdown();
+        // Remember the feed so Back restores it instantly, at the same scroll position.
+        feedSnapshotRef.current = { key: feedKey, items, total, hasMore, scrollY: window.scrollY, t: Date.now() };
+        const next = new URLSearchParams(searchParams);
+        next.set("group", groupItem.group_id || groupItem.generic_product_id || groupItem.id);
+        setSearchParams(next, { state: { fromFeed: true, groupName: groupItem.name, groupCount: groupItem.variant_count } });
+    };
+
+    const handleGroupBack = () => (location.state?.fromFeed ? navigate(-1) : clearGroup());
+
+    // Searching or changing category from inside a variants view leaves it (search is global).
+    const filtersRef = useRef({ q, cat: category?.id });
+    useEffect(() => {
+        const prev = filtersRef.current;
+        filtersRef.current = { q, cat: category?.id };
+        if (!groupIdRef.current) return;
+        if (prev.q === q && prev.cat === category?.id) return;
+        clearGroup();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [q, category?.id]);
 
     const goToSellers = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
 
@@ -3399,7 +3668,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     const sellerName = shopInfo?.display_name || shopSlug;
     const place = [shopInfo?.city, shopInfo?.state].filter(Boolean).join(", ");
-    const thin = !!q || (!loading && items.length === 0);
+    const thin = !!q || !!groupId || (!loading && items.length === 0);
 
     let seo;
     if (brandName) {
@@ -3482,6 +3751,13 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                         clearLabel="Clear seller"
                     />
                 )}
+                {groupId && (
+                    <GroupViewStrip
+                        name={groupInfo?.name || location.state?.groupName || "Variants"}
+                        count={total ?? location.state?.groupCount ?? null}
+                        onBack={handleGroupBack}
+                    />
+                )}
 
             </div>
 
@@ -3512,12 +3788,14 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                         <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
                             <Package className="h-6 w-6" style={{ color: C.hair }} />
                             <p className="text-[13px] font-bold" style={{ color: C.ink }}>
-                                {shopSlug
-                                    ? (q ? "No products from this store match" : "No products from this store are available to you")
-                                    : (q ? "No products match that search" : "No products here yet")}
+                                {groupId
+                                    ? "No variants are available right now"
+                                    : shopSlug
+                                        ? (q ? "No products from this store match" : "No products from this store are available to you")
+                                        : (q ? "No products match that search" : "No products here yet")}
                             </p>
                             <p className="max-w-[260px] text-[11.5px] font-medium leading-snug" style={{ color: C.muted }}>
-                                {q ? "Try a different search term." : shopSlug ? "Try a different category, or see all products." : "Try a different category."}
+                                {groupId ? "Go back to see all products." : q ? "Try a different search term." : shopSlug ? "Try a different category, or see all products." : "Try a different category."}
                             </p>
                         </div>
                     ) : (
@@ -3529,7 +3807,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                 // <div key={colIdx} className="min-w-0 flex-1 sm:divide-y" style={{ borderColor: C.hairSoft }}>
                                 <div key={colIdx} className="min-w-0 flex-1" style={{ borderColor: C.hairSoft }}>
                                     {colItems.map((item) => {
-                                        const isOpen = openItemId === item.id;
+                                        const isGroup = item.row_type === "group";
+                                        const isOpen = !isGroup && openItemId === item.id;
                                         const i = displayItems.indexOf(item);
                                         return (
                                             <motion.div
@@ -3539,72 +3818,86 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                                 transition={{ duration: 0.24, ease: EASE }}
                                                 className="relative"
                                             >
-                                                <ProductRow
-                                                    item={item}
-                                                    idx={i}
-                                                    isOpen={isOpen}
-                                                    // onToggle={() => toggleDropdown(item)}
-                                                    onInfo={() => setInfoItemId(item.id)}
-                                                    onImageOpen={setLightboxSrc}
-                                                    isFollowed={pinnedNow(item)}
-                                                    onToggleFollow={() => handleToggleFollow(item)}
-                                                    includeGst={includeGst}
-                                                    isLoggedIn={isLoggedIn}
-                                                    isOwnShop={myShopActive}
-                                                    onShareProduct={() => handleShareProduct(item)}
-                                                    // onToggle={() => (shopSlug ? handleShopBuy(item) : toggleDropdown(item))}
-                                                    onToggle={() => {
-                                                        dismissHint(); // tapping any record ends the hint for today
-                                                        return shopSlug ? handleShopBuy(item) : toggleDropdown(item);
-                                                    }}
-                                                    showTapHint={showHint && item.id === firstHintId}
-                                                    shopMode={!!shopSlug}
-                                                    isOpening={openingItemId === item.id}
-                                                    onPrefetch={shopSlug ? () => { if (isLoggedIn && token) getOffer(item.id); } : undefined}
-                                                    onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
-                                                    animateEntrance={newlyAppearedIds.has(item.id)}
-                                                />
-
-                                                <AnimatePresence>
-                                                    {highlightedItemId === item.id && (
-                                                        <motion.div
-                                                            key="highlight"
-                                                            initial={{ opacity: 0 }}
-                                                            animate={{ opacity: [0, 1, 1, 0] }}
-                                                            exit={{ opacity: 0 }}
-                                                            transition={{ duration: 1.8, times: [0, 0.15, 0.8, 1], ease: "easeInOut" }}
-                                                            className="pointer-events-none absolute inset-0 z-10 rounded-xl"
-                                                            style={{ background: `${C.primary}07`, boxShadow: `0 0 0 2px ${C.primary}55 inset` }}
-                                                        />
-                                                    )}
-                                                </AnimatePresence>
-
-                                                <AnimatePresence initial={false}>
-                                                    {isOpen && (
-                                                        <SellerDropdown
+                                                {isGroup ? (
+                                                    <GroupRow
+                                                        item={item}
+                                                        idx={i}
+                                                        includeGst={includeGst}
+                                                        isLoggedIn={isLoggedIn}
+                                                        animateEntrance={newlyAppearedIds.has(item.id)}
+                                                        onOpen={() => openGroup(item)}
+                                                        onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <ProductRow
                                                             item={item}
-                                                            state={sellerState[item.id]}
-                                                            onBuySeller={(seller) => handleBuySeller(item, seller)}
-                                                            onSell={() => handleSell(item)}
+                                                            idx={i}
+                                                            isOpen={isOpen}
+                                                            // onToggle={() => toggleDropdown(item)}
+                                                            onInfo={() => setInfoItemId(item.id)}
+                                                            onImageOpen={setLightboxSrc}
+                                                            isFollowed={pinnedNow(item)}
+                                                            onToggleFollow={() => handleToggleFollow(item)}
                                                             includeGst={includeGst}
-                                                            sortMode={sellerSortMode}
                                                             isLoggedIn={isLoggedIn}
-                                                            onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
-                                                            onSortModeChange={setSellerSortMode}
-                                                            currentUserId={currentUserId}
-                                                            buyerAddress={buyerAddress}
-                                                            navigate={navigate}
-                                                            token={token}
-                                                            onOwnListingPriceApplied={(submissionId, newPrice) => patchOwnListing(item.id, submissionId, { price: newPrice })}
-                                                            onOwnListingPatched={(submissionId, patch) => patchOwnListing(item.id, submissionId, patch)}
-                                                            onOwnListingSaved={(message) => {
-                                                                if (message) showToast({ message }, 2200);
-                                                                loadSellersFor(item.id, { silent: true });
+                                                            isOwnShop={myShopActive}
+                                                            onShareProduct={() => handleShareProduct(item)}
+                                                            // onToggle={() => (shopSlug ? handleShopBuy(item) : toggleDropdown(item))}
+                                                            onToggle={() => {
+                                                                dismissHint(); // tapping any record ends the hint for today
+                                                                return shopSlug ? handleShopBuy(item) : toggleDropdown(item);
                                                             }}
-                                                            onEditOwnListing={(submissionId) => setEditingSubmissionId(submissionId)}
+                                                            showTapHint={showHint && item.id === firstHintId}
+                                                            shopMode={!!shopSlug}
+                                                            isOpening={openingItemId === item.id}
+                                                            onPrefetch={shopSlug ? () => { if (isLoggedIn && token) getOffer(item.id); } : undefined}
+                                                            onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
+                                                            animateEntrance={newlyAppearedIds.has(item.id)}
                                                         />
-                                                    )}
-                                                </AnimatePresence>
+
+                                                        <AnimatePresence>
+                                                            {highlightedItemId === item.id && (
+                                                                <motion.div
+                                                                    key="highlight"
+                                                                    initial={{ opacity: 0 }}
+                                                                    animate={{ opacity: [0, 1, 1, 0] }}
+                                                                    exit={{ opacity: 0 }}
+                                                                    transition={{ duration: 1.8, times: [0, 0.15, 0.8, 1], ease: "easeInOut" }}
+                                                                    className="pointer-events-none absolute inset-0 z-10 rounded-xl"
+                                                                    style={{ background: `${C.primary}07`, boxShadow: `0 0 0 2px ${C.primary}55 inset` }}
+                                                                />
+                                                            )}
+                                                        </AnimatePresence>
+
+                                                        <AnimatePresence initial={false}>
+                                                            {isOpen && (
+                                                                <SellerDropdown
+                                                                    item={item}
+                                                                    state={sellerState[item.id]}
+                                                                    onBuySeller={(seller) => handleBuySeller(item, seller)}
+                                                                    onSell={() => handleSell(item)}
+                                                                    includeGst={includeGst}
+                                                                    sortMode={sellerSortMode}
+                                                                    isLoggedIn={isLoggedIn}
+                                                                    onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
+                                                                    onSortModeChange={setSellerSortMode}
+                                                                    currentUserId={currentUserId}
+                                                                    buyerAddress={buyerAddress}
+                                                                    navigate={navigate}
+                                                                    token={token}
+                                                                    onOwnListingPriceApplied={(submissionId, newPrice) => patchOwnListing(item.id, submissionId, { price: newPrice })}
+                                                                    onOwnListingPatched={(submissionId, patch) => patchOwnListing(item.id, submissionId, patch)}
+                                                                    onOwnListingSaved={(message) => {
+                                                                        if (message) showToast({ message }, 2200);
+                                                                        loadSellersFor(item.id, { silent: true });
+                                                                    }}
+                                                                    onEditOwnListing={(submissionId) => setEditingSubmissionId(submissionId)}
+                                                                />
+                                                            )}
+                                                        </AnimatePresence>
+                                                    </>
+                                                )}
                                             </motion.div>
                                         );
                                     })}

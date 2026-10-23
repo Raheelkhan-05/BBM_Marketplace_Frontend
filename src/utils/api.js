@@ -892,11 +892,12 @@ export async function fetchSellersPage({ q = "", limit = 48, offset = 0, signal,
   return res.json();
 }
 
-export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, followedOnly = false, shopSlug = null, brands = [], destPincode, destState, signal, token } = {}) {
+export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, followedOnly = false, shopSlug = null, brands = [], groupId = null, destPincode, destState, signal, token } = {}) {
   const params = new URLSearchParams({ q, sort, limit, offset });
   if (categoryId) params.set("categoryId", categoryId);
   if (followedOnly) params.set("followed", "1");
   brands.forEach((b) => params.append("brand", b));
+  if (groupId) params.set("group", groupId);
   if (shopSlug) {
     params.set("shop", shopSlug);
     if (destPincode) params.set("destPincode", destPincode);
