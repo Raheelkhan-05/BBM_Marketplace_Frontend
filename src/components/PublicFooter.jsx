@@ -40,7 +40,7 @@ const CSS = `
 .bbmf-brand a.bbmf-logo{display:inline-flex;align-items:center;gap:10px;color:var(--f-ink)}
 .bbmf-brand a.bbmf-logo:hover{color:var(--f-ink)}
 .bbmf-chip{display:flex;align-items:center;background:#fff;padding:2.5px 4px}
-.bbmf-chip img{display:block;height:36px;width:auto;object-fit:contain}
+.bbmf-chip img{display:block;height:24px;width:auto;object-fit:contain}
 .bbmf-name{font:800 1.2rem/1 "Bricolage Grotesque","Figtree",system-ui,sans-serif;letter-spacing:.02em}
 .bbmf-tag{margin-top:14px;max-width:35ch;color:var(--f-ink);font:700 1.02rem/1.4 "Bricolage Grotesque","Figtree",system-ui,sans-serif}
 .bbmf-sub{margin-top:6px;max-width:44ch}
