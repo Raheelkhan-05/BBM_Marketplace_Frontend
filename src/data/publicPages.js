@@ -220,7 +220,7 @@ const servicesContent = [
     { t: "HOW AN ENGAGEMENT WORKS", k: "h1" },
     { t: "Step 1 \u2013 Consultation: you tell us your requirement and we confirm whether and how we can help.", k: "body" },
     { t: "Step 2 \u2013 Proposal and quotation: we send a written proposal with the scope, deliverables and fees.", k: "body" },
-    { t: "Step 3 \u2013 Agreement: work starts and any payment is collected only after you accept the sign the service agreement.", k: "body" },
+    { t: "Step 3 \u2013 Agreement: work starts and any payment is collected only after you accept and the sign the service agreement.", k: "body" },
     { t: "Step 4 \u2013 Delivery and invoicing: we deliver in line with the agreed scope and issue a GST-compliant tax invoice.", k: "body" },
 
     { t: "PRICING AND TERMS", k: "h1" },
