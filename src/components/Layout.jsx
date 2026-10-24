@@ -52,7 +52,7 @@ export default function Layout() {
           <div className="relative z-1">
             <Header onOpenRfq={() => setRfqOpen(true)} />
 
-            <main className={showBottomNav ? "pb-10 md:pb-0" : ""}>
+            <main className={showBottomNav ? "pb-0 md:pb-0" : ""}>
               <Outlet />
             </main>
 

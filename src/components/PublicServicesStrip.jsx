@@ -32,7 +32,7 @@ export default function PublicServicesStrip() {
     return (
         <section
             aria-labelledby="bsv-title"
-            className="mx-auto max-w-7xl px-2.5 pb-2 pt-6 sm:px-4 lg:px-6"
+            className="mx-auto max-w-7xl px-2.5 pb-2 pt-0 sm:px-4 lg:px-6"
         >
             <div
                 className="overflow-hidden rounded-3xl border p-4 sm:p-6 lg:p-8"
