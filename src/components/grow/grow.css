@@ -23,7 +23,7 @@
     background-size: 100% 760px;
     font: 500 17px/1.55 var(--f);
     padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 0;
     -webkit-font-smoothing: antialiased;
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;

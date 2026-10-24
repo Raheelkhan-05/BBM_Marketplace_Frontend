@@ -49,7 +49,8 @@ const AdminCatalogReviewPage = lazy(() => import("./pages/admin/AdminCatalogRevi
 const AdminCatalogDetailPage = lazy(() => import("./pages/admin/AdminCatalogDetailPage.jsx"));
 const BrandDetailPage = lazy(() => import("./pages/BrandDetailPage.jsx"));
 const BrandFamilyPage = lazy(() => import("./pages/BrandFamilyPage.jsx"));
-const PrivacyPolicy = lazy(() => import("./pages/legal/PrivacyPolicy.jsx"));
+// NOTE: the old ./pages/legal/PrivacyPolicy.jsx page is no longer routed (it
+// duplicated /privacy-policy). The file can be deleted.
 const SellPublishProductPage = lazy(routeImports["/seller/sell"]);
 const AdminSellerSubmissionsPage = lazy(() => import("./pages/admin/AdminSellerSubmissionsPage.jsx"));
 const OrdersPage = lazy(routeImports["/orders"]);
@@ -76,6 +77,10 @@ const AdminHelpRequestsPage = lazy(() => import("./pages/admin/AdminHelpRequests
 const SharedProductPage = lazy(() => import("./pages/SharedProductPage.jsx"));
 const TermsPage = lazy(() => import("./pages/TermsPage.jsx"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage.jsx"));
+const RefundPolicyPage = lazy(() => import("./pages/RefundPolicyPage.jsx"));
+const ContactPage = lazy(() => import("./pages/ContactPage.jsx"));
+const ServicesPage = lazy(() => import("./pages/ServicesPage.jsx"));
+const PricingPage = lazy(() => import("./pages/PricingPage.jsx"));
 const SellerStorePage = lazy(() => import("./pages/SellerStorePage.jsx"));
 const CreditPage = lazy(() => import("./pages/CreditPage.jsx"));
 const SellerMarketingPage = lazy(() => import("./pages/SellerMarketingPage.jsx"));
@@ -174,8 +179,28 @@ function App() {
                   <Route path="/login" element={<AuthPage />} />
                 </Route>
                 <Route path="/join-team" element={<JoinTeamPage />} />
+
+                {/* Public policy / information pages. Must stay reachable without
+                    login: payment-gateway and bank reviewers open them logged out.
+                    Real HTML for these routes is written at build time by
+                    scripts/prerender-public.mjs. */}
                 <Route path="/terms" element={<TermsPage />} />
                 <Route path="/privacy-policy" element={<PrivacyPage />} />
+                <Route path="/refund-policy" element={<RefundPolicyPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/services" element={<ServicesPage />} />
+                <Route path="/pricing" element={<PricingPage />} />
+
+                {/* URLs reviewers and search engines commonly guess */}
+                <Route path="/terms-and-conditions" element={<Navigate to="/terms" replace />} />
+                <Route path="/privacy" element={<Navigate to="/privacy-policy" replace />} />
+                <Route path="/refund-and-cancellation" element={<Navigate to="/refund-policy" replace />} />
+                <Route path="/refund" element={<Navigate to="/refund-policy" replace />} />
+                <Route path="/cancellation-policy" element={<Navigate to="/refund-policy" replace />} />
+                <Route path="/return-policy" element={<Navigate to="/refund-policy" replace />} />
+                <Route path="/contact-us" element={<Navigate to="/contact" replace />} />
+                <Route path="/fees" element={<Navigate to="/pricing" replace />} />
+
                 <Route path="/payment/return" element={<PaymentReturnPage />} />
 
                 {/* Single, shareable enquiry. Standalone (own header, no Layout / GrowSellerRoot)
@@ -262,8 +287,6 @@ function App() {
                   <Route path="/brand-family/:brandName" element={<BrandFamilyPage />} /> */}
 
                   <Route path="/p/:submissionId" element={<SharedProductPage />} />
-
-                  <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                 </Route>
 
                 <Route element={<GrowProviders />}>

@@ -19,6 +19,7 @@ import * as rfqApi from "../utils/rfqApi.js";
 import useRfqLive from "../hooks/useRfqLive.js";
 import useQuoteResume from "../hooks/useQuoteResume.js";
 import { loadAccess } from "../components/grow/growAccess.js";
+import PublicFooter from "../components/PublicFooter.jsx";
 import { isSellerReady } from "../components/growSeller/growSeller.js";
 import { fmtNum, timeAgo, paymentLabel, consumptionLabel, locationSummary } from "../utils/rfqUtils.js";
 import { inr, validText, etaText, shortDate } from "../utils/rfqQuoteFmt.js";
@@ -435,7 +436,9 @@ export default function GrowEnquiryDetailPage() {
                     </>
                 )}
 
-                <footer className="rqp-ft"><b>BBM Marketplace</b> · More buyers. More business. Less selling effort.</footer>
+                <div style={{ paddingBottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>
+                    <PublicFooter />
+                </div>
             </div>
 
             {!loading && item && !isMine && live && (

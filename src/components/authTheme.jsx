@@ -78,7 +78,7 @@ export const AUTH_THEME_CSS = `
 .ba{--bg:#06161C;--s:#0E2A34;--s2:#0A1F27;--line:#1D3E4A;--ink:#EAF4F5;--mute:#8CA8AF;--or:#F4511E;--bl:#1E78D6;--gr:#22A06B;--go:#FFD60A;--ot:#FF8A5C;--bt:#5DAEF7;--gt:#3FD79B;--yt:#FFD60A;--tt:#22C0D2;--ga:rgba(244,81,30,.26);--gb:rgba(30,120,214,.30);--red:#FF6B5B;--f:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;--bf:"Bricolage Grotesque","Figtree",system-ui,sans-serif;color-scheme:dark;
 position:relative;box-sizing:border-box;min-height:100vh;min-height:100dvh;overflow-x:clip;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 font:500 17px/1.55 var(--f);color:var(--ink);background-color:var(--bg);background-image:radial-gradient(640px 420px at 0 0,var(--ga),transparent 70%),radial-gradient(640px 420px at 100% 0,var(--gb),transparent 70%);background-repeat:no-repeat;-webkit-font-smoothing:antialiased}
-.ba[data-theme="light"]{--bg:#F5F9FA;--s:#FFFFFF;--s2:#EDF3F5;--line:#DCE6E9;--ink:#08222B;--mute:#52686F;--ot:#C23A0B;--bt:#0F63B5;--gt:#12794A;--yt:#8A6500;--tt:#0D6E7E;--ga:rgba(244,81,30,.11);--gb:rgba(30,120,214,.13);--red:#C0341D;color-scheme:light}
+.ba[data-theme="light"]{--bg:#FFFFFF;--s:#FFFFFF;--s2:#EDF3F5;--line:#DCE6E9;--ink:#08222B;--mute:#52686F;--ot:#C23A0B;--bt:#0F63B5;--gt:#12794A;--yt:#8A6500;--tt:#0D6E7E;--ga:rgba(244,81,30,.11);--gb:rgba(30,120,214,.13);--red:#C0341D;color-scheme:light}
 .ba *{box-sizing:border-box;margin:0}
 .ba [hidden]{display:none!important}
 .ba button,.ba input{font-family:var(--f);color:inherit}

@@ -1,8 +1,11 @@
 // src/components/LegalDocument.jsx
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Helmet } from "react-helmet-async";
 import { Menu, X } from "lucide-react";
 import { AUTH_THEME_CSS, AuthHeader, useAuthTheme } from "./authTheme.jsx";
+import PublicFooter from "./PublicFooter.jsx";
+import { COMPANY } from "../config/company.js";
 
 // slugify a heading into a stable, unique anchor id
 function slugify(text, index) {
@@ -69,14 +72,14 @@ const Body = memo(function Body({ items, sectionRefs, preserveLineBreaks }) {
 });
 
 const LEGAL_CSS = `
-.ba .lw{max-width:1120px}
+.ba .lw{max-width:1120px;}
 .ba .lh{padding:36px 0 28px;border-bottom:1px solid var(--line)}
 .ba .lh .pi{width:52px;height:52px;border-radius:17px;background:var(--go);color:#06161C;display:grid;place-items:center;margin-bottom:18px}
 .ba .lh h1{font:900 clamp(1.9rem,6vw,3rem)/1.06 var(--f);letter-spacing:-.03em}
 .ba .lh .in{color:var(--mute);margin-top:14px;max-width:64ch;font-size:1.05rem}
 .ba .lh .lu{margin-top:18px;font-size:.78rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--tt)}
 
-.ba .lbody{display:grid;grid-template-columns:minmax(0,1fr);gap:32px;padding:32px 0 72px}
+.ba .lbody{display:grid;grid-template-columns:minmax(0,1fr);gap:32px;padding:32px 0 24px}
 @media(min-width:1024px){.ba .lbody{grid-template-columns:260px minmax(0,1fr);gap:48px}}
 .ba .lside{display:none}
 @media(min-width:1024px){.ba .lside{display:block}}
@@ -104,10 +107,25 @@ const LEGAL_CSS = `
 .ba .msh .top .tcap{margin:0;padding:0}
 .ba .msh .top button{width:36px;height:36px;border:0;border-radius:50%;background:none;display:grid;place-items:center;color:var(--mute)}
 .ba .msh .top button:hover{background:var(--s2);color:var(--ink)}
-@media(max-width:560px){.ba .lh{padding:26px 0 22px}.ba .lbody{padding:24px 0 56px}}
+.ba .pfw{color:var(--mute);padding-bottom:24px}
+@media(max-width:560px){.ba .lh{padding:26px 0 22px}.ba .lbody{padding:24px 0 24px}}
 `;
 
-export default function LegalDocument({ content, icon: Icon, title, intro, lastUpdated, disclaimer, preserveLineBreaks = false }) {
+export default function LegalDocument({
+    content,
+    icon: Icon,
+    title,
+    intro,
+    lastUpdated,
+    disclaimer,
+    preserveLineBreaks = false,
+    path,
+    metaTitle,
+    metaDescription,
+    // "/home" is a public route, so the back arrow works for visitors who
+    // arrived from the footer. Pass backTo="/login" to keep the old behaviour.
+    backTo = "/home",
+}) {
     const { theme, toggleTheme } = useAuthTheme();
     const { items, toc } = useStructure(content);
     const [activeId, setActiveId] = useState(toc[0]?.id);
@@ -149,11 +167,16 @@ export default function LegalDocument({ content, icon: Icon, title, intro, lastU
 
     return (
         <div className="ba" data-theme={theme}>
+            <Helmet>
+                <title>{metaTitle || title}</title>
+                <meta name="description" content={metaDescription || intro || title} />
+                <link rel="canonical" href={`${COMPANY.siteUrl}${path || ""}`} />
+            </Helmet>
             <style>{AUTH_THEME_CSS + LEGAL_CSS}</style>
 
             <AuthHeader
                 theme={theme} onToggleTheme={toggleTheme}
-                backTo="/login" backAlways
+                backTo={backTo} backAlways
                 actions={
                     <button
                         type="button" className="bt tgl"
@@ -208,6 +231,8 @@ export default function LegalDocument({ content, icon: Icon, title, intro, lastU
                     </article>
                 </div>
             </main>
+
+            <PublicFooter />
         </div>
     );
 }

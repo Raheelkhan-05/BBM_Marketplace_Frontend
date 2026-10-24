@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { House } from "lucide-react";
 import { goTo } from "./scrollTo.js";
+import PublicFooter from "../PublicFooter.jsx";
 import SmartLink from "../SmartLink.jsx";
 import "./grow.css";
 // import BottomNavStrip from "../BottomNavStrip.jsx";
@@ -146,12 +147,9 @@ export default function GrowLayout() {
                 <Outlet />
             </main>
 
-            <footer className="ft" style={{ paddingBottom: "calc(96px + env(safe-area-inset-bottom, 0px))" }}>
-                <div className="wrap">
-                    <span><b>BBM Marketplace</b> · More buyers. More business. Less selling effort.</span>
-                    <span>People • Product • Partnership</span>
-                </div>
-            </footer>
+
+            <PublicFooter dock />
+
 
             {/* <BottomNavStrip /> */}
         </div>

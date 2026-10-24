@@ -13,8 +13,7 @@ import { LightboxVisibilityContext } from "../context/LightboxVisibilityContext.
 import BottomNavStrip from "./BottomNavStrip.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
-
-const HIDE = [/^\/admin/, /^\/seller\/wallet/, /^\/grow\/bulk/, /^\/chat\/[^/]+/, /^\/orders\//, /^\/seller\/orders\//, /^\/login/, /^\/terms/, /^\/privacy-policy/, /^\/payment\/return/, /^\/sales(\/|$)/];
+const HIDE = [/^\/admin/, /^\/seller\/wallet/, /^\/grow\/bulk/, /^\/chat\/[^/]+/, /^\/orders\//, /^\/seller\/orders\//, /^\/login/, /^\/terms/, /^\/privacy-policy/, /^\/refund-policy/, /^\/contact/, /^\/services/, /^\/pricing/, /^\/payment\/return/, /^\/sales(\/|$)/];
 
 export default function AppShell() {
     const { pathname } = useLocation();
@@ -35,8 +34,7 @@ export default function AppShell() {
 
     const { profile } = useAuth();
     const isSales = profile?.team?.role === "salesperson";
-    // const salesExempt = /^\/(login|terms|privacy-policy)(\/|$)/.test(pathname);
-    const salesExempt = /^\/(login|terms|privacy-policy|sales|payment\/return)(\/|$)/.test(pathname);
+    const salesExempt = /^\/(login|terms|privacy-policy|refund-policy|contact|services|pricing|sales|payment\/return)(\/|$)/.test(pathname);
     if (isSales && !salesExempt) return <Navigate to="/sales/dashboard" replace />;
 
     return (

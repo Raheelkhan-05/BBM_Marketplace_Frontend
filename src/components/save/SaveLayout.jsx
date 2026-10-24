@@ -16,6 +16,7 @@ import SaveTabs from "./SaveTabs.jsx";
 import { goTo } from "../grow/scrollTo.js";
 import { MENU_ROUTES } from "../menuItems.js";
 import useSaveBadges from "./useSaveBadges.js";
+import PublicFooter from "../PublicFooter.jsx";
 import "./save.css";
 import "./save-home.css";
 import "./save-tabs.css";
@@ -120,17 +121,15 @@ function Shell() {
     useEffect(() => { toTop(); }, [section]);
 
     return (
-        <div className="sv svl pb-20">
-            {/* `.hd` + `.wrap` come from save.css; SaveTabs finds this header as its sibling to pin itself under it. */}
+        <div className="sv svl">
             <SaveHeader />
-
             <SaveTabs />
-
             <main>
                 <Suspense fallback={<Skeleton />}>
                     <Outlet />
                 </Suspense>
             </main>
+            <PublicFooter dock />
         </div>
     );
 }
@@ -144,11 +143,12 @@ export default function SaveLayout() {
     if (!isLoggedIn) {
         if (pathname.replace(/\/+$/, "") === "/save") {
             return (
-                <div className="sv svl svl-pub pb-20" id="save-top">
+                <div className="sv svl svl-pub" id="save-top">
                     <SavePublicHeader />
                     <main>
                         <Outlet />
                     </main>
+                    <PublicFooter dock />
                 </div>
             );
         }

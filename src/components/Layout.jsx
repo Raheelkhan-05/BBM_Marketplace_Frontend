@@ -11,8 +11,11 @@
 import { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Header from "./Header.jsx";
-import Footer from "./Footer.jsx";
+// import Footer from "./Footer.jsx";
 import { BuyerAddressProvider } from "../context/BuyerAddressContext.jsx";
+import PublicFooter from "./PublicFooter.jsx";
+import PublicServicesStrip from "./PublicServicesStrip.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 import { OrderResumeProvider } from "../context/OrderResumeContext.jsx";
 import { useLightboxVisibility } from "../context/LightboxVisibilityContext.jsx";
 import OrderNotificationToast from "./OrderNotificationToast.jsx";
@@ -26,6 +29,9 @@ export { useLightboxVisibility };
 
 export default function Layout() {
   const { pathname } = useLocation();
+  const { isLoggedIn, initializing } = useAuth();
+  const isHome = pathname === "/home" || pathname === "/home";
+
   const isAdminPage = pathname.startsWith("/admin");
   const isWalletPage = pathname.startsWith("/seller/wallet");
   const isChatDetailPage = /^\/chat\/[^/]+/.test(pathname);
@@ -50,9 +56,10 @@ export default function Layout() {
               <Outlet />
             </main>
 
-            <div className="hidden md:block">
-              <Footer />
-            </div>
+            {isHome && !isLoggedIn && !initializing && <PublicServicesStrip />}
+
+
+            <PublicFooter dock />
           </div>
 
           {/* Desktop only: mobile's helpline lives inside the BottomNavStrip menu. */}

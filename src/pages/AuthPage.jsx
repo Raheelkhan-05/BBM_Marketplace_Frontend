@@ -927,7 +927,9 @@ function Landing({
       <footer>
         <div className="w">
           <span><b>BBM</b> · People • Product • Partnership</span>
-          <span>By continuing, you agree to our <a href="/terms">Terms</a> and <a href="/privacy-policy">Privacy Policy</a>.</span>
+          <span>
+            <a href="/terms">Terms</a> · <a href="/privacy-policy">Privacy</a> · <a href="/refund-policy">Refunds</a> · <a href="/contact">Contact</a> · <a href="/services">Services</a> · <a href="/pricing">Pricing</a>
+          </span>
         </div>
       </footer>
     </main>
