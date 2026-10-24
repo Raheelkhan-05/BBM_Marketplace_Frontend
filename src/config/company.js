@@ -12,6 +12,8 @@
 // This file must stay plain JS with no imports from React, because the
 // prerender script (scripts/prerender-public.mjs) loads it in Node.
 
+import { MARKETING_SERVICES } from "../shared/marketingServices.js";
+
 export const COMPANY = {
     legalName: "Brand Brigade Marketing Private Limited",
     brand: "BBM",
@@ -40,12 +42,12 @@ export const COMPANY = {
 // Leave null to publish the policy without a hard number.
 export const REFUND_INITIATION_DAYS = null;
 
-// Public commission schedule shown on /pricing. Add one row per category, e.g.
-// { category: "Packaged food", commission: "2% of Transaction Value" }
-// While empty, the table section is omitted from the page.
-export const COMMISSION_SCHEDULE = [
-    // { category: "Marketplace transactions", commission: "From 0.25% of Transaction Value, charged only when an order is generated" },
-];
+// Public rate card shown on /pricing. Generated from shared/marketingServices.js,
+// so a repricing there updates this page automatically. Do not hand-edit.
+export const COMMISSION_SCHEDULE = MARKETING_SERVICES.map((s) => ({
+    category: s.label,
+    commission: `${s.percent}% of Transaction Value${s.required ? " (required, always included)" : " (optional)"}`,
+}));
 
 export const SERVICES = [
     { name: "Strategic Sourcing", text: "Supplier discovery, quotation comparison and negotiation support." },

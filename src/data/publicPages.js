@@ -18,6 +18,14 @@ import {
     addressOneLine,
 } from "../config/company.js";
 import { normalizeLegalContent, lines } from "../lib/legalContent.js";
+// NOTE: assumes the shared folder is src/shared. If it is at the project root,
+// use "../../shared/marketingServices.js" (and the same in src/config/company.js).
+import {
+    MARKETING_SERVICES,
+    MARKETING_FEE_GST_PERCENT,
+    sumServicePercent,
+    feeExample,
+} from "../shared/marketingServices.js";
 
 const NEW_PAGE_UPDATED = "October 24, 2026";
 
@@ -215,12 +223,12 @@ const servicesContent = [
     { t: "We help businesses launch products under their own brand: manufacturer matching, specification and packaging coordination, quality checkpoints, and production and delivery follow-up.", k: "body" },
 
     { t: "6. BBM B2B MARKETPLACE", k: "h1" },
-    { t: `The ${COMPANY.brand} marketplace at ${COMPANY.siteUrl} is a technology platform where verified businesses list, quote, buy and sell products. Orders, quotations, purchase orders and sales orders are recorded on the platform. For advance-paid orders, payments are processed through our payment partners and released to the seller after delivery, as described in our Terms & Conditions and Refund & Cancellation Policy.`, k: "body" },
+    { t: `The ${COMPANY.brand} marketplace at ${COMPANY.siteUrl} is a technology platform where verified businesses list, quote, buy and sell products. Sellers can also choose marketing and promotion services for their listings, such as search visibility, buyer discovery, targeted promotions and promotion through the BBM distributor and dealer network. Orders, quotations, purchase orders and sales orders are recorded on the platform. For advance-paid orders, payments are processed through our payment partners and released to the seller after delivery, as described in our Terms & Conditions and Refund & Cancellation Policy.`, k: "body" },
 
     { t: "HOW AN ENGAGEMENT WORKS", k: "h1" },
     { t: "Step 1 \u2013 Consultation: you tell us your requirement and we confirm whether and how we can help.", k: "body" },
     { t: "Step 2 \u2013 Proposal and quotation: we send a written proposal with the scope, deliverables and fees.", k: "body" },
-    { t: "Step 3 \u2013 Agreement: work starts and any payment is collected only after you accept and the sign the service agreement.", k: "body" },
+    { t: "Step 3 \u2013 Agreement: work starts and any payment is collected only after you accept the proposal and sign the service agreement.", k: "body" },
     { t: "Step 4 \u2013 Delivery and invoicing: we deliver in line with the agreed scope and issue a GST-compliant tax invoice.", k: "body" },
 
     { t: "PRICING AND TERMS", k: "h1" },
@@ -229,42 +237,50 @@ const servicesContent = [
 
 /* ------------------------------------------------------------------ */
 /* Pricing & Fees                                                      */
+/* Marketplace rates come from shared/marketingServices.js through     */
+/* COMMISSION_SCHEDULE, so this page always matches the seller app.    */
 /* ------------------------------------------------------------------ */
 
-const commissionSection = COMMISSION_SCHEDULE.length
-    ? [
-        { t: "COMMISSION SCHEDULE", k: "h1" },
-        { t: COMMISSION_SCHEDULE.map((r) => `${r.category}: ${r.commission}`).join("\n"), k: "body" },
-    ]
-    : [];
+const inr = (n) => Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+
+const requiredKeys = MARKETING_SERVICES.filter((s) => s.required).map((s) => s.key);
+const MIN_PERCENT = sumServicePercent(requiredKeys);
+const MAX_PERCENT = sumServicePercent(MARKETING_SERVICES.map((s) => s.key));
+const EXAMPLE_ORDER_VALUE = 100000;
+const example = feeExample(EXAMPLE_ORDER_VALUE, MIN_PERCENT);
+
+const rateLines = MARKETING_SERVICES.map(
+    (s) => `${s.label}: ${s.percent}% of Transaction Value${s.required ? " (required)" : " (optional)"}. ${s.description}`
+).join("\n");
 
 const pricingContent = [
     { t: "1. HOW WE CHARGE", k: "h1" },
-    { t: `${COMPANY.legalName} charges for (a) use of the ${COMPANY.brand} B2B marketplace, through a commission on Transactions, and (b) business services such as strategic sourcing, brand marketing, export/import management, distribution agency services and private label execution, through quoted service fees. All amounts are in Indian Rupees (INR) and are exclusive of GST and other applicable taxes unless stated otherwise.`, k: "body" },
+    { t: `${COMPANY.legalName} charges for (a) use of the ${COMPANY.brand} B2B marketplace, through a commission in the form of marketing and promotion service fees on orders generated on the Platform, and (b) business services such as strategic sourcing, brand marketing, export/import management, distribution agency services and private label execution, through quoted service fees. All amounts are in Indian Rupees (INR). Marketplace fees are exclusive of ${MARKETING_FEE_GST_PERCENT}% GST, which is charged in addition.`, k: "body" },
     { t: "Fees are made known to you before you are onboarded for a service and before any payout is processed. Browsing the platform does not incur any charge.", k: "body" },
 
-    { t: "2. MARKETPLACE COMMISSION", k: "h1" },
-    { t: "A commission applies to each Transaction. It may be a fixed amount or a percentage of the Transaction Value, depending on the product or category, and is shown to the Seller before listing and before an Order is confirmed. The commission for a Transaction is calculated on the Transaction Value recorded on the Platform and is deducted from the Seller\u2019s Wallet as described below.", k: "body" },
+    { t: "2. MARKETPLACE COMMISSION: MARKETING AND PROMOTION SERVICES", k: "h1" },
+    { t: "A Seller chooses a marketing plan for each product listing from the services below. The fee is the total of the percentages of the selected services, applied to the Transaction Value of each order generated for that listing. It is charged only when an order is generated; listing a product is free of charge. The Product Listing service is required for every listing, and all other services are optional. A Seller can change the services selected for a listing, and the change applies to future orders.", k: "body" },
+    ...(rateLines ? [{ t: rateLines, k: "body" }] : []),
+    { t: `Total fee: ${MIN_PERCENT}% of the Transaction Value with the required service only, and up to ${MAX_PERCENT}% if every service is selected. ${MARKETING_FEE_GST_PERCENT}% GST is charged on the fee. Example: on an order of \u20B9${inr(EXAMPLE_ORDER_VALUE)} with the required service only, the fee is \u20B9${inr(example.fee)} plus \u20B9${inr(example.gst)} GST, a total of \u20B9${inr(example.total)}, deducted from the Seller\u2019s Wallet.`, k: "body" },
+    { t: "Listings created before this plan was introduced may continue at the percentage previously applied to them until the Seller selects services for the listing.", k: "body" },
 
-    ...commissionSection,
-
-    { t: "3. SELLER WALLET AND PREPAID COMMISSION", k: "h1" },
-    { t: "Each Participant has a Wallet, an internal ledger on the Platform used to record commissions, Fees, refunds, penalties and adjustments. Where required, a Seller keeps a prepaid balance in the Wallet to cover commissions. Commission is deducted from the Wallet when the relevant Transaction occurs. If the balance is insufficient, the shortfall is recorded as an amount due and further Transactions may be restricted until it is paid. The Wallet is not a bank account or deposit account.", k: "body" },
+    { t: "3. SELLER WALLET AND PREPAID BALANCE", k: "h1" },
+    { t: "Each Participant has a Wallet, an internal ledger on the Platform (shown as credits in the app) used to record fees, commissions, refunds, penalties and adjustments. Where required, a Seller keeps a prepaid balance in the Wallet to cover marketplace fees. The fee and its GST are deducted from the Wallet when an order is generated. If the balance is insufficient, the shortfall is recorded as an amount due and further Transactions may be restricted until it is paid. The Wallet is not a bank account or deposit account.", k: "body" },
 
     { t: "4. PAYMENT PROCESSING CHARGES", k: "h1" },
     { t: "Payment gateway, payment processing and ordinary bank charges for receiving advance payments on the Platform are borne by us, unless the commercial terms for a particular Transaction state otherwise.", k: "body" },
 
     { t: "5. PAYOUTS AND SETTLEMENT", k: "h1" },
-    { t: "For advance-paid Transactions the Buyer\u2019s payment is held until delivery. After the Seller marks the Transaction as delivered, the Buyer has one (1) Business Day to raise a dispute. If there is none, the amount, less the commission, Fees and any refunds, deductions or adjustments properly due, is released to the Seller automatically. A dispute places the amount on hold until it is resolved. The time for funds to reach the Seller\u2019s bank account after release depends on the banking channel. Credit sales between Buyer and Seller are paid directly between them and are not held or settled by us.", k: "body" },
+    { t: "For advance-paid Transactions the Buyer\u2019s payment is held until delivery. After the Seller marks the Transaction as delivered, the Buyer has one (1) Business Day to raise a dispute. If there is none, the amount, less any refunds, deductions or adjustments properly due, is released to the Seller automatically. A dispute places the amount on hold until it is resolved. The time for funds to reach the Seller\u2019s bank account after release depends on the banking channel. Credit sales between Buyer and Seller are paid directly between them and are not held or settled by us.", k: "body" },
 
     { t: "6. BUSINESS SERVICES: CONSULTATION AND SERVICE FEES", k: "h1" },
     { t: "Fees for sourcing, marketing, export/import, distribution and private label services depend on scope, volume and duration. We share a written proposal stating the scope, the fee (fixed, retainer, per-project or commission-based), payment milestones and applicable taxes. No work starts and no payment is collected before you accept it.", k: "body" },
 
     { t: "7. TAXES", k: "h1" },
-    { t: "GST and other statutory taxes are charged on our fees and commissions at the applicable rate, and a tax invoice is issued. Sellers are responsible for the taxes on the sale of their products.", k: "body" },
+    { t: `GST and other statutory taxes are charged on our fees at the applicable rate (${MARKETING_FEE_GST_PERCENT}% on marketplace marketing and promotion fees), and a tax invoice is issued. Sellers are responsible for the taxes on the sale of their products.`, k: "body" },
 
     { t: "8. CHANGES TO FEES", k: "h1" },
-    { t: "We may revise our fees, commissions and charges from time to time. Changes are communicated through the Platform or your registered contact details and apply from the date stated. Fees agreed in a written service agreement apply as stated in that document.", k: "body" },
+    { t: "We may revise our fees, commissions and charges from time to time. Changes are communicated through the Platform or your registered contact details and apply from the date stated. A change to the published percentages does not alter the plan already saved for a listing or an order already generated; it applies when the Seller next saves the plan. Fees agreed in a written service agreement apply as stated in that document.", k: "body" },
 
     { t: "9. QUESTIONS", k: "h1" },
     { t: lines(`Email: ${COMPANY.email}`, `Phone: ${COMPANY.phoneDisplay}`), k: "body" },
@@ -334,8 +350,8 @@ export const PUBLIC_PAGES = {
         path: "/pricing",
         title: "Pricing & Fees",
         metaTitle: `Pricing & Fees | ${COMPANY.brand}`,
-        metaDescription: `Commission, wallet, payout and service-fee terms for the ${COMPANY.brand} B2B marketplace and business services.`,
-        intro: "What we charge, when we charge it, and how payouts are calculated. All amounts are in INR and exclusive of GST unless stated.",
+        metaDescription: `Marketplace marketing and promotion fees, wallet, payout and service-fee terms for the ${COMPANY.brand} B2B marketplace and business services.`,
+        intro: "What we charge, when we charge it, and how payouts are calculated. All amounts are in INR. GST is charged in addition where stated.",
         lastUpdated: NEW_PAGE_UPDATED,
         disclaimer: "Fees shown here are the published terms. A written service agreement accepted by you for a specific engagement applies as stated in that document.",
         preserveLineBreaks: true,
