@@ -183,6 +183,8 @@ import EditListingModal from "../seller/listingForm/EditListingModal.jsx";
 import { useLenis } from "../../providers/SmoothScrollProvider.jsx";
 import { toBuyerSellerPayload } from "../../utils/buyerSellerPayload";
 import ActiveViewStrip from "./ActiveViewStrip.jsx";
+import GroupBannerCarousel, { GroupBannerCard } from "./GroupBannerCarousel.jsx";
+import useGroupBanners from "../../hooks/useGroupBanners";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
@@ -3490,7 +3492,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     }, [items, loading, lenis]);
 
     const sentinelRef = useInfiniteScrollSentinel(
-        () => !loadingMore && hasMore && runQuery(displayItems.length, { append: true }),
+        () => !loadingMore && hasMore && runQuery(items.length, { append: true }),
         { lookahead: 800, disabled: loading || loadingMore || !hasMore }
     );
 
@@ -3658,7 +3660,27 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     }, []);
 
     const columnCount = useResponsiveColumnCount();
-    const columns = bucketItemsByColumn(displayItems, columnCount);
+
+    // ── Admin-curated group banners ──────────────────────────────────────────
+    // Not shown inside a single seller's store. In the plain Home view, banner groups
+    // move out of the grid into ONE carousel (admin-ordered). In filtered views
+    // (search / category / brand) they show as a 16:9 banner card in their column.
+    const bannersEnabled = !shopSlug;
+    const groupBanners = useGroupBanners(bannersEnabled);
+    const bannerById = useMemo(
+        () => new Map(groupBanners.map((b) => [String(b.group_id), b])),
+        [groupBanners]
+    );
+    const groupKeyOf = (it) => String(it.group_id || it.generic_product_id || it.id);
+    const showBannerCarousel =
+        bannersEnabled && groupBanners.length > 0 && !q.trim() && !category?.id && !brandName && !groupId;
+    const columnSource = showBannerCarousel
+        ? displayItems.filter((it) => !(it.row_type === "group" && bannerById.has(groupKeyOf(it))))
+        : displayItems;
+    const openBanner = (b) =>
+        openGroup({ group_id: b.group_id, name: b.name, variant_count: b.variant_count });
+
+    const columns = bucketItemsByColumn(columnSource, columnCount);
 
     const seoPath = pathBrand ? `/brands/${encodeURIComponent(brandName)}`
         : pathShop ? `/sellers/${encodeURIComponent(shopSlug)}`
@@ -3761,6 +3783,12 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
             </div>
 
+            {showBannerCarousel && (
+                <div className="-mx-3 sm:mx-0">
+                    <GroupBannerCarousel banners={groupBanners} perView={columnCount} onOpen={openBanner} />
+                </div>
+            )}
+
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
                 (-mx-3 cancels a parent's assumed px-3 padding; tweak to match your
                 actual page padding) with only a top/bottom hairline (border-y) —
@@ -3819,15 +3847,24 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                                 className="relative"
                                             >
                                                 {isGroup ? (
-                                                    <GroupRow
-                                                        item={item}
-                                                        idx={i}
-                                                        includeGst={includeGst}
-                                                        isLoggedIn={isLoggedIn}
-                                                        animateEntrance={newlyAppearedIds.has(item.id)}
-                                                        onOpen={() => openGroup(item)}
-                                                        onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
-                                                    />
+                                                    bannerById.has(groupKeyOf(item)) ? (
+                                                        <GroupBannerCard
+                                                            banner={bannerById.get(groupKeyOf(item))}
+                                                            idx={i}
+                                                            animateEntrance={newlyAppearedIds.has(item.id)}
+                                                            onOpen={() => openGroup(item)}
+                                                        />
+                                                    ) : (
+                                                        <GroupRow
+                                                            item={item}
+                                                            idx={i}
+                                                            includeGst={includeGst}
+                                                            isLoggedIn={isLoggedIn}
+                                                            animateEntrance={newlyAppearedIds.has(item.id)}
+                                                            onOpen={() => openGroup(item)}
+                                                            onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
+                                                        />
+                                                    )
                                                 ) : (
                                                     <>
                                                         <ProductRow
