@@ -1687,8 +1687,6 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                         <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
                             OUT OF STOCK
                         </span>
-                    ) : !isLoggedIn ? (
-                        <LockedPriceBlock seed={item.id} unit={item.lowest_price_unit} size="row" onClick={onRequireLogin} />
                     ) : priceVerifying ? (
                         <div className="flex flex-col items-end gap-1.5 py-1">
                             <span className="h-2.5 w-14 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
@@ -2315,6 +2313,8 @@ function SellerDropdown({
 
     const [savingOwnPriceId, setSavingOwnPriceId] = useState(null);
 
+    const [slideTick, setSlideTick] = useState(0);
+
     // Runs when the own-listing modal's slide-to-confirm completes. Saves the
     // price, the staged promotion plan, or both, then always re-syncs the row
     // from the server (which also repairs the optimistic price after a failure).
@@ -2470,8 +2470,6 @@ function SellerDropdown({
                                                             Doesn't ship to {buyerAddress?.city}{buyerAddress?.state ? `, ${buyerAddress.state}` : ""}
                                                         </span>
                                                     </div>
-                                                ) : !isLoggedIn ? (
-                                                    <LockedPriceBlock seed={s.submission_id} unit={s.unit} size="pack" onClick={onRequireLogin} />
                                                 ) : isOwn ? (
                                                     <OwnListingPriceCell
                                                         seller={s}
@@ -2491,8 +2489,8 @@ function SellerDropdown({
                                                                     label="Swipe to buy"
                                                                     busyLabel="Opening…"
                                                                     doneLabel="Opening…"
-                                                                    resetKey={s.submission_id}
-                                                                    onConfirm={() => onBuySeller(s)}
+                                                                    resetKey={`${s.submission_id}:${slideTick}`}
+                                                                    onConfirm={() => { onBuySeller(s); if (!isLoggedIn) setSlideTick((t) => t + 1); }}
                                                                 />
                                                             </div>
                                                         </div>
@@ -2658,8 +2656,6 @@ function GroupRow({ item, idx, includeGst, isLoggedIn, animateEntrance, onOpen, 
                             <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
                                 OUT OF STOCK
                             </span>
-                        ) : !isLoggedIn ? (
-                            <LockedPriceBlock seed={item.id} unit={item.lowest_price_unit} size="row" onClick={onRequireLogin} />
                         ) : (
                             <>
                                 <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
@@ -3532,24 +3528,9 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // with this seller. The decision (or explicit "no preference") is
     // looked up from the DB, per buyer-seller pair — not per device.
     const handleBuySeller = (item, seller) => {
+        if (!effectiveLoggedIn) { requireLogin(); return; }
+        if (!token) { requireLogin("You need to login to place an order with this seller."); return; }
         closeDropdown();
-
-        if (!effectiveLoggedIn) {
-            requireLogin();
-            return;
-        }
-        if (!token) {
-            requireLogin("You need to login to place an order with this seller.");
-            return;
-        }
-
-        // Open the modal in the same tick as the click — no network round
-        // trips gating it. BuyNowModal resolves the shipping address and
-        // transport preference itself once its own "shipping" phase mounts
-        // <AddressBook> (see its lastCheckedRouteRef effect) — that's the
-        // exact same fetchBuyerTransportPreference logic that used to run
-        // here, just deferred to when it's actually needed instead of
-        // blocking the click.
         setBuyState({ item, seller });
     };
 
