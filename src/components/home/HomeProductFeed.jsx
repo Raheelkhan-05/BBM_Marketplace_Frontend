@@ -1051,7 +1051,7 @@ function BrandBadge({ name, image }) {
             alt=""
             loading="lazy"
             decoding="async"
-            className="h-6 w-auto shrink-0 rounded-full object-cover"
+            className=" w-8 h-6 shrink-0 rounded-md object-cover"
         />
     ) : (
         <span
@@ -1101,7 +1101,8 @@ function ProductImage({ src, alt, onOpen, priority = false }) {
             loading={priority ? "eager" : "lazy"}
             decoding="async"
             onError={() => setFailed(true)}
-            onClick={(e) => { e.stopPropagation(); onOpen(src); }}
+            // onClick={(e) => { e.stopPropagation(); onOpen(src); }}
+            onClick={(e) => { e.stopPropagation(); onOpen(); }}
             className="h-full w-full object-cover cursor-zoom-in"
         />
     );
@@ -1215,6 +1216,22 @@ function FollowButton({ following, onToggle }) {
 // CategoryStrip's isHiddenCategory.
 function isHiddenLabel(name) {
     return typeof name === "string" && name.trim().toLowerCase() === "pending";
+}
+
+// All images for a product, main image first, de-duplicated.
+// Adjust the field names to whatever your feed row actually returns.
+function getProductImages(item) {
+    const raw = [
+        item.image,
+        ...(Array.isArray(item.images) ? item.images : []),
+        ...(Array.isArray(item.gallery_images) ? item.gallery_images : []),
+    ];
+    const out = [];
+    for (const entry of raw) {
+        const url = typeof entry === "string" ? entry : entry?.url || entry?.image_url;
+        if (url && !out.includes(url)) out.push(url);
+    }
+    return out;
 }
 
 function isFeedRowOutOfStock(item) {
@@ -1632,7 +1649,12 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                         className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl"
                         style={{ borderColor: C.hair, background: C.imgBg }}
                     >
-                        <ProductImage src={item.image} alt="" onOpen={onImageOpen} priority={idx < 3} />
+                        <ProductImage
+                            src={item.image}
+                            alt=""
+                            onOpen={() => onImageOpen(getProductImages(item))}
+                            priority={idx < 3}
+                        />
                     </span>
                 </div>
 
@@ -2747,7 +2769,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [lightboxSrc, setLightboxSrc] = useState(null);
+    const [lightboxImages, setLightboxImages] = useState(null); // string[] | null
 
     const [editingSubmissionId, setEditingSubmissionId] = useState(null);
     const [infoItemId, setInfoItemId] = useState(null);
@@ -3854,7 +3876,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                                             isOpen={isOpen}
                                                             // onToggle={() => toggleDropdown(item)}
                                                             onInfo={() => setInfoItemId(item.id)}
-                                                            onImageOpen={setLightboxSrc}
+                                                            onImageOpen={setLightboxImages}
                                                             isFollowed={pinnedNow(item)}
                                                             onToggleFollow={() => handleToggleFollow(item)}
                                                             includeGst={includeGst}
@@ -4029,7 +4051,13 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 </AnimatePresence>
             </div>
 
-            {lightboxSrc && <ImageLightbox src={lightboxSrc} alt="" onClose={() => setLightboxSrc(null)} />}
+            {lightboxImages && lightboxImages.length > 0 && (
+                <ImageLightbox
+                    images={lightboxImages}
+                    alt=""
+                    onClose={() => setLightboxImages(null)}
+                />
+            )}
         </>
     );
 }
