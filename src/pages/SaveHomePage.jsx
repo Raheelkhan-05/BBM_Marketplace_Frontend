@@ -125,9 +125,12 @@ function QuoteItem({ q, unit, totalUnits }) {
 
 function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) {
     const quotes = quotesOf(item);
+    const isSales = item.source === "sales";
+    const live = item.status === "approved" && !isSales;
+    const canEdit = !isSales && ["pending_review", "rejected"].includes(item.status);
+
     const count = quoteCountOf(item);
-    const live = item.status === "approved";
-    const canEdit = ["pending_review", "rejected"].includes(item.status);
+
     const canClose = ["pending_review", "approved"].includes(item.status);
     const totalUnits = Math.round(item.quantity * item.packSize * 1e6) / 1e6; // the buyer's quantity in the individual unit
 
@@ -152,16 +155,31 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
                 <div className="sh-ddh"><span>Quotes from suppliers</span><span>{timeAgo(item.publishedAt || item.createdAt)}</span></div>
 
                 {item.status === "rejected" && item.reviewNote && <p className="sh-rej">{item.reviewNote}</p>}
-                {quotes.length > 0 && (
-                    <div className="sh-qts" data-lenis-prevent>
-                        {quotes.map((q, i) => <QuoteItem key={q.id ?? i} q={q} unit={item.unit} totalUnits={totalUnits} />)}
+
+
+                {isSales ? (
+                    <div className="sh-qts">
+                        {(item.salesQuotes || []).length === 0 && (
+                            <div className="sh-ddm"><b>No quotations sent yet</b>{item.salespersonName || "Your salesperson"} manages this enquiry in the Sales workspace.</div>
+                        )}
+                        {(item.salesQuotes || []).map((q) => (
+                            <div className="sh-qt" key={q.id}>
+                                <div><b>Quotation · {q.itemsCount} item{q.itemsCount === 1 ? "" : "s"}</b>
+                                    <small>{timeAgo(q.createdAt)}{q.channels?.length ? ` · via ${q.channels.join(", ")}` : ""}</small></div>
+                                <div className="sh-qp"><b>{inrFmt(q.total)}</b><small>incl. GST</small></div>
+                            </div>
+                        ))}
                     </div>
+                ) : (
+                    <>
+                        {quotes.length > 0 && (<div className="sh-qts" data-lenis-prevent>{quotes.map((q, i) => <QuoteItem key={q.id ?? i} q={q} unit={item.unit} totalUnits={totalUnits} />)}</div>)}
+                        {message && item.status !== "rejected" && <div className="sh-ddm"><b>{message[0]}</b>{message[1]}</div>}
+                    </>
                 )}
-                {message && item.status !== "rejected" && <div className="sh-ddm"><b>{message[0]}</b>{message[1]}</div>}
 
                 <div className="sh-dda">
                     <button type="button" className="sh-btn sm" onClick={onInfo}><Info size={15} />Details</button>
-                    <button type="button" className="sh-btn sm" onClick={onOpenPage}><ExternalLink size={15} />Enquiry page</button>
+                    {!isSales && <button type="button" className="sh-btn sm" onClick={onOpenPage}><ExternalLink size={15} />Enquiry page</button>}
                     {live && <button type="button" className="sh-btn sm" onClick={onShare}><Share2 size={15} />Share</button>}
                     {canEdit && <button type="button" className="sh-btn sm" onClick={onEdit}><Pencil size={15} />{item.status === "rejected" ? "Fix & resubmit" : "Edit"}</button>}
                     {canClose && <button type="button" className="sh-btn sm" onClick={onClose}><XCircle size={15} />Close</button>}
@@ -173,7 +191,9 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
 
 function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onClose, onZoom }) {
     const total = Math.round(item.quantity * item.packSize * 1e6) / 1e6; // one quantity, in the individual unit
-    const count = quoteCountOf(item);
+    const isSales = item.source === "sales";
+    const count = isSales ? (item.salesQuotes || []).length : quoteCountOf(item);
+    const statusLabel = isSales && item.status === "approved" ? "Open" : (STATUS_LABEL[item.status] || item.status);
     const images = (item.images || []).filter(Boolean);
     const hasImage = images.length > 0;
     const toggleKey = (e) => {
@@ -202,9 +222,10 @@ function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onCl
                 <div className="sh-in">
                     <p className="sh-rn">{toTitle(item.productName)}</p>
                     <p className="sh-rq">{fmtNum(total)} {item.unit}</p>
+                    {isSales && <p className="sh-rq" style={{ opacity: .75 }}>For {item.customerName || item.customerGstin || "customer"}{item.salespersonName ? ` · by ${item.salespersonName}` : ""}</p>}
                     <div className="sh-rqt">
-                        <span>Quotes received<b className={count > 0 ? "has" : ""}>{count}</b></span>
-                        <span className={`sh-st ${item.status}`}><i />{STATUS_LABEL[item.status] || item.status}</span>
+                        <span>{isSales ? "Quotations sent" : "Quotes received"}<b className={count > 0 ? "has" : ""}>{count}</b></span>
+                        <span className={`sh-st ${item.status}`}><i />{statusLabel}</span>
                     </div>
                 </div>
                 <div className="sh-rt">

@@ -1,3 +1,5 @@
+// hooks/useSalesRealtime.js
+
 import { useCallback, useEffect, useRef } from "react";
 import { useSocket } from "../context/SocketContext.jsx";
 

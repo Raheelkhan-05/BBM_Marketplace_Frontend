@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useOutletContext } from "react-router-dom";
-import { Users, BadgeCheck, Clock, Send, Receipt, UserPlus, ChevronRight, Inbox } from "lucide-react";
+import { Users, Plus, BadgeCheck, Clock, Send, Receipt, UserPlus, ChevronRight, Inbox } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import useSalesRealtime from "../hooks/useSalesRealtime.js";
 import { fetchSalesSummary } from "../utils/salesApi.js";
@@ -77,7 +77,7 @@ export default function SalesDashboardPage() {
 
             <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", marginTop: 16 }}>
                 <button type="button" className="gk-btn or blk" onClick={() => nav("/sales/customers?add=1")}><UserPlus size={18} />Add customer</button>
-                <button type="button" className="gk-btn blk" onClick={() => nav("/sales/enquiries?new=1")}><Send size={18} />Post RFQ</button>
+                <button type="button" className="gk-btn blk" onClick={() => nav("/sales/enquiries?new=1")}><Plus size={18} />New enquiry</button>
             </div>
         </div>
     );

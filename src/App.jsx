@@ -119,6 +119,8 @@ const SalesDashboardPage = lazy(() => import("./pages/SalesDashboardPage.jsx"));
 const SalesCustomersPage = lazy(() => import("./pages/SalesCustomersPage.jsx"));
 const SalesEnquiriesPage = lazy(() => import("./pages/SalesEnquiriesPage.jsx"));
 const SalesPipelinePage = lazy(() => import("./pages/SalesPipelinePage.jsx"));
+const SalesThreadPage = lazy(() => import("./pages/SalesThreadPage.jsx"));
+
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -329,6 +331,7 @@ function App() {
                     <Route path="dashboard" element={<SalesDashboardPage />} />
                     <Route path="customers" element={<SalesCustomersPage />} />
                     <Route path="enquiries" element={<SalesEnquiriesPage />} />
+                    <Route path="enquiries/:threadId" element={<SalesThreadPage />} />
                     <Route path="pipeline" element={<SalesPipelinePage />} />
                   </Route>
                 </Route>

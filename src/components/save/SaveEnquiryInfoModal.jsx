@@ -40,17 +40,21 @@ export default function SaveEnquiryInfoModal({ item, quoteCount = 0, onClose, on
     }, []);
 
     const total = Math.round(item.quantity * item.packSize * 1e6) / 1e6;
-    const live = item.status === "approved";
-    const canEdit = ["pending_review", "rejected"].includes(item.status);
+    const isSales = item.source === "sales";
+    const live = item.status === "approved" && !isSales;
+    const canEdit = !isSales && ["pending_review", "rejected"].includes(item.status);
     const canClose = ["pending_review", "approved"].includes(item.status);
     const images = (item.images || []).filter(Boolean);
     const rows = [
+        ...(isSales ? [["Customer", item.customerName || "–"], ["GST number", item.customerGstin || "–"],
+        ["Contact", [item.customerPhone, item.customerEmail].filter(Boolean).join(" · ")],
+        ["Salesperson", item.salespersonName || "–"]] : []),
         ["Quantity needed", `${fmtNum(total)} ${item.unit}`],
         ["Equivalent products", item.acceptEquivalent ? "Acceptable" : "Same product only"],
         ["Payment", paymentLabel(item)],
         ["Consumption", consumptionLabel(item)],
         ["Deliver to", [item.deliveryAddress, item.deliveryCity, item.deliveryState, item.deliveryPincode].filter(Boolean).join(", ")],
-        ["Suppliers", locationSummary(item.supplierLocations)],
+        ["Suppliers", isSales ? "Private to your team" : locationSummary(item.supplierLocations)],
         ["Quotes received", String(quoteCount)],
         ["Posted", timeAgo(item.publishedAt || item.createdAt)],
     ];
@@ -90,7 +94,7 @@ export default function SaveEnquiryInfoModal({ item, quoteCount = 0, onClose, on
                     </div>
 
                     <div className="sh-wf">
-                        <button type="button" className="sh-btn go" onClick={onOpenPage}><ExternalLink size={16} />Open enquiry page</button>
+                        {!isSales && <button type="button" className="sh-btn go" onClick={onOpenPage}><ExternalLink size={16} />Open enquiry page</button>}
                         {live && <button type="button" className="sh-btn" onClick={onShare}><Share2 size={16} />Share</button>}
                         {canEdit && <button type="button" className="sh-btn" onClick={onEdit}><Pencil size={16} />{item.status === "rejected" ? "Fix & resubmit" : "Edit"}</button>}
                         {canClose && <button type="button" className="sh-btn" onClick={onCloseEnquiry}><XCircle size={16} />Close</button>}
