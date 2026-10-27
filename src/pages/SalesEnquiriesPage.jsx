@@ -1,13 +1,15 @@
 // src/pages/SalesEnquiriesPage.jsx
 // The salesperson's own enquiry threads, newest activity first (like a chat list):
 // customer company, product, when the enquiry was posted (the same customer can ask for the same product again).
-import { useCallback, useEffect, useRef, useState } from "react";
+// Opens instantly from cache and refreshes quietly; hovering/touching a row warms up its thread.
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
-import { Plus, Search, X, Receipt, Inbox } from "lucide-react";
+import { Plus, Search, X, Receipt, Inbox, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import useRfqLive from "../hooks/useRfqLive.js";
 import { fetchThreads } from "../utils/salesThreadApi.js";
+import { cacheGet, cacheSet, nsOf, prefetchThread } from "../utils/salesThreadCache.js";
 import SalesNewEnquirySheet from "../components/sales/SalesNewEnquirySheet.jsx";
 import { dateTime, initialOf, listTime, qty } from "../components/sales/salesThreadFmt.js";
 import "../components/sales/sales-threads.css";
@@ -16,29 +18,54 @@ const PAGE = 15;
 const MAX_PAGE = 100; // server cap
 const mergeUnique = (prev, inc) => { const s = new Set(prev.map((i) => i.id)); return [...prev, ...inc.filter((i) => !s.has(i.id))]; };
 
-function ThreadRow({ t }) {
+const ThreadRow = memo(function ThreadRow({ t, onWarm }) {
     const closed = t.status === "closed";
+    const warm = () => onWarm(t.id);
+
     return (
-        <Link to={`/sales/enquiries/${t.id}`} className={`st-row${closed ? " closed" : ""}`}>
-            <span className="st-av" aria-hidden="true">{initialOf(t.displayName)}</span>
+        <Link
+            to={`/sales/enquiries/${t.id}`}
+            className={`st-row no-avatar${closed ? " closed" : ""}`}
+            onPointerEnter={warm}
+            onFocus={warm}
+        >
             <span className="st-row-m">
                 <span className="st-row-1">
                     <b>{t.displayName}</b>
-                    <time dateTime={t.lastActivityAt}>{listTime(t.lastActivityAt)}</time>
+                    <time dateTime={t.lastActivityAt}>
+                        {listTime(t.lastActivityAt)}
+                    </time>
                 </span>
-                <span className="st-row-2">{t.productName} · {qty(t.quantity)} {t.unit}</span>
+
+                <span className="st-row-2">
+                    {t.productName} · {qty(t.quantity)} {t.unit}
+                </span>
+
+                {t.lastPreview && (
+                    <span className="st-row-4">{t.lastPreview}</span>
+                )}
+
                 <span className="st-row-3">
                     <small>Posted {dateTime(t.createdAt)}</small>
                     <span className="st-badges">
-                        {t.quotesCount > 0 && <span className="st-bd"><Receipt size={12} />{t.quotesCount}</span>}
-                        {closed && <span className="st-bd mute">Closed</span>}
+                        {t.quotesCount > 0 && (
+                            <span
+                                className="st-bd"
+                                title={`${t.quotesCount} quotation${t.quotesCount === 1 ? "" : "s"} sent`}
+                            >
+                                <Receipt size={12} />
+                                {t.quotesCount}
+                            </span>
+                        )}
+                        {closed && (
+                            <span className="st-bd mute">Closed</span>
+                        )}
                     </span>
                 </span>
-                {t.lastPreview && <span className="st-row-4">{t.lastPreview}</span>}
             </span>
         </Link>
     );
-}
+});
 
 export default function SalesEnquiriesPage() {
     const { token } = useAuth();
@@ -69,17 +96,33 @@ export default function SalesEnquiriesPage() {
         abortRef.current?.abort();
         const ctl = new AbortController(); abortRef.current = ctl;
         const my = ++seqRef.current;
+        const key = `${nsOf(token)}|list|${q}|${filter}`;
+
+        // Show the cached copy immediately, then refresh it quietly.
+        let have = itemsRef.current.length;
+        if (!append && !silent) {
+            const c = cacheGet(key);
+            if (c) {
+                setItems(c.items); setTotal(c.total); setHasMore(c.hasMore);
+                if (c.counts) setCounts(c.counts);
+                setError(""); setLoading(false);
+                itemsRef.current = c.items; have = c.items.length; silent = true;
+            }
+        }
+
         if (append) setLoadingMore(true); else if (!silent) { setError(""); setLoading(true); }
         try {
             // a silent refresh re-reads what is on screen, so scrolled pages don't collapse
-            const limit = silent && !append ? Math.min(Math.max(PAGE, itemsRef.current.length), MAX_PAGE) : PAGE;
+            const limit = silent && !append ? Math.min(Math.max(PAGE, have), MAX_PAGE) : PAGE;
             const res = await fetchThreads(token, { q, status: filter === "all" ? "" : filter, limit, offset, signal: ctl.signal });
             if (my !== seqRef.current) return;
             if (!res.success) { if (!silent) { setError(res.message || "Couldn't load your enquiries."); setHasMore(false); } return; }
-            setItems(append ? mergeUnique(itemsRef.current, res.items || []) : res.items || []);
+            const next = append ? mergeUnique(itemsRef.current, res.items || []) : res.items || [];
+            setItems(next);
             setTotal(res.total ?? 0); setHasMore(!!res.hasMore);
             if (res.counts) setCounts(res.counts);
             setError("");
+            cacheSet(key, { items: next, total: res.total ?? 0, hasMore: !!res.hasMore, counts: res.counts || cacheGet(key)?.counts || null });
         } catch (e) {
             if (e?.name !== "AbortError" && !silent && my === seqRef.current) setHasMore(false);
         } finally {
@@ -96,12 +139,13 @@ export default function SalesEnquiriesPage() {
         { lookahead: 600, disabled: loading || loadingMore || !hasMore },
     );
 
+    const warm = useCallback((id) => prefetchThread(token, id), [token]);
     const chips = [["all", "All", counts.all], ["open", "Open", counts.open], ["closed", "Closed", counts.closed]];
 
     return (
-        <div className="gd">
+        <div className="gd st-listpage">
             <div className="gk-ph" style={{ marginTop: 22 }}>
-                <div><h1>Enquiries</h1><p>Price requests you take from customers. Only you can see them.</p></div>
+                <div><h1>RFQs</h1><p>Price requests you take from customers. Only you can see them.</p></div>
                 <button type="button" className="st-btn pri" onClick={() => setCreating(true)}><Plus size={16} />New enquiry</button>
             </div>
 
@@ -120,8 +164,8 @@ export default function SalesEnquiriesPage() {
             {loading && items.length === 0 ? (
                 <div className="st-list">{[0, 1, 2, 3].map((i) => <div key={i} className="st-sk tall" />)}</div>
             ) : (
-                <div className="st-list">
-                    {items.map((t) => <ThreadRow key={t.id} t={t} />)}
+                <div className={`st-list${loading ? " busy" : ""}`}>
+                    {items.map((t) => <ThreadRow key={t.id} t={t} onWarm={warm} />)}
                     {!loading && !error && items.length === 0 && (
                         <div className="st-empty-card">
                             <Inbox size={22} />
@@ -133,6 +177,7 @@ export default function SalesEnquiriesPage() {
                 </div>
             )}
 
+            {loadingMore && <p className="st-more" aria-live="polite"><Loader2 size={16} className="st-spin" />Loading more…</p>}
             {!loading && error && <div className="st-empty-card"><b>{error}</b><button type="button" className="st-btn" onClick={() => load(0, false)}>Try again</button></div>}
             {hasMore && !loading && <div ref={sentinelRef} style={{ height: 4 }} />}
 

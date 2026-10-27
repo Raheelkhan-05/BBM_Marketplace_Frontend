@@ -381,3 +381,12 @@
     font-size: .8rem;
     font-weight: 600;
 }
+
+/* open enquiry: no bottom gap under the composer, and the toast sits above it */
+.gs-main.is-thread {
+    padding-bottom: 0;
+}
+
+.gs-main.is-thread~.gs-toast {
+    bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+}

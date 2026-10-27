@@ -23,7 +23,14 @@ async function call(path, { token, method = "GET", body, signal, params } = {}) 
 
 export const fetchThreads = (token, { q, status, limit, offset, signal } = {}) => call("", { token, signal, params: { q, status, limit, offset } });
 export const createThread = (token, payload) => call("", { token, method: "POST", body: payload });
-export const fetchThread = (token, id, { before, signal } = {}) => call(`/${id}`, { token, signal, params: { before } });
+
+// Thread entries are paged by cursor:
+//   fetchThread(t, id, { limit })                      -> newest page
+//   fetchThread(t, id, { before, beforeId, limit })    -> the page just older than that entry
+//   fetchThread(t, id, { after })                      -> only what is new since that time (cheap refresh)
+export const fetchThread = (token, id, { before, beforeId, after, limit, signal } = {}) =>
+    call(`/${id}`, { token, signal, params: { before, beforeId, after, limit } });
+
 export const updateThread = (token, id, payload) => call(`/${id}`, { token, method: "PATCH", body: payload });
 export const setThreadStatus = (token, id, status) => call(`/${id}/status`, { token, method: "PATCH", body: { status } });
 export const addThreadEntry = (token, id, payload) => call(`/${id}/entries`, { token, method: "POST", body: payload });

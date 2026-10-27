@@ -7,6 +7,10 @@ import SalesTabs from "./SalesTabs.jsx";
 import "../growSeller/grow-modules.css";
 import "./sales.css";
 
+// /sales/enquiries/<id>: an open conversation. It has its own back button, Quote button and composer,
+// so the section tabs are hidden here (they would only cover them).
+const THREAD_PATH = /^\/sales\/enquiries\/[^/]+\/?$/;
+
 export default function SalesLayout() {
     const { isLoggedIn, profile, initializing, signOut, refreshProfile } = useAuth();
     const { pathname } = useLocation();
@@ -18,6 +22,7 @@ export default function SalesLayout() {
     const say = useCallback((m) => { setToast(m); clearTimeout(tt.current); tt.current = setTimeout(() => setToast(""), 2600); }, []);
     useEffect(() => () => clearTimeout(tt.current), []);
 
+    const onThread = THREAD_PATH.test(pathname);
     const logoUrl = profile?.businessProfile?.logo_url || "";
     useEffect(() => { setLogoFailed(false); }, [logoUrl]);
 
@@ -103,10 +108,10 @@ export default function SalesLayout() {
                 </div>
             </header>
 
-            {/* Same component behaviour as GrowTabs; finds .gs-hd above as its sibling to pin itself under it. */}
-            <SalesTabs />
+            {/* Hidden inside an open enquiry so the thread's own back / Quote / composer controls are never covered. */}
+            {!onThread && <SalesTabs />}
 
-            <main className="gs-main">
+            <main className={`gs-main${onThread ? " is-thread" : ""}`}>
                 <Suspense fallback={<div className="gk-skel" style={{ height: 140, marginTop: 24 }} aria-busy="true" />}>
                     <Outlet context={{ say, company }} />
                 </Suspense>
