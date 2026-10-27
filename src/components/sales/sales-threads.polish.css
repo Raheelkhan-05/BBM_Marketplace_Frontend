@@ -1,0 +1,326 @@
+/* src/components/sales/sales-threads.polish.css
+   Import AFTER sales-threads.css:
+       import "../components/sales/sales-threads.css";
+       import "../components/sales/sales-threads.polish.css";
+   Covers: smooth open/close for sheets, dialogs and the "+" menu, composer pinned to the bottom,
+   mobile-friendly composer, and tracking-wide (0.025em) across the whole page. */
+
+/* ---------- tracking-wide + motion tokens ---------- */
+.st-page,
+.st-listpage,
+.st-ov {
+    --st-track: .025em;
+    /* Tailwind's tracking-wide */
+    --st-ease: cubic-bezier(.22, 1, .36, 1);
+    /* soft "settle" curve */
+    letter-spacing: var(--st-track);
+}
+
+/* form controls don't inherit letter-spacing by default */
+.st-ov button,
+.st-ov input,
+.st-ov select,
+.st-ov textarea,
+.st-page button,
+.st-page input,
+.st-page textarea,
+.st-listpage button,
+.st-listpage input {
+    letter-spacing: inherit;
+}
+
+/* ---------- page fills the screen, composer always at the bottom ---------- */
+/* --st-min is set from JS (viewport height minus whatever sits above the page). */
+.gd.st-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    min-height: var(--st-min, 100dvh);
+}
+
+.st-page>.st-head,
+.st-page>.st-cust,
+.st-page>.st-rem,
+.st-page>.st-specs {
+    flex: none;
+}
+
+.st-log {
+    flex: 1 1 auto;
+    /* takes all free space, so the dock is pushed down */
+    min-height: 0;
+    /* replaces the old 40vh */
+}
+
+.st-dock {
+    flex: none;
+    margin-top: auto;
+    padding-top: 12px;
+    background: linear-gradient(to top, var(--st-bg) 72%, transparent);
+}
+
+/* ---------- smooth sheets / dialogs (enter + exit) ---------- */
+.st-ov {
+    background: rgba(6, 28, 35, .5);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    animation: st-ov-in .34s ease both;
+}
+
+.st-sheet {
+    animation: st-sheet-in .46s var(--st-ease) both;
+    will-change: transform, opacity;
+}
+
+.st-ov.out {
+    pointer-events: none;
+    animation: st-ov-out .28s ease both;
+}
+
+.st-ov.out .st-sheet {
+    animation: st-sheet-out .28s cubic-bezier(.4, 0, 1, 1) both;
+}
+
+@keyframes st-ov-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes st-ov-out {
+    from {
+        opacity: 1;
+    }
+
+    to {
+        opacity: 0;
+    }
+}
+
+@keyframes st-sheet-in {
+    from {
+        opacity: 0;
+        transform: translateY(36px) scale(.97);
+    }
+
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes st-sheet-out {
+    from {
+        opacity: 1;
+        transform: none;
+    }
+
+    to {
+        opacity: 0;
+        transform: translateY(30px) scale(.97);
+    }
+}
+
+/* confirm dialog */
+.st-confirm .st-sh-b {
+    padding: 22px 22px 10px;
+}
+
+.st-confirm .st-sh-f {
+    flex-wrap: nowrap;
+    gap: 10px;
+    padding: 12px 22px calc(18px + env(safe-area-inset-bottom, 0px));
+    border-top: 0;
+}
+
+.st-confirm .st-sh-f .st-btn {
+    flex: 1;
+    min-height: 46px;
+    border-radius: 12px;
+}
+
+@media (max-width: 639px) {
+
+    /* grab handle on the phone bottom sheet */
+    .st-confirm::before {
+        content: "";
+        align-self: center;
+        width: 38px;
+        height: 4px;
+        margin-top: 8px;
+        border-radius: 999px;
+        background: var(--st-line);
+    }
+}
+
+/* ---------- smooth "+" menu (always mounted, toggled by .show) ---------- */
+.st-menu {
+    min-width: min(244px, calc(100vw - 32px));
+    animation: none;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(10px) scale(.95);
+    transition: opacity .2s ease, transform .3s var(--st-ease), visibility 0s linear .3s;
+}
+
+.st-menu.show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    transition-delay: 0s;
+}
+
+.st-menu button {
+    min-height: 46px;
+    transition: background .15s;
+}
+
+/* ---------- customer card opens gently ---------- */
+.st-cust-b {
+    animation: st-drop .3s var(--st-ease) both;
+}
+
+.st-cust-a svg {
+    transition: transform .28s var(--st-ease);
+}
+
+@keyframes st-drop {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+}
+
+/* ---------- composer ---------- */
+.st-compose {
+    gap: 6px;
+    padding: 4px 0 calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+.st-bar {
+    gap: 6px;
+    padding: 6px;
+    border-radius: 26px;
+    background: var(--st-s);
+    transition: border-color .2s, box-shadow .25s;
+}
+
+.st-ta {
+    min-height: 40px;
+    padding: 10px 4px;
+    line-height: 1.4;
+}
+
+.st-plus,
+.st-send {
+    width: 40px;
+    height: 40px;
+}
+
+.st-plus svg {
+    transition: transform .3s var(--st-ease);
+}
+
+/* send: grey until there is something to send, then orange */
+.st-send {
+    background: var(--st-pri);
+    transition: background .25s, color .25s, transform .2s var(--st-ease);
+}
+
+.st-send:disabled {
+    opacity: 1;
+    background: var(--st-s3);
+    color: var(--st-mute);
+}
+
+.st-send svg {
+    transition: transform .25s var(--st-ease);
+}
+
+.st-send:not(:disabled) svg {
+    transform: translateX(1px) rotate(-8deg);
+}
+
+/* attached files: one scrolling row, never a tall stack */
+.st-pend {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0 4px 2px;
+    scrollbar-width: none;
+}
+
+.st-pend::-webkit-scrollbar {
+    display: none;
+}
+
+.st-chip {
+    flex: none;
+    min-height: 30px;
+}
+
+.st-bar-h {
+    letter-spacing: var(--st-track);
+}
+
+/* phones */
+@media (max-width: 639px) {
+    .st-compose {
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+
+    .st-bar {
+        border-radius: 24px;
+        padding: 5px;
+    }
+
+    .st-plus,
+    .st-send {
+        width: 42px;
+        height: 42px;
+    }
+
+    .st-ta {
+        padding: 11px 2px;
+    }
+
+    .st-jump {
+        right: 4px;
+    }
+}
+
+/* tablets / desktop */
+@media (min-width: 640px) {
+    .st-bar {
+        padding: 7px 8px;
+        border-radius: 30px;
+    }
+
+    .st-ta {
+        padding: 10px 8px;
+    }
+}
+
+/* ---------- reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+
+    .st-ov,
+    .st-sheet,
+    .st-ov.out,
+    .st-ov.out .st-sheet,
+    .st-cust-b {
+        animation: none;
+    }
+
+    .st-menu,
+    .st-send,
+    .st-send svg,
+    .st-cust-a svg {
+        transition: none;
+    }
+}

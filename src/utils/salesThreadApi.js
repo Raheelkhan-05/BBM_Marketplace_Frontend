@@ -1,4 +1,4 @@
-// src/utils/salesThreadApi.js: salesperson enquiry threads (replaces salesEnquiryApi.js)
+// src/utils/salesThreadApi.js: salesperson enquiry threads
 import * as api from "./api.js";
 const API_BASE = api.API_BASE || import.meta.env?.VITE_API_BASE_URL || "/api";
 
@@ -21,8 +21,12 @@ async function call(path, { token, method = "GET", body, signal, params } = {}) 
     }
 }
 
+// status: "" | "open" | "won" | "lost"
 export const fetchThreads = (token, { q, status, limit, offset, signal } = {}) => call("", { token, signal, params: { q, status, limit, offset } });
 export const createThread = (token, payload) => call("", { token, method: "POST", body: payload });
+
+// The company's product catalog (used to tag a product when starting an enquiry).
+export const fetchCatalogProducts = (token, { q, limit, offset, signal } = {}) => call("/products", { token, signal, params: { q, limit, offset } });
 
 // Thread entries are paged by cursor:
 //   fetchThread(t, id, { limit })                      -> newest page
@@ -32,10 +36,12 @@ export const fetchThread = (token, id, { before, beforeId, after, limit, signal 
     call(`/${id}`, { token, signal, params: { before, beforeId, after, limit } });
 
 export const updateThread = (token, id, payload) => call(`/${id}`, { token, method: "PATCH", body: payload });
+// status: "open" (reopen) | "won" | "lost"
 export const setThreadStatus = (token, id, status) => call(`/${id}/status`, { token, method: "PATCH", body: { status } });
 export const addThreadEntry = (token, id, payload) => call(`/${id}/entries`, { token, method: "POST", body: payload });
 export const fetchQuoteProducts = (token, id, { q, limit, offset, signal } = {}) => call(`/${id}/products`, { token, signal, params: { q, limit, offset } });
 export const sendThreadQuote = (token, id, payload) => call(`/${id}/quotes`, { token, method: "POST", body: payload });
+export const setThreadReminder = (token, id, reminderAt) => call(`/${id}/reminder`, { token, method: "PATCH", body: { reminderAt } });
 export const resendThreadQuote = (token, id, quoteId, channels) => call(`/${id}/quotes/${quoteId}/resend`, { token, method: "POST", body: { channels } });
 const signThreadFile = (token, id, file) => call(`/${id}/attachments/sign`, { token, method: "POST", body: { name: file.name, type: file.type, size: file.size } });
 

@@ -5,18 +5,20 @@
 // loads older entries in batches (OLDER_PAGE) without moving the screen. Live refreshes only ask for what's new.
 // The composer is its own component, so typing never re-renders the log.
 // Sending is optimistic: the entry shows instantly (local: true) and is saved in the background, in order.
+//
+// Composer: one full-width bar. "+" opens a menu (Add files, Send quotation, Mark as won, Mark as lost).
+// Closing an enquiry always records an outcome: won or lost. A closed enquiry can be reopened.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import {
     ArrowLeft, ArrowDown, Send, Paperclip, X, FileText, FileSpreadsheet, Download, Receipt, Loader2, ChevronDown,
-    Phone, Mail, RotateCw, AlertCircle, BadgeCheck,
+    Phone, Mail, RotateCw, AlertCircle, BadgeCheck, Plus, Trophy, XCircle, RotateCcw, Bell
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import useRfqLive from "../hooks/useRfqLive.js";
 import { useGstLookup } from "../hooks/useSalesSheet.js";
-import {
-    fetchThread, updateThread, setThreadStatus, addThreadEntry, uploadThreadFile, resendThreadQuote,
-} from "../utils/salesThreadApi.js";
+import { fetchThread, updateThread, setThreadStatus, setThreadReminder, addThreadEntry, uploadThreadFile, resendThreadQuote } from "../utils/salesThreadApi.js";
 import { cacheGet, cacheSet, threadKey, FIRST_PAGE, OLDER_PAGE } from "../utils/salesThreadCache.js";
 import SalesQuoteSheet from "../components/sales/SalesQuoteSheet.jsx";
 import {
@@ -24,6 +26,7 @@ import {
     clock, dateTime, dayLabel, fileSize, inr, qty, dateShort,
 } from "../components/sales/salesThreadFmt.js";
 import "../components/sales/sales-threads.css";
+import "../components/sales/sales-threads.polish.css";
 
 const byTime = (a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1);
 // Merge by id. Returns the SAME array when nothing changed, so quiet refreshes cause no re-render.
@@ -52,6 +55,8 @@ const mergeIncoming = (prev, inc) => {
 };
 const CH = { whatsapp: "WhatsApp", email: "Email" };
 const COMPOSER_MAX = 136;   // about 5 lines, then the textarea scrolls inside itself
+// Which side the "+" button sits on. true = left (like ChatGPT, send button on the right); false = mirrored.
+const PLUS_ON_LEFT = true;
 
 // Page scroll helpers (the page itself scrolls; Lenis is used when present).
 const jump = (y) => {
@@ -65,6 +70,10 @@ const smoothToBottom = () => {
     window.scrollTo({ top: y, behavior: "smooth" });
 };
 const distFromBottom = () => document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
+
+const stateOf = (t) => (t.status !== "closed" ? { k: "open", l: "Open" }
+    : t.outcome === "won" ? { k: "won", l: "Won" }
+        : t.outcome === "lost" ? { k: "lost", l: "Lost" } : { k: "closed", l: "Closed" });
 
 function FileIcon({ name }) {
     return /\.(xlsx?|csv)$/i.test(name || "") ? <FileSpreadsheet size={18} /> : <FileText size={18} />;
@@ -121,7 +130,7 @@ const Entry = memo(function Entry({ e, busyKey, onRetry, onResend, onDiscard }) 
     if (e.kind === "system") return <div className="st-sys"><span>{e.body}</span><time>{clock(e.createdAt)}</time></div>;
     return (
         <div className={`st-msg${e.clientKey ? " pop" : ""}`}>
-            <div className={`st-bub${e.failed ? " failed" : ""}`}>
+            <div className={`st-bub${e.failed ? " failed" : ""}${e.kind === "quote" ? " quote" : ""}`}>
                 {e.kind === "quote" ? <QuoteCard e={e} busyKey={busyKey} onRetry={onRetry} /> : e.body && <p className="st-body">{e.body}</p>}
                 {e.attachments?.length > 0 && (
                     <div className="st-atts">{e.attachments.map((a) => <Attachment key={a.path} a={a} />)}</div>
@@ -167,7 +176,7 @@ const CustomerCard = memo(function CustomerCard({ token, thread, onSaved, say })
         const g = cleanGstin(d.gstin);
         if (!GSTIN_RE.test(g) || g === thread.customerGstin) return undefined;
         let live = true;
-        gst.run(g).then((name) => { if (live && name && !String(d.name || "").trim()) setD((s) => ({ ...s, name })); });
+        gst.run(g).then((name) => { if (live && name) setD((s) => ({ ...s, name })); });   // the GST records are the reliable name
         return () => { live = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [d.gstin, open]);
@@ -220,23 +229,147 @@ const CustomerCard = memo(function CustomerCard({ token, thread, onSaved, say })
     );
 });
 
-// Owns its own state (text, files), so keystrokes never re-render the thread above it.
+// Won / lost confirmation.
+function OutcomeDialog({ kind, open, busy, onCancel, onConfirm, onExited }) {
+    useEffect(() => {
+        const k = (e) => { if (e.key === "Escape" && !busy && open) onCancel(); };
+        document.addEventListener("keydown", k);
+        return () => document.removeEventListener("keydown", k);
+    }, [busy, open, onCancel]);
+    useEffect(() => {
+        if (open) return undefined;
+        const t = setTimeout(onExited, 280);   // unmount after the exit animation
+        return () => clearTimeout(t);
+    }, [open, onExited]);
+    const won = kind === "won";
+    return createPortal(
+        // <div className="st-ov" data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onCancel(); }}>
+        <div className={`st-ov${open ? "" : " out"}`} data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget && !busy && open) onCancel(); }}>
+            <div className="st-sheet st-confirm" role="alertdialog" aria-modal="true" aria-label={`Mark as ${kind}`}>
+                <div className="st-sh-b">
+                    <div className={`st-okc ${won ? "" : "lost"}`}>{won ? <Trophy size={26} /> : <XCircle size={28} />}</div>
+                    <h2 className="st-center st-conf-h">{won ? "Mark this enquiry as won?" : "Mark this enquiry as lost?"}</h2>
+                    <p className="st-hint st-center">
+                        {won ? "The customer is going ahead. The enquiry will be closed and counted as won." : "The customer isn't going ahead. The enquiry will be closed and counted as lost."}
+                        {" "}You can reopen it any time.
+                    </p>
+                </div>
+                <div className="st-sh-f">
+                    <button type="button" className="st-btn" disabled={busy} onClick={onCancel}>Cancel</button>
+                    <button type="button" className={`st-btn ${won ? "ok" : "bad"}`} disabled={busy} onClick={onConfirm}>
+                        {busy ? <Loader2 size={16} className="st-spin" /> : null}{won ? "Mark as won" : "Mark as lost"}
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body,
+    );
+}
+
+const pad2 = (n) => String(n).padStart(2, "0");
+const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const DEFAULT_REMINDER_TIME = "09:00";
+const MAX_REMINDER_DAYS = 365;
+
+// Date + optional time (the person's local time) -> { at: Date } or { error }.
+function buildReminder(date, time) {
+    if (!date) return { error: "Choose a date." };
+    const at = new Date(`${date}T${time || DEFAULT_REMINDER_TIME}:00`);
+    if (Number.isNaN(at.getTime())) return { error: "Enter a valid date and time." };
+    if (at.getTime() <= Date.now()) {
+        return { error: time ? "Pick a date and time in the future." : "9:00 AM today has already passed. Pick a later date or set a time." };
+    }
+    if (at.getTime() > Date.now() + MAX_REMINDER_DAYS * 864e5) return { error: "Reminders can be set up to a year ahead." };
+    return { at };
+}
+
+function ReminderDialog({ current, open, busy, onCancel, onSave, onExited }) {
+    const init = current ? new Date(current) : null;
+    const [date, setDate] = useState(init ? ymd(init) : "");
+    const [time, setTime] = useState(init ? `${pad2(init.getHours())}:${pad2(init.getMinutes())}` : "");
+    const [err, setErr] = useState("");
+    const today = ymd(new Date());
+    const dayPlus = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return ymd(d); };
+
+    useEffect(() => {
+        const k = (e) => { if (e.key === "Escape" && !busy && open) onCancel(); };
+        document.addEventListener("keydown", k);
+        return () => document.removeEventListener("keydown", k);
+    }, [busy, open, onCancel]);
+    useEffect(() => {
+        if (open) return undefined;
+        const t = setTimeout(onExited, 280);
+        return () => clearTimeout(t);
+    }, [open, onExited]);
+
+    const submit = () => {
+        const r = buildReminder(date, time);
+        if (r.error) return setErr(r.error);
+        setErr("");
+        onSave(r.at.toISOString());
+    };
+
+    return createPortal(
+        <div className={`st-ov${open ? "" : " out"}`} data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget && !busy && open) onCancel(); }}>
+            <div className="st-sheet st-confirm" role="dialog" aria-modal="true" aria-label="Set reminder">
+                <div className="st-sh-b">
+                    <div className="st-okc rem"><Bell size={26} /></div>
+                    <h2 className="st-center st-conf-h">{current ? "Change reminder" : "Set a reminder"}</h2>
+                    <p className="st-hint st-center">Leave the time empty to be reminded at 9:00 AM that day.</p>
+                    <div className="st-seg" style={{ marginTop: 12 }}>
+                        {[["Tomorrow", 1], ["In 3 days", 3], ["Next week", 7]].map(([l, n]) => (
+                            <button key={l} type="button" aria-pressed={date === dayPlus(n)} onClick={() => { setDate(dayPlus(n)); setErr(""); }}>{l}</button>
+                        ))}
+                    </div>
+                    <div className="st-two">
+                        <div className="st-f"><label htmlFor="rm-d">Date</label>
+                            <input id="rm-d" className="st-in" type="date" min={today} value={date} onChange={(e) => { setDate(e.target.value); setErr(""); }} /></div>
+                        <div className="st-f"><label htmlFor="rm-t">Time (optional)</label>
+                            <input id="rm-t" className="st-in" type="time" value={time} onChange={(e) => { setTime(e.target.value); setErr(""); }} /></div>
+                    </div>
+                    {err && <p className="st-err" role="alert">{err}</p>}
+                </div>
+                <div className="st-sh-f">
+                    <button type="button" className="st-btn" disabled={busy} onClick={onCancel}>Cancel</button>
+                    <button type="button" className="st-btn pri" disabled={busy} onClick={submit}>
+                        {busy ? <Loader2 size={16} className="st-spin" /> : null}Save reminder
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body,
+    );
+}
+
+// Owns its own state (text, files, menu), so keystrokes never re-render the thread above it.
 // Enter sends, Shift+Enter makes a new line. Sending is instant: the parent shows the entry and saves it in the background.
-function Composer({ token, threadId, say, onSend, onCloseThread, closing }) {
+function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, hasReminder }) {
     const [text, setText] = useState("");
     const [files, setFiles] = useState([]);
+    const [menu, setMenu] = useState(false);
     const taRef = useRef(null);
     const fileRef = useRef(null);
+    const wrapRef = useRef(null);
 
     // Grow with the text up to ~5 lines, then scroll inside the box.
     const fit = useCallback(() => {
         const t = taRef.current; if (!t) return;
         t.style.height = "auto";
-        const want = t.scrollHeight + 3;   // + the 1.5px border on each side
+        const want = t.scrollHeight;
         t.style.height = `${Math.min(want, COMPOSER_MAX)}px`;
         t.style.overflowY = want > COMPOSER_MAX ? "auto" : "hidden";
     }, []);
     useLayoutEffect(() => { fit(); }, [text, fit]);
+
+    // Close the menu on outside tap / Escape.
+    useEffect(() => {
+        if (!menu) return undefined;
+        const away = (e) => { if (!wrapRef.current?.contains(e.target)) setMenu(false); };
+        const esc = (e) => { if (e.key === "Escape") setMenu(false); };
+        document.addEventListener("pointerdown", away);
+        document.addEventListener("keydown", esc);
+        return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+    }, [menu]);
 
     const addFiles = (list) => {
         const picked = Array.from(list || []);
@@ -273,6 +406,7 @@ function Composer({ token, threadId, say, onSend, onCloseThread, closing }) {
         e.preventDefault();
         send();
     };
+    const run = (fn) => () => { setMenu(false); fn(); };
 
     return (
         <div className="st-compose">
@@ -287,11 +421,26 @@ function Composer({ token, threadId, say, onSend, onCloseThread, closing }) {
                     ))}
                 </div>
             )}
-            <div className="st-compose-r">
-                <input ref={fileRef} type="file" multiple hidden accept={FILE_ACCEPT} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
-                <button type="button" className="st-ib" aria-label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip size={18} /></button>
+            <input ref={fileRef} type="file" multiple hidden accept={FILE_ACCEPT} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+            <div className={`st-bar${PLUS_ON_LEFT ? "" : " flip"}`}>
+                <div className="st-plusw" ref={wrapRef}>
+                    <button type="button" className="st-plus" aria-label="More actions" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
+                        <Plus size={20} />
+                    </button>
+                    <div className={`st-menu${menu ? " show" : ""}`} role="menu" aria-label="Enquiry actions" aria-hidden={!menu}>
+                        {/* same buttons as before */}
+
+                        <button type="button" role="menuitem" onClick={run(() => fileRef.current?.click())}><Paperclip size={17} />Add files</button>
+                        <button type="button" role="menuitem" onClick={run(onQuote)}><Receipt size={17} />Send quotation</button>
+                        <button type="button" role="menuitem" onClick={run(onRemind)}><Bell size={17} />{hasReminder ? "Change reminder" : "Set reminder"}</button>
+                        <hr />
+                        <button type="button" role="menuitem" className="ok" onClick={run(() => onOutcome("won"))}><Trophy size={17} />Mark as won</button>
+                        <button type="button" role="menuitem" className="bad" onClick={run(() => onOutcome("lost"))}><XCircle size={17} />Mark as lost</button>
+                    </div>
+
+                </div>
                 <textarea ref={taRef} className="st-ta" rows={1} value={text} maxLength={4000} aria-label="Write an update"
-                    placeholder="Write an update, e.g. called the buyer, waiting for approval…"
+                    placeholder="Write an update…"
                     enterKeyHint="send"
                     onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
                     onPaste={(e) => { if (e.clipboardData?.files?.length) { addFiles(e.clipboardData.files); } }} />
@@ -299,10 +448,7 @@ function Composer({ token, threadId, say, onSend, onCloseThread, closing }) {
                     <Send size={18} />
                 </button>
             </div>
-            <div className="st-compose-f">
-                <small>Enter to send · Shift+Enter for a new line · Only you can see this log.</small>
-                <button type="button" className="st-lnk" disabled={closing} onClick={onCloseThread}>Close enquiry</button>
-            </div>
+            <small className="st-bar-h">Enter to send · Shift+Enter for a new line · Only you can see this log</small>
         </div>
     );
 }
@@ -324,6 +470,9 @@ export default function SalesThreadPage() {
     const [quoting, setQuoting] = useState(false);
     const [busyKey, setBusyKey] = useState("");
     const [statusBusy, setStatusBusy] = useState(false);
+    const [ask, setAsk] = useState(null);            // "won" | "lost" while the confirm dialog is open
+    const [remind, setRemind] = useState(null);      // { open } while the reminder dialog is shown
+    const [remBusy, setRemBusy] = useState(false);
     const [settled, setSettled] = useState(false);   // true once the first jump to the bottom is done
     const [far, setFar] = useState(false);           // scrolled well above the newest entry
 
@@ -421,6 +570,17 @@ export default function SalesThreadPage() {
         };
     }, [state, threadId]);
 
+    // "Latest" button: shown once the person has scrolled well above the newest entry.
+    useEffect(() => {
+        if (state !== "ready") return undefined;
+        let raf = 0;
+        const check = () => { raf = 0; setFar(distFromBottom() > 420); };
+        const onScroll = () => { if (!raf) raf = requestAnimationFrame(check); };
+        window.addEventListener("scroll", onScroll, { passive: true });
+        check();
+        return () => { window.removeEventListener("scroll", onScroll); if (raf) cancelAnimationFrame(raf); };
+    }, [state, threadId]);
+
     // ---- older entries, loaded in bunches as the person scrolls up ----
     const loadOlder = useCallback(async () => {
         const first = entriesRef.current.find((e) => !e.local);
@@ -477,7 +637,7 @@ export default function SalesThreadPage() {
         };
         stickRef.current = true;
         setEntries((prev) => mergeEntries(prev, [tmp]));
-        setThread((t) => (t ? { ...t, lastActivityAt: now } : t));
+        setThread((t) => (t ? { ...t, lastActivityAt: now, reminderAt: null } : t));
         post(id, tmp.payload);
     }, [post]);
 
@@ -494,23 +654,60 @@ export default function SalesThreadPage() {
         const res = await resendThreadQuote(token, threadId, quoteId, [channel]);
         setBusyKey("");
         if (!res.success) return say(res.message || "Couldn't resend the quotation.");
+        setThread((t) => (t ? { ...t, reminderAt: null } : t));
         setEntries((prev) => prev.map((e) => (e.quote?.id === quoteId ? { ...e, quote: res.quote } : e)));
+
         say(res.message);
     }, [token, threadId, say]);
 
-    const toggleStatus = async () => {
-        const next = thread.status === "open" ? "closed" : "open";
-        if (next === "closed" && !window.confirm("Close this enquiry? You can reopen it any time.")) return;
+    const pageRef = useRef(null);
+    useLayoutEffect(() => {
+        const el = pageRef.current;
+        if (!el) return undefined;
+        const fit = () => {
+            const top = el.getBoundingClientRect().top + window.scrollY;
+            el.style.setProperty("--st-min", `calc(100dvh - ${Math.max(Math.round(top), 0)}px)`);
+        };
+        fit();
+        window.addEventListener("resize", fit);
+        return () => window.removeEventListener("resize", fit);
+    }, [state]);
+
+    // next: "won" | "lost" | "open" (reopen)
+    const changeStatus = async (next) => {
         setStatusBusy(true);
         const res = await setThreadStatus(token, threadId, next);
         setStatusBusy(false);
-        if (!res.success) return say(res.message || "Couldn't update the enquiry.");
+        if (!res.success) { say(res.message || "Couldn't update the enquiry."); return; }
+        closeAsk();
         setThread((t) => ({ ...t, ...res.thread }));
         stickRef.current = true;
         load("after");
+        say(next === "open" ? "Enquiry reopened." : `Marked as ${next}.`);
     };
 
     const onCustomerSaved = useCallback((t) => setThread((s) => ({ ...s, ...t })), []);
+    const openQuote = useCallback(() => setQuoting(true), []);
+    const askOutcome = useCallback((k) => setAsk({ kind: k, open: true }), []);
+    const closeAsk = useCallback(() => setAsk((a) => (a ? { ...a, open: false } : a)), []);
+    const askGone = useCallback(() => setAsk(null), []);
+
+    const askRemind = useCallback(() => setRemind({ open: true }), []);
+    const closeRemind = useCallback(() => setRemind((r) => (r ? { ...r, open: false } : r)), []);
+    const remindGone = useCallback(() => setRemind(null), []);
+
+    // iso = set / change, null = remove
+    const saveReminder = async (iso) => {
+        setRemBusy(true);
+        const res = await setThreadReminder(token, threadId, iso);
+        setRemBusy(false);
+        if (!res.success) { say(res.message || "Couldn't update the reminder."); return; }
+        closeRemind();
+        setThread((t) => ({ ...t, ...res.thread }));
+        if (iso) stickRef.current = true;
+        load("after");
+        say(iso ? "Reminder set." : "Reminder removed.");
+    };
 
     if (state === "loading") {
         return (
@@ -528,9 +725,10 @@ export default function SalesThreadPage() {
     }
 
     const closed = thread.status === "closed";
+    const st = stateOf(thread);
 
     return (
-        <div className="gd st-page">
+        <div className="gd st-page" ref={pageRef}>
             <header className="st-head">
                 <Link to="/sales/enquiries" className="st-ib" aria-label="Back to RFQs"><ArrowLeft size={18} /></Link>
                 <div className="st-head-t">
@@ -538,10 +736,22 @@ export default function SalesThreadPage() {
                     <p>{thread.productName} · {qty(thread.quantity)} {thread.unit}</p>
                     <p className="sub">Posted {dateTime(thread.createdAt)}</p>
                 </div>
-                {!closed && <button type="button" className="st-btn pri" onClick={() => setQuoting(true)}><Receipt size={16} />Quote</button>}
+                <span className={`st-state ${st.k}`}>{st.l}</span>
             </header>
 
             <CustomerCard token={token} thread={thread} say={say} onSaved={onCustomerSaved} />
+
+            {thread.reminderAt && !closed && (() => {
+                const due = new Date(thread.reminderAt).getTime() <= Date.now();
+                return (
+                    <div className={`st-rem${due ? " due" : ""}`}>
+                        <Bell size={16} />
+                        <span>{due ? "Reminder due" : "Reminder"} · {dateTime(thread.reminderAt)}</span>
+                        <button type="button" onClick={askRemind}>Change</button>
+                        <button type="button" disabled={remBusy} onClick={() => saveReminder(null)}>Remove</button>
+                    </div>
+                );
+            })()}
 
             {thread.specifications && <p className="st-specs"><b>Specifications</b>{thread.specifications}</p>}
 
@@ -563,12 +773,18 @@ export default function SalesThreadPage() {
                     <ArrowDown size={16} />Latest
                 </button>
                 {closed ? (
-                    <div className="st-compose closed">
-                        <span>This enquiry is closed.</span>
-                        <button type="button" className="st-btn pri" disabled={statusBusy} onClick={toggleStatus}>{statusBusy ? <Loader2 size={16} className="st-spin" /> : null}Reopen</button>
+                    <div className={`st-closedbar ${st.k}`}>
+                        <span>
+                            {st.k === "won" ? <Trophy size={17} /> : st.k === "lost" ? <XCircle size={17} /> : null}
+                            {st.k === "won" ? "This enquiry was won." : st.k === "lost" ? "This enquiry was lost." : "This enquiry is closed."}
+                        </span>
+                        <button type="button" className="st-btn" disabled={statusBusy} onClick={() => changeStatus("open")}>
+                            {statusBusy ? <Loader2 size={16} className="st-spin" /> : <RotateCcw size={15} />}Reopen
+                        </button>
                     </div>
                 ) : (
-                    <Composer key={threadId} token={token} threadId={threadId} say={say} onSend={onSend} onCloseThread={toggleStatus} closing={statusBusy} />
+                    <Composer key={threadId} token={token} threadId={threadId} say={say} onSend={onSend} onQuote={openQuote}
+                        onOutcome={askOutcome} onRemind={askRemind} hasReminder={!!thread.reminderAt} />
                 )}
             </div>
 
@@ -576,6 +792,12 @@ export default function SalesThreadPage() {
                 <SalesQuoteSheet token={token} thread={thread} onClose={() => setQuoting(false)}
                     onSent={() => { stickRef.current = true; load("after"); }} />
             )}
+
+            {ask && <OutcomeDialog kind={ask.kind} open={ask.open} busy={statusBusy}
+                onCancel={closeAsk} onConfirm={() => changeStatus(ask.kind)} onExited={askGone} />}
+
+            {remind && <ReminderDialog current={thread.reminderAt} open={remind.open} busy={remBusy}
+                onCancel={closeRemind} onSave={saveReminder} onExited={remindGone} />}
         </div>
     );
 }

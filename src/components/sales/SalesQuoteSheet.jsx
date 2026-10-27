@@ -1,6 +1,7 @@
 // src/components/sales/SalesQuoteSheet.jsx
 // Quotation flow: pick company products -> set this customer's price -> choose WhatsApp / email -> send.
 // Prices are tied to the customer's GST number and pre-filled next time.
+// The product tagged on the enquiry (if any) is pre-selected. The customer is added to the customer list on send.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Search, Check, Loader2, ArrowLeft, Trash2, MessageCircle, Mail, AlertCircle } from "lucide-react";
@@ -31,6 +32,11 @@ function priceHint(p) {
     if (p.listUnitPriceIncl != null) return { label: "List price", price: p.listUnitPriceIncl, strong: false };
     return null;
 }
+
+const newLine = (p, thread) => {
+    const start = p.customUnitPriceIncl ?? p.lastUnitPriceIncl ?? p.listUnitPriceIncl;
+    return { p, qty: p.unitMatches ? String(thread.quantity) : "1", price: start != null ? String(round4(start)) : "", gstIncl: true, setCustom: true };
+};
 
 function CustomPricingNote({ cp }) {
     if (!cp || cp.status === "none") return null;
@@ -67,6 +73,8 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
     const [err, setErr] = useState("");
     const [result, setResult] = useState(null);
     const seq = useRef(0);
+    const nextOffset = useRef(0);
+    const taggedDone = useRef(false);
     const bodyRef = useRef(null);
 
     // Don't lose a half-built quotation to a stray tap on the backdrop or Escape.
@@ -85,10 +93,19 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
         if (my !== seq.current) return;
         setLoading(false); setLoadingMore(false);
         if (!res.success) { setLoadError(res.message || "Couldn't load your products."); return; }
+        nextOffset.current = res.nextOffset ?? offset + res.items.length;
         setProducts((prev) => (offset ? [...prev, ...res.items.filter((i) => !prev.some((p) => p.submissionId === i.submissionId))] : res.items));
         setHasMore(!!res.hasMore);
-        if (!offset) setBuyer(res.buyer ?? null);
-    }, [token, thread.id, q]);
+        if (!offset) {
+            setBuyer(res.buyer ?? null);
+            // the product tagged on the enquiry starts out selected
+            if (!taggedDone.current) {
+                taggedDone.current = true;
+                const t = res.items.find((i) => i.tagged && !i.reason);
+                if (t) setLines((prev) => (prev.length ? prev : [newLine(t, thread)]));
+            }
+        }
+    }, [token, thread, q]);
     useEffect(() => { load(0); }, [load]);
 
     const picked = useMemo(() => new Set(lines.map((l) => l.p.submissionId)), [lines]);
@@ -99,8 +116,7 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
         setErr("");
         setLines((prev) => {
             if (prev.some((l) => l.p.submissionId === p.submissionId)) return prev.filter((l) => l.p.submissionId !== p.submissionId);
-            const start = p.customUnitPriceIncl ?? p.lastUnitPriceIncl ?? p.listUnitPriceIncl;
-            return [...prev, { p, qty: p.unitMatches ? String(thread.quantity) : "1", price: start != null ? String(round4(start)) : "", gstIncl: true, setCustom: true }];
+            return [...prev, newLine(p, thread)];
         });
     };
     const patchLine = (id, patch) => { setErr(""); setLines((prev) => prev.map((l) => (l.p.submissionId === id ? { ...l, ...patch } : l))); };
@@ -190,6 +206,7 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
                                     <span className="st-prod-t">
                                         <b>{p.productName}</b>
                                         <small>{[p.brandName, `Sold in ${p.unit}`, p.packSize > 1 ? `1 pack = ${qty(p.packSize)} ${p.unit}` : null].filter(Boolean).join(" · ")}</small>
+                                        {p.tagged && <small className="ok">Tagged on this enquiry</small>}
                                         {p.description && <small className="st-clip">{p.description}</small>}
                                         {hint && <small className={hint.strong ? "ok" : ""}>{hint.label}: {inr(hint.price, 4)} / {p.unit} incl. GST</small>}
                                         {p.reason && <em>{p.reason}: can't be quoted right now</em>}
@@ -200,7 +217,7 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
                             );
                         })}
                         {!loading && hasMore && (
-                            <button type="button" className="st-btn st-full" disabled={loadingMore} onClick={() => load(products.length)}>
+                            <button type="button" className="st-btn st-full" disabled={loadingMore} onClick={() => load(nextOffset.current)}>
                                 {loadingMore ? <Loader2 size={16} className="st-spin" /> : null}Show more
                             </button>
                         )}
@@ -272,7 +289,7 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
                             <label htmlFor="qs-note">Message to the customer (optional)</label>
                             <textarea id="qs-note" className="st-in" rows={2} maxLength={500} placeholder="e.g. Delivery within 5 days of confirmation" value={note} onChange={(e) => setNote(e.target.value)} />
                         </div>
-                        <p className="st-hint">Each product is sent with its name, short description, your price and a link to the product page.</p>
+                        <p className="st-hint">Each product is sent with its name, short description, your price and a link to the product page. If this customer isn't in your customers yet, they're added when you send.</p>
                     </>)}
 
                     {view === "done" && result && (<>
@@ -288,6 +305,7 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
                             ))}
                             <p className="tot"><span>Total (incl. GST)</span><b>{inr(result.quote.total)}</b></p>
                         </div>
+                        {result.customerAdded && <p className="st-hint st-center">{result.customerAdded} was added to your customers.</p>}
                         <CustomPricingNote cp={result.customPricing} />
                         <p className="st-hint st-center">The quotation is saved in the thread. You can retry any failed channel from there.</p>
                     </>)}

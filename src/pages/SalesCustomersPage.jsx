@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useOutletContext, useSearchParams } from "react-router-dom";
-import { UserPlus, Phone, Mail, MapPin, Receipt, Search, X } from "lucide-react";
+import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
+import { UserPlus, Phone, Mail, MapPin, Receipt, Search, X, Plus } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import useSalesRealtime from "../hooks/useSalesRealtime.js";
 import { fetchSalesCustomers } from "../utils/salesApi.js";
 import { toTitleCase } from "../components/growSeller/sellerHelpers.js";
 import SalesAddCustomerSheet from "../components/sales/SalesAddCustomerSheet.jsx";
+import SalesNewEnquirySheet from "../components/sales/SalesNewEnquirySheet.jsx";
 
 const PAGE = 12;
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 const mergeUnique = (prev, inc) => { const s = new Set(prev.map((i) => i.id)); return [...prev, ...inc.filter((i) => !s.has(i.id))]; };
 
-function Card({ c }) {
+function Card({ c, onEnquire }) {
     const active = c.status === "active";
     return (
         <article className="gk-card gs-card">
@@ -27,7 +28,10 @@ function Card({ c }) {
                 {c.email && <a href={`mailto:${c.email}`}><Mail size={15} /><span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{c.email}</span></a>}
                 {active && <span><Receipt size={15} />{c.ordersCount ? `${c.ordersCount} order${c.ordersCount === 1 ? "" : "s"}${c.lastOrderAt ? ` · last ${day(c.lastOrderAt)}` : ""}` : "No orders yet"}</span>}
             </div>
-            <small style={{ marginTop: 10 }}>Added {day(c.addedAt)}</small>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
+                <small>Added {day(c.addedAt)}</small>
+                <button type="button" className="gk-btn go" onClick={() => onEnquire(c)}><Plus size={15} />New enquiry</button>
+            </div>
         </article>
     );
 }
@@ -35,6 +39,7 @@ function Card({ c }) {
 export default function SalesCustomersPage() {
     const { token } = useAuth();
     const { say } = useOutletContext();
+    const nav = useNavigate();
     const [sp, setSp] = useSearchParams();
 
     const [qInput, setQInput] = useState("");
@@ -49,6 +54,7 @@ export default function SalesCustomersPage() {
     const [error, setError] = useState("");
     const [notReady, setNotReady] = useState(false);
     const [adding, setAdding] = useState(false);
+    const [enquiryFor, setEnquiryFor] = useState(null);   // the customer a new enquiry is being started for
 
     const abortRef = useRef(null);
     const seqRef = useRef(0);
@@ -116,7 +122,7 @@ export default function SalesCustomersPage() {
                 <div className="gs-list">{[0, 1, 2].map((i) => <div key={i} className="gk-skel" style={{ height: 150 }} />)}</div>
             ) : (
                 <div className="gs-list">
-                    {items.map((c) => <Card key={c.id} c={c} />)}
+                    {items.map((c) => <Card key={c.id} c={c} onEnquire={setEnquiryFor} />)}
                     {!loading && !error && items.length === 0 && (
                         <div className="gk-empty" style={{ gridColumn: "1 / -1" }}>
                             <b>{q ? "No customers match your search" : "No customers yet"}</b>
@@ -132,6 +138,11 @@ export default function SalesCustomersPage() {
             {adding && (
                 <SalesAddCustomerSheet token={token} onClose={() => setAdding(false)}
                     onAdded={(m) => { setAdding(false); say(m); load(0, false, true); }} />
+            )}
+
+            {enquiryFor && (
+                <SalesNewEnquirySheet token={token} initialCustomer={enquiryFor} onClose={() => setEnquiryFor(null)}
+                    onCreated={(t) => { setEnquiryFor(null); say("Enquiry created."); nav(`/sales/enquiries/${t.id}`); }} />
             )}
         </div>
     );
