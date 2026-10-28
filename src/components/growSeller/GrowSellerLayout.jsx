@@ -15,6 +15,7 @@ import Ic from "./Ic.jsx";
 import { GrowSellerCtx } from "../../context/GrowSellerContext.js";
 import GrowTabs from "./GrowTabs.jsx";
 import "./grow-seller.css";
+import useOrderBookToast from "../../hooks/useOrderBookToast.js";
 // import BottomNavStrip from "../BottomNavStrip.jsx";
 
 const fm = (n) => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
@@ -37,6 +38,7 @@ export default function GrowSellerLayout() {
         tt.current = setTimeout(() => setToast(""), 2600);
     }, []);
     useEffect(() => () => clearTimeout(tt.current), []);
+    useOrderBookToast(say, "team");
 
     const setBadge = useCallback((k, n) => setBadges((b) => (b[k] === n ? b : { ...b, [k]: n })), []);
 

@@ -4,8 +4,9 @@
 // Scroll up    -> expands back. The nav's layout height never changes, so the page never jumps.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutGrid, Package, Megaphone, Receipt, Truck, MessageSquare, Store, Users, Film, ChevronDown } from "lucide-react";
+import { LayoutGrid, Package, Megaphone, Receipt, Truck, MessageSquare, Store, Users, Film, ChevronDown, BookOpen } from "lucide-react";
 import useGrowBadges from "./useGrowBadges.js";
+import useOrderBookPending from "../../hooks/useOrderBookPending.js";
 import "./grow-modules.css";
 
 const TABS = [
@@ -18,6 +19,7 @@ const TABS = [
     { key: "shop", to: "/grow/shop", label: "Shop", Icon: Store, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/grow/shop"] },
     // Coming soon: they open a friendly "coming soon" page and show a "Soon" tag on the tile.
     { key: "customers", to: "/grow/customers", label: "Customers", Icon: Users, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/grow/customers"], soon: true },
+    { key: "orderbook", to: "/grow/order-book", label: "Order Book", Icon: BookOpen, a: "var(--vi, #6D3FD1)", ai: "var(--vi, #6D3FD1)", match: ["/grow/order-book"] },
     // { key: "media", to: "/grow/media", label: "Media", Icon: Film, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/grow/media"], soon: true },
 ];
 
@@ -35,6 +37,7 @@ export default function GrowTabs() {
     const { pathname } = useLocation();
     // Same hook the Grow FAB uses, so the numbers always match.
     const counts = useGrowBadges();
+    const pendingOB = useOrderBookPending();
 
     const rootRef = useRef(null);
     const tilesRef = useRef(null);
@@ -147,7 +150,8 @@ export default function GrowTabs() {
                         <div ref={tilesRef} id="gn-tiles" className="gn-tiles">
                             {TABS.map((t) => {
                                 const active = current === t;
-                                const n = counts[t.key] || 0;
+                                // const n = counts[t.key] || 0;
+                                const n = t.key === "orderbook" ? pendingOB : counts[t.key] || 0;
                                 return (
                                     <Link
                                         key={t.key}

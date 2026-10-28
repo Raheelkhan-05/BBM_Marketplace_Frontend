@@ -4,6 +4,7 @@ import { LogOut } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { toTitleCase } from "../growSeller/sellerHelpers.js";
 import SalesTabs from "./SalesTabs.jsx";
+import useOrderBookToast from "../../hooks/useOrderBookToast.js";
 import "../growSeller/grow-modules.css";
 import "./sales.css";
 
@@ -21,6 +22,8 @@ export default function SalesLayout() {
     const menuRef = useRef(null);
     const say = useCallback((m) => { setToast(m); clearTimeout(tt.current); tt.current = setTimeout(() => setToast(""), 2600); }, []);
     useEffect(() => () => clearTimeout(tt.current), []);
+
+    useOrderBookToast(say, "sales");
 
     const onThread = THREAD_PATH.test(pathname);
     const logoUrl = profile?.businessProfile?.logo_url || "";
