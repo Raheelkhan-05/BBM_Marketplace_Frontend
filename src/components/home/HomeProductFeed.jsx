@@ -183,7 +183,9 @@ import EditListingModal from "../seller/listingForm/EditListingModal.jsx";
 import { useLenis } from "../../providers/SmoothScrollProvider.jsx";
 import { toBuyerSellerPayload } from "../../utils/buyerSellerPayload";
 import ActiveViewStrip from "./ActiveViewStrip.jsx";
-import GroupBannerCarousel, { GroupBannerCard } from "./GroupBannerCarousel.jsx";
+import { GroupBannerCard } from "./GroupBannerCarousel.jsx";
+import GroupBannerBlock from "./GroupBannerBlock.jsx";
+import useHomeBannerPlan from "../../hooks/useHomeBannerPlan";
 import useGroupBanners from "../../hooks/useGroupBanners";
 
 const C = {
@@ -206,6 +208,10 @@ const EASE = [0.16, 1, 0.3, 1];
 // tops the list up as the user scrolls.
 const PAGE_SIZE = 12;
 const SELLER_PAGE_SIZE = 30;
+
+// A banner block is inserted after this many product ROWS (so 5 / 10 / 15 products on 1 / 2 / 3 columns).
+const SECTION_ROWS = 10;
+
 // How many sellers the header-price refresh looks at (price_asc). More than
 // 1 so an out-of-stock cheapest seller doesn't hide an in-stock one.
 const LOWEST_PROBE_SIZE = 10;
@@ -3669,21 +3675,36 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // move out of the grid into ONE carousel (admin-ordered). In filtered views
     // (search / category / brand) they show as a 16:9 banner card in their column.
     const bannersEnabled = !shopSlug;
-    const groupBanners = useGroupBanners(bannersEnabled);
+    const { banners: groupBanners, plan: bannerPlan } = useHomeBannerPlan(bannersEnabled);
     const bannerById = useMemo(
         () => new Map(groupBanners.map((b) => [String(b.group_id), b])),
         [groupBanners]
     );
     const groupKeyOf = (it) => String(it.group_id || it.generic_product_id || it.id);
-    const showBannerCarousel =
-        bannersEnabled && groupBanners.length > 0 && !q.trim() && !category?.id && !brandName && !groupId;
-    const columnSource = showBannerCarousel
+    // Plain Home view: banners live in the planned blocks between product sections.
+    // Filtered views (search / category / brand / variants): groups with a banner show as a 16:9 banner card.
+    const showBannerBlocks =
+        bannersEnabled && groupBanners.length > 0 && !!bannerPlan?.blocks?.length &&
+        !q.trim() && !category?.id && !brandName && !groupId;
+    const columnSource = showBannerBlocks
         ? displayItems.filter((it) => !(it.row_type === "group" && bannerById.has(groupKeyOf(it))))
         : displayItems;
     const openBanner = (b) =>
         openGroup({ group_id: b.group_id, name: b.name, variant_count: b.variant_count });
 
-    const columns = bucketItemsByColumn(columnSource, columnCount);
+    // Split the feed into sections; a banner block follows each FULL section.
+    // Once the feed is exhausted, every block not placed yet is appended so no banner is unreachable.
+    const blocksPlan = showBannerBlocks ? bannerPlan.blocks : [];
+    const sectionSize = columnCount * SECTION_ROWS;
+    const sections = [];
+    for (let start = 0, bi = 0; start < columnSource.length; start += sectionSize, bi++) {
+        const slice = columnSource.slice(start, start + sectionSize);
+        const full = slice.length === sectionSize;
+        sections.push({ items: slice, block: (full || !hasMore) ? (blocksPlan[bi] || null) : null });
+    }
+    if (!hasMore && !loading) {
+        for (let bi = sections.length; bi < blocksPlan.length; bi++) sections.push({ items: [], block: blocksPlan[bi] });
+    }
 
     const seoPath = pathBrand ? `/brands/${encodeURIComponent(brandName)}`
         : pathShop ? `/sellers/${encodeURIComponent(shopSlug)}`
@@ -3786,12 +3807,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
             </div>
 
-            {showBannerCarousel && (
-                <div className="-mx-3 sm:mx-0">
-                    <GroupBannerCarousel banners={groupBanners} perView={columnCount} onOpen={openBanner} />
-                </div>
-            )}
-
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
                 (-mx-3 cancels a parent's assumed px-3 padding; tweak to match your
                 actual page padding) with only a top/bottom hairline (border-y) —
@@ -3830,118 +3845,132 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                             </p>
                         </div>
                     ) : (
-                        <div
-                            className="flex divide-x pt-3"
-                            style={{ borderColor: C.hair, opacity: loading ? 0.55 : 1, transition: "opacity 0.15s ease" }}
-                        >
-                            {columns.map((colItems, colIdx) => (
-                                // <div key={colIdx} className="min-w-0 flex-1 sm:divide-y" style={{ borderColor: C.hairSoft }}>
-                                <div key={colIdx} className="min-w-0 flex-1" style={{ borderColor: C.hairSoft }}>
-                                    {colItems.map((item) => {
-                                        const isGroup = item.row_type === "group";
-                                        const isOpen = !isGroup && openItemId === item.id;
-                                        const i = displayItems.indexOf(item);
-                                        return (
-                                            <motion.div
-                                                key={item.id}
-                                                ref={(el) => { if (el) rowRefs.current[item.id] = el; }}
-                                                layout="position"
-                                                transition={{ duration: 0.24, ease: EASE }}
-                                                className="relative"
-                                            >
-                                                {isGroup ? (
-                                                    bannerById.has(groupKeyOf(item)) ? (
-                                                        <GroupBannerCard
-                                                            banner={bannerById.get(groupKeyOf(item))}
-                                                            idx={i}
-                                                            animateEntrance={newlyAppearedIds.has(item.id)}
-                                                            onOpen={() => openGroup(item)}
-                                                        />
-                                                    ) : (
-                                                        <GroupRow
-                                                            item={item}
-                                                            idx={i}
-                                                            includeGst={includeGst}
-                                                            isLoggedIn={isLoggedIn}
-                                                            animateEntrance={newlyAppearedIds.has(item.id)}
-                                                            onOpen={() => openGroup(item)}
-                                                            onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
-                                                        />
-                                                    )
-                                                ) : (
-                                                    <>
-                                                        <ProductRow
-                                                            item={item}
-                                                            idx={i}
-                                                            isOpen={isOpen}
-                                                            // onToggle={() => toggleDropdown(item)}
-                                                            onInfo={() => setInfoItemId(item.id)}
-                                                            onImageOpen={setLightboxImages}
-                                                            isFollowed={pinnedNow(item)}
-                                                            onToggleFollow={() => handleToggleFollow(item)}
-                                                            includeGst={includeGst}
-                                                            isLoggedIn={isLoggedIn}
-                                                            isOwnShop={myShopActive}
-                                                            onShareProduct={() => handleShareProduct(item)}
-                                                            // onToggle={() => (shopSlug ? handleShopBuy(item) : toggleDropdown(item))}
-                                                            onToggle={() => {
-                                                                dismissHint(); // tapping any record ends the hint for today
-                                                                return shopSlug ? handleShopBuy(item) : toggleDropdown(item);
-                                                            }}
-                                                            showTapHint={showHint && item.id === firstHintId}
-                                                            shopMode={!!shopSlug}
-                                                            isOpening={openingItemId === item.id}
-                                                            onPrefetch={shopSlug ? () => { if (isLoggedIn && token) getOffer(item.id); } : undefined}
-                                                            onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
-                                                            animateEntrance={newlyAppearedIds.has(item.id)}
-                                                        />
+                        <div style={{ opacity: loading ? 0.55 : 1, transition: "opacity 0.15s ease" }}>
+                            {sections.map((section, si) => (
+                                <Fragment key={si}>
+                                    {section.items.length > 0 && (
+                                        <div className="flex divide-x pt-3" style={{ borderColor: C.hair }}>
+                                            {bucketItemsByColumn(section.items, columnCount).map((colItems, colIdx) => (
+                                                // <div key={colIdx} className="min-w-0 flex-1 sm:divide-y" style={{ borderColor: C.hairSoft }}>
+                                                <div key={colIdx} className="min-w-0 flex-1" style={{ borderColor: C.hairSoft }}>
+                                                    {colItems.map((item) => {
+                                                        const isGroup = item.row_type === "group";
+                                                        const isOpen = !isGroup && openItemId === item.id;
+                                                        const i = displayItems.indexOf(item);
+                                                        return (
+                                                            <motion.div
+                                                                key={item.id}
+                                                                ref={(el) => { if (el) rowRefs.current[item.id] = el; }}
+                                                                layout="position"
+                                                                transition={{ duration: 0.24, ease: EASE }}
+                                                                className="relative"
+                                                            >
+                                                                {isGroup ? (
+                                                                    bannerById.has(groupKeyOf(item)) ? (
+                                                                        <GroupBannerCard
+                                                                            banner={bannerById.get(groupKeyOf(item))}
+                                                                            idx={i}
+                                                                            animateEntrance={newlyAppearedIds.has(item.id)}
+                                                                            onOpen={() => openGroup(item)}
+                                                                        />
+                                                                    ) : (
+                                                                        <GroupRow
+                                                                            item={item}
+                                                                            idx={i}
+                                                                            includeGst={includeGst}
+                                                                            isLoggedIn={isLoggedIn}
+                                                                            animateEntrance={newlyAppearedIds.has(item.id)}
+                                                                            onOpen={() => openGroup(item)}
+                                                                            onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
+                                                                        />
+                                                                    )
+                                                                ) : (
+                                                                    <>
+                                                                        <ProductRow
+                                                                            item={item}
+                                                                            idx={i}
+                                                                            isOpen={isOpen}
+                                                                            // onToggle={() => toggleDropdown(item)}
+                                                                            onInfo={() => setInfoItemId(item.id)}
+                                                                            onImageOpen={setLightboxImages}
+                                                                            isFollowed={pinnedNow(item)}
+                                                                            onToggleFollow={() => handleToggleFollow(item)}
+                                                                            includeGst={includeGst}
+                                                                            isLoggedIn={isLoggedIn}
+                                                                            isOwnShop={myShopActive}
+                                                                            onShareProduct={() => handleShareProduct(item)}
+                                                                            // onToggle={() => (shopSlug ? handleShopBuy(item) : toggleDropdown(item))}
+                                                                            onToggle={() => {
+                                                                                dismissHint(); // tapping any record ends the hint for today
+                                                                                return shopSlug ? handleShopBuy(item) : toggleDropdown(item);
+                                                                            }}
+                                                                            showTapHint={showHint && item.id === firstHintId}
+                                                                            shopMode={!!shopSlug}
+                                                                            isOpening={openingItemId === item.id}
+                                                                            onPrefetch={shopSlug ? () => { if (isLoggedIn && token) getOffer(item.id); } : undefined}
+                                                                            onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
+                                                                            animateEntrance={newlyAppearedIds.has(item.id)}
+                                                                        />
 
-                                                        <AnimatePresence>
-                                                            {highlightedItemId === item.id && (
-                                                                <motion.div
-                                                                    key="highlight"
-                                                                    initial={{ opacity: 0 }}
-                                                                    animate={{ opacity: [0, 1, 1, 0] }}
-                                                                    exit={{ opacity: 0 }}
-                                                                    transition={{ duration: 1.8, times: [0, 0.15, 0.8, 1], ease: "easeInOut" }}
-                                                                    className="pointer-events-none absolute inset-0 z-10 rounded-xl"
-                                                                    style={{ background: `${C.primary}07`, boxShadow: `0 0 0 2px ${C.primary}55 inset` }}
-                                                                />
-                                                            )}
-                                                        </AnimatePresence>
+                                                                        <AnimatePresence>
+                                                                            {highlightedItemId === item.id && (
+                                                                                <motion.div
+                                                                                    key="highlight"
+                                                                                    initial={{ opacity: 0 }}
+                                                                                    animate={{ opacity: [0, 1, 1, 0] }}
+                                                                                    exit={{ opacity: 0 }}
+                                                                                    transition={{ duration: 1.8, times: [0, 0.15, 0.8, 1], ease: "easeInOut" }}
+                                                                                    className="pointer-events-none absolute inset-0 z-10 rounded-xl"
+                                                                                    style={{ background: `${C.primary}07`, boxShadow: `0 0 0 2px ${C.primary}55 inset` }}
+                                                                                />
+                                                                            )}
+                                                                        </AnimatePresence>
 
-                                                        <AnimatePresence initial={false}>
-                                                            {isOpen && (
-                                                                <SellerDropdown
-                                                                    item={item}
-                                                                    state={sellerState[item.id]}
-                                                                    onBuySeller={(seller) => handleBuySeller(item, seller)}
-                                                                    onSell={() => handleSell(item)}
-                                                                    includeGst={includeGst}
-                                                                    sortMode={sellerSortMode}
-                                                                    isLoggedIn={isLoggedIn}
-                                                                    onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
-                                                                    onSortModeChange={setSellerSortMode}
-                                                                    currentUserId={currentUserId}
-                                                                    buyerAddress={buyerAddress}
-                                                                    navigate={navigate}
-                                                                    token={token}
-                                                                    onOwnListingPriceApplied={(submissionId, newPrice) => patchOwnListing(item.id, submissionId, { price: newPrice })}
-                                                                    onOwnListingPatched={(submissionId, patch) => patchOwnListing(item.id, submissionId, patch)}
-                                                                    onOwnListingSaved={(message) => {
-                                                                        if (message) showToast({ message }, 2200);
-                                                                        loadSellersFor(item.id, { silent: true });
-                                                                    }}
-                                                                    onEditOwnListing={(submissionId) => setEditingSubmissionId(submissionId)}
-                                                                />
-                                                            )}
-                                                        </AnimatePresence>
-                                                    </>
-                                                )}
-                                            </motion.div>
-                                        );
-                                    })}
-                                </div>
+                                                                        <AnimatePresence initial={false}>
+                                                                            {isOpen && (
+                                                                                <SellerDropdown
+                                                                                    item={item}
+                                                                                    state={sellerState[item.id]}
+                                                                                    onBuySeller={(seller) => handleBuySeller(item, seller)}
+                                                                                    onSell={() => handleSell(item)}
+                                                                                    includeGst={includeGst}
+                                                                                    sortMode={sellerSortMode}
+                                                                                    isLoggedIn={isLoggedIn}
+                                                                                    onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
+                                                                                    onSortModeChange={setSellerSortMode}
+                                                                                    currentUserId={currentUserId}
+                                                                                    buyerAddress={buyerAddress}
+                                                                                    navigate={navigate}
+                                                                                    token={token}
+                                                                                    onOwnListingPriceApplied={(submissionId, newPrice) => patchOwnListing(item.id, submissionId, { price: newPrice })}
+                                                                                    onOwnListingPatched={(submissionId, patch) => patchOwnListing(item.id, submissionId, patch)}
+                                                                                    onOwnListingSaved={(message) => {
+                                                                                        if (message) showToast({ message }, 2200);
+                                                                                        loadSellersFor(item.id, { silent: true });
+                                                                                    }}
+                                                                                    onEditOwnListing={(submissionId) => setEditingSubmissionId(submissionId)}
+                                                                                />
+                                                                            )}
+                                                                        </AnimatePresence>
+                                                                    </>
+                                                                )}
+                                                            </motion.div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {section.block && (
+                                        <GroupBannerBlock
+                                            block={section.block}
+                                            bannersById={bannerById}
+                                            columnCount={columnCount}
+                                            priority={si === 0}
+                                            onOpen={openBanner}
+                                        />
+                                    )}
+                                </Fragment>
                             ))}
                         </div>
                     )}
