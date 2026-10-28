@@ -1,7 +1,9 @@
 // src/components/orderBook/OrderBookSheet.jsx
 // Punch an order (salesperson).  CUSTOMER: pick one of your customers, or add a new one by GST number.
 // The customer must have a mobile number or an email (at least one), so they can be told when the order is processed.
-// PRODUCTS: tag products from the company catalog (or type a name), then quantity + price for each.
+// BUYER ADDRESS: filled from the GST number (full registered address), then editable.
+// PRODUCTS: tag products from the company catalog (or type a name). Catalog products are ordered in whole packs or
+// master packs, never single units; the sheet shows what one pack / master pack contains.
 // Prices are for the log only, GST included. Same look and pickers as the New enquiry sheet.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -10,8 +12,9 @@ import { fetchCatalogProducts } from "../../utils/salesThreadApi.js";
 import { fetchSalesCustomers } from "../../utils/salesApi.js";
 import { salesOrderBook } from "../../utils/orderBookApi.js";
 import { RFQ_UNITS } from "../../utils/rfqUtils.js";
-import { useSheetBehavior, useGstLookup } from "../../hooks/useSalesSheet.js";
+import { useSheetBehavior } from "../../hooks/useSalesSheet.js";
 import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, ov, ol, initialOf, qty, inr } from "../sales/salesThreadFmt.js";
+import { packFacts, packLines, unitsPerSale, basisWord, minQty } from "./orderBookPack.js";
 import "../sales/sales-threads.css";
 import "./order-book.css";
 
@@ -23,6 +26,25 @@ function useDebounced(value, ms = 300) {
     const [d, setD] = useState(value.trim());
     useEffect(() => { const t = setTimeout(() => setD(value.trim()), ms); return () => clearTimeout(t); }, [value, ms]);
     return d;
+}
+
+// Full company name + address for a GST number. status: idle | loading | ok | fail
+function useGstAddress(token) {
+    const [status, setStatus] = useState("idle");
+    const seq = useRef(0);
+    const run = useCallback(async (raw) => {
+        const gstin = cleanGstin(raw);
+        const my = ++seq.current;
+        if (!GSTIN_RE.test(gstin)) { setStatus("idle"); return null; }
+        setStatus("loading");
+        const res = await salesOrderBook.gstAddress(token, gstin);
+        if (my !== seq.current) return null;
+        if (res.success && res.found) { setStatus("ok"); return res; }
+        setStatus("fail");
+        return null;
+    }, [token]);
+    const reset = useCallback(() => { seq.current++; setStatus("idle"); }, []);
+    return { status, run, reset };
 }
 
 // Paged, searchable remote list. fetchPage(q, offset) -> { success, items, hasMore, nextOffset? }
@@ -85,11 +107,13 @@ function Thumb({ src, name }) {
 }
 
 const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", phone: "", email: "", fromGst: false };
+const blankAddr = { address: "", city: "", state: "", pincode: "", touched: false, fromGst: false };
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
 export default function OrderBookSheet({ token, onClose, onCreated }) {
     useSheetBehavior(onClose);
     const [c, setC] = useState(blankCustomer);
+    const [addr, setAddr] = useState(blankAddr);
     const [lines, setLines] = useState([]);
     const [picking, setPicking] = useState(true);       // product picker open
     const [manual, setManual] = useState(false);        // typing a product name instead
@@ -100,13 +124,21 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const [errors, setErrors] = useState({});
     const [busy, setBusy] = useState(false);
     const [formErr, setFormErr] = useState("");
-    const gst = useGstLookup(token);
+    const gst = useGstAddress(token);
 
     const units = useMemo(() => (RFQ_UNITS || []).map((o) => ({ value: ov(o), label: ol(o) })), []);
     const touch = () => setFormErr("");
     const patchC = (patch) => { setC((s) => ({ ...s, ...patch })); setErrors((e) => ({ ...e, contact: undefined })); touch(); };
+    const patchAddr = (patch) => { setAddr((a) => ({ ...a, ...patch, touched: true, fromGst: false })); setErrors((e) => ({ ...e, pincode: undefined })); touch(); };
     const patchLine = (key, patch) => { setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l))); touch(); };
     const removeLine = (key) => { setLines((ls) => { const next = ls.filter((l) => l.key !== key); if (!next.length) setPicking(true); return next; }); touch(); };
+    // Switching between packs and master packs changes what the quantity and the price mean, so both are reset.
+    const switchBasis = (l, basis) => patchLine(l.key, { basis, quantity: String(minQty(l.pack, basis, l.moq)), price: "" });
+
+    // Fill the address from a GST lookup result, unless the salesperson already typed in it while the lookup ran.
+    const applyGstAddress = (r) => setAddr((a) => (a.touched ? a : {
+        address: r.address || "", city: r.city || "", state: r.state || "", pincode: r.pincode || "", touched: false, fromGst: !!r.address,
+    }));
 
     const dCq = useDebounced(cSearch);
     const custList = useRemoteList(
@@ -119,32 +151,54 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         dPq, picking && !manual, (i) => i.submissionId,
     );
 
-    // New customer: a full GST number fetches the company name.
+    // New customer: a full GST number fetches the company name and the full address.
     useEffect(() => {
         if (c.mode !== "new") return undefined;
         const g = cleanGstin(c.gstin);
         if (!GSTIN_RE.test(g)) { gst.reset(); return undefined; }
         let live = true;
-        gst.run(g).then((name) => { if (live && name) setC((s) => ({ ...s, name, fromGst: true })); });
+        setAddr(blankAddr);
+        gst.run(g).then((r) => {
+            if (!live || !r) return;
+            if (r.name) setC((s) => ({ ...s, name: r.name, fromGst: true }));
+            applyGstAddress(r);
+        });
         return () => { live = false; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c.gstin, c.mode]);
 
-    const pickCustomer = (cu) => { setC({ ...blankCustomer, mode: "picked", picked: cu }); setErrors((e) => ({ ...e, customer: undefined, contact: undefined })); touch(); };
+    // Picked customer with a GST number: prefill the address the same way.
+    const pickedGstin = c.mode === "picked" ? c.picked?.gstin || "" : "";
+    useEffect(() => {
+        if (!pickedGstin) return undefined;
+        let live = true;
+        setAddr(blankAddr);
+        gst.run(pickedGstin).then((r) => { if (live && r) applyGstAddress(r); });
+        return () => { live = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pickedGstin]);
+
+    const pickCustomer = (cu) => {
+        setC({ ...blankCustomer, mode: "picked", picked: cu });
+        setAddr(blankAddr); gst.reset();
+        setErrors((e) => ({ ...e, customer: undefined, contact: undefined })); touch();
+    };
+    const resetCustomer = () => { setC({ ...blankCustomer }); setAddr(blankAddr); gst.reset(); };
 
     const addCatalog = (pr) => {
         if (pr.reason || lines.some((l) => l.submissionId === pr.submissionId) || lines.length >= MAX_LINES) return;
-        const locked = units.some((u) => u.value === pr.unit);
+        const f = packFacts({ packSize: pr.packSize, packsPerMaster: pr.masterPackSize, unit: pr.unit });
+        const basis = f.per ? "per_master_pack" : "per_pack";
         setLines((ls) => [...ls, {
             key: pr.submissionId, submissionId: pr.submissionId, productName: pr.productName, brandName: pr.brandName || "", image: pr.image || null,
-            unit: locked ? pr.unit : "", locked, quantity: pr.moq ? String(pr.moq) : "", price: "",
+            pack: f, basis, moq: pr.moq, unit: pr.unit, quantity: String(minQty(f, basis, pr.moq)), price: "",
         }]);
         setPicking(false); setPSearch(""); setErrors((e) => ({ ...e, items: undefined })); touch();
     };
     const addManual = () => {
         const name = manualName.trim();
         if (name.length < 2) { setErrors((e) => ({ ...e, manual: "Enter the product name." })); return; }
-        setLines((ls) => [...ls, { key: `m-${Date.now()}`, submissionId: null, productName: name, brandName: "", image: null, unit: "", locked: false, quantity: "", price: "" }]);
+        setLines((ls) => [...ls, { key: `m-${Date.now()}`, submissionId: null, productName: name, brandName: "", image: null, pack: null, basis: null, moq: null, unit: "", quantity: "", price: "" }]);
         setManual(false); setManualName(""); setPicking(false); setErrors((e) => ({ ...e, manual: undefined, items: undefined })); touch();
     };
 
@@ -171,12 +225,14 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         }
         // At least one way to reach the customer.
         if (c.mode !== "pick" && !contactPhone && !contactEmail) e.contact = CONTACT_MSG;
+        if (addr.pincode.trim() && !/^\d{6}$/.test(addr.pincode.trim())) e.pincode = "Enter a valid 6-digit pincode.";
         if (!lines.length) e.items = "Add at least one product.";
         const le = {};
         for (const l of lines) {
             const x = {};
             if (!(num(l.quantity) > 0)) x.quantity = "Enter the quantity.";
-            if (!l.unit) x.unit = "Choose a unit.";
+            else if (l.pack && !Number.isInteger(num(l.quantity))) x.quantity = `Enter a whole number of ${basisWord(l.basis, 2)}.`;
+            if (!l.pack && !l.unit) x.unit = "Choose a unit.";
             if (!(num(l.price) > 0)) x.price = "Enter the price.";
             if (Object.keys(x).length) le[l.key] = x;
         }
@@ -197,9 +253,11 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         setBusy(true); setFormErr("");
         const res = await salesOrderBook.create(token, {
             ...cu, notes: notes.trim(),
+            customerAddress: addr.address.trim(), customerCity: addr.city.trim(), customerState: addr.state.trim(), customerPincode: addr.pincode.trim(),
             items: lines.map((l) => ({
                 productSubmissionId: l.submissionId || undefined, productName: l.productName,
-                quantity: num(l.quantity), unit: l.unit, unitPrice: num(l.price),
+                quantity: num(l.quantity), unitPrice: num(l.price),
+                ...(l.pack ? { basis: l.basis } : { unit: l.unit }),
             })),
         });
         setBusy(false);
@@ -207,9 +265,9 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         onCreated?.(res.order);
     };
 
-    const gstHint = gst.status === "loading" ? "Finding the company…"
-        : gst.status === "ok" ? "Company name filled from the GST number."
-            : gst.status === "fail" ? "Couldn't find this GST number. Type the company name below." : "Optional. We fill in the company name from it.";
+    const gstHint = gst.status === "loading" ? "Finding the company and its address…"
+        : gst.status === "ok" ? "Company name and address filled from the GST number."
+            : gst.status === "fail" ? "Couldn't find this GST number. Type the company name below." : "Optional. We fill in the company name and address from it.";
 
     // Mobile + email inputs. Used for a new customer, and for a picked customer who has no contact saved.
     const contactFields = (idSuffix) => (
@@ -254,7 +312,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                     {picked.gstin && <small>GSTIN {picked.gstin}</small>}
                                     <small>{[picked.phone, picked.email].filter(Boolean).join(" · ") || "No phone or email saved yet."}</small>
                                 </span>
-                                <button type="button" className="st-lnk" onClick={() => setC({ ...blankCustomer })}>Change</button>
+                                <button type="button" className="st-lnk" onClick={resetCustomer}>Change</button>
                             </div>
                             {pickedNoContact && <div style={{ marginTop: 10 }}>{contactFields("-p")}</div>}
                         </>
@@ -275,7 +333,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                         </span>
                                     </button>
                                 )} />
-                            <button type="button" className="st-btn st-full" onClick={() => { setC({ ...blankCustomer, mode: "new" }); touch(); }}>
+                            <button type="button" className="st-btn st-full" onClick={() => { setC({ ...blankCustomer, mode: "new" }); setAddr(blankAddr); touch(); }}>
                                 <UserPlus size={16} />Customer not listed? Add a new one
                             </button>
                             {errors.customer && <p className="st-err" style={{ marginTop: 6 }}>{errors.customer}</p>}
@@ -301,7 +359,40 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 {errors.name && <p className="st-err">{errors.name}</p>}
                             </div>
                             {contactFields("")}
-                            <button type="button" className="st-lnk" onClick={() => { setC({ ...blankCustomer }); gst.reset(); }}>Search my customers instead</button>
+                            <button type="button" className="st-lnk" onClick={resetCustomer}>Search my customers instead</button>
+                        </>
+                    )}
+
+                    {/* ------------------------------ buyer address ------------------------------ */}
+                    {c.mode !== "pick" && (
+                        <>
+                            <p className="st-sec">Buyer address</p>
+                            <div className="st-f">
+                                <label htmlFor="ob-addr">Full address</label>
+                                <textarea id="ob-addr" className="st-in" rows={3} maxLength={400} value={addr.address}
+                                    placeholder="Building, street, area" onChange={(e) => patchAddr({ address: e.target.value })} />
+                                <p className="st-hint">
+                                    {gst.status === "loading" ? "Fetching the address from the GST number…"
+                                        : addr.fromGst ? "Filled from the GST records. Change anything that is different."
+                                            : "Optional. Add it so the team knows where the order goes."}
+                                </p>
+                            </div>
+                            <div className="st-two">
+                                <div className="st-f">
+                                    <label htmlFor="ob-city">City / district</label>
+                                    <input id="ob-city" className="st-in" maxLength={80} value={addr.city} onChange={(e) => patchAddr({ city: e.target.value })} />
+                                </div>
+                                <div className="st-f">
+                                    <label htmlFor="ob-state">State</label>
+                                    <input id="ob-state" className="st-in" maxLength={60} value={addr.state} onChange={(e) => patchAddr({ state: e.target.value })} />
+                                </div>
+                            </div>
+                            <div className="st-f">
+                                <label htmlFor="ob-pin">Pincode</label>
+                                <input id="ob-pin" className="st-in" inputMode="numeric" maxLength={6} placeholder="6 digits" value={addr.pincode}
+                                    onChange={(e) => patchAddr({ pincode: e.target.value.replace(/\D/g, "") })} />
+                                {errors.pincode && <p className="st-err">{errors.pincode}</p>}
+                            </div>
                         </>
                     )}
 
@@ -310,6 +401,11 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
                     {lines.map((l) => {
                         const le = errors.lines?.[l.key] || {};
+                        const f = l.pack;                                   // null for a typed-name product
+                        const word = l.basis === "per_master_pack" ? "master pack" : "pack";
+                        const perSale = f ? unitsPerSale(f, l.basis) : 0;
+                        const totalUnits = f ? num(l.quantity) * perSale : 0;
+                        const moqMin = f && num(l.moq) > 0 ? minQty(f, l.basis, l.moq) : 0;
                         return (
                             <div className="ob-le" key={l.key}>
                                 <div className="ob-le-h">
@@ -317,25 +413,46 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                     <span className="st-prod-t"><b>{l.productName}</b><small>{l.brandName || (l.submissionId ? "From your catalog" : "Typed by hand")}</small></span>
                                     <button type="button" className="st-ib sm" aria-label={`Remove ${l.productName}`} onClick={() => removeLine(l.key)}><Trash2 size={16} /></button>
                                 </div>
+
+                                {f && <div className="ob-pkbox">{packLines(f).map((t) => <span key={t}>{t}</span>)}</div>}
+
                                 <div className="st-two">
                                     <div className="st-f">
-                                        <label htmlFor={`q-${l.key}`}>Quantity *</label>
-                                        <input id={`q-${l.key}`} className="st-in" inputMode="decimal" placeholder="e.g. 500" value={l.quantity}
-                                            onChange={(e) => patchLine(l.key, { quantity: e.target.value.replace(/[^\d.]/g, "") })} />
+                                        <label htmlFor={`q-${l.key}`}>{f ? `Quantity (${word}s) *` : "Quantity *"}</label>
+                                        <input id={`q-${l.key}`} className="st-in" inputMode={f ? "numeric" : "decimal"} placeholder="e.g. 5" value={l.quantity}
+                                            onChange={(e) => patchLine(l.key, { quantity: e.target.value.replace(f ? /\D/g : /[^\d.]/g, "") })} />
                                         {le.quantity && <p className="st-err">{le.quantity}</p>}
                                     </div>
                                     <div className="st-f">
-                                        <label htmlFor={`u-${l.key}`}>Unit *</label>
-                                        <select id={`u-${l.key}`} className="st-in" value={l.unit} disabled={l.locked} onChange={(e) => patchLine(l.key, { unit: e.target.value })}>
-                                            <option value="">Select…</option>
-                                            {units.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                        </select>
-                                        {le.unit && <p className="st-err">{le.unit}</p>}
+                                        {f ? (
+                                            <>
+                                                <label htmlFor={`u-${l.key}`}>Ordered in *</label>
+                                                <select id={`u-${l.key}`} className="st-in" value={l.basis} disabled={!f.per} onChange={(e) => switchBasis(l, e.target.value)}>
+                                                    {f.per ? <option value="per_master_pack">Master packs</option> : null}
+                                                    <option value="per_pack">Packs</option>
+                                                </select>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <label htmlFor={`u-${l.key}`}>Unit *</label>
+                                                <select id={`u-${l.key}`} className="st-in" value={l.unit} onChange={(e) => patchLine(l.key, { unit: e.target.value })}>
+                                                    <option value="">Select…</option>
+                                                    {units.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                                </select>
+                                                {le.unit && <p className="st-err">{le.unit}</p>}
+                                            </>
+                                        )}
                                     </div>
                                 </div>
+                                {f && (
+                                    <p className="st-hint ob-conv">
+                                        {num(l.quantity) > 0 ? `= ${qty(totalUnits)} ${f.unit} in total` : `Enter how many ${word}s.`}
+                                        {moqMin > 0 ? ` · Seller's MOQ: ${moqMin} ${basisWord(l.basis, moqMin)}` : ""}
+                                    </p>
+                                )}
                                 <div className="st-two">
                                     <div className="st-f">
-                                        <label htmlFor={`p-${l.key}`}>Price per unit (₹) *</label>
+                                        <label htmlFor={`p-${l.key}`}>{f ? `Price per ${word} (₹) *` : "Price per unit (₹) *"}</label>
                                         <input id={`p-${l.key}`} className="st-in" inputMode="decimal" placeholder="GST included" value={l.price}
                                             onChange={(e) => patchLine(l.key, { price: e.target.value.replace(/[^\d.]/g, "") })} />
                                         {le.price && <p className="st-err">{le.price}</p>}
@@ -356,12 +473,15 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 empty={dPq ? `No product matches "${dPq}".` : "Your company has no products yet."}
                                 renderRow={(i) => {
                                     const added = lines.some((l) => l.submissionId === i.submissionId);
+                                    const pf = packFacts({ packSize: i.packSize, packsPerMaster: i.masterPackSize, unit: i.unit });
                                     return (
                                         <button type="button" className="st-prod pick" disabled={!!i.reason || added} onClick={() => addCatalog(i)}>
                                             <Thumb src={i.image} name={i.productName} />
                                             <span className="st-prod-t">
                                                 <b>{i.productName}</b>
-                                                <small>{[i.brandName, `Sold in ${i.unit}`, i.packSize > 1 ? `1 pack = ${qty(i.packSize)} ${i.unit}` : null].filter(Boolean).join(" · ")}</small>
+                                                {i.brandName && <small>{i.brandName}</small>}
+                                                <small>{packLines(pf).join(" · ")}</small>
+                                                {i.gstPercent ? <small>GST {qty(i.gstPercent)}%</small> : null}
                                                 {added && <em className="soft">Already added</em>}
                                                 {i.reason && <em>{i.reason}: can't be used right now</em>}
                                             </span>
@@ -397,7 +517,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
                     <div className="st-f" style={{ marginTop: 14 }}>
                         <label htmlFor="ob-notes">Notes</label>
-                        <textarea id="ob-notes" className="st-in" rows={2} maxLength={1000} placeholder="Delivery address, payment terms, anything the team should know" value={notes} onChange={(e) => setNotes(e.target.value)} />
+                        <textarea id="ob-notes" className="st-in" rows={2} maxLength={1000} placeholder="Delivery instructions, payment terms, anything the team should know" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
                 </div>
 

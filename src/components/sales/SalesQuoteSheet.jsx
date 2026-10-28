@@ -1,6 +1,9 @@
 // src/components/sales/SalesQuoteSheet.jsx
 // Quotation flow: pick company products -> set this customer's price -> choose WhatsApp / email -> send.
-// Prices are tied to the customer's GST number and pre-filled next time.
+// Products are quoted in whole packs or master packs (never single units): the quantity is a number of packs / master
+// packs and the price is per pack / master pack. Every line shows what one pack contains and the total in the listing's unit.
+// Prices are tied to the customer's GST number and pre-filled next time (saved prices are per listing unit; they are
+// converted to the pack / master pack price shown here).
 // The product tagged on the enquiry (if any) is pre-selected. The customer is added to the customer list on send.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -8,15 +11,20 @@ import { X, Search, Check, Loader2, ArrowLeft, Trash2, MessageCircle, Mail, Aler
 import { fetchQuoteProducts, sendThreadQuote, updateThread } from "../../utils/salesThreadApi.js";
 import { useSheetBehavior } from "../../hooks/useSalesSheet.js";
 import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, inr, qty, round4 } from "./salesThreadFmt.js";
+import { packFacts, packLines, unitsPerSale, basisWord, minQty } from "../orderBook/orderBookPack.js";
 import "./sales-threads.css";
+import "../orderBook/order-book.css";
 
 const PAGE = 20;
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const packOf = (p) => packFacts({ packSize: p.packSize, packsPerMaster: p.masterPackSize, unit: p.unit });
+const defaultBasis = (f) => (f.per ? "per_master_pack" : "per_pack");
 
 function Thumb({ src, name }) {
     return <span className="st-th">{src ? <img src={src} alt="" loading="lazy" /> : (name || "?").trim()[0]?.toUpperCase()}</span>;
 }
 
+// l.qty = number of packs / master packs, l.price = price per pack / master pack.
 function calcLine(l) {
     const g = 1 + (Number(l.p.gstPercent) || 0) / 100;
     const price = parseFloat(l.price) || 0, q = parseFloat(l.qty) || 0;
@@ -26,6 +34,7 @@ function calcLine(l) {
 }
 
 // The single most useful price to show for a product: this customer's current price, else the last quote, else list.
+// These are stored per listing unit (Kg, Pcs ...).
 function priceHint(p) {
     if (p.customUnitPriceIncl != null) return { label: "Current price for this customer", price: p.customUnitPriceIncl, strong: true };
     if (p.lastUnitPriceIncl != null) return { label: "Last quoted to this customer", price: p.lastUnitPriceIncl, strong: true };
@@ -33,9 +42,23 @@ function priceHint(p) {
     return null;
 }
 
+// "Last quoted to this customer: ₹1,250 per master pack incl. GST (₹1.25 / Kg)"
+function hintText(h, f, basis, unit) {
+    const per = unitsPerSale(f, basis);
+    const word = basis === "per_master_pack" ? "master pack" : "pack";
+    return `${h.label}: ${inr(round4(h.price * per), 4)} per ${word} incl. GST (${inr(h.price, 4)} / ${unit})`;
+}
+
+// New line: ordered in master packs when the product has them, else packs. Quantity starts at what the customer asked for
+// (rounded up to whole packs) but never below the seller's MOQ; the price is the best known per-unit price converted to a pack price.
 const newLine = (p, thread) => {
+    const f = packOf(p);
+    const basis = defaultBasis(f);
+    const per = unitsPerSale(f, basis);
     const start = p.customUnitPriceIncl ?? p.lastUnitPriceIncl ?? p.listUnitPriceIncl;
-    return { p, qty: p.unitMatches ? String(thread.quantity) : "1", price: start != null ? String(round4(start)) : "", gstIncl: true, setCustom: true };
+    const asked = p.unitMatches ? Math.ceil((Number(thread.quantity) || 0) / per) : 0;
+    const q = Math.max(1, asked, minQty(f, basis, p.moq));
+    return { p, f, basis, qty: String(q), price: start != null ? String(round4(start * per)) : "", gstIncl: true, setCustom: true };
 };
 
 function CustomPricingNote({ cp }) {
@@ -62,7 +85,7 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [loadError, setLoadError] = useState("");
-    const [lines, setLines] = useState([]); // { p, qty, price, gstIncl, setCustom }
+    const [lines, setLines] = useState([]); // { p, f, basis, qty, price, gstIncl, setCustom }
     const [gstin, setGstin] = useState(thread.customerGstin || "");
     const [phone, setPhone] = useState(thread.customerPhone || "");
     const [email, setEmail] = useState(thread.customerEmail || "");
@@ -120,11 +143,24 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
         });
     };
     const patchLine = (id, patch) => { setErr(""); setLines((prev) => prev.map((l) => (l.p.submissionId === id ? { ...l, ...patch } : l))); };
+
     // Keep the same real price when switching between incl. / excl. GST.
     const switchGst = (l, incl) => {
         const g = 1 + (Number(l.p.gstPercent) || 0) / 100, price = parseFloat(l.price);
         if (!(price > 0) || l.gstIncl === incl) return patchLine(l.p.submissionId, { gstIncl: incl });
         patchLine(l.p.submissionId, { gstIncl: incl, price: String(round4(incl ? price * g : price / g)) });
+    };
+
+    // Switching between packs and master packs: the quantity restarts at the MOQ, the price is converted
+    // so the price per listing unit (e.g. per Kg) stays exactly the same.
+    const switchBasis = (l, basis) => {
+        if (l.basis === basis) return;
+        const from = unitsPerSale(l.f, l.basis), to = unitsPerSale(l.f, basis);
+        const price = parseFloat(l.price);
+        patchLine(l.p.submissionId, {
+            basis, qty: String(minQty(l.f, basis, l.p.moq)),
+            price: price > 0 ? String(round4((price / from) * to)) : "",
+        });
     };
 
     const totals = useMemo(() => lines.reduce((a, l) => {
@@ -141,7 +177,9 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
         if (busy) return;
         for (const l of lines) {
             if (!(parseFloat(l.price) > 0)) return setErr(`Enter a price for ${l.p.productName}.`);
-            if (!(parseFloat(l.qty) > 0)) return setErr(`Enter a quantity for ${l.p.productName}.`);
+            const n = parseFloat(l.qty);
+            if (!(n > 0)) return setErr(`Enter a quantity for ${l.p.productName}.`);
+            if (!Number.isInteger(n)) return setErr(`Enter a whole number of ${basisWord(l.basis, 2)} for ${l.p.productName}.`);
         }
         const g = cleanGstin(gstin);
         if (!GSTIN_RE.test(g)) return setErr("Enter the customer's 15-character GST number. It's needed to send a quotation.");
@@ -160,7 +198,16 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
             if (!u.success) { setBusy(false); return setErr(u.message || "Couldn't save the customer details."); }
         }
         const res = await sendThreadQuote(token, thread.id, {
-            items: lines.map((l) => ({ submissionId: l.p.submissionId, quantity: Number(l.qty), price: Number(l.price), gstInclusive: l.gstIncl, setCustomPrice: canSetCustom && l.setCustom })),
+            // quantity / price stay per listing unit (what the quotation and custom prices already understand);
+            // basis / packQuantity / packPrice / unitsPerSaleUnit carry the pack breakdown that was entered.
+            items: lines.map((l) => {
+                const per = unitsPerSale(l.f, l.basis), n = Number(l.qty), pp = Number(l.price);
+                return {
+                    submissionId: l.p.submissionId, quantity: round4(n * per), price: round4(pp / per), gstInclusive: l.gstIncl,
+                    setCustomPrice: canSetCustom && l.setCustom,
+                    basis: l.basis, packQuantity: n, packPrice: pp, unitsPerSaleUnit: per,
+                };
+            }),
             channels, note: note.trim(),
         });
         setBusy(false);
@@ -199,18 +246,20 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
                         {!loading && products.map((p) => {
                             const on = picked.has(p.submissionId);
                             const hint = priceHint(p);
+                            const pf = packOf(p);
                             return (
                                 <button key={p.submissionId} type="button" className={`st-prod${on ? " on" : ""}`} disabled={!!p.reason}
                                     aria-pressed={on} onClick={() => toggle(p)}>
                                     <Thumb src={p.image} name={p.productName} />
                                     <span className="st-prod-t">
                                         <b>{p.productName}</b>
-                                        <small>{[p.brandName, `Sold in ${p.unit}`, p.packSize > 1 ? `1 pack = ${qty(p.packSize)} ${p.unit}` : null].filter(Boolean).join(" · ")}</small>
+                                        {p.brandName && <small>{p.brandName}</small>}
+                                        <small>{packLines(pf).join(" · ")}</small>
                                         {p.tagged && <small className="ok">Tagged on this enquiry</small>}
                                         {p.description && <small className="st-clip">{p.description}</small>}
-                                        {hint && <small className={hint.strong ? "ok" : ""}>{hint.label}: {inr(hint.price, 4)} / {p.unit} incl. GST</small>}
+                                        {hint && <small className={hint.strong ? "ok" : ""}>{hintText(hint, pf, defaultBasis(pf), p.unit)}</small>}
                                         {p.reason && <em>{p.reason}: can't be quoted right now</em>}
-                                        {!p.unitMatches && !p.reason && <em className="soft">Customer asked in {thread.unit}; this is sold in {p.unit}</em>}
+                                        {!p.unitMatches && !p.reason && <em className="soft">Customer asked in {thread.unit}; this is sold in packs of {p.unit}</em>}
                                     </span>
                                     <span className="st-tick" aria-hidden="true">{on ? <Check size={16} strokeWidth={3} /> : null}</span>
                                 </button>
@@ -227,28 +276,51 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
                         {lines.map((l) => {
                             const c = calcLine(l);
                             const hint = priceHint(l.p);
+                            const id = l.p.submissionId;
+                            const word = l.basis === "per_master_pack" ? "master pack" : "pack";
+                            const per = unitsPerSale(l.f, l.basis);
+                            const n = parseFloat(l.qty) || 0;
+                            const price = parseFloat(l.price) || 0;
+                            const moqMin = Number(l.p.moq) > 0 ? minQty(l.f, l.basis, l.p.moq) : 0;
+                            const perUnitIncl = price > 0 ? (l.gstIncl ? price : price * (1 + (Number(l.p.gstPercent) || 0) / 100)) / per : 0;
                             return (
-                                <div className="st-line" key={l.p.submissionId}>
+                                <div className="st-line" key={id}>
                                     <div className="st-line-h">
                                         <Thumb src={l.p.image} name={l.p.productName} />
                                         <span className="st-prod-t"><b>{l.p.productName}</b><small>{[l.p.brandName, `GST ${l.p.gstPercent}%`].filter(Boolean).join(" · ")}</small></span>
                                         <button type="button" className="st-ib sm" aria-label={`Remove ${l.p.productName}`} onClick={() => toggle(l.p)}><Trash2 size={15} /></button>
                                     </div>
+
+                                    <div className="ob-pkbox">{packLines(l.f).map((t) => <span key={t}>{t}</span>)}</div>
+
                                     <div className="st-two">
                                         <div className="st-f">
-                                            <label htmlFor={`q-${l.p.submissionId}`}>Quantity ({l.p.unit})</label>
-                                            <input id={`q-${l.p.submissionId}`} className="st-in" inputMode="decimal" value={l.qty} onChange={(e) => patchLine(l.p.submissionId, { qty: e.target.value.replace(/[^\d.]/g, "") })} />
+                                            <label htmlFor={`q-${id}`}>Quantity ({word}s)</label>
+                                            <input id={`q-${id}`} className="st-in" inputMode="numeric" placeholder="e.g. 5" value={l.qty} onChange={(e) => patchLine(id, { qty: e.target.value.replace(/\D/g, "") })} />
                                         </div>
                                         <div className="st-f">
-                                            <label htmlFor={`p-${l.p.submissionId}`}>Price per {l.p.unit} (₹)</label>
-                                            <input id={`p-${l.p.submissionId}`} className="st-in" inputMode="decimal" value={l.price} onChange={(e) => patchLine(l.p.submissionId, { price: e.target.value.replace(/[^\d.]/g, "") })} />
+                                            <label htmlFor={`u-${id}`}>Ordered in</label>
+                                            <select id={`u-${id}`} className="st-in" value={l.basis} disabled={!l.f.per} onChange={(e) => switchBasis(l, e.target.value)}>
+                                                {l.f.per ? <option value="per_master_pack">Master packs</option> : null}
+                                                <option value="per_pack">Packs</option>
+                                            </select>
                                         </div>
+                                    </div>
+                                    <p className="st-hint ob-conv">
+                                        {n > 0 ? `= ${qty(n * per)} ${l.f.unit} in total` : `Enter how many ${word}s.`}
+                                        {moqMin > 0 ? ` · Seller's MOQ: ${moqMin} ${basisWord(l.basis, moqMin)}` : ""}
+                                    </p>
+
+                                    <div className="st-f">
+                                        <label htmlFor={`p-${id}`}>Price per {word} (₹)</label>
+                                        <input id={`p-${id}`} className="st-in" inputMode="decimal" value={l.price} onChange={(e) => patchLine(id, { price: e.target.value.replace(/[^\d.]/g, "") })} />
                                     </div>
                                     <div className="st-seg" role="group" aria-label="GST">
                                         <button type="button" aria-pressed={l.gstIncl} onClick={() => switchGst(l, true)}>Includes GST</button>
                                         <button type="button" aria-pressed={!l.gstIncl} onClick={() => switchGst(l, false)}>Excludes GST</button>
                                     </div>
-                                    {hint && <p className="st-hint">{hint.label}: {inr(hint.price, 4)} per {l.p.unit} incl. GST.</p>}
+                                    {perUnitIncl > 0 && <p className="st-hint">About {inr(perUnitIncl, 4)} per {l.f.unit} incl. GST.</p>}
+                                    {hint && <p className="st-hint">{hintText(hint, l.f, l.basis, l.p.unit)}.</p>}
                                     <p className="st-line-t"><span>Line total (incl. GST)</span><b>{inr(c.total)}</b></p>
                                 </div>
                             );

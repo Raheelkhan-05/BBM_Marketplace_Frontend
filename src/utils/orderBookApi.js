@@ -31,6 +31,8 @@ const reads = (base) => ({
 export const salesOrderBook = {
     ...reads("/sales/order-book"),
     create: (token, payload) => call("/sales/order-book", { token, method: "POST", body: payload }),
+    // Full buyer address (+ company name) for a GST number.
+    gstAddress: (token, gstin) => call("/sales/gst-address", { token, method: "POST", body: { gstin } }),
 };
 
 // Company team (admin + members): every order of the company.

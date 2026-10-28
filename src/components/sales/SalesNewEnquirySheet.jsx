@@ -2,6 +2,8 @@
 // Start an enquiry in two steps of choice:
 //  CUSTOMER: pick one of your existing customers (search) -> or add a new one by GST number / company name + contact.
 //  PRODUCT:  tag a product from your company catalog (locked afterwards) -> or type the product name.
+// Catalog products are enquired in whole packs or master packs (never single units); the sheet shows what one pack /
+// master pack contains and the total in the listing's own unit. Typed-name products keep quantity + unit.
 // The company name is always taken from the GST number by the server; a new customer is added to the customer list
 // automatically when the first quotation is sent. `initialCustomer` pre-selects a customer (used from the Customers page).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,8 +13,10 @@ import { createThread, fetchCatalogProducts } from "../../utils/salesThreadApi.j
 import { fetchSalesCustomers } from "../../utils/salesApi.js";
 import { RFQ_UNITS } from "../../utils/rfqUtils.js";
 import { useSheetBehavior, useGstLookup } from "../../hooks/useSalesSheet.js";
-import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, ov, ol, initialOf, qty } from "./salesThreadFmt.js";
+import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, ov, ol, initialOf, qty, round4 } from "./salesThreadFmt.js";
+import { packFacts, packLines, unitsPerSale, basisWord, minQty } from "../orderBook/orderBookPack.js";
 import "./sales-threads.css";
+import "../orderBook/order-book.css";
 
 const PAGE = 8;
 
@@ -82,12 +86,15 @@ function Thumb({ src, name }) {
 }
 
 const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", phone: "", email: "", fromGst: false };
+const blankProduct = { mode: "pick", picked: null, pack: null, name: "" };   // mode: pick | picked | manual
+const blankFields = { quantity: "", unit: "", basis: "per_pack", specs: "" };
+const packOf = (pr) => packFacts({ packSize: pr.packSize, packsPerMaster: pr.masterPackSize, unit: pr.unit });
 
 export default function SalesNewEnquirySheet({ token, onClose, onCreated, initialCustomer = null }) {
     useSheetBehavior(onClose);
     const [c, setC] = useState(() => (initialCustomer ? { ...blankCustomer, mode: "picked", picked: initialCustomer } : blankCustomer));
-    const [p, setP] = useState({ mode: "pick", picked: null, name: "" });   // mode: pick | picked | manual
-    const [f, setF] = useState({ quantity: "", unit: "", specs: "" });
+    const [p, setP] = useState(blankProduct);
+    const [f, setF] = useState(blankFields);   // quantity is in packs / master packs for catalog products, in `unit` for typed ones
     const [cSearch, setCSearch] = useState("");
     const [pSearch, setPSearch] = useState("");
     const [errors, setErrors] = useState({});
@@ -126,17 +133,32 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
     }, [c.gstin, c.mode]);
 
     const pickCustomer = (cu) => { setC({ ...blankCustomer, mode: "picked", picked: cu }); setErrors((e) => ({ ...e, customer: undefined })); touch(); };
+
+    const resetProduct = (mode = "pick") => {
+        setP({ ...blankProduct, mode });
+        setF((s) => ({ ...blankFields, specs: s.specs }));
+        setErrors((e) => ({ ...e, product: undefined, quantity: undefined, unit: undefined }));
+        touch();
+    };
+
+    // Catalog product: ordered in packs, or master packs when the product has them. Starts at the seller's MOQ.
     const pickProduct = (pr) => {
         if (pr.reason) return;
-        setP({ mode: "picked", picked: pr, name: "" });
-        setF((s) => ({
-            ...s,
-            unit: units.some((u) => u.value === pr.unit) ? pr.unit : s.unit,
-            quantity: s.quantity || (pr.moq ? String(pr.moq) : ""),
-        }));
-        setErrors((e) => ({ ...e, product: undefined })); touch();
+        const pk = packOf(pr);
+        const basis = pk.per ? "per_master_pack" : "per_pack";
+        setP({ mode: "picked", picked: pr, pack: pk, name: "" });
+        setF((s) => ({ ...s, basis, unit: pr.unit || "", quantity: String(minQty(pk, basis, pr.moq)) }));
+        setErrors((e) => ({ ...e, product: undefined, quantity: undefined })); touch();
     };
-    const lockedUnit = p.mode === "picked" && units.some((u) => u.value === p.picked.unit);
+
+    // Switching between packs and master packs changes what the quantity means, so it restarts at the MOQ.
+    const switchBasis = (basis) => patchF({ basis, quantity: String(minQty(p.pack, basis, p.picked?.moq)) });
+
+    const pk = p.mode === "picked" ? p.pack : null;                  // null for a typed-name product
+    const word = f.basis === "per_master_pack" ? "master pack" : "pack";
+    const qn = Number(f.quantity) || 0;
+    const totalUnits = pk ? qn * unitsPerSale(pk, f.basis) : 0;
+    const moqMin = pk && Number(p.picked?.moq) > 0 ? minQty(pk, f.basis, p.picked.moq) : 0;
 
     const validate = () => {
         const e = {};
@@ -150,8 +172,9 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
         }
         if (p.mode === "pick") e.product = "Choose a product, or type its name.";
         if (p.mode === "manual" && p.name.trim().length < 2) e.product = "Enter the product name.";
-        if (!(Number(f.quantity) > 0)) e.quantity = "Enter the quantity.";
-        if (!f.unit) e.unit = "Choose a unit.";
+        if (!(qn > 0)) e.quantity = "Enter the quantity.";
+        else if (pk && !Number.isInteger(qn)) e.quantity = `Enter a whole number of ${basisWord(f.basis, 2)}.`;
+        if (!pk && !f.unit) e.unit = "Choose a unit.";
         return e;
     };
 
@@ -168,8 +191,15 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
             ? { productSubmissionId: p.picked.submissionId, productName: p.picked.productName }
             : { productName: p.name.trim() };
 
+        // `quantity` + `unit` stay in the listing's own unit (what the thread and quotation already understand);
+        // basis / packQuantity / unitsPerSaleUnit carry the pack breakdown the person actually entered.
+        const per = pk ? unitsPerSale(pk, f.basis) : 0;
+        const sale = pk
+            ? { quantity: round4(qn * per), unit: p.picked.unit, basis: f.basis, packQuantity: qn, unitsPerSaleUnit: per }
+            : { quantity: qn, unit: f.unit };
+
         setBusy(true); setFormErr("");
-        const res = await createThread(token, { ...cu, ...pr, quantity: Number(f.quantity), unit: f.unit, specifications: f.specs.trim() });
+        const res = await createThread(token, { ...cu, ...pr, ...sale, specifications: f.specs.trim() });
         setBusy(false);
         if (!res.success) return setFormErr(res.message || "Couldn't create the enquiry. Please try again.");
         onCreated?.(res.thread);
@@ -275,10 +305,11 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
                             <Thumb src={p.picked.image} name={p.picked.productName} />
                             <span className="st-prod-t">
                                 <b>{p.picked.productName}</b>
-                                <small>{[p.picked.brandName, `Sold in ${p.picked.unit}`, p.picked.packSize > 1 ? `1 pack = ${qty(p.picked.packSize)} ${p.picked.unit}` : null].filter(Boolean).join(" · ")}</small>
+                                {p.picked.brandName && <small>{p.picked.brandName}</small>}
+                                <small>{packLines(p.pack).join(" · ")}</small>
                                 <small className="ok"><Lock size={11} style={{ verticalAlign: "-1px" }} /> Tagged from your catalog. It can't be changed after the enquiry is created.</small>
                             </span>
-                            <button type="button" className="st-lnk" onClick={() => setP({ mode: "pick", picked: null, name: "" })}>Change</button>
+                            <button type="button" className="st-lnk" onClick={() => resetProduct("pick")}>Change</button>
                         </div>
                     )}
 
@@ -292,12 +323,13 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
                                         <Thumb src={i.image} name={i.productName} />
                                         <span className="st-prod-t">
                                             <b>{i.productName}</b>
-                                            <small>{[i.brandName, `Sold in ${i.unit}`, i.packSize > 1 ? `1 pack = ${qty(i.packSize)} ${i.unit}` : null].filter(Boolean).join(" · ")}</small>
+                                            {i.brandName && <small>{i.brandName}</small>}
+                                            <small>{packLines(packOf(i)).join(" · ")}</small>
                                             {i.reason && <em>{i.reason}: can't be used right now</em>}
                                         </span>
                                     </button>
                                 )} />
-                            <button type="button" className="st-btn st-full" onClick={() => { setP({ mode: "manual", picked: null, name: "" }); touch(); }}>
+                            <button type="button" className="st-btn st-full" onClick={() => { resetProduct("manual"); }}>
                                 <PackagePlus size={16} />Product not listed? Type its name
                             </button>
                             {errors.product && <p className="st-err" style={{ marginTop: 6 }}>{errors.product}</p>}
@@ -312,27 +344,53 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
                                     onChange={(e) => { setP((s) => ({ ...s, name: e.target.value })); touch(); }} />
                                 {errors.product && <p className="st-err">{errors.product}</p>}
                             </div>
-                            <button type="button" className="st-lnk" onClick={() => setP({ mode: "pick", picked: null, name: "" })}>Choose from my products instead</button>
+                            <button type="button" className="st-lnk" onClick={() => resetProduct("pick")}>Choose from my products instead</button>
                         </>
                     )}
 
-                    <div className="st-two" style={{ marginTop: 12 }}>
-                        <div className="st-f">
-                            <label htmlFor="ne-qty">Quantity *</label>
-                            <input id="ne-qty" className="st-in" inputMode="decimal" placeholder="e.g. 500" value={f.quantity}
-                                onChange={(e) => patchF({ quantity: e.target.value.replace(/[^\d.]/g, "") })} />
-                            {errors.quantity && <p className="st-err">{errors.quantity}</p>}
-                        </div>
-                        <div className="st-f">
-                            <label htmlFor="ne-unit">Unit *</label>
-                            <select id="ne-unit" className="st-in" value={f.unit} disabled={lockedUnit} onChange={(e) => patchF({ unit: e.target.value })}>
-                                <option value="">Select…</option>
-                                {units.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                            {errors.unit && <p className="st-err">{errors.unit}</p>}
-                        </div>
-                    </div>
-                    <div className="st-f">
+                    {/* ------------------------------ quantity ------------------------------ */}
+                    {(p.mode === "picked" || p.mode === "manual") && (
+                        <>
+                            {pk && <div className="ob-pkbox" style={{ marginTop: 12 }}>{packLines(pk).map((t) => <span key={t}>{t}</span>)}</div>}
+
+                            <div className="st-two" style={{ marginTop: pk ? 0 : 12 }}>
+                                <div className="st-f">
+                                    <label htmlFor="ne-qty">{pk ? `Quantity (${word}s) *` : "Quantity *"}</label>
+                                    <input id="ne-qty" className="st-in" inputMode={pk ? "numeric" : "decimal"} placeholder="e.g. 5" value={f.quantity}
+                                        onChange={(e) => patchF({ quantity: e.target.value.replace(pk ? /\D/g : /[^\d.]/g, "") })} />
+                                    {errors.quantity && <p className="st-err">{errors.quantity}</p>}
+                                </div>
+                                <div className="st-f">
+                                    {pk ? (
+                                        <>
+                                            <label htmlFor="ne-unit">Ordered in *</label>
+                                            <select id="ne-unit" className="st-in" value={f.basis} disabled={!pk.per} onChange={(e) => switchBasis(e.target.value)}>
+                                                {pk.per ? <option value="per_master_pack">Master packs</option> : null}
+                                                <option value="per_pack">Packs</option>
+                                            </select>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <label htmlFor="ne-unit">Unit *</label>
+                                            <select id="ne-unit" className="st-in" value={f.unit} onChange={(e) => patchF({ unit: e.target.value })}>
+                                                <option value="">Select…</option>
+                                                {units.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                            </select>
+                                            {errors.unit && <p className="st-err">{errors.unit}</p>}
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                            {pk && (
+                                <p className="st-hint ob-conv">
+                                    {qn > 0 ? `= ${qty(totalUnits)} ${pk.unit} in total` : `Enter how many ${word}s.`}
+                                    {moqMin > 0 ? ` · Seller's MOQ: ${moqMin} ${basisWord(f.basis, moqMin)}` : ""}
+                                </p>
+                            )}
+                        </>
+                    )}
+
+                    <div className="st-f" style={{ marginTop: 12 }}>
                         <label htmlFor="ne-spec">Specifications</label>
                         <textarea id="ne-spec" className="st-in" rows={3} placeholder="Grade, size, brand, anything the customer mentioned" value={f.specs} onChange={(e) => patchF({ specs: e.target.value })} />
                     </div>

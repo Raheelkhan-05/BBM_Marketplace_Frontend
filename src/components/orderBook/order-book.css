@@ -735,6 +735,148 @@
     }
 }
 
+/* ---------- buyer address + product details (detail page) ---------- */
+.ob-addr {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--st-line);
+    font-size: .82rem;
+}
+
+.ob-addr svg {
+    flex: none;
+    margin-top: 2px;
+    color: var(--st-lk);
+}
+
+.ob-addr span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.ob-addr b {
+    font-weight: 700;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.ob-addr small {
+    font-size: .76rem;
+    color: var(--st-mute);
+}
+
+/* the product details block spans the full width under its product line */
+.ob-li-d {
+    grid-column: 1 / -1;
+    min-width: 0;
+}
+
+.ob-pd summary {
+    cursor: pointer;
+    list-style: none;
+    font-size: .78rem;
+    font-weight: 800;
+    color: var(--st-lk);
+    padding: 2px 0;
+}
+
+.ob-pd summary::-webkit-details-marker {
+    display: none;
+}
+
+.ob-pd summary::before {
+    content: "+ ";
+}
+
+.ob-pd[open] summary::before {
+    content: "\2212  ";
+}
+
+.ob-pd-b {
+    display: grid;
+    gap: 8px;
+    margin-top: 6px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--st-s2);
+}
+
+.ob-pd-b h3 {
+    margin: 4px 0 0;
+    font-size: .72rem;
+    font-weight: 800;
+    color: var(--st-mute);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.ob-pd-desc {
+    margin: 0;
+    font-size: .8rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.ob-pd-g {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px 14px;
+}
+
+.ob-pd-g>div {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.ob-pd-g dt {
+    font-size: .68rem;
+    font-weight: 700;
+    color: var(--st-mute);
+}
+
+.ob-pd-g dd {
+    margin: 0;
+    font-size: .82rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.ob-doc-plain {
+    cursor: default;
+}
+
+/* ---------- pack info (punch sheet + order detail) ---------- */
+.ob-pkbox {
+    display: grid;
+    gap: 2px;
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--st-s2);
+    font-size: .78rem;
+    font-weight: 700;
+}
+
+.ob-pkbox span {
+    overflow-wrap: anywhere;
+}
+
+.ob-conv {
+    margin: -2px 0 8px;
+    font-weight: 700;
+}
+
+.ob-lt .ob-pk {
+    font-weight: 700;
+    color: var(--st-ink);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .ob-row {
         transition: none;

@@ -4,10 +4,11 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Check, Phone, Mail, FileText, Download, Loader2, Truck, XCircle, CheckCircle2, ClipboardCheck, Info } from "lucide-react";
+import { ArrowLeft, Check, Phone, Mail, MapPin, FileText, Download, Loader2, Truck, XCircle, CheckCircle2, ClipboardCheck, Info } from "lucide-react";
 import useOrderBookLive from "../../hooks/useOrderBookLive.js";
 import { useSheetBehavior } from "../../hooks/useSalesSheet.js";
 import { FLOW, STATUS_LABEL, inr, qty, dateTime, dateShort } from "./orderBookFmt.js";
+import { basisWord, itemPack, packLines } from "./orderBookPack.js";
 import StatusChip from "./StatusChip.jsx";
 import "../sales/sales-threads.css";
 import "./order-book.css";
@@ -73,6 +74,86 @@ const SALES_HINT = {
     completed: "This order is complete.",
 };
 
+// Parts of city / state / pincode that the address text doesn't already contain (GST addresses usually include them).
+function addressExtras(o) {
+    const base = (o.customerAddress || "").toLowerCase();
+    return [o.customerCity, o.customerState, o.customerPincode].filter((p) => p && !base.includes(String(p).toLowerCase()));
+}
+
+// Specifications, documents and other facts saved on the line when the order was punched.
+// (Pack sizes are shown right under the product line, so they are not repeated here.)
+function ProductDetails({ item }) {
+    const d = item.details;
+    if (!d) return null;
+    const facts = [
+        d.packagingType ? ["Packaging", d.packagingType] : null,
+        d.hsnCode ? ["HSN code", d.hsnCode] : null,
+        d.gstPercent != null ? ["GST", `${qty(d.gstPercent)}%`] : null,
+        d.manufacturer ? ["Manufacturer", d.manufacturer] : null,
+        d.modelNo ? ["Model no.", d.modelNo] : null,
+        d.gradeVariant ? ["Grade / variant", d.gradeVariant] : null,
+    ].filter(Boolean);
+    const specs = d.specs || [];
+    const docs = d.docs || [];
+    if (!facts.length && !specs.length && !docs.length && !d.description) return null;
+
+    return (
+        <details className="ob-pd">
+            <summary>Product details</summary>
+            <div className="ob-pd-b">
+                {d.description && <p className="ob-pd-desc">{d.description}</p>}
+                {facts.length > 0 && (
+                    <dl className="ob-pd-g">
+                        {facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+                    </dl>
+                )}
+                {specs.length > 0 && (
+                    <>
+                        <h3>Specifications</h3>
+                        <dl className="ob-pd-g">
+                            {specs.map((s) => <div key={s.label}><dt>{s.label}</dt><dd>{s.value}</dd></div>)}
+                        </dl>
+                    </>
+                )}
+                {docs.length > 0 && (
+                    <>
+                        <h3>Documents</h3>
+                        <div className="ob-docs">
+                            {docs.map((x, n) => (x.url
+                                ? <a key={`${x.url}-${n}`} className="st-file" href={x.url} target="_blank" rel="noreferrer"><FileText size={18} /><span><b>{x.label}</b><small>{x.group}</small></span><Download size={14} aria-hidden="true" /></a>
+                                : <span key={`${x.label}-${n}`} className="st-file ob-doc-plain"><FileText size={18} /><span><b>{x.label}</b><small>{x.group}</small></span></span>))}
+                        </div>
+                    </>
+                )}
+            </div>
+        </details>
+    );
+}
+
+// One product line: quantity in packs / master packs, price per pack, total pieces, and what a pack contains.
+// Older lines (quantity in the listing's own unit) keep their original wording.
+function LineText({ i }) {
+    const packed = !!i.basis;
+    const pk = itemPack(i);
+    return (
+        <span className="ob-lt">
+            <b>{i.productName}</b>
+            <small>
+                {packed
+                    ? `${qty(i.quantity)} ${basisWord(i.basis, i.quantity)} × ${inr(i.unitPrice, 4)} per ${basisWord(i.basis, 1)}`
+                    : `${qty(i.quantity)} ${i.unit} × ${inr(i.unitPrice, 4)}`}
+                {i.brandName ? ` · ${i.brandName}` : ""}
+            </small>
+            {packed && i.totalUnits > 0 && (
+                <small className="ob-pk">
+                    = {qty(i.totalUnits)} {i.baseUnit} in total{i.perUnitPrice > 0 ? ` · about ${inr(i.perUnitPrice, 4)} per ${i.baseUnit}` : ""}
+                </small>
+            )}
+            {pk && packLines(pk).map((t) => <small key={t} className="ob-pk">{t}</small>)}
+        </span>
+    );
+}
+
 export default function OrderBookDetail({ mode, id, api, token, say, backTo, backLabel }) {
     const team = mode === "team";
     const [order, setOrder] = useState(null);
@@ -132,6 +213,8 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
     const o = order;
     const cancelled = o.status === "cancelled";
     const canCancel = team && ["placed", "processed"].includes(o.status);
+    const hasAddress = !!(o.customerAddress || o.customerCity || o.customerState || o.customerPincode);
+    const extras = addressExtras(o);
 
     return (
         <div className="ob st-listpage">
@@ -180,11 +263,9 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
                             {o.items.map((i, k) => (
                                 <li key={`${i.submissionId || i.productName}-${k}`}>
                                     <span className="ob-th">{i.image ? <img src={i.image} alt="" loading="lazy" /> : (i.productName || "?")[0].toUpperCase()}</span>
-                                    <span className="ob-lt">
-                                        <b>{i.productName}</b>
-                                        <small>{qty(i.quantity)} {i.unit} × {inr(i.unitPrice, 4)}{i.brandName ? ` · ${i.brandName}` : ""}</small>
-                                    </span>
+                                    <LineText i={i} />
                                     <b className="ob-amt">{inr(i.lineTotal)}</b>
+                                    {i.details && <div className="ob-li-d"><ProductDetails item={i} /></div>}
                                 </li>
                             ))}
                         </ul>
@@ -219,6 +300,15 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
                             {o.customerEmail && <a href={`mailto:${o.customerEmail}`}><Mail size={14} />{o.customerEmail}</a>}
                             {!o.customerPhone && !o.customerEmail && <span className="mute">No phone or email added</span>}
                         </div>
+                        {hasAddress && (
+                            <div className="ob-addr">
+                                <MapPin size={15} aria-hidden="true" />
+                                <span>
+                                    {o.customerAddress && <b>{o.customerAddress}</b>}
+                                    {extras.length > 0 && <small>{extras.join(", ")}</small>}
+                                </span>
+                            </div>
+                        )}
                         {team && <p className="ob-fine" style={{ marginTop: 10 }}>Punched by {o.salespersonName || "a salesperson"}</p>}
                     </section>
 
