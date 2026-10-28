@@ -14,12 +14,12 @@ const TABS = [
     { key: "products", to: "/grow/products", label: "Products", Icon: Package, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/grow/products"] },
     { key: "enquiries", to: "/grow/enquiries", label: "Enquiries", Icon: Megaphone, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/grow/enquiries", "/grow/enquiry"] },
     { key: "orders", to: "/grow/orders", label: "Orders", Icon: Receipt, a: "var(--gr, #22A06B)", ai: "var(--gt, #12794A)", match: ["/grow/orders"] },
+    { key: "orderbook", to: "/grow/order-book", label: "Order Book", Icon: BookOpen, a: "var(--vi, #6D3FD1)", ai: "var(--vi, #6D3FD1)", match: ["/grow/order-book"] },
     { key: "transport", to: "/grow/transport", label: "Transport", Icon: Truck, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/grow/transport"] },
     { key: "chat", to: "/grow/chat", label: "Chat", Icon: MessageSquare, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/grow/chat"] },
     { key: "shop", to: "/grow/shop", label: "Shop", Icon: Store, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/grow/shop"] },
     // Coming soon: they open a friendly "coming soon" page and show a "Soon" tag on the tile.
     { key: "customers", to: "/grow/customers", label: "Customers", Icon: Users, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/grow/customers"], soon: true },
-    { key: "orderbook", to: "/grow/order-book", label: "Order Book", Icon: BookOpen, a: "var(--vi, #6D3FD1)", ai: "var(--vi, #6D3FD1)", match: ["/grow/order-book"] },
     // { key: "media", to: "/grow/media", label: "Media", Icon: Film, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/grow/media"], soon: true },
 ];
 

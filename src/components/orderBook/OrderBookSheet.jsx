@@ -1,5 +1,6 @@
 // src/components/orderBook/OrderBookSheet.jsx
 // Punch an order (salesperson).  CUSTOMER: pick one of your customers, or add a new one by GST number.
+// The customer must have a mobile number or an email (at least one), so they can be told when the order is processed.
 // PRODUCTS: tag products from the company catalog (or type a name), then quantity + price for each.
 // Prices are for the log only, GST included. Same look and pickers as the New enquiry sheet.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,6 +17,7 @@ import "./order-book.css";
 
 const PAGE = 8;
 const MAX_LINES = 20;
+const CONTACT_MSG = "Add a mobile number or an email (at least one) so the customer gets their order updates.";
 
 function useDebounced(value, ms = 300) {
     const [d, setD] = useState(value.trim());
@@ -102,7 +104,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     const units = useMemo(() => (RFQ_UNITS || []).map((o) => ({ value: ov(o), label: ol(o) })), []);
     const touch = () => setFormErr("");
-    const patchC = (patch) => { setC((s) => ({ ...s, ...patch })); touch(); };
+    const patchC = (patch) => { setC((s) => ({ ...s, ...patch })); setErrors((e) => ({ ...e, contact: undefined })); touch(); };
     const patchLine = (key, patch) => { setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l))); touch(); };
     const removeLine = (key) => { setLines((ls) => { const next = ls.filter((l) => l.key !== key); if (!next.length) setPicking(true); return next; }); touch(); };
 
@@ -128,7 +130,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c.gstin, c.mode]);
 
-    const pickCustomer = (cu) => { setC({ ...blankCustomer, mode: "picked", picked: cu }); setErrors((e) => ({ ...e, customer: undefined })); touch(); };
+    const pickCustomer = (cu) => { setC({ ...blankCustomer, mode: "picked", picked: cu }); setErrors((e) => ({ ...e, customer: undefined, contact: undefined })); touch(); };
 
     const addCatalog = (pr) => {
         if (pr.reason || lines.some((l) => l.submissionId === pr.submissionId) || lines.length >= MAX_LINES) return;
@@ -148,6 +150,13 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     const total = lines.reduce((a, l) => a + num(l.quantity) * num(l.price), 0);
 
+    // The contact the order will be sent with. A picked customer's saved details win; if they have none,
+    // the phone / email typed in the sheet are used.
+    const picked = c.picked;
+    const pickedNoContact = c.mode === "picked" && picked && !picked.phone && !picked.email;
+    const contactPhone = c.mode === "picked" ? (picked?.phone || c.phone.trim()) : c.phone.trim();
+    const contactEmail = c.mode === "picked" ? (picked?.email || c.email.trim()) : c.email.trim();
+
     const validate = () => {
         const e = {};
         if (c.mode === "pick") e.customer = "Choose a customer, or add a new one.";
@@ -155,9 +164,13 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
             const g = cleanGstin(c.gstin);
             if (g && !GSTIN_RE.test(g)) e.gstin = "Enter all 15 characters of the GST number, or clear it.";
             if (!g && !c.name.trim()) e.name = "Enter the GST number or the company name.";
+        }
+        if (c.mode === "new" || pickedNoContact) {
             if (c.phone.trim() && !cleanPhone(c.phone)) e.phone = "Enter a valid 10-digit mobile number.";
             if (c.email.trim() && !cleanEmail(c.email)) e.email = "Enter a valid email address.";
         }
+        // At least one way to reach the customer.
+        if (c.mode !== "pick" && !contactPhone && !contactEmail) e.contact = CONTACT_MSG;
         if (!lines.length) e.items = "Add at least one product.";
         const le = {};
         for (const l of lines) {
@@ -175,10 +188,10 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         if (busy) return;
         const e = validate();
         setErrors(e);
-        if (Object.keys(e).length) { setFormErr("Please fix the highlighted fields."); return; }
+        if (Object.keys(e).length) { setFormErr(e.contact && Object.keys(e).length === 1 ? e.contact : "Please fix the highlighted fields."); return; }
 
         const cu = c.mode === "picked"
-            ? { customerGstin: c.picked.gstin || "", customerName: c.picked.name || "", customerPhone: c.picked.phone || "", customerEmail: c.picked.email || "" }
+            ? { customerGstin: picked.gstin || "", customerName: picked.name || "", customerPhone: contactPhone, customerEmail: contactEmail }
             : { customerGstin: cleanGstin(c.gstin), customerName: c.name.trim(), customerPhone: c.phone.trim(), customerEmail: c.email.trim() };
 
         setBusy(true); setFormErr("");
@@ -197,7 +210,28 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const gstHint = gst.status === "loading" ? "Finding the company…"
         : gst.status === "ok" ? "Company name filled from the GST number."
             : gst.status === "fail" ? "Couldn't find this GST number. Type the company name below." : "Optional. We fill in the company name from it.";
-    const picked = c.picked;
+
+    // Mobile + email inputs. Used for a new customer, and for a picked customer who has no contact saved.
+    const contactFields = (idSuffix) => (
+        <>
+            <div className="st-two">
+                <div className="st-f">
+                    <label htmlFor={`ob-ph${idSuffix}`}>Mobile number</label>
+                    <input id={`ob-ph${idSuffix}`} className="st-in" inputMode="tel" autoComplete="off" placeholder="10 digits" value={c.phone}
+                        onChange={(e) => patchC({ phone: e.target.value.replace(/[^\d+\s-]/g, "") })} />
+                    {errors.phone && <p className="st-err">{errors.phone}</p>}
+                </div>
+                <div className="st-f">
+                    <label htmlFor={`ob-em${idSuffix}`}>Email</label>
+                    <input id={`ob-em${idSuffix}`} className="st-in" type="email" autoComplete="off" placeholder="name@company.com" value={c.email} onChange={(e) => patchC({ email: e.target.value })} />
+                    {errors.email && <p className="st-err">{errors.email}</p>}
+                </div>
+            </div>
+            {errors.contact
+                ? <p className="st-err" role="alert">{errors.contact}</p>
+                : <p className="st-hint">Add at least one. The customer is thanked on WhatsApp / email once your team processes the order.</p>}
+        </>
+    );
 
     return createPortal(
         <div className="st-ov" data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
@@ -212,15 +246,18 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                     <p className="st-sec">Customer</p>
 
                     {c.mode === "picked" && picked && (
-                        <div className="st-sel">
-                            <span className="st-av">{initialOf(picked.name)}</span>
-                            <span className="st-prod-t">
-                                <b>{picked.name}</b>
-                                {picked.gstin && <small>GSTIN {picked.gstin}</small>}
-                                <small>{[picked.phone, picked.email].filter(Boolean).join(" · ") || "No phone or email yet."}</small>
-                            </span>
-                            <button type="button" className="st-lnk" onClick={() => setC({ ...blankCustomer })}>Change</button>
-                        </div>
+                        <>
+                            <div className="st-sel">
+                                <span className="st-av">{initialOf(picked.name)}</span>
+                                <span className="st-prod-t">
+                                    <b>{picked.name}</b>
+                                    {picked.gstin && <small>GSTIN {picked.gstin}</small>}
+                                    <small>{[picked.phone, picked.email].filter(Boolean).join(" · ") || "No phone or email saved yet."}</small>
+                                </span>
+                                <button type="button" className="st-lnk" onClick={() => setC({ ...blankCustomer })}>Change</button>
+                            </div>
+                            {pickedNoContact && <div style={{ marginTop: 10 }}>{contactFields("-p")}</div>}
+                        </>
                     )}
 
                     {c.mode === "pick" && (
@@ -263,19 +300,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 {c.fromGst && <p className="st-hint">From the GST records. The saved name always comes from the GST number.</p>}
                                 {errors.name && <p className="st-err">{errors.name}</p>}
                             </div>
-                            <div className="st-two">
-                                <div className="st-f">
-                                    <label htmlFor="ob-ph">Mobile number</label>
-                                    <input id="ob-ph" className="st-in" inputMode="tel" autoComplete="off" placeholder="10 digits" value={c.phone}
-                                        onChange={(e) => patchC({ phone: e.target.value.replace(/[^\d+\s-]/g, "") })} />
-                                    {errors.phone && <p className="st-err">{errors.phone}</p>}
-                                </div>
-                                <div className="st-f">
-                                    <label htmlFor="ob-em">Email</label>
-                                    <input id="ob-em" className="st-in" type="email" autoComplete="off" placeholder="name@company.com" value={c.email} onChange={(e) => patchC({ email: e.target.value })} />
-                                    {errors.email && <p className="st-err">{errors.email}</p>}
-                                </div>
-                            </div>
+                            {contactFields("")}
                             <button type="button" className="st-lnk" onClick={() => { setC({ ...blankCustomer }); gst.reset(); }}>Search my customers instead</button>
                         </>
                     )}

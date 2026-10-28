@@ -596,14 +596,14 @@
 /* ---- tile grid ---- */
 .gn-tiles {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 2px;
     padding: 8px 8px 8px;
 }
 
 @media (min-width: 720px) {
     .gn-tiles {
-        grid-template-columns: repeat(8, minmax(0, 1fr));
+        grid-template-columns: repeat(9, minmax(0, 1fr));
         padding: 8px 20px;
     }
 }
@@ -1038,7 +1038,7 @@
 
 @media (min-width: 900px) {
     .gd-kpis {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 14px;
     }
 }
@@ -2786,7 +2786,7 @@ button.gc-sech {
 /* ---- Tile grid: 5 columns on mobile/tablet, one row of 10 on desktop ---- */
 .gk.gn .gn-tiles {
     display: grid !important;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
     gap: 8px 6px;
 }
 
@@ -2804,7 +2804,7 @@ button.gc-sech {
 
 @media (min-width: 900px) {
     .gk.gn .gn-tiles {
-        grid-template-columns: repeat(8, minmax(0, 1fr)) !important;
+        grid-template-columns: repeat(9, minmax(0, 1fr)) !important;
         gap: 8px;
     }
 }
