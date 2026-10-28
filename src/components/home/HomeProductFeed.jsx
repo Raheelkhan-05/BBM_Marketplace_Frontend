@@ -3681,20 +3681,45 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         [groupBanners]
     );
     const groupKeyOf = (it) => String(it.group_id || it.generic_product_id || it.id);
-    // Plain Home view: banners live in the planned blocks between product sections.
-    // Filtered views (search / category / brand / variants): groups with a banner show as a 16:9 banner card.
+
+    // Mixed banner layouts show on the Home "All" tab AND inside a category.
+    // Search / brand / variants views keep the simple 16:9 banner card.
     const showBannerBlocks =
         bannersEnabled && groupBanners.length > 0 && !!bannerPlan?.blocks?.length &&
-        !q.trim() && !category?.id && !brandName && !groupId;
+        !q.trim() && !brandName && !groupId;
+
     const columnSource = showBannerBlocks
         ? displayItems.filter((it) => !(it.row_type === "group" && bannerById.has(groupKeyOf(it))))
         : displayItems;
     const openBanner = (b) =>
         openGroup({ group_id: b.group_id, name: b.name, variant_count: b.variant_count });
 
+    const blocksPlan = (() => {
+        if (!showBannerBlocks) return [];
+        if (!category?.id) return bannerPlan.blocks; // "All" tab: today's plan as built by the server
+
+        // Category view: keep only banners whose group is in this category's feed (daily order preserved),
+        // then re-pack them into the same mix of layouts so it never looks like a plain list.
+        const inFeed = new Set(
+            displayItems
+                .filter((it) => it.row_type === "group" && bannerById.has(groupKeyOf(it)))
+                .map(groupKeyOf)
+        );
+        const ids = bannerPlan.blocks.flatMap((b) => b.groups).map(String).filter((id) => inFeed.has(id));
+        const pattern = ["hero", "duo", "mosaic", "trio", "duo", "quad"];
+        const size = { hero: 1, duo: 2, mosaic: 3, trio: 3, quad: 4 };
+        const out = [];
+        for (let i = 0, n = 0; i < ids.length; n++) {
+            const t = pattern[n % pattern.length];
+            const take = ids.slice(i, i + size[t]);
+            out.push({ key: `cat:${category.id}:${n}`, template: t, groups: take });
+            i += take.length;
+        }
+        return out;
+    })();
+
     // Split the feed into sections; a banner block follows each FULL section.
     // Once the feed is exhausted, every block not placed yet is appended so no banner is unreachable.
-    const blocksPlan = showBannerBlocks ? bannerPlan.blocks : [];
     const sectionSize = columnCount * SECTION_ROWS;
     const sections = [];
     for (let start = 0, bi = 0; start < columnSource.length; start += sectionSize, bi++) {
