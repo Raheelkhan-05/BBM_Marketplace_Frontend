@@ -29,6 +29,7 @@ import GrowOrderBookPage from "./pages/GrowOrderBookPage.jsx";
 import GrowOrderBookDetailPage from "./pages/GrowOrderBookDetailPage.jsx";
 import SalesOrderBookDetailPage from "./pages/SalesOrderBookDetailPage.jsx";
 import SalesOrderBookPage from "./pages/SalesOrderBookPage.jsx";
+import GrowOrdersShell from "./components/growSeller/GrowOrdersShell.jsx";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -312,13 +313,15 @@ function App() {
                     <Route path="/grow/chat/:conversationId?" element={<GrowChatPage />} />
                     <Route path="/grow/products" element={<GrowProductsPage />} />
                     <Route path="/grow/bulk" element={<GrowBulkUploadPage />} />
-                    <Route path="/grow/orders" element={<GrowOrdersPage />} />
-                    <Route path="/grow/orders/:id" element={<GrowOrderDetailPage />} />
                     <Route path="/grow/wallet" element={<GrowWalletPage />} />
                     <Route path="/grow/shop" element={<GrowStorePage />} />
-                    <Route path="/grow/customers" element={<GrowCustomersPage />} />
-                    <Route path="/grow/order-book" element={<GrowOrderBookPage />} />
+                    <Route element={<GrowOrdersShell />}>
+                      <Route path="/grow/orders" element={<GrowOrdersPage />} />
+                      <Route path="/grow/order-book" element={<GrowOrderBookPage />} />
+                    </Route>
+                    <Route path="/grow/orders/:id" element={<GrowOrderDetailPage />} />
                     <Route path="/grow/order-book/:id" element={<GrowOrderBookDetailPage />} />
+                    <Route path="/grow/customers" element={<GrowCustomersPage />} />
                   </Route>
 
                   <Route path="/save" element={<SaveLayout />}>
