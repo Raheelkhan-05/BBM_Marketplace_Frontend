@@ -1,10 +1,11 @@
 // src/components/orderBook/OrderBookSheet.jsx
 // Punch an order (salesperson).  CUSTOMER: pick one of your customers, or add a new one by GST number.
-// The customer must have a mobile number or an email (at least one), so they can be told when the order is processed.
+// The customer must have a mobile number or an email (at least one), so they can be told when the order is placed / processed.
 // BUYER ADDRESS: filled from the GST number (full registered address), then editable.
 // PRODUCTS: tag products from the company catalog (or type a name). Catalog products are ordered in whole packs or
 // master packs, never single units; the sheet shows what one pack / master pack contains.
-// Prices are for the log only, GST included. Same look and pickers as the New enquiry sheet.
+// PRICE: entered per unit (Kg, Pcs ...), per pack or per master pack, including or excluding GST. It is converted here to
+// the price per pack / master pack with GST included, which is what the server stores. Prices are for the log only.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Loader2, BadgeCheck, Search, UserPlus, PackagePlus, Plus, Trash2 } from "lucide-react";
@@ -14,7 +15,8 @@ import { salesOrderBook } from "../../utils/orderBookApi.js";
 import { RFQ_UNITS } from "../../utils/rfqUtils.js";
 import { useSheetBehavior } from "../../hooks/useSalesSheet.js";
 import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, ov, ol, initialOf, qty, inr } from "../sales/salesThreadFmt.js";
-import { packFacts, packLines, unitsPerSale, basisWord, minQty } from "./orderBookPack.js";
+import { packLines, unitsPerSale, basisWord, minQty } from "./orderBookPack.js";
+import { MANUAL, productPack, priceUnitOptions, defaultPriceUnit, convertPrice, inclPerUnit, salePrice } from "./orderBookPrice.js";
 import "../sales/sales-threads.css";
 import "./order-book.css";
 
@@ -109,6 +111,11 @@ function Thumb({ src, name }) {
 const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", phone: "", email: "", fromGst: false };
 const blankAddr = { address: "", city: "", state: "", pincode: "", touched: false, fromGst: false };
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+// Price of one line, per pack / master pack (or per unit for typed products), GST included.
+const lineSale = (l) => salePrice({ price: l.price, pu: l.pu, incl: l.incl, pct: l.gstPct, f: l.pack || MANUAL, basis: l.pack ? l.basis : null });
+const lineTotalOf = (l) => r2(num(l.quantity) * lineSale(l));
 
 export default function OrderBookSheet({ token, onClose, onCreated }) {
     useSheetBehavior(onClose);
@@ -132,8 +139,15 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const patchAddr = (patch) => { setAddr((a) => ({ ...a, ...patch, touched: true, fromGst: false })); setErrors((e) => ({ ...e, pincode: undefined })); touch(); };
     const patchLine = (key, patch) => { setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l))); touch(); };
     const removeLine = (key) => { setLines((ls) => { const next = ls.filter((l) => l.key !== key); if (!next.length) setPicking(true); return next; }); touch(); };
-    // Switching between packs and master packs changes what the quantity and the price mean, so both are reset.
-    const switchBasis = (l, basis) => patchLine(l.key, { basis, quantity: String(minQty(l.pack, basis, l.moq)), price: "" });
+
+    // Packs <-> master packs only changes the quantity (it restarts at the MOQ). The price is entered in its own unit, so it stays as typed.
+    const switchBasis = (l, basis) => patchLine(l.key, { basis, quantity: String(minQty(l.pack, basis, l.moq)) });
+    // Changing the unit or the GST mode converts the number, so the real price stays the same.
+    const switchPu = (l, pu) => patchLine(l.key, { pu, price: convertPrice(l.price, { pu: l.pu, incl: l.incl }, { pu, incl: l.incl }, l.pack || MANUAL, l.gstPct) || l.price });
+    const switchIncl = (l, incl) => {
+        if (l.incl === incl) return;
+        patchLine(l.key, { incl, price: convertPrice(l.price, { pu: l.pu, incl: l.incl }, { pu: l.pu, incl }, l.pack || MANUAL, l.gstPct) || l.price });
+    };
 
     // Fill the address from a GST lookup result, unless the salesperson already typed in it while the lookup ran.
     const applyGstAddress = (r) => setAddr((a) => (a.touched ? a : {
@@ -187,22 +201,27 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     const addCatalog = (pr) => {
         if (pr.reason || lines.some((l) => l.submissionId === pr.submissionId) || lines.length >= MAX_LINES) return;
-        const f = packFacts({ packSize: pr.packSize, packsPerMaster: pr.masterPackSize, unit: pr.unit });
+        const f = productPack(pr);
         const basis = f.per ? "per_master_pack" : "per_pack";
+        const gstKnown = pr.gstPercent != null && pr.gstPercent !== "" && Number.isFinite(Number(pr.gstPercent));
         setLines((ls) => [...ls, {
             key: pr.submissionId, submissionId: pr.submissionId, productName: pr.productName, brandName: pr.brandName || "", image: pr.image || null,
-            pack: f, basis, moq: pr.moq, unit: pr.unit, quantity: String(minQty(f, basis, pr.moq)), price: "",
+            pack: f, basis, moq: pr.moq, unit: pr.unit, quantity: String(minQty(f, basis, pr.moq)),
+            price: "", pu: defaultPriceUnit(f, basis), incl: true, gstPct: gstKnown ? String(Number(pr.gstPercent)) : "", gstKnown,
         }]);
         setPicking(false); setPSearch(""); setErrors((e) => ({ ...e, items: undefined })); touch();
     };
     const addManual = () => {
         const name = manualName.trim();
         if (name.length < 2) { setErrors((e) => ({ ...e, manual: "Enter the product name." })); return; }
-        setLines((ls) => [...ls, { key: `m-${Date.now()}`, submissionId: null, productName: name, brandName: "", image: null, pack: null, basis: null, moq: null, unit: "", quantity: "", price: "" }]);
+        setLines((ls) => [...ls, {
+            key: `m-${Date.now()}`, submissionId: null, productName: name, brandName: "", image: null, pack: null, basis: null, moq: null, unit: "",
+            quantity: "", price: "", pu: "unit", incl: true, gstPct: "", gstKnown: false,
+        }]);
         setManual(false); setManualName(""); setPicking(false); setErrors((e) => ({ ...e, manual: undefined, items: undefined })); touch();
     };
 
-    const total = lines.reduce((a, l) => a + num(l.quantity) * num(l.price), 0);
+    const total = lines.reduce((a, l) => a + lineTotalOf(l), 0);
 
     // The contact the order will be sent with. A picked customer's saved details win; if they have none,
     // the phone / email typed in the sheet are used.
@@ -234,6 +253,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
             else if (l.pack && !Number.isInteger(num(l.quantity))) x.quantity = `Enter a whole number of ${basisWord(l.basis, 2)}.`;
             if (!l.pack && !l.unit) x.unit = "Choose a unit.";
             if (!(num(l.price) > 0)) x.price = "Enter the price.";
+            if (!l.incl && !l.gstKnown && !(l.gstPct !== "" && num(l.gstPct) >= 0 && num(l.gstPct) <= 100)) x.gst = "Enter the GST % to add on top of the price.";
             if (Object.keys(x).length) le[l.key] = x;
         }
         if (Object.keys(le).length) e.lines = le;
@@ -256,7 +276,8 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
             customerAddress: addr.address.trim(), customerCity: addr.city.trim(), customerState: addr.state.trim(), customerPincode: addr.pincode.trim(),
             items: lines.map((l) => ({
                 productSubmissionId: l.submissionId || undefined, productName: l.productName,
-                quantity: num(l.quantity), unitPrice: num(l.price),
+                // unitPrice is always per pack / master pack (per unit for typed products), GST included: what the server expects.
+                quantity: num(l.quantity), unitPrice: lineSale(l),
                 ...(l.pack ? { basis: l.basis } : { unit: l.unit }),
             })),
         });
@@ -287,7 +308,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
             </div>
             {errors.contact
                 ? <p className="st-err" role="alert">{errors.contact}</p>
-                : <p className="st-hint">Add at least one. The customer is thanked on WhatsApp / email once your team processes the order.</p>}
+                : <p className="st-hint">Add at least one. The customer gets an order confirmation on WhatsApp / email as soon as the order is placed.</p>}
         </>
     );
 
@@ -402,10 +423,14 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                     {lines.map((l) => {
                         const le = errors.lines?.[l.key] || {};
                         const f = l.pack;                                   // null for a typed-name product
+                        const fx = f || MANUAL;
                         const word = l.basis === "per_master_pack" ? "master pack" : "pack";
                         const perSale = f ? unitsPerSale(f, l.basis) : 0;
                         const totalUnits = f ? num(l.quantity) * perSale : 0;
                         const moqMin = f && num(l.moq) > 0 ? minQty(f, l.basis, l.moq) : 0;
+                        const sp = lineSale(l);                             // per pack / master pack (per unit if typed), GST incl.
+                        const perUnit = inclPerUnit({ price: l.price, pu: l.pu, incl: l.incl, pct: l.gstPct, f: fx });
+                        const puOpts = f ? priceUnitOptions(f) : [];
                         return (
                             <div className="ob-le" key={l.key}>
                                 <div className="ob-le-h">
@@ -450,18 +475,45 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                         {moqMin > 0 ? ` · Seller's MOQ: ${moqMin} ${basisWord(l.basis, moqMin)}` : ""}
                                     </p>
                                 )}
+
+                                {/* price: any unit, with or without GST */}
                                 <div className="st-two">
                                     <div className="st-f">
-                                        <label htmlFor={`p-${l.key}`}>{f ? `Price per ${word} (₹) *` : "Price per unit (₹) *"}</label>
-                                        <input id={`p-${l.key}`} className="st-in" inputMode="decimal" placeholder="GST included" value={l.price}
+                                        <label htmlFor={`p-${l.key}`}>Price (₹) *</label>
+                                        <input id={`p-${l.key}`} className="st-in" inputMode="decimal" placeholder="e.g. 1250" value={l.price}
                                             onChange={(e) => patchLine(l.key, { price: e.target.value.replace(/[^\d.]/g, "") })} />
                                         {le.price && <p className="st-err">{le.price}</p>}
                                     </div>
                                     <div className="st-f">
-                                        <label>Line total</label>
-                                        <p className="ob-le-t">{inr(num(l.quantity) * num(l.price))}</p>
+                                        <label htmlFor={`pu-${l.key}`}>Price per</label>
+                                        {f ? (
+                                            <select id={`pu-${l.key}`} className="st-in" value={l.pu} onChange={(e) => switchPu(l, e.target.value)}>
+                                                {puOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                            </select>
+                                        ) : (
+                                            <select id={`pu-${l.key}`} className="st-in" value="unit" disabled><option value="unit">Per unit</option></select>
+                                        )}
                                     </div>
                                 </div>
+                                <div className="st-seg" role="group" aria-label="GST">
+                                    <button type="button" aria-pressed={l.incl} onClick={() => switchIncl(l, true)}>Includes GST</button>
+                                    <button type="button" aria-pressed={!l.incl} onClick={() => switchIncl(l, false)}>Excludes GST</button>
+                                </div>
+                                {!l.incl && l.gstKnown && <p className="st-hint">GST {qty(num(l.gstPct))}% is added on top of this price.</p>}
+                                {!l.incl && !l.gstKnown && (
+                                    <div className="st-f" style={{ marginTop: 6 }}>
+                                        <label htmlFor={`g-${l.key}`}>GST % to add *</label>
+                                        <input id={`g-${l.key}`} className="st-in" inputMode="decimal" placeholder="e.g. 18" value={l.gstPct}
+                                            onChange={(e) => patchLine(l.key, { gstPct: e.target.value.replace(/[^\d.]/g, "") })} />
+                                        {le.gst && <p className="st-err">{le.gst}</p>}
+                                    </div>
+                                )}
+                                {sp > 0 && (
+                                    <p className="st-hint ob-conv">
+                                        = {inr(sp, 4)} per {f ? word : "unit"} incl. GST{f && (f.pack > 1 || f.per) ? ` · about ${inr(perUnit, 4)} per ${f.unit}` : ""}
+                                    </p>
+                                )}
+                                <div className="st-line-t"><span>Line total (incl. GST)</span><b>{inr(lineTotalOf(l))}</b></div>
                             </div>
                         );
                     })}
@@ -473,7 +525,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 empty={dPq ? `No product matches "${dPq}".` : "Your company has no products yet."}
                                 renderRow={(i) => {
                                     const added = lines.some((l) => l.submissionId === i.submissionId);
-                                    const pf = packFacts({ packSize: i.packSize, packsPerMaster: i.masterPackSize, unit: i.unit });
+                                    const pf = productPack(i);
                                     return (
                                         <button type="button" className="st-prod pick" disabled={!!i.reason || added} onClick={() => addCatalog(i)}>
                                             <Thumb src={i.image} name={i.productName} />
@@ -513,7 +565,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                         <button type="button" className="st-btn st-full" onClick={() => setPicking(true)}><Plus size={16} />Add another product</button>
                     )}
                     {errors.items && <p className="st-err" style={{ marginTop: 6 }}>{errors.items}</p>}
-                    <p className="st-hint" style={{ marginTop: 8 }}>Prices are for your records only (GST included). They don't change any price on BBM.</p>
+                    <p className="st-hint" style={{ marginTop: 8 }}>Prices are for your records only. They are saved with GST included and don't change any price on BBM.</p>
 
                     <div className="st-f" style={{ marginTop: 14 }}>
                         <label htmlFor="ob-notes">Notes</label>

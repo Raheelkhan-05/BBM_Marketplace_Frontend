@@ -14,7 +14,8 @@ import { fetchSalesCustomers } from "../../utils/salesApi.js";
 import { RFQ_UNITS } from "../../utils/rfqUtils.js";
 import { useSheetBehavior, useGstLookup } from "../../hooks/useSalesSheet.js";
 import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, ov, ol, initialOf, qty, round4 } from "./salesThreadFmt.js";
-import { packFacts, packLines, unitsPerSale, basisWord, minQty } from "../orderBook/orderBookPack.js";
+import { packLines, unitsPerSale, basisWord, minQty } from "../orderBook/orderBookPack.js";
+import { productPack } from "../orderBook/orderBookPrice.js";
 import "./sales-threads.css";
 import "../orderBook/order-book.css";
 
@@ -88,7 +89,7 @@ function Thumb({ src, name }) {
 const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", phone: "", email: "", fromGst: false };
 const blankProduct = { mode: "pick", picked: null, pack: null, name: "" };   // mode: pick | picked | manual
 const blankFields = { quantity: "", unit: "", basis: "per_pack", specs: "" };
-const packOf = (pr) => packFacts({ packSize: pr.packSize, packsPerMaster: pr.masterPackSize, unit: pr.unit });
+const packOf = productPack;
 
 export default function SalesNewEnquirySheet({ token, onClose, onCreated, initialCustomer = null }) {
     useSheetBehavior(onClose);
