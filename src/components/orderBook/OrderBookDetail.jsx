@@ -222,7 +222,7 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
                 <Link to={backTo} className="st-ib" aria-label={`Back to ${backLabel}`}><ArrowLeft size={18} /></Link>
                 <div className="ob-head-t">
                     <h1>{o.customerName}</h1>
-                    <p>{o.orderNo} · Placed {dateTime(o.createdAt)}</p>
+                    <p>{o.orderNo}{o.poNumber ? ` · PO ${o.poNumber}` : ""} · Placed {dateTime(o.createdAt)}</p>
                 </div>
                 <StatusChip status={o.status} />
             </header>
@@ -271,6 +271,7 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
                         </ul>
                         <p className="ob-total"><span>Order total</span><b>{inr(o.total)}</b></p>
                         <p className="ob-fine">Prices are logged as entered by the salesperson (GST included). They don't change any marketplace price.</p>
+                        {o.poNumber && <p className="ob-notes"><b>PO number</b>{o.poNumber}</p>}
                         {o.notes && <p className="ob-notes"><b>Notes</b>{o.notes}</p>}
                     </section>
 

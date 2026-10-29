@@ -1,11 +1,14 @@
 // src/components/orderBook/OrderBookSheet.jsx
 // Punch an order (salesperson).  CUSTOMER: pick one of your customers, or add a new one by GST number.
 // The customer must have a mobile number or an email (at least one), so they can be told when the order is placed / processed.
+// A picked customer who is missing a mobile number or an email gets input(s) for just the missing one(s). What is typed is
+// saved on the customer by the server, so it is pre-filled the next time that customer is picked.
 // BUYER ADDRESS: filled from the GST number (full registered address), then editable.
 // PRODUCTS: tag products from the company catalog (or type a name). Catalog products are ordered in whole packs or
 // master packs, never single units; the sheet shows what one pack / master pack contains.
 // PRICE: entered per unit (Kg, Pcs ...), per pack or per master pack, including or excluding GST. It is converted here to
 // the price per pack / master pack with GST included, which is what the server stores. Prices are for the log only.
+// PO NUMBER: optional Purchase Order number of the customer; searchable in the Order Book.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Loader2, BadgeCheck, Search, UserPlus, PackagePlus, Plus, Trash2 } from "lucide-react";
@@ -125,6 +128,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const [picking, setPicking] = useState(true);       // product picker open
     const [manual, setManual] = useState(false);        // typing a product name instead
     const [manualName, setManualName] = useState("");
+    const [po, setPo] = useState("");                   // optional purchase order number
     const [notes, setNotes] = useState("");
     const [cSearch, setCSearch] = useState("");
     const [pSearch, setPSearch] = useState("");
@@ -195,7 +199,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const pickCustomer = (cu) => {
         setC({ ...blankCustomer, mode: "picked", picked: cu });
         setAddr(blankAddr); gst.reset();
-        setErrors((e) => ({ ...e, customer: undefined, contact: undefined })); touch();
+        setErrors((e) => ({ ...e, customer: undefined, contact: undefined, phone: undefined, email: undefined })); touch();
     };
     const resetCustomer = () => { setC({ ...blankCustomer }); setAddr(blankAddr); gst.reset(); };
 
@@ -223,10 +227,12 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     const total = lines.reduce((a, l) => a + lineTotalOf(l), 0);
 
-    // The contact the order will be sent with. A picked customer's saved details win; if they have none,
-    // the phone / email typed in the sheet are used.
+    // The contact the order will be sent with. A picked customer's saved details win; for whatever they are missing,
+    // the phone / email typed in the sheet are used (and saved on the customer by the server).
     const picked = c.picked;
-    const pickedNoContact = c.mode === "picked" && picked && !picked.phone && !picked.email;
+    const needPhone = c.mode === "picked" && !!picked && !picked.phone;
+    const needEmail = c.mode === "picked" && !!picked && !picked.email;
+    const pickedMissing = needPhone || needEmail;
     const contactPhone = c.mode === "picked" ? (picked?.phone || c.phone.trim()) : c.phone.trim();
     const contactEmail = c.mode === "picked" ? (picked?.email || c.email.trim()) : c.email.trim();
 
@@ -238,7 +244,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
             if (g && !GSTIN_RE.test(g)) e.gstin = "Enter all 15 characters of the GST number, or clear it.";
             if (!g && !c.name.trim()) e.name = "Enter the GST number or the company name.";
         }
-        if (c.mode === "new" || pickedNoContact) {
+        if (c.mode === "new" || pickedMissing) {
             if (c.phone.trim() && !cleanPhone(c.phone)) e.phone = "Enter a valid 10-digit mobile number.";
             if (c.email.trim() && !cleanEmail(c.email)) e.email = "Enter a valid email address.";
         }
@@ -266,13 +272,14 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         setErrors(e);
         if (Object.keys(e).length) { setFormErr(e.contact && Object.keys(e).length === 1 ? e.contact : "Please fix the highlighted fields."); return; }
 
+        // customerId lets the server save the contact on the picked customer even when they have no GST number.
         const cu = c.mode === "picked"
-            ? { customerGstin: picked.gstin || "", customerName: picked.name || "", customerPhone: contactPhone, customerEmail: contactEmail }
+            ? { customerId: picked.id, customerGstin: picked.gstin || "", customerName: picked.name || "", customerPhone: contactPhone, customerEmail: contactEmail }
             : { customerGstin: cleanGstin(c.gstin), customerName: c.name.trim(), customerPhone: c.phone.trim(), customerEmail: c.email.trim() };
 
         setBusy(true); setFormErr("");
         const res = await salesOrderBook.create(token, {
-            ...cu, notes: notes.trim(),
+            ...cu, notes: notes.trim(), poNumber: po.trim(),
             customerAddress: addr.address.trim(), customerCity: addr.city.trim(), customerState: addr.state.trim(), customerPincode: addr.pincode.trim(),
             items: lines.map((l) => ({
                 productSubmissionId: l.submissionId || undefined, productName: l.productName,
@@ -290,27 +297,35 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         : gst.status === "ok" ? "Company name and address filled from the GST number."
             : gst.status === "fail" ? "Couldn't find this GST number. Type the company name below." : "Optional. We fill in the company name and address from it.";
 
-    // Mobile + email inputs. Used for a new customer, and for a picked customer who has no contact saved.
-    const contactFields = (idSuffix) => (
-        <>
-            <div className="st-two">
-                <div className="st-f">
-                    <label htmlFor={`ob-ph${idSuffix}`}>Mobile number</label>
-                    <input id={`ob-ph${idSuffix}`} className="st-in" inputMode="tel" autoComplete="off" placeholder="10 digits" value={c.phone}
-                        onChange={(e) => patchC({ phone: e.target.value.replace(/[^\d+\s-]/g, "") })} />
-                    {errors.phone && <p className="st-err">{errors.phone}</p>}
-                </div>
-                <div className="st-f">
-                    <label htmlFor={`ob-em${idSuffix}`}>Email</label>
-                    <input id={`ob-em${idSuffix}`} className="st-in" type="email" autoComplete="off" placeholder="name@company.com" value={c.email} onChange={(e) => patchC({ email: e.target.value })} />
-                    {errors.email && <p className="st-err">{errors.email}</p>}
-                </div>
+    // Mobile + email inputs. Used for a new customer (both), and for a picked customer for whatever they are missing.
+    const contactFields = (idSuffix, showPhone = true, showEmail = true) => {
+        const both = showPhone && showEmail;
+        const phoneField = showPhone && (
+            <div className="st-f">
+                <label htmlFor={`ob-ph${idSuffix}`}>Mobile number</label>
+                <input id={`ob-ph${idSuffix}`} className="st-in" inputMode="tel" autoComplete="off" placeholder="10 digits" value={c.phone}
+                    onChange={(e) => patchC({ phone: e.target.value.replace(/[^\d+\s-]/g, "") })} />
+                {errors.phone && <p className="st-err">{errors.phone}</p>}
             </div>
-            {errors.contact
-                ? <p className="st-err" role="alert">{errors.contact}</p>
-                : <p className="st-hint">Add at least one. The customer gets an order confirmation on WhatsApp / email as soon as the order is placed.</p>}
-        </>
-    );
+        );
+        const emailField = showEmail && (
+            <div className="st-f">
+                <label htmlFor={`ob-em${idSuffix}`}>Email</label>
+                <input id={`ob-em${idSuffix}`} className="st-in" type="email" autoComplete="off" placeholder="name@company.com" value={c.email} onChange={(e) => patchC({ email: e.target.value })} />
+                {errors.email && <p className="st-err">{errors.email}</p>}
+            </div>
+        );
+        return (
+            <>
+                {both ? <div className="st-two">{phoneField}{emailField}</div> : <>{phoneField}{emailField}</>}
+                {errors.contact
+                    ? <p className="st-err" role="alert">{errors.contact}</p>
+                    : both
+                        ? <p className="st-hint">Add at least one. The customer gets an order confirmation on WhatsApp / email as soon as the order is placed.{c.mode === "picked" ? " It is also saved to this customer for next time." : ""}</p>
+                        : <p className="st-hint">Optional. Saved to this customer for next time.</p>}
+            </>
+        );
+    };
 
     return createPortal(
         <div className="st-ov" data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
@@ -335,7 +350,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 </span>
                                 <button type="button" className="st-lnk" onClick={resetCustomer}>Change</button>
                             </div>
-                            {pickedNoContact && <div style={{ marginTop: 10 }}>{contactFields("-p")}</div>}
+                            {pickedMissing && <div style={{ marginTop: 10 }}>{contactFields("-p", needPhone, needEmail)}</div>}
                         </>
                     )}
 
@@ -380,6 +395,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 {errors.name && <p className="st-err">{errors.name}</p>}
                             </div>
                             {contactFields("")}
+                            {!cleanGstin(c.gstin) && <p className="st-hint">Without a GST number the customer is only saved on this order, not added to your customers.</p>}
                             <button type="button" className="st-lnk" onClick={resetCustomer}>Search my customers instead</button>
                         </>
                     )}
@@ -567,7 +583,15 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                     {errors.items && <p className="st-err" style={{ marginTop: 6 }}>{errors.items}</p>}
                     <p className="st-hint" style={{ marginTop: 8 }}>Prices are for your records only. They are saved with GST included and don't change any price on BBM.</p>
 
+                    {/* ------------------------------ PO number + notes ------------------------------ */}
                     <div className="st-f" style={{ marginTop: 14 }}>
+                        <label htmlFor="ob-po">Purchase order (PO) number</label>
+                        <input id="ob-po" className="st-in" value={po} maxLength={60} autoComplete="off" placeholder="Optional. The customer's PO number"
+                            onChange={(e) => { setPo(e.target.value); touch(); }} />
+                        <p className="st-hint">Optional. You and your team can search orders by this number.</p>
+                    </div>
+
+                    <div className="st-f" style={{ marginTop: 6 }}>
                         <label htmlFor="ob-notes">Notes</label>
                         <textarea id="ob-notes" className="st-in" rows={2} maxLength={1000} placeholder="Delivery instructions, payment terms, anything the team should know" value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>

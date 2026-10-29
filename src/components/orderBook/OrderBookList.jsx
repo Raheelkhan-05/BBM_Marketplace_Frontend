@@ -1,6 +1,7 @@
 // src/components/orderBook/OrderBookList.jsx
 // The order list, shared by the salesperson page (mode "sales") and the company page (mode "team").
 // Opens instantly from cache, refreshes quietly, and stays live through useOrderBookLive.
+// Search covers customer name, order number, GST number and PO number.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, X, Inbox, Loader2 } from "lucide-react";
@@ -22,7 +23,7 @@ const Row = memo(function Row({ o, base, team }) {
         <li>
             <Link to={`${base}/${o.id}`} className="ob-row">
                 <span className="ob-r1"><b>{o.customerName}</b><time dateTime={o.lastActivityAt}>{listTime(o.lastActivityAt)}</time></span>
-                <span className="ob-r2">{o.orderNo} · {itemsSummary(o.items)}</span>
+                <span className="ob-r2">{o.orderNo}{o.poNumber ? ` · PO ${o.poNumber}` : ""} · {itemsSummary(o.items)}</span>
                 <span className="ob-r3">
                     <strong>{inr(o.total)}</strong>
                     {team && o.salespersonName && <small>by {o.salespersonName}</small>}
@@ -99,7 +100,7 @@ export default function OrderBookList({ mode, api, token, base, title, subtitle,
 
     const label = filter === "all" ? "" : STATUS_LABEL[filter].toLowerCase();
     const emptyTitle = q ? "No orders match your search" : filter === "all" ? "No orders yet" : `No ${label} orders`;
-    const emptyText = q ? "Try a different customer, order number or GST number."
+    const emptyText = q ? "Try a different customer, order number, PO number or GST number."
         : filter !== "all" ? "Orders will show up here as they move through this step."
             : team ? "Orders your salespeople punch will appear here the moment they are placed."
                 : "When a customer gives you an order, punch it here so your team can process it.";
@@ -113,7 +114,7 @@ export default function OrderBookList({ mode, api, token, base, title, subtitle,
 
             <label className="st-srch st-srch-l" style={{ marginTop: 14 }}>
                 <Search size={16} aria-hidden="true" />
-                <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search by customer, order number or GST number" aria-label="Search orders" />
+                <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search by customer, order no., PO number or GST number" aria-label="Search orders" />
                 {qInput && <button type="button" aria-label="Clear search" onClick={() => setQInput("")}><X size={14} /></button>}
             </label>
 
