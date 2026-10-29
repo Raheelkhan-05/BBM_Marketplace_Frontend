@@ -88,7 +88,7 @@ function ProductDetails({ item }) {
     const facts = [
         d.packagingType ? ["Packaging", d.packagingType] : null,
         d.hsnCode ? ["HSN code", d.hsnCode] : null,
-        d.gstPercent != null ? ["GST", `${qty(d.gstPercent)}%`] : null,
+        // d.gstPercent != null ? ["GST", `${qty(d.gstPercent)}%`] : null,
         d.manufacturer ? ["Manufacturer", d.manufacturer] : null,
         d.modelNo ? ["Model no.", d.modelNo] : null,
         d.gradeVariant ? ["Grade / variant", d.gradeVariant] : null,
@@ -146,7 +146,7 @@ function LineText({ i }) {
             </small>
             {packed && i.totalUnits > 0 && (
                 <small className="ob-pk">
-                    = {qty(i.totalUnits)} {i.baseUnit} in total{i.perUnitPrice > 0 ? ` · about ${inr(i.perUnitPrice, 4)} per ${i.baseUnit}` : ""}
+                    = {qty(i.totalUnits)} {i.baseUnit} in total
                 </small>
             )}
             {pk && packLines(pk).map((t) => <small key={t} className="ob-pk">{t}</small>)}
