@@ -1,6 +1,7 @@
 // src/components/orderBook/OrderBookDetail.jsx
 // One order. Shared by the salesperson (mode "sales": read only) and the company team (mode "team": can move it forward).
 // Live: every change anyone makes shows up here without a refresh.
+// The LR number, LR document and bill are optional, so the Shipment card shows for every shipped order and only lists what was added.
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
@@ -70,7 +71,7 @@ function Confirm({ kind, busy, onCancel, onConfirm }) {
 const SALES_HINT = {
     placed: "Your team has been notified. You'll see every update here as it happens.",
     processed: "The team is preparing this order.",
-    shipped: "The order is on its way. The LR details are below.",
+    shipped: "The order is on its way. Any LR details the team added are below.",
     completed: "This order is complete.",
 };
 
@@ -215,6 +216,9 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
     const canCancel = team && ["placed", "processed"].includes(o.status);
     const hasAddress = !!(o.customerAddress || o.customerCity || o.customerState || o.customerPincode);
     const extras = addressExtras(o);
+    // LR number, LR document and bill are optional: show the Shipment card for every shipped order, listing only what was added.
+    const hasShipment = !!(o.shippedAt || o.lrNumber || o.lrNotes || o.docs?.lrUrl || o.docs?.billUrl);
+    const hasShipDetails = !!(o.lrNumber || o.lrNotes || o.docs?.lrUrl || o.docs?.billUrl);
 
     return (
         <div className="ob st-listpage">
@@ -239,7 +243,7 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
                     <div className="ob-act-t">
                         <b>{o.status === "placed" ? "New order, ready to process" : o.status === "processed" ? "Ready to ship" : "Out for delivery"}</b>
                         <small>{o.status === "placed" ? `Punched by ${o.salespersonName || "a salesperson"}.`
-                            : o.status === "processed" ? "Add the LR number and documents to ship it." : "Complete it once the customer has received the goods."}</small>
+                            : o.status === "processed" ? "You can add the LR number and documents if you have them." : "Complete it once the customer has received the goods."}</small>
                     </div>
                     <div className="ob-act-b">
                         {canCancel && <button type="button" className="st-btn" disabled={busy} onClick={() => setConfirm("cancel")}>Cancel order</button>}
@@ -275,14 +279,15 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
                         {o.notes && <p className="ob-notes"><b>Notes</b>{o.notes}</p>}
                     </section>
 
-                    {o.lrNumber && (
+                    {hasShipment && (
                         <section className="ob-card">
                             <h2>Shipment</h2>
                             <dl className="ob-kv">
-                                <div><dt>LR / tracking number</dt><dd>{o.lrNumber}</dd></div>
+                                {o.lrNumber && <div><dt>LR / tracking number</dt><dd>{o.lrNumber}</dd></div>}
                                 {o.shippedAt && <div><dt>Shipped on</dt><dd>{dateTime(o.shippedAt)}</dd></div>}
                                 {o.lrNotes && <div><dt>Notes</dt><dd>{o.lrNotes}</dd></div>}
                             </dl>
+                            {!hasShipDetails && <p className="ob-fine" style={{ marginBottom: 0, paddingBottom: 0 }}>No LR details or bill were added.</p>}
                             <div className="ob-docs">
                                 {o.docs?.lrUrl && <a className="st-file" href={o.docs.lrUrl} target="_blank" rel="noreferrer"><FileText size={18} /><span><b>LR document</b></span><Download size={14} aria-hidden="true" /></a>}
                                 {o.docs?.billUrl && <a className="st-file" href={o.docs.billUrl} target="_blank" rel="noreferrer"><FileText size={18} /><span><b>Bill</b></span><Download size={14} aria-hidden="true" /></a>}

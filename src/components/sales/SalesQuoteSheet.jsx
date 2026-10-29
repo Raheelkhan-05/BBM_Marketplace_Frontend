@@ -4,6 +4,8 @@
 // packs and the price is per pack / master pack. Every line shows what one pack contains and the total in the listing's unit.
 // Prices are tied to the customer's GST number and pre-filled next time (saved prices are per listing unit; they are
 // converted to the pack / master pack price shown here).
+// The price the salesperson types is NEVER rewritten: changing "Price per" or "Includes / Excludes GST" only changes how
+// that number is read, and every other figure (per pack, per unit, totals) is recalculated from it.
 // The product tagged on the enquiry (if any) is pre-selected. The customer is added to the customer list on send.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -147,11 +149,11 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
     };
     const patchLine = (id, patch) => { setErr(""); setLines((prev) => prev.map((l) => (l.p.submissionId === id ? { ...l, ...patch } : l))); };
 
-    // Keep the same real price when switching between incl. / excl. GST.
+    // Changing the GST mode NEVER touches the typed price. The same number is simply read as incl. / excl. GST,
+    // and the per pack / per unit / total figures are recalculated from it.
     const switchGst = (l, incl) => {
-        const g = 1 + (Number(l.p.gstPercent) || 0) / 100, price = parseFloat(l.price);
-        if (!(price > 0) || l.gstIncl === incl) return patchLine(l.p.submissionId, { gstIncl: incl });
-        patchLine(l.p.submissionId, { gstIncl: incl, price: String(round4(incl ? price * g : price / g)) });
+        if (l.gstIncl === incl) return;
+        patchLine(l.p.submissionId, { gstIncl: incl });
     };
 
     // Switching between packs and master packs only changes the quantity (it restarts at the MOQ).
@@ -161,11 +163,11 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
         patchLine(l.p.submissionId, { basis, qty: String(minQty(l.f, basis, l.p.moq)) });
     };
 
-    // Change the unit the price is entered in. The number is converted so the real price stays the same.
+    // Changing "Price per" NEVER touches the typed price. The same number is simply read per unit / pack / master pack,
+    // and every other figure is recalculated from it.
     const switchPu = (l, pu) => {
         if (l.pu === pu) return;
-        const v = parseFloat(l.price);
-        patchLine(l.p.submissionId, { pu, price: v > 0 ? String(round4((v / unitsIn(l.f, l.pu)) * unitsIn(l.f, pu))) : l.price });
+        patchLine(l.p.submissionId, { pu });
     };
 
     const totals = useMemo(() => lines.reduce((a, l) => {

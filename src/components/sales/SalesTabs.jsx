@@ -11,8 +11,8 @@ import "../growSeller/grow-modules.css";
 export const SALES_TABS = [
     { key: "dashboard", to: "/sales/dashboard", label: "Dashboard", Icon: LayoutGrid, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/sales/dashboard"] },
     { key: "customers", to: "/sales/customers", label: "Customers", Icon: Users, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/sales/customers"] },
-    { key: "orderbook", to: "/sales/order-book", label: "Order Book", Icon: BookOpen, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/sales/order-book"] },
     { key: "enquiries", to: "/sales/enquiries", label: "RFQs", Icon: Send, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/sales/enquiries"] },
+    { key: "orderbook", to: "/sales/order-book", label: "Order Book", Icon: BookOpen, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/sales/order-book"] },
 ];
 
 // Shown in the compact bar when the current page is not one of the tabs.

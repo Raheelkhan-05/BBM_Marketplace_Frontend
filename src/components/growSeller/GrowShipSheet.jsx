@@ -1,6 +1,7 @@
 // src/components/growSeller/GrowShipSheet.jsx
-// "Mark as shipped" in the GROW UI. Same props and same FormData as components/orders/ShipOrderModal:
-// the seller must attach the LR document and the bill and give an LR number before the order can move to "shipped".
+// "Mark as shipped" in the GROW UI. Same props and same FormData keys as components/orders/ShipOrderModal.
+// The LR number, the LR document and the bill are all OPTIONAL: the seller can add them if they want, but they never
+// block the shipment. Only what is filled in is sent.
 // Rendered through <Sheet> (shell Portal) so it always sits above the header and dock.
 import { useState } from "react";
 import Ic from "./Ic.jsx";
@@ -26,7 +27,7 @@ function FileCard({ icon, label, hint, file, onChange, disabled }) {
         <label className={`sx-drop${drop.active ? " on" : ""}${file ? " has" : ""}${disabled ? " off" : ""}`} {...drop.bind}>
             <span className="sx-di"><Ic n={file ? "check" : icon} /></span>
             <span className="sx-dt">
-                <b>{label} <span className="sx-req">*</span></b>
+                <b>{label} <small>(optional)</small></b>
                 <small>{drop.active ? "Drop to add" : file ? `${file.name} · ${size(file.size)}` : hint}</small>
             </span>
             <span className="sx-da">
@@ -55,17 +56,16 @@ export default function GrowShipSheet({ open, order, onClose, onConfirm }) {
     const transport = order?.transport_mode
         ? routeOptionSummary(order.transport_mode, order.transport_fields || {})
         : "No Preference Set";
-    const canSubmit = !!lrNumber.trim() && !!lrFile && !!billFile;
 
     const submit = async () => {
-        if (!canSubmit) { setError("Please fill in the LR number and attach both files."); return; }
         setBusy(true);
         setError(null);
+        // Only what the seller filled in is sent; the server accepts a shipment with none of it.
         const fd = new FormData();
-        fd.append("lrNumber", lrNumber.trim());
-        fd.append("lrNotes", lrNotes.trim());
-        fd.append("lr_proof", lrFile);
-        fd.append("bill", billFile);
+        if (lrNumber.trim()) fd.append("lrNumber", lrNumber.trim());
+        if (lrNotes.trim()) fd.append("lrNotes", lrNotes.trim());
+        if (lrFile) fd.append("lr_proof", lrFile);
+        if (billFile) fd.append("bill", billFile);
         let res = null;
         try { res = await onConfirm(fd); } catch { res = null; }
         setBusy(false);
@@ -76,7 +76,7 @@ export default function GrowShipSheet({ open, order, onClose, onConfirm }) {
         <Sheet title="Mark as shipped" sub={order?.order_number} onClose={busy ? undefined : onClose}>
             <div className="sx-warn" role="note">
                 <Ic n="alert" />
-                <span>Upload the LR details and bill before shipping. If this order doesn't get delivered completely, or these details aren't uploaded properly, you (the seller) will be considered at fault.</span>
+                <span>Adding the LR details and the bill is optional, but it is recommended. They help the buyer track the delivery and make it easier to sort out any issue with the order.</span>
             </div>
 
             <div className="sx-tr">
@@ -88,15 +88,15 @@ export default function GrowShipSheet({ open, order, onClose, onConfirm }) {
             </div>
 
             <div className="f">
-                <label htmlFor="sx-lr">LR / tracking number <span className="sx-req">*</span></label>
+                <label htmlFor="sx-lr">LR / tracking number (optional)</label>
                 <div className="inp">
-                    <input id="sx-lr" value={lrNumber} placeholder="e.g. LR-48213" autoComplete="off"
+                    <input id="sx-lr" value={lrNumber} placeholder="e.g. LR-48213" autoComplete="off" maxLength={60}
                         onChange={(e) => setLrNumber(e.target.value)} />
                 </div>
             </div>
 
             <div className="f stack">
-                <span className="lb" style={{ marginBottom: 0 }}>Documents</span>
+                <span className="lb" style={{ marginBottom: 0 }}>Documents (optional)</span>
                 <FileCard icon="file" label="LR document" hint="Photo, PDF, Word, Excel or text of the LR / consignment note"
                     file={lrFile} onChange={setLrFile} disabled={busy} />
                 <FileCard icon="receipt" label="Bill for this order" hint="Photo, PDF, Word, Excel or text of the invoice / bill"
@@ -112,7 +112,7 @@ export default function GrowShipSheet({ open, order, onClose, onConfirm }) {
             {error && <p className="sx-err" role="alert">{error}</p>}
 
             <div className="sx-foot">
-                <button type="button" className="bt go blk" disabled={!canSubmit || busy} onClick={submit}>
+                <button type="button" className="bt go blk" disabled={busy} onClick={submit}>
                     {busy ? <><Ic n="spin" />Confirming…</> : "Confirm shipment"}
                 </button>
             </div>

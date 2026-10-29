@@ -6,8 +6,10 @@
 // BUYER ADDRESS: filled from the GST number (full registered address), then editable.
 // PRODUCTS: tag products from the company catalog (or type a name). Catalog products are ordered in whole packs or
 // master packs, never single units; the sheet shows what one pack / master pack contains.
-// PRICE: entered per unit (Kg, Pcs ...), per pack or per master pack, including or excluding GST. It is converted here to
-// the price per pack / master pack with GST included, which is what the server stores. Prices are for the log only.
+// PRICE: entered per unit (Kg, Pcs ...), per pack or per master pack, including or excluding GST. The number the salesperson
+// types is NEVER rewritten: changing "Price per" or "Includes / Excludes GST" only changes how that number is read, and every
+// other figure (per pack, per unit, line total) is recalculated from it. It is converted here to the price per pack / master
+// pack with GST included, which is what the server stores. Prices are for the log only.
 // PO NUMBER: optional Purchase Order number of the customer; searchable in the Order Book.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -19,7 +21,7 @@ import { RFQ_UNITS } from "../../utils/rfqUtils.js";
 import { useSheetBehavior } from "../../hooks/useSalesSheet.js";
 import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, ov, ol, initialOf, qty, inr } from "../sales/salesThreadFmt.js";
 import { packLines, unitsPerSale, basisWord, minQty } from "./orderBookPack.js";
-import { MANUAL, productPack, priceUnitOptions, defaultPriceUnit, convertPrice, inclPerUnit, salePrice } from "./orderBookPrice.js";
+import { MANUAL, productPack, priceUnitOptions, defaultPriceUnit, inclPerUnit, salePrice } from "./orderBookPrice.js";
 import "../sales/sales-threads.css";
 import "./order-book.css";
 
@@ -146,12 +148,10 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     // Packs <-> master packs only changes the quantity (it restarts at the MOQ). The price is entered in its own unit, so it stays as typed.
     const switchBasis = (l, basis) => patchLine(l.key, { basis, quantity: String(minQty(l.pack, basis, l.moq)) });
-    // Changing the unit or the GST mode converts the number, so the real price stays the same.
-    const switchPu = (l, pu) => patchLine(l.key, { pu, price: convertPrice(l.price, { pu: l.pu, incl: l.incl }, { pu, incl: l.incl }, l.pack || MANUAL, l.gstPct) || l.price });
-    const switchIncl = (l, incl) => {
-        if (l.incl === incl) return;
-        patchLine(l.key, { incl, price: convertPrice(l.price, { pu: l.pu, incl: l.incl }, { pu: l.pu, incl }, l.pack || MANUAL, l.gstPct) || l.price });
-    };
+    // Changing "Price per" or the GST mode NEVER touches the typed price. The same number is simply read under the new option,
+    // and the per pack / per unit / line total figures are recalculated from it.
+    const switchPu = (l, pu) => { if (l.pu !== pu) patchLine(l.key, { pu }); };
+    const switchIncl = (l, incl) => { if (l.incl !== incl) patchLine(l.key, { incl }); };
 
     // Fill the address from a GST lookup result, unless the salesperson already typed in it while the lookup ran.
     const applyGstAddress = (r) => setAddr((a) => (a.touched ? a : {
@@ -492,7 +492,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                     </p>
                                 )}
 
-                                {/* price: any unit, with or without GST */}
+                                {/* price: any unit, with or without GST. The typed number is never rewritten. */}
                                 <div className="st-two">
                                     <div className="st-f">
                                         <label htmlFor={`p-${l.key}`}>Price (₹) *</label>

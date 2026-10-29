@@ -1,6 +1,7 @@
 // src/components/orderBook/OrderBookShipSheet.jsx
-// "Mark as shipped" for an Order Book order (company team). Same look and rules as GrowShipSheet:
-// LR number + LR document + bill are required. Rendered through <Sheet>, so it sits above the Grow header.
+// "Mark as shipped" for an Order Book order (company team). Same look as GrowShipSheet.
+// The LR number, the LR document and the bill are all OPTIONAL: the team member adds them only if they want to,
+// and they never block the shipment. Only what is filled in is sent. Rendered through <Sheet>, so it sits above the Grow header.
 import { useState } from "react";
 import Ic from "../growSeller/Ic.jsx";
 import { Sheet } from "../growSeller/ui.jsx";
@@ -22,7 +23,7 @@ function FileCard({ icon, label, hint, file, onChange, disabled }) {
         <label className={`sx-drop${drop.active ? " on" : ""}${file ? " has" : ""}${disabled ? " off" : ""}`} {...drop.bind}>
             <span className="sx-di"><Ic n={file ? "check" : icon} /></span>
             <span className="sx-dt">
-                <b>{label} <span className="sx-req">*</span></b>
+                <b>{label} <small>(optional)</small></b>
                 <small>{drop.active ? "Drop to add" : file ? `${file.name} · ${size(file.size)}` : hint}</small>
             </span>
             <span className="sx-da">
@@ -43,20 +44,19 @@ export default function OrderBookShipSheet({ open, order, onClose, onConfirm }) 
     const [error, setError] = useState(null);
     if (!open) return null;
 
-    const canSubmit = !!lrNumber.trim() && !!lrFile && !!billFile;
     const pick = (setter) => (f) => {
         if (f && f.size > MAX_BYTES) { setError(`${f.name} is larger than 10 MB.`); return; }
         setError(null); setter(f);
     };
 
     const submit = async () => {
-        if (!canSubmit) { setError("Please fill in the LR number and attach both files."); return; }
         setBusy(true); setError(null);
+        // Only what was filled in is sent; the server accepts a shipment with none of it.
         const fd = new FormData();
-        fd.append("lrNumber", lrNumber.trim());
-        fd.append("lrNotes", lrNotes.trim());
-        fd.append("lr_proof", lrFile);
-        fd.append("bill", billFile);
+        if (lrNumber.trim()) fd.append("lrNumber", lrNumber.trim());
+        if (lrNotes.trim()) fd.append("lrNotes", lrNotes.trim());
+        if (lrFile) fd.append("lr_proof", lrFile);
+        if (billFile) fd.append("bill", billFile);
         let res = null;
         try { res = await onConfirm(fd); } catch { res = null; }
         setBusy(false);
@@ -67,16 +67,16 @@ export default function OrderBookShipSheet({ open, order, onClose, onConfirm }) 
         <Sheet title="Mark as shipped" sub={`${order?.orderNo} · ${order?.customerName}`} onClose={busy ? undefined : onClose}>
             <div className="sx-warn" role="note">
                 <Ic n="alert" />
-                <span>Upload the LR details and the bill before shipping. The salesperson will see them on the order.</span>
+                <span>The LR details and the bill are optional. If you add them, the salesperson will see them on the order.</span>
             </div>
 
             <div className="f">
-                <label htmlFor="obs-lr">LR / tracking number <span className="sx-req">*</span></label>
+                <label htmlFor="obs-lr">LR / tracking number (optional)</label>
                 <div className="inp"><input id="obs-lr" value={lrNumber} placeholder="e.g. LR-48213" autoComplete="off" maxLength={60} onChange={(e) => setLrNumber(e.target.value)} /></div>
             </div>
 
             <div className="f stack">
-                <span className="lb" style={{ marginBottom: 0 }}>Documents</span>
+                <span className="lb" style={{ marginBottom: 0 }}>Documents (optional)</span>
                 <FileCard icon="file" label="LR document" hint="Photo, PDF, Word, Excel or text of the LR / consignment note" file={lrFile} onChange={pick(setLrFile)} disabled={busy} />
                 <FileCard icon="receipt" label="Bill for this order" hint="Photo, PDF, Word, Excel or text of the invoice / bill" file={billFile} onChange={pick(setBillFile)} disabled={busy} />
             </div>
@@ -89,7 +89,7 @@ export default function OrderBookShipSheet({ open, order, onClose, onConfirm }) 
             {error && <p className="sx-err" role="alert">{error}</p>}
 
             <div className="sx-foot">
-                <button type="button" className="bt go blk" disabled={!canSubmit || busy} onClick={submit}>
+                <button type="button" className="bt go blk" disabled={busy} onClick={submit}>
                     {busy ? <><Ic n="spin" />Confirming…</> : "Confirm shipment"}
                 </button>
             </div>
