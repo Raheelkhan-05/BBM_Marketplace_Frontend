@@ -672,7 +672,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                     {/* ------------------------------ BBM prices (by GST number) ------------------------------ */}
                     {canSetPrices ? (
                         <>
-                            <div className={`st-chan${setCustom ? " on" : ""}`} style={{ marginTop: 12 }}>
+                            {/* <div className={`st-chan${setCustom ? " on" : ""}`} style={{ marginTop: 12 }}>
                                 <button type="button" role="checkbox" aria-checked={setCustom} onClick={() => { setSetCustom((v) => !v); touch(); }}>
                                     <i>{setCustom ? <Check size={14} strokeWidth={3} /> : null}</i>Use these prices as this customer's BBM prices
                                 </button>
@@ -681,7 +681,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 {setCustom
                                     ? "Your catalog products will be priced like this for this GST number on BBM. If they aren't on BBM yet, the prices are saved and apply as soon as they join with it. A custom price switches off quantity discounts for that buyer."
                                     : "The prices stay in this order only. Nothing changes on BBM."}
-                            </p>
+                            </p> */}
                         </>
                     ) : (
                         <p className="st-hint" style={{ marginTop: 8 }}>
