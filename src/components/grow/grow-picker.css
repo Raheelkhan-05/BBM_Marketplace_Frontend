@@ -416,3 +416,32 @@
         transition: none
     }
 }
+
+/* "Fixed by this product": title on the first row, value underneath */
+.gl .gs .brk.fx {
+    padding: 10px 12px
+}
+
+.gl .gs .brk.fx div {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 0;
+}
+
+.gl .gs .brk.fx span {
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--mute);
+}
+
+.gl .gs .brk.fx b {
+    font-size: 1rem;
+    font-weight: 800;
+    line-height: 1.35;
+    color: var(--ink);
+    overflow-wrap: anywhere;
+}

@@ -819,7 +819,7 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
             ok: (P.match || (P.u && Number(P.ps) > 0 && P.op !== null && (!P.op || Number(P.mps) >= 2))) && Number(P.moq) > 0 && P.sm !== null && (!P.sm || Number(P.sq) > 0),
             h: () => (<>
                 {P.match
-                    ? <div className="brk"><div><span>Fixed by this product</span><b>1 Pack = {P.ps} {P.u}{outer ? ` · 1 Master Pack = ${P.mps} Packs` : ""}</b></div></div>
+                    ? <div className="brk fx"><div><span>Fixed by this product</span><b>1 Pack = {P.ps} {P.u}{outer ? ` · 1 Master Pack = ${P.mps} Packs` : ""}</b></div></div>
                     : (<>
                         {fixedEnq
                             ? <F l="Selling unit" c="Fixed to the unit the buyer asked in."><div className="inp ro"><input readOnly value={P.u} /></div></F>
