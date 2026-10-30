@@ -7,7 +7,7 @@ import MarketplaceSearchBar from "../components/MarketplaceSearchBar";
 import CategoryStrip from "../components/home/CategoryStrip.jsx";
 import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
 import PromoHero from "../components/home/PromoHero.jsx";
-import FloatingSellButton from "../components/FloatingSellButton.jsx";
+// import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
 import { useAuth } from "../context/AuthContext.jsx";
 
