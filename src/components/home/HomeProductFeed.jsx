@@ -503,7 +503,7 @@ function OwnListingPriceModal({ seller, includeGst, submitting, token, onApply, 
 // Shares the public store link (same format the login-return note uses).
 async function shareShopLink({ shopSlug, shopName }) {
 
-    const url = `${window.location.origin}/sellers/${encodeURIComponent(shopSlug)}`;
+    const url = `${window.location.origin}/seller/${encodeURIComponent(shopSlug)}`;
     try {
         if (navigator.share) {
             await navigator.share({ title: shopName || "My shop", text: `Check out ${shopName || "my shop"} on BBM`, url });
@@ -3731,10 +3731,10 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         for (let bi = sections.length; bi < blocksPlan.length; bi++) sections.push({ items: [], block: blocksPlan[bi] });
     }
 
-    const seoPath = pathBrand ? `/brands/${encodeURIComponent(brandName)}`
-        : pathShop ? `/sellers/${encodeURIComponent(shopSlug)}`
-            : brandName ? `/brands/${encodeURIComponent(brandName)}`   // legacy ?brand= URL → canonical points to clean URL
-                : shopSlug ? `/sellers/${encodeURIComponent(shopSlug)}`
+    const seoPath = pathBrand ? `/brand/${encodeURIComponent(brandName)}`
+        : pathShop ? `/seller/${encodeURIComponent(shopSlug)}`
+            : brandName ? `/brand/${encodeURIComponent(brandName)}`   // legacy ?brand= URL → canonical points to clean URL
+                : shopSlug ? `/seller/${encodeURIComponent(shopSlug)}`
                     : "/home";
 
     const sellerName = shopInfo?.display_name || shopSlug;

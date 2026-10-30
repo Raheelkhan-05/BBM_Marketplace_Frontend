@@ -253,10 +253,10 @@ function App() {
                   {/* <Route path="/admin/rfq" element={<AdminRfqPage />} /> */}
 
                   <Route path="/brands" element={<BrandsPage />} />
-                  <Route path="/brands/:brandName" element={<HomePage />} />
+                  <Route path="/brand/:brandName" element={<HomePage />} />
 
                   <Route path="/sellers" element={<SellersPage />} />
-                  <Route path="/sellers/:shopSlug" element={<HomePage />} />
+                  <Route path="/seller/:shopSlug" element={<HomePage />} />
                   {/* 
                   <Route path="/seller/sell" element={<SellPublishProductPage />} />
                   <Route path="/seller/sell/:id/edit" element={<SellerEditListingPage />} />

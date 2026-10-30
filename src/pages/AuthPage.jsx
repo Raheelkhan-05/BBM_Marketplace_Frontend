@@ -102,7 +102,7 @@ const BRAND_NAMES = [
 ];
 const BRANDS = BRAND_NAMES.map((name) => ({
   name,
-  src: `/brands/${name.toLowerCase().replace(/\s+/g, "-")}.jpg`,
+  src: `/brand/${name.toLowerCase().replace(/\s+/g, "-")}.jpg`,
 }));
 const RAIL_A = BRANDS.filter((_, i) => i % 2 === 0);
 const RAIL_B = BRANDS.filter((_, i) => i % 2 === 1);

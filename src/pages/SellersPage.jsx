@@ -393,7 +393,7 @@ export default function SellersPage() {
                             return (
                                 <Link
                                     key={s.shop_slug}
-                                    to={`/sellers/${encodeURIComponent(s.shop_slug)}`}
+                                    to={`/seller/${encodeURIComponent(s.shop_slug)}`}
                                     className="group flex min-w-0 flex-col items-center rounded-xl text-center transition-transform duration-200 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                                     style={{ outlineColor: ACCENT }}
                                 >

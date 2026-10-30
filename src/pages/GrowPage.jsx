@@ -17,7 +17,7 @@ const BRANDS = [
     ["Ft Paint", 1], ["Mercedes", 1], ["Mobil", 4], ["Nerolac", 2], ["Oneida", 1],
     ["Securust", 1], ["Shaktiman", 1], ["Shell", 19], ["Sk Zic", 1], ["Skf", 1],
     ["Timken", 2], ["Unity", 0], ["Zerust", 2], ["ZXL", 2],
-].map(([name, count]) => ({ name, count, src: `/brands/${slug(name)}.jpg` }));
+].map(([name, count]) => ({ name, count, src: `/brand/${slug(name)}.jpg` }));
 
 const ROW_1 = BRANDS.filter((_, i) => i % 2 === 0);
 const ROW_2 = BRANDS.filter((_, i) => i % 2 === 1);

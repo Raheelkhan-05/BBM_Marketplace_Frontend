@@ -19,7 +19,7 @@ const slug = (n) => n.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g
 /* ------------------------------ DATA ------------------------------ */
 const BRANDS = ["3M", "Aditya", "Asian Paints", "Bosch", "Castrol", "Ft Paint", "Mercedes", "Mobil", "Nerolac", "Oneida",
     "Securust", "Shaktiman", "Shell", "Sk Zic", "Skf", "Timken", "Unity", "Zerust", "ZXL"]
-    .map((name) => ({ name, src: `/brands/${slug(name)}.jpg` }));
+    .map((name) => ({ name, src: `/brand/${slug(name)}.jpg` }));
 const ROW_1 = BRANDS.filter((_, i) => i % 2 === 0);
 const ROW_2 = BRANDS.filter((_, i) => i % 2 === 1);
 
