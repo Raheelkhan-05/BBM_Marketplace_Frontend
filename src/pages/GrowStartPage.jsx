@@ -20,8 +20,9 @@ import { Link, useNavigate, useLocation, useSearchParams } from "react-router-do
 import { useAuth } from "../context/AuthContext.jsx";
 import {
     saveSellerProgress, submitSellerOnboarding, saveSellerBankDetails,
-    uploadSellerFile, createSellerSubmission, createListingForExistingBrand,
+    uploadSellerFile, createSellerSubmission, createListingForExistingBrand, createSellerListingForBrand,
 } from "../utils/api.js";
+import GrowProductPicker from "../components/grow/GrowProductPicker.jsx";
 import {
     findBrandItemMatch, lookupPincode, fetchListingPolicyOptions,
     fetchDefaultListingTemplates, fetchGeoCountries, fetchGeoStates,
@@ -45,6 +46,7 @@ import "../components/grow/grow-extras.css"; // keep AFTER grow-start.css
 import "../components/grow/grow-access.css"; // after grow-extras.css
 import "../components/grow/grow-transitions.css"; // after grow-access.css
 import "../components/grow/grow-sell-item.css"; // after grow-access.css
+import "../components/grow/grow-picker.css"; // after grow-sell-item.css
 
 const UNITS = ["Pieces", "Kg", "Grams", "Litres", "Millilitres", "Dozen", "Tons"]; // same list as SellerListingForm
 const GST = [0, 0.25, 3, 5, 12, 18, 28];
@@ -92,6 +94,21 @@ export default function GrowStartPage() {
     // Not when the seller pressed "Sell this": then they must land in the wizard.
     const resumeBack = isEnquiryPath(returnTo) && !sellPrefill;
 
+    // Brand -> product picker (only when the seller is NOT answering an enquiry via "Sell this").
+    const [pick, setPick] = useState(null);       // null | { kind: "existing", item } | { kind: "new", identity }
+    const [brandSel, setBrandSel] = useState(null); // { name, image, none?, isNew? } kept so "Add another" returns to the same brand
+    const lockedItem = useMemo(() => (pick?.kind === "existing" ? {
+        id: pick.item.id,
+        productName: pick.item.name || "",
+        brandName: pick.item.brandName || "",
+        image: pick.item.image || "",
+        unit: pick.item.unit || "",
+        packSize: pick.item.packSize ?? null,
+        masterPackSize: pick.item.masterPackSize ?? null,
+        gstPercent: pick.item.gstPercent ?? null,
+    } : null), [pick]);
+    const lockedSubmit = (payload) => createSellerListingForBrand(token, { genericProductId: pick.item.id, ...payload });
+
     // land | auth | check | onb | prod | pdone
     // Coming from "Add your products" (?start=1): never flash the landing screen. If the access check was
     // already warmed up by the details page, open the wizard on the very first render.
@@ -130,6 +147,7 @@ export default function GrowStartPage() {
     // The listing was just created. From an enquiry and live (approved): go straight back to the enquiry, with the
     // loading screen up meanwhile. Otherwise show the "listing submitted" screen.
     const onListed = (card, res) => {
+        setBrandSel((b) => (b?.isNew ? { ...b, isNew: false } : b)); // the brand exists now
         setLast(card);
         setLastRes(res || null);
         if (enquiry && returnTo && res?.submission?.review_status === "approved" && res?.submission?.id) {
@@ -177,7 +195,8 @@ export default function GrowStartPage() {
     };
 
     const live = lastRes?.submission?.review_status === "approved";
-    const hasBar = view === "onb" || view === "prod";
+    const inWizard = view === "prod" && (!!sellPrefill || !!pick);
+    const hasBar = view === "onb" || inWizard;
     return (
         <div className="gs">
             <div className={`app${view === "land" ? " wide" : ""}${hasBar ? " hb" : ""}`}>
@@ -192,9 +211,21 @@ export default function GrowStartPage() {
                     <Onboarding token={token} profile={profile} refreshProfile={refreshProfile} say={say}
                         onDone={() => { setAccess(token, { canPublish: true, success: true }); finishFlow(); }} />
                 )}
-                {view === "prod" && (
-                    <Wizard token={token} say={say} onExit={exitWizard} prefill={sellPrefill} enquiryId={sellPrefill ? (enquiry?.id || null) : null}
+                {view === "prod" && !sellPrefill && !pick && (
+                    <GrowProductPicker token={token} say={say} brand={brandSel} setBrand={setBrandSel} onExit={exitWizard}
+                        onExisting={(item) => setPick({ kind: "existing", item })}
+                        onNew={(identity) => setPick({ kind: "new", identity })} />
+                )}
+                {view === "prod" && (sellPrefill || pick) && (
+                    <Wizard key={pick?.item?.id || pick?.identity?.productName || "enquiry"}
+                        token={token} say={say}
+                        onExit={sellPrefill ? exitWizard : () => setPick(null)}
+                        exitLabel={sellPrefill ? "" : "Back"}
+                        prefill={sellPrefill} enquiryId={sellPrefill ? (enquiry?.id || null) : null}
                         enquiryBuyer={sellPrefill?.buyerId ? { buyerId: sellPrefill.buyerId, name: sellPrefill.buyerName || "" } : null}
+                        locked={pick?.kind === "existing" ? lockedItem : null}
+                        submitFn={pick?.kind === "existing" ? lockedSubmit : null}
+                        identity={pick?.kind === "new" ? pick.identity : null}
                         onNeedOnboarding={() => setView("onb")} onNeedLogin={() => setView("auth")}
                         onSubmitted={onListed} />
                 )}
@@ -214,7 +245,7 @@ export default function GrowStartPage() {
                             <button className="sbtn" type="button" onClick={backToQuote} disabled={!live}>Continue to your quote</button>
                         )}
                         {enquiry && !live && <p className="cap">You can send your quote once this listing is approved.</p>}
-                        {!enquiry && <button className="sbtn" type="button" onClick={() => setView("prod")}>Add another product</button>}
+                        {!enquiry && <button className="sbtn" type="button" onClick={() => { setPick(null); setView("prod"); }}>Add another product</button>}
                         <Link className="sbtn gh" to="/grow/products">Go to my products</Link>
                         {enquiry
                             ? !live && <button className="sbtn gh" type="button" onClick={() => nav(returnTo, { replace: true })}>Back to the enquiry</button>
@@ -474,6 +505,16 @@ const lockedBlank = (L) => {
     };
 };
 
+// New product from the brand -> product picker: name and brand arrive filled (and fixed) on step 1.
+const identityBlank = (I) => ({
+    ...blank(),
+    n: I.productName || "",
+    b: I.brandNotApplicable ? "" : (I.brandName || ""),
+    bi: I.brandNotApplicable ? null : (I.brandImage || null),
+    nb: !!I.brandNotApplicable,
+    bnew: !!I.brandIsNew,
+});
+
 function CertRow({ c, busy, onRename, onReplace, onRemove }) {
     const [edit, setEdit] = useState(false);
     const [draft, setDraft] = useState(c.name || "");
@@ -514,9 +555,9 @@ function CertRow({ c, busy, onRename, onReplace, onRemove }) {
 //   submitFn  - async (payload) => response. Replaces the default create call (e.g. createSellerListingForBrand).
 //   onStep    - called with the step index whenever it changes (lets a host scroll its own container to the top).
 // onSubmitted(card, res) receives the raw API response as a 2nd argument.
-export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted, locked = null, prefill = null, enquiryId = null, enquiryBuyer = null, submitFn = null, onStep, quiet = false }) {
+export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted, locked = null, prefill = null, identity = null, exitLabel = "", enquiryId = null, enquiryBuyer = null, submitFn = null, onStep, quiet = false }) {
     const { seller } = useSellerProfileStatus(token);
-    const [P, setP] = useState(() => (locked ? lockedBlank(locked) : prefill ? prefillBlank(prefill) : blank()));
+    const [P, setP] = useState(() => (locked ? lockedBlank(locked) : prefill ? prefillBlank(prefill) : identity ? identityBlank(identity) : blank()));
     const [ps, setPs] = useState(0);
     const [busy, setBusy] = useState(false);
     const [up, setUp] = useState(false);
@@ -530,6 +571,7 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
     const set = (k, v) => setP((x) => ({ ...x, [k]: v }));
     const fixedEnq = !locked && !!prefill; // name / brand / unit fixed to the enquiry
     const fixedImg = fixedEnq && !!prefill.image; // the enquiry's image is locked too
+    const fixedId = !locked && !fixedEnq && !!identity; // name + brand fixed by the picker
 
     // like `unlock`, but with an enquiry the unit stays what the buyer asked in
     const unlockP = (x) => (x.match ? { ...x, match: null, u: fixedEnq ? (prefill.unit || "") : "", ps: "", op: null, mps: "", gst: "" } : x);
@@ -719,7 +761,8 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
             t: "What are you selling?",
             s: fixedEnq
                 ? (fixedImg ? "Product name, brand, unit and photo come from the buyer's enquiry." : "Product name, brand and unit come from the buyer's enquiry.")
-                : "Start with the basics buyers see first.",
+                : fixedId ? "Your brand and product name are set. Add photos and, if you have them, certificates."
+                    : "Start with the basics buyers see first.",
             ok: P.n.trim().length >= 2 && (P.nb || P.b.trim()) && P.im.length > 0,
             h: () => (<>
                 {fixedEnq ? (<>
@@ -737,6 +780,19 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
                         {fixedImg ? "These come from the buyer's enquiry and can't be changed. " : "These come from the buyer's enquiry and can't be changed. The enquiry has no photo, so add your own below. "}
                         Next, add your own price, stock and delivery terms.
                     </p>
+                </>) : fixedId ? (<>
+                    <div className="gx-lock">
+                        <div className={`gx-lth${P.bi ? " logo" : ""}`} style={P.bi ? { backgroundImage: `url(${P.bi})` } : undefined}>
+                            {P.bi ? "" : ((P.nb ? P.n : P.b).trim()[0] || "?").toUpperCase()}
+                        </div>
+                        <div className="gx-lin">
+                            <small>{P.nb ? "New product · no brand" : `New product${P.bnew ? " · new brand" : ""}`}</small>
+                            <b>{P.n}</b>
+                            <span>{P.nb ? "No brand" : P.b}</span>
+                        </div>
+                        <button type="button" className="gx-chg" onClick={onExit}>Change</button>
+                    </div>
+                    <p className="cap" style={{ marginTop: 10, marginBottom: 10 }}>Add photos below, then your packaging, price and delivery terms.</p>
                 </>) : (<>
                     <F l="Product name *"><In v={P.n} on={(v) => set("n", v)} placeholder="e.g. Premium Stainless Steel Hinges" /></F>
                     <F l="Brand *">
@@ -940,7 +996,7 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
                 </div>
             </section>
             <div className="bar"><div>
-                <button className="sbtn gh sm" type="button" onClick={() => (ps ? goto(ps - 1) : onExit())}>{ps ? "Back" : "Cancel"}</button>
+                <button className="sbtn gh sm" type="button" onClick={() => (ps ? goto(ps - 1) : onExit())}>{ps ? "Back" : (exitLabel || "Cancel")}</button>
                 <button className="sbtn" type="button" disabled={!s.ok || busy || up} onClick={() => (lastStep ? submit() : goto(ps + 1))}>
                     {lastStep ? submitText : "Continue"}
                 </button>

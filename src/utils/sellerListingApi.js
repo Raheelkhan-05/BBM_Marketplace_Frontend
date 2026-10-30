@@ -199,3 +199,14 @@ export async function bulkUpdateMarketing(token, { submissionIds, mode, services
         method: "PATCH", body: JSON.stringify({ submissionIds, mode, services }),
     });
 }
+
+export async function fetchPickerBrands(token, { q = "", limit = 36, offset = 0, signal } = {}) {
+    const p = new URLSearchParams({ q, limit, offset });
+    return authedJson(`/seller/catalog/picker/brands?${p}`, token, { signal });
+}
+
+export async function fetchPickerItems(token, { brand = "", none = false, q = "", limit = 30, offset = 0, signal } = {}) {
+    const p = new URLSearchParams({ q, limit, offset });
+    if (none) p.set("none", "1"); else p.set("brand", brand);
+    return authedJson(`/seller/catalog/picker/items?${p}`, token, { signal });
+}

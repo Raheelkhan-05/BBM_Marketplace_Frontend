@@ -101,7 +101,7 @@ export default function PromoHero({ needsOnboarding = false, onSignIn, onSell, o
                             style={{ background: "#FFD60A" }}
                         >
                             <span className="truncate">
-                                {needsOnboarding ? "Finish setting up" : "Sign in to see prices"}
+                                {needsOnboarding ? "Finish setting up" : "Sign in to place orders"}
                             </span>
                         </button>
 
