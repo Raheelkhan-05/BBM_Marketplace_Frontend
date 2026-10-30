@@ -6,6 +6,9 @@
 // BUYER ADDRESS: filled from the GST number (full registered address), then editable.
 // PRODUCTS: tag products from the company catalog (or type a name). Catalog products are ordered in whole packs or
 // master packs, never single units; the sheet shows what one pack / master pack contains.
+// PRICES SHOWN: every product shows its marketplace price. Once the customer has a full GST number, it also shows the custom
+// price that customer has on BBM (if any) and the last price given to them. The same hints sit under the price field of
+// every added product, and they refresh when the customer changes.
 // PRICE: entered per unit (Kg, Pcs ...), per pack or per master pack, including or excluding GST. The number the salesperson
 // types is NEVER rewritten: changing "Price per" or "Includes / Excludes GST" only changes how that number is read, and every
 // other figure (per pack, per unit, line total) is recalculated from it. It is converted here to the price per pack / master
@@ -56,14 +59,16 @@ function useGstAddress(token) {
     return { status, run, reset };
 }
 
-// Paged, searchable remote list. fetchPage(q, offset) -> { success, items, hasMore, nextOffset? }
-function useRemoteList(fetchPage, q, enabled, keyOf) {
+// Paged, searchable remote list. fetchPage(q, offset) -> { success, items, hasMore, nextOffset?, buyer? }
+// depKey: when it changes, the list is fetched again from the start (the product list uses the customer's GST number).
+function useRemoteList(fetchPage, q, enabled, keyOf, depKey = "") {
     const [items, setItems] = useState([]);
     const [hasMore, setHasMore] = useState(false);
     const [loading, setLoading] = useState(true);
     const [more, setMore] = useState(false);
     const [error, setError] = useState("");
     const [notReady, setNotReady] = useState(false);
+    const [buyer, setBuyer] = useState(null);
     const seq = useRef(0);
     const next = useRef(0);
     const fetchRef = useRef(fetchPage); fetchRef.current = fetchPage;
@@ -81,11 +86,13 @@ function useRemoteList(fetchPage, q, enabled, keyOf) {
         setItems((prev) => (offset ? [...prev, ...inc.filter((i) => !prev.some((p) => keyRef.current(p) === keyRef.current(i)))] : inc));
         setHasMore(!!res.hasMore);
         setNotReady(res.sellerReady === false);
-    }, [q]);
+        setBuyer(res.buyer ?? null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [q, depKey]);
 
     useEffect(() => { if (enabled) load(0); }, [enabled, load]);
     const loadMore = useCallback(() => load(next.current), [load]);
-    return { items, hasMore, loading, more, error, notReady, reload: () => load(0), loadMore };
+    return { items, hasMore, loading, more, error, notReady, buyer, reload: () => load(0), loadMore };
 }
 
 function SearchList({ placeholder, label, value, onChange, list, keyOf, renderRow, empty }) {
@@ -119,10 +126,33 @@ const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", phone: 
 const blankAddr = { address: "", city: "", state: "", pincode: "", touched: false, fromGst: false };
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const r4 = (n) => Math.round((Number(n) + Number.EPSILON) * 1e4) / 1e4;
+const samePrice = (a, b) => Math.abs(a - b) < 0.00005;
 
 // Price of one line, per pack / master pack (or per unit for typed products), GST included.
 const lineSale = (l) => salePrice({ price: l.price, pu: l.pu, incl: l.incl, pct: l.gstPct, f: l.pack || MANUAL, basis: l.pack ? l.basis : null });
 const lineTotalOf = (l) => r2(num(l.quantity) * lineSale(l));
+
+// The prices of one catalog product, shown per pack / master pack with the per-unit figure beside it:
+//   list   marketplace price (per base unit, GST incl.)       custom  this customer's custom price on BBM (or null)
+//   last   last price given to this customer (or null)        hasCustomer / onBbm  whether a customer GST number is known / on BBM
+// as = "small" inside a product row, "p" (a hint line) under the price field of an added product.
+function PriceHints({ as: Tag = "small", list, custom, last, f, basis, hasCustomer, onBbm }) {
+    const per = unitsPerSale(f, basis);
+    const word = basis === "per_master_pack" ? "master pack" : "pack";
+    const unit = f.unit || "unit";
+    const fmt = (u) => `${inr(r4(u * per), 4)} per ${word} incl. GST (${inr(u, 4)} / ${unit})`;
+    const cls = Tag === "p" ? "st-hint" : undefined;
+    const okCls = Tag === "p" ? "st-hint ok" : "ok";
+    return (
+        <>
+            {list != null && <Tag className={cls}>Marketplace price: {fmt(list)}</Tag>}
+            {custom != null && <Tag className={okCls}>Custom price for this customer: <b>{fmt(custom)}</b></Tag>}
+            {custom == null && hasCustomer && onBbm && <Tag className={cls}>No custom price for this customer yet.</Tag>}
+            {last != null && (custom == null || !samePrice(last, custom)) && <Tag className={cls}>Last price given to this customer: {fmt(last)}</Tag>}
+        </>
+    );
+}
 
 export default function OrderBookSheet({ token, onClose, onCreated }) {
     useSheetBehavior(onClose);
@@ -140,6 +170,8 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const [errors, setErrors] = useState({});
     const [busy, setBusy] = useState(false);
     const [formErr, setFormErr] = useState("");
+    const [info, setInfo] = useState({});               // `${gstin}|${listingId}` -> catalog row with this customer's prices
+    const [lineBuyer, setLineBuyer] = useState(null);   // { gstin, onBbm } for the added products
     const gst = useGstAddress(token);
 
     const units = useMemo(() => (RFQ_UNITS || []).map((o) => ({ value: ov(o), label: ol(o) })), []);
@@ -161,6 +193,11 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         address: r.address || "", city: r.city || "", state: r.state || "", pincode: r.pincode || "", touched: false, fromGst: !!r.address,
     }));
 
+    // The customer's full GST number ("" until there is one). BBM prices are found by it.
+    const picked = c.picked;
+    const rawGstin = c.mode === "picked" ? cleanGstin(picked?.gstin || "") : c.mode === "new" ? cleanGstin(c.gstin) : "";
+    const pricingGstin = GSTIN_RE.test(rawGstin) ? rawGstin : "";
+
     const dCq = useDebounced(cSearch);
     const custList = useRemoteList(
         useCallback((q, offset) => fetchSalesCustomers(token, { q, filter: "all", limit: PAGE, offset }), [token]),
@@ -168,9 +205,30 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     );
     const dPq = useDebounced(pSearch);
     const prodList = useRemoteList(
-        useCallback((q, offset) => fetchCatalogProducts(token, { q, limit: PAGE, offset }), [token]),
-        dPq, picking && !manual, (i) => i.submissionId,
+        useCallback((q, offset) => fetchCatalogProducts(token, { q, limit: PAGE, offset, gstin: pricingGstin }), [token, pricingGstin]),
+        dPq, picking && !manual, (i) => i.submissionId, pricingGstin,
     );
+
+    // Added products: fetch this customer's prices for them whenever the customer (or the set of products) changes.
+    // Only products not already known for this GST number are fetched.
+    const idsKey = useMemo(() => lines.filter((l) => l.submissionId).map((l) => l.submissionId).sort().join(","), [lines]);
+    useEffect(() => {
+        if (!idsKey || !pricingGstin) return undefined;
+        const missing = idsKey.split(",").filter((id) => !info[`${pricingGstin}|${id}`]);
+        if (!missing.length) return undefined;
+        let live = true;
+        fetchCatalogProducts(token, { ids: missing.join(","), gstin: pricingGstin }).then((res) => {
+            if (!live || !res.success) return;
+            setInfo((prev) => {
+                const n = { ...prev };
+                (res.items || []).forEach((it) => { n[`${pricingGstin}|${it.submissionId}`] = it; });
+                return n;
+            });
+            setLineBuyer({ gstin: pricingGstin, onBbm: res.buyer?.onBbm === true });
+        });
+        return () => { live = false; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [idsKey, pricingGstin, token]);
 
     // New customer: a full GST number fetches the company name and the full address.
     useEffect(() => {
@@ -215,7 +273,13 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
             key: pr.submissionId, submissionId: pr.submissionId, productName: pr.productName, brandName: pr.brandName || "", image: pr.image || null,
             pack: f, basis, moq: pr.moq, unit: pr.unit, quantity: String(minQty(f, basis, pr.moq)),
             price: "", pu: defaultPriceUnit(f, basis), incl: true, gstPct: gstKnown ? String(Number(pr.gstPercent)) : "", gstKnown,
+            listUnit: pr.listUnitPriceIncl ?? null,
         }]);
+        if (pricingGstin) {
+            // the picker already fetched this customer's prices for it, so no second request is needed
+            setInfo((prev) => ({ ...prev, [`${pricingGstin}|${pr.submissionId}`]: pr }));
+            setLineBuyer({ gstin: pricingGstin, onBbm: prodList.buyer?.onBbm === true });
+        }
         setPicking(false); setPSearch(""); setErrors((e) => ({ ...e, items: undefined })); touch();
     };
     const addManual = () => {
@@ -223,7 +287,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         if (name.length < 2) { setErrors((e) => ({ ...e, manual: "Enter the product name." })); return; }
         setLines((ls) => [...ls, {
             key: `m-${Date.now()}`, submissionId: null, productName: name, brandName: "", image: null, pack: null, basis: null, moq: null, unit: "",
-            quantity: "", price: "", pu: "unit", incl: true, gstPct: "", gstKnown: false,
+            quantity: "", price: "", pu: "unit", incl: true, gstPct: "", gstKnown: false, listUnit: null,
         }]);
         setManual(false); setManualName(""); setPicking(false); setErrors((e) => ({ ...e, manual: undefined, items: undefined })); touch();
     };
@@ -232,7 +296,6 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     // The contact the order will be sent with. A picked customer's saved details win; for whatever they are missing,
     // the phone / email typed in the sheet are used (and saved on the customer by the server).
-    const picked = c.picked;
     const needPhone = c.mode === "picked" && !!picked && !picked.phone;
     const needEmail = c.mode === "picked" && !!picked && !picked.email;
     const pickedMissing = needPhone || needEmail;
@@ -240,9 +303,15 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const contactEmail = c.mode === "picked" ? (picked?.email || c.email.trim()) : c.email.trim();
 
     // BBM prices are found by the customer's GST number, so they only apply to catalog lines of a customer with a full GST number.
-    const pricingGstin = c.mode === "picked" ? (picked?.gstin || "") : cleanGstin(c.gstin);
     const hasCatalogLine = lines.some((l) => !!l.submissionId);
-    const canSetPrices = hasCatalogLine && GSTIN_RE.test(pricingGstin);
+    const canSetPrices = hasCatalogLine && !!pricingGstin;
+
+    // One short line above the product list about what the shown prices mean.
+    const pickerNote = !pricingGstin
+        ? "Choose a customer with a full GST number to also see their custom prices."
+        : prodList.buyer?.own ? "This is your own company, so no custom prices apply."
+            : prodList.buyer?.onBbm === false ? "This customer isn't on BBM yet. The prices you set are saved and apply as soon as they join."
+                : prodList.buyer?.onBbm ? `Showing marketplace prices and ${prodList.buyer.name || "this customer"}'s custom prices.` : "";
 
     const validate = () => {
         const e = {};
@@ -455,6 +524,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                         const sp = lineSale(l);                             // per pack / master pack (per unit if typed), GST incl.
                         const perUnit = inclPerUnit({ price: l.price, pu: l.pu, incl: l.incl, pct: l.gstPct, f: fx });
                         const puOpts = f ? priceUnitOptions(f) : [];
+                        const it = pricingGstin ? info[`${pricingGstin}|${l.key}`] : null;   // this customer's prices for the product
                         return (
                             <div className="ob-le" key={l.key}>
                                 <div className="ob-le-h">
@@ -537,6 +607,11 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                         = {inr(sp, 4)} per {f ? word : "unit"} incl. GST{f && (f.pack > 1 || f.per) ? ` · about ${inr(perUnit, 4)} per ${f.unit}` : ""}
                                     </p>
                                 )}
+                                {f && (
+                                    <PriceHints as="p" f={f} basis={l.basis}
+                                        list={it?.listUnitPriceIncl ?? l.listUnit} custom={it?.customUnitPriceIncl ?? null} last={it?.lastUnitPriceIncl ?? null}
+                                        hasCustomer={!!pricingGstin} onBbm={lineBuyer?.gstin === pricingGstin && !!lineBuyer?.onBbm} />
+                                )}
                                 <div className="st-line-t"><span>Line total (incl. GST)</span><b>{inr(lineTotalOf(l))}</b></div>
                             </div>
                         );
@@ -544,6 +619,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
                     {picking && !manual && (
                         <>
+                            {pickerNote && <p className="st-hint">{pickerNote}</p>}
                             <SearchList label="Search your company's products" placeholder="Search your company's products"
                                 value={pSearch} onChange={setPSearch} list={prodList} keyOf={(i) => i.submissionId}
                                 empty={dPq ? `No product matches "${dPq}".` : "Your company has no products yet."}
@@ -558,6 +634,9 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                                 {i.brandName && <small>{i.brandName}</small>}
                                                 <small>{packLines(pf).join(" · ")}</small>
                                                 {i.gstPercent ? <small>GST {qty(i.gstPercent)}%</small> : null}
+                                                <PriceHints f={pf} basis={pf.per ? "per_master_pack" : "per_pack"}
+                                                    list={i.listUnitPriceIncl} custom={i.customUnitPriceIncl} last={i.lastUnitPriceIncl}
+                                                    hasCustomer={!!pricingGstin} onBbm={!!prodList.buyer?.onBbm} />
                                                 {added && <em className="soft">Already added</em>}
                                                 {i.reason && <em>{i.reason}: can't be used right now</em>}
                                             </span>

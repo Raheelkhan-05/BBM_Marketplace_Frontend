@@ -210,7 +210,7 @@ const PAGE_SIZE = 12;
 const SELLER_PAGE_SIZE = 30;
 
 // A banner block is inserted after this many product ROWS (so 5 / 10 / 15 products on 1 / 2 / 3 columns).
-const SECTION_ROWS = 10;
+const SECTION_ROWS = 6;
 
 // How many sellers the header-price refresh looks at (price_asc). More than
 // 1 so an out-of-stock cheapest seller doesn't hide an in-stock one.

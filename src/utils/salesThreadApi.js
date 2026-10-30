@@ -25,8 +25,11 @@ async function call(path, { token, method = "GET", body, signal, params } = {}) 
 export const fetchThreads = (token, { q, status, limit, offset, signal } = {}) => call("", { token, signal, params: { q, status, limit, offset } });
 export const createThread = (token, payload) => call("", { token, method: "POST", body: payload });
 
-// The company's product catalog (used to tag a product when starting an enquiry).
-export const fetchCatalogProducts = (token, { q, limit, offset, signal } = {}) => call("/products", { token, signal, params: { q, limit, offset } });
+// The company's product catalog (used to tag a product when starting an enquiry, and in the Punch order sheet).
+//   gstin : a full GST number -> every product also carries that customer's last price and custom price
+//   ids   : comma separated listing ids -> only those listings
+export const fetchCatalogProducts = (token, { q, limit, offset, gstin, ids, signal } = {}) =>
+    call("/products", { token, signal, params: { q, limit, offset, gstin, ids } });
 
 // Thread entries are paged by cursor:
 //   fetchThread(t, id, { limit })                      -> newest page
