@@ -7,6 +7,22 @@ import { salesOrderBook } from "../utils/orderBookApi.js";
 import OrderBookList from "../components/orderBook/OrderBookList.jsx";
 import OrderBookSheet from "../components/orderBook/OrderBookSheet.jsx";
 
+const plural = (n) => `${n} product${n === 1 ? "" : "s"}`;
+
+// One short sentence about what happened to the customer's BBM prices, appended to the "Order punched" message.
+function pricingNote(cp) {
+    if (!cp) return "";
+    if (cp.status === "done") {
+        const a = cp.applied?.length || 0;
+        if (a > 0) return ` BBM price set for ${cp.buyerName || "the customer"} on ${plural(a)}.`;
+        if (cp.skipped?.length) return " Some BBM prices couldn't be set. Check the Customers page.";
+        return "";
+    }
+    if (cp.status === "not_on_bbm") return " Prices saved for this GST number. They apply when the customer joins BBM.";
+    if (cp.status === "failed") return " The BBM prices couldn't be set. Set them from the Customers page.";
+    return "";
+}
+
 export default function SalesOrderBookPage() {
     const { token } = useAuth();
     const { say } = useOutletContext();
@@ -23,7 +39,7 @@ export default function SalesOrderBookPage() {
                 action={<button type="button" className="st-btn pri" onClick={() => setCreating(true)}><Plus size={16} />Punch order</button>} />
             {creating && (
                 <OrderBookSheet token={token} onClose={() => setCreating(false)}
-                    onCreated={(o) => { setCreating(false); say(`Order ${o.orderNo} punched.`); nav(`/sales/order-book/${o.id}`); }} />
+                    onCreated={(o, cp) => { setCreating(false); say(`Order ${o.orderNo} punched.${pricingNote(cp)}`); nav(`/sales/order-book/${o.id}`); }} />
             )}
         </div>
     );

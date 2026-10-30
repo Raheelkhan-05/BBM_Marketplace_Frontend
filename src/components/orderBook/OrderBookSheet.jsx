@@ -9,11 +9,13 @@
 // PRICE: entered per unit (Kg, Pcs ...), per pack or per master pack, including or excluding GST. The number the salesperson
 // types is NEVER rewritten: changing "Price per" or "Includes / Excludes GST" only changes how that number is read, and every
 // other figure (per pack, per unit, line total) is recalculated from it. It is converted here to the price per pack / master
-// pack with GST included, which is what the server stores. Prices are for the log only.
+// pack with GST included, which is what the server stores.
+// CUSTOM PRICES: like a quotation, the catalog prices become the customer's price on BBM, found by GST number. If the customer
+// isn't on BBM yet, the prices are remembered and apply as soon as they join with that GST number. One checkbox turns it off.
 // PO NUMBER: optional Purchase Order number of the customer; searchable in the Order Book.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Loader2, BadgeCheck, Search, UserPlus, PackagePlus, Plus, Trash2 } from "lucide-react";
+import { X, Loader2, BadgeCheck, Search, UserPlus, PackagePlus, Plus, Trash2, Check } from "lucide-react";
 import { fetchCatalogProducts } from "../../utils/salesThreadApi.js";
 import { fetchSalesCustomers } from "../../utils/salesApi.js";
 import { salesOrderBook } from "../../utils/orderBookApi.js";
@@ -132,6 +134,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const [manualName, setManualName] = useState("");
     const [po, setPo] = useState("");                   // optional purchase order number
     const [notes, setNotes] = useState("");
+    const [setCustom, setSetCustom] = useState(true);   // use the catalog prices as the customer's BBM prices
     const [cSearch, setCSearch] = useState("");
     const [pSearch, setPSearch] = useState("");
     const [errors, setErrors] = useState({});
@@ -236,6 +239,11 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const contactPhone = c.mode === "picked" ? (picked?.phone || c.phone.trim()) : c.phone.trim();
     const contactEmail = c.mode === "picked" ? (picked?.email || c.email.trim()) : c.email.trim();
 
+    // BBM prices are found by the customer's GST number, so they only apply to catalog lines of a customer with a full GST number.
+    const pricingGstin = c.mode === "picked" ? (picked?.gstin || "") : cleanGstin(c.gstin);
+    const hasCatalogLine = lines.some((l) => !!l.submissionId);
+    const canSetPrices = hasCatalogLine && GSTIN_RE.test(pricingGstin);
+
     const validate = () => {
         const e = {};
         if (c.mode === "pick") e.customer = "Choose a customer, or add a new one.";
@@ -279,7 +287,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
         setBusy(true); setFormErr("");
         const res = await salesOrderBook.create(token, {
-            ...cu, notes: notes.trim(), poNumber: po.trim(),
+            ...cu, notes: notes.trim(), poNumber: po.trim(), setCustomPrices: setCustom,
             customerAddress: addr.address.trim(), customerCity: addr.city.trim(), customerState: addr.state.trim(), customerPincode: addr.pincode.trim(),
             items: lines.map((l) => ({
                 productSubmissionId: l.submissionId || undefined, productName: l.productName,
@@ -290,7 +298,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         });
         setBusy(false);
         if (!res.success) return setFormErr(res.message || "Couldn't punch the order. Please try again.");
-        onCreated?.(res.order);
+        onCreated?.(res.order, res.customPricing);
     };
 
     const gstHint = gst.status === "loading" ? "Finding the company and its address…"
@@ -581,7 +589,28 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                         <button type="button" className="st-btn st-full" onClick={() => setPicking(true)}><Plus size={16} />Add another product</button>
                     )}
                     {errors.items && <p className="st-err" style={{ marginTop: 6 }}>{errors.items}</p>}
-                    <p className="st-hint" style={{ marginTop: 8 }}>Prices are for your records only. They are saved with GST included and don't change any price on BBM.</p>
+
+                    {/* ------------------------------ BBM prices (by GST number) ------------------------------ */}
+                    {canSetPrices ? (
+                        <>
+                            <div className={`st-chan${setCustom ? " on" : ""}`} style={{ marginTop: 12 }}>
+                                <button type="button" role="checkbox" aria-checked={setCustom} onClick={() => { setSetCustom((v) => !v); touch(); }}>
+                                    <i>{setCustom ? <Check size={14} strokeWidth={3} /> : null}</i>Use these prices as this customer's BBM prices
+                                </button>
+                            </div>
+                            <p className="st-hint">
+                                {setCustom
+                                    ? "Your catalog products will be priced like this for this GST number on BBM. If they aren't on BBM yet, the prices are saved and apply as soon as they join with it. A custom price switches off quantity discounts for that buyer."
+                                    : "The prices stay in this order only. Nothing changes on BBM."}
+                            </p>
+                        </>
+                    ) : (
+                        <p className="st-hint" style={{ marginTop: 8 }}>
+                            {hasCatalogLine
+                                ? "Prices are saved with GST included. Add the customer's full GST number to also set their prices on BBM."
+                                : "Prices are saved with GST included, for your records."}
+                        </p>
+                    )}
 
                     {/* ------------------------------ PO number + notes ------------------------------ */}
                     <div className="st-f" style={{ marginTop: 14 }}>
