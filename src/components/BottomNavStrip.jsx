@@ -2,9 +2,9 @@
 //
 // Floating dock (FABs) + CONSOLE sheet.
 //
-// CONSOLE = notifications list + Team + Helpline + Sign out.
+// CONSOLE = notifications list + Team + Sales (team admins only) + Helpline + Sign out.
 //   Mobile : a bottom sheet (same height / open / close as before). Helpline + Sign out
-//            sit under the title, then a Notifications | Team switch, then the content.
+//            sit under the title, then a Notifications | Team | Sales switch, then the content.
 //   Desktop (md+): a single wide-ish panel above the dock. Only Sign out is shown
 //            (Helpline is reachable another way on desktop), top-right.
 // Notifications are read from NotificationsContext (no extra fetching). Popups / toasts
@@ -13,6 +13,9 @@
 //
 // TEAM: the Team tab (components/team/TeamPanel.jsx) lets the company admin invite people by
 // phone / email, manage members and read the activity log. Team members see the team list.
+//
+// SALES: the Sales tab (components/team/SalesMonitorPanel.jsx) is for the company owner / team admins only.
+// A live, per-salesperson view of enquiries, order book and customers, with idle-gap highlighting.
 //
 // QUICK ACTIONS: a notification about something that still waits for the seller (a new order, a
 // transport route proposal) carries its buttons right in the list (Confirm / Reject, Approve /
@@ -39,6 +42,7 @@ import { isChatNotification } from "../utils/notificationTypes.js";
 import HelpBulb from "./HelpBulb.jsx";
 import NotificationTimeline from "./NotificationTimeline.jsx";
 import TeamPanel from "./team/TeamPanel.jsx";
+import SalesMonitorPanel from "./team/SalesMonitorPanel.jsx";
 import { stampOf } from "../utils/notificationDisplay.js";
 import { isSellerReady } from "./growSeller/growSeller.js";
 import useGrowBadges from "./growSeller/useGrowBadges.js";
@@ -336,6 +340,10 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const shopName = profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM";
     const tileGap = 8;
 
+    // The Sales monitor tab is for the company owner / team admins. The server enforces it too.
+    const teamRole = profile?.team?.role;
+    const canMonitor = effectiveLoggedIn && (!teamRole || teamRole === "admin");
+
     // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
     const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/sell/dashboard" : "/sell";
 
@@ -346,8 +354,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     const [pageOpen, setPageOpen] = useState(false);
     const [everOpened, setEverOpened] = useState(false); // notifications list mounts on first open only
-    const [tab, setTab] = useState("notifications"); // notifications | team
+    const [tab, setTab] = useState("notifications"); // notifications | team | sales
     const [teamOpened, setTeamOpened] = useState(false); // Team panel mounts on first visit only
+    const [salesOpened, setSalesOpened] = useState(false); // Sales panel mounts on first visit only
     const typing = useTypingActive();
 
     // Measurements used to keep the Console button exactly where it was while the dock shrinks.
@@ -385,7 +394,12 @@ export default function BottomNavStrip({ onOpenRfq }) {
         if (!pageOpen) return () => { delete document.body.dataset.bbmMenu; };
         const original = document.body.style.overflow;
         document.body.style.overflow = "hidden";
-        const onKey = (e) => { if (e.key === "Escape") setPageOpen(false); };
+        // The enquiry viewer (a modal dialog) handles its own Escape; the Console stays open underneath it.
+        const onKey = (e) => {
+            if (e.key !== "Escape") return;
+            if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+            setPageOpen(false);
+        };
         document.addEventListener("keydown", onKey);
         return () => {
             document.body.style.overflow = original;
@@ -393,6 +407,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
             delete document.body.dataset.bbmMenu;
         };
     }, [pageOpen, primary]);
+
+    // If the person loses admin access while the Sales tab is selected, fall back to notifications.
+    useEffect(() => { if (tab === "sales" && !canMonitor) setTab("notifications"); }, [tab, canMonitor]);
 
     // Console button badge = unread notifications only.
     const badgeTotal = unreadNotifCount;
@@ -406,7 +423,13 @@ export default function BottomNavStrip({ onOpenRfq }) {
         else window.location.assign(link);
     }, [markRead, navigate]);
 
-    const showTab = (k) => { setTab(k); if (k === "team") setTeamOpened(true); };
+    const showTab = (k) => {
+        setTab(k);
+        if (k === "team") setTeamOpened(true);
+        if (k === "sales") setSalesOpened(true);
+    };
+
+    const tabs = [["notifications", "Notifications"], ["team", "Team"], ...(canMonitor ? [["sales", "Sales"]] : [])];
 
     // A chat thread is open: /grow/chat/:id (hide the dock for an immersive view)
     const inChatThread = /^\/sell\/chat\/[^/]+/.test(pathname);
@@ -596,10 +619,14 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         )}
                     </div>
 
-                    {/* Notifications | Team */}
+                    {/* Notifications | Team | Sales (admins) */}
                     {effectiveLoggedIn && (
-                        <div role="tablist" aria-label="Console sections" className="mt-3 grid grid-cols-2 gap-1 rounded-xl p-1" style={{ background: C.tile }}>
-                            {[["notifications", "Notifications"], ["team", "Team"]].map(([k, t]) => {
+                        <div
+                            role="tablist" aria-label="Console sections"
+                            className="mt-3 grid gap-1 rounded-xl p-1"
+                            style={{ background: C.tile, gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+                        >
+                            {tabs.map(([k, t]) => {
                                 const on = tab === k;
                                 return (
                                     <button
@@ -620,7 +647,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     )}
                 </div>
 
-                {/* Body: notifications or team. --sheet-pb clears the floating dock on mobile. */}
+                {/* Body: notifications, team or sales. --sheet-pb clears the floating dock on mobile. */}
                 <div
                     className="flex min-h-0 flex-1 flex-col"
                     style={{ "--sheet-pb": `calc(${fabBottom + DOCK_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))` }}
@@ -637,6 +664,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     )}
                     {teamOpened && effectiveLoggedIn && tab === "team" && (
                         <TeamPanel token={token} active={pageOpen} scrollProps={scrollProps} />
+                    )}
+                    {salesOpened && canMonitor && tab === "sales" && (
+                        <SalesMonitorPanel token={token} active={pageOpen} scrollProps={scrollProps} />
                     )}
                 </div>
             </div>
