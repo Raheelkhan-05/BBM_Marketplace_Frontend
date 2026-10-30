@@ -607,11 +607,11 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                         = {inr(sp, 4)} per {f ? word : "unit"} incl. GST{f && (f.pack > 1 || f.per) ? ` · about ${inr(perUnit, 4)} per ${f.unit}` : ""}
                                     </p>
                                 )}
-                                {f && (
+                                {/* {f && (
                                     <PriceHints as="p" f={f} basis={l.basis}
                                         list={it?.listUnitPriceIncl ?? l.listUnit} custom={it?.customUnitPriceIncl ?? null} last={it?.lastUnitPriceIncl ?? null}
                                         hasCustomer={!!pricingGstin} onBbm={lineBuyer?.gstin === pricingGstin && !!lineBuyer?.onBbm} />
-                                )}
+                                )} */}
                                 <div className="st-line-t"><span>Line total (incl. GST)</span><b>{inr(lineTotalOf(l))}</b></div>
                             </div>
                         );
