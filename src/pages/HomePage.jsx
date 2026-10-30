@@ -121,7 +121,7 @@ export default function HomePage() {
                 </main>
             </SmoothScrollProvider>
 
-            <FloatingSellButton to="/seller/sell" label="Sell" />
+            {/* <FloatingSellButton to="/seller/sell" label="Sell" /> */}
         </div>
     );
 }
