@@ -912,7 +912,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         setSubmitting(false);
         if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
         onClose();
-        navigate("/save/cart");
+        navigate("/buy/cart");
     };
 
     const resumeAppliedRef = useRef(false);

@@ -355,7 +355,7 @@ export default function GrowBulkUploadPage() {
                         <section className="scr ctr">
                             <h2>Sign in to upload in bulk</h2>
                             <p className="sub">Bulk upload is available to approved sellers.</p>
-                            <Link className="sbtn" to="/grow?start=1">Sign in as a seller</Link>
+                            <Link className="sbtn" to="/sell?start=1">Sign in as a seller</Link>
                         </section>
                     )}
 
@@ -363,7 +363,7 @@ export default function GrowBulkUploadPage() {
                         <section className="scr ctr">
                             <h2>Bulk upload isn't available yet</h2>
                             <p className="sub">Finish your seller setup and get your shop approved, then come back. If this keeps happening, check your internet and reload.</p>
-                            <Link className="sbtn" to="/grow?start=1">Go to seller setup</Link>
+                            <Link className="sbtn" to="/sell?start=1">Go to seller setup</Link>
                             <Link className="sbtn gh" to="/sell/products">Back to my products</Link>
                         </section>
                     )}

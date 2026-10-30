@@ -13,7 +13,7 @@ import { LightboxVisibilityContext } from "../context/LightboxVisibilityContext.
 import BottomNavStrip from "./BottomNavStrip.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
-const HIDE = [/^\/admin/, /^\/seller\/wallet/, /^\/grow\/bulk/, /^\/chat\/[^/]+/, /^\/orders\//, /^\/seller\/orders\//, /^\/login/, /^\/terms/, /^\/privacy-policy/, /^\/refund-policy/, /^\/contact/, /^\/services/, /^\/pricing/, /^\/payment\/return/, /^\/sales(\/|$)/];
+const HIDE = [/^\/admin/, /^\/seller\/wallet/, /^\/sell\/bulk/, /^\/chat\/[^/]+/, /^\/orders\//, /^\/seller\/orders\//, /^\/login/, /^\/terms/, /^\/privacy-policy/, /^\/refund-policy/, /^\/contact/, /^\/services/, /^\/pricing/, /^\/payment\/return/, /^\/sales(\/|$)/];
 
 export default function AppShell() {
     const { pathname } = useLocation();

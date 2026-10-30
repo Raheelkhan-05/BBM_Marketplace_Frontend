@@ -141,7 +141,7 @@ export default function SaveLayout() {
     if (initializing) return <div className="sv"><Skeleton /></div>;
 
     if (!isLoggedIn) {
-        if (pathname.replace(/\/+$/, "") === "/save") {
+        if (pathname.replace(/\/+$/, "") === "/buy") {
             return (
                 <div className="sv svl svl-pub" id="save-top">
                     <SavePublicHeader />
@@ -152,7 +152,7 @@ export default function SaveLayout() {
                 </div>
             );
         }
-        return <Navigate to="/save" replace />;
+        return <Navigate to="/buy" replace />;
     }
     return <Shell />;
 }

@@ -182,7 +182,7 @@ export default function GrowProductsPage() {
     const { say, setBadge } = useGrowSeller();
     const { reportRestockCount, markListingsViewed } = useListings();
     // Remember this page so Cancel in the Add Product flow brings the seller back here (keeps the active filter).
-    const addProduct = () => nav("/grow?start=1", { state: { from: location.pathname + location.search } });
+    const addProduct = () => nav("/sell?start=1", { state: { from: location.pathname + location.search } });
 
     const warm = CACHE.token === token && CACHE.items;
     const [items, setItems] = useState(() => (warm ? CACHE.items : []));

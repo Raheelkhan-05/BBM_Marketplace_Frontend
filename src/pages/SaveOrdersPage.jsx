@@ -82,7 +82,7 @@ function OrderCard({ order, idx, onChanged, inGroup = false }) {
     const extraCount = (order.items?.length || 1) - 1;
     const isSample = order.order_type === "sample";
     const status = displayStatus(order);
-    const open = () => navigate(`/save/orders/${order.id}`);
+    const open = () => navigate(`/buy/orders/${order.id}`);
 
     const price = orderPriceInfo(order); // null unless awaiting payment
     const amount = price ? price.current : order.total_amount;

@@ -80,8 +80,8 @@ const HomeIcon = ({ size = 22 }) => <Home size={size} strokeWidth={1.8} aria-hid
 
 // Labels shown under each dock circle live here, change them in one place.
 const TILES = {
-    grow: { key: "grow", label: "Sell", Icon: GrowIcon, to: "/grow", theme: FAB_THEME.grow },
-    save: { key: "save", label: "Buy", Icon: SaveIcon, to: "/save", theme: FAB_THEME.save },
+    grow: { key: "grow", label: "Sell", Icon: GrowIcon, to: "/sell", theme: FAB_THEME.grow },
+    save: { key: "save", label: "Buy", Icon: SaveIcon, to: "/buy", theme: FAB_THEME.save },
 };
 
 const DOCK_BTN = "relative grid shrink-0 place-items-center rounded-full";
@@ -328,7 +328,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const unreadNotifCount = useMemo(() => consoleNotifs.filter((n) => !n.read).length, [consoleNotifs]);
 
     const inGrow = pathname === "/sell" || pathname.startsWith("/sell/");
-    const inSave = pathname === "/save" || pathname.startsWith("/save/");
+    const inSave = pathname === "/buy" || pathname.startsWith("/buy/");
     const inLogin = pathname === "/login" || pathname.startsWith("/login/");
     const inModule = inGrow || inSave; // third slot is Home inside Grow / Save, Console everywhere else
     const activeKey = inGrow ? "grow" : inSave ? "save" : null;
@@ -337,7 +337,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const tileGap = 8;
 
     // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
-    const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/sell/dashboard" : "/grow";
+    const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/sell/dashboard" : "/sell";
 
     // Always the same two tiles, in the same order: Grow, Save.
     const tiles = [TILES.grow, TILES.save].map((t, i) => ({
@@ -409,9 +409,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const showTab = (k) => { setTab(k); if (k === "team") setTeamOpened(true); };
 
     // A chat thread is open: /grow/chat/:id (hide the dock for an immersive view)
-    const inChatThread = /^\/grow\/chat\/[^/]+/.test(pathname);
-    const inSaveChatThread = /^\/save\/chat\/[^/]+/.test(pathname);
-    const inSaveCart = /^\/save\/cart+/.test(pathname);
+    const inChatThread = /^\/sell\/chat\/[^/]+/.test(pathname);
+    const inSaveChatThread = /^\/buy\/chat\/[^/]+/.test(pathname);
+    const inSaveCart = /^\/buy\/cart+/.test(pathname);
 
     const consoleButton = (
         <DockItem

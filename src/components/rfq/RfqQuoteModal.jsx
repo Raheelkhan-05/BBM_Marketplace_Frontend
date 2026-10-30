@@ -189,7 +189,7 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
     // new listing preselected (useQuoteResume).
     const enqBrand = pickBrandName(enquiry) || pickBrandName(opts?.enquiry);
     const enqImage = pickImage(enquiry) || pickImage(opts?.enquiry);
-    const goSell = () => nav("/grow?start=1", {
+    const goSell = () => nav("/sell?start=1", {
         state: {
             from: `${loc.pathname}${loc.search}`,
             enquiry,
@@ -205,7 +205,7 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
     });
     // "Add a new product" (free-form) keeps its own page.
     const goAdd = () => nav(`/sell/enquiry/${enquiry.id}/add-product`, { state: { from: `${loc.pathname}${loc.search}`, enquiry } });
-    const goSignIn = () => nav("/grow?start=1", { state: { from: enquiryPath(enquiry.id) } });
+    const goSignIn = () => nav("/sell?start=1", { state: { from: enquiryPath(enquiry.id) } });
 
     // ---- price maths ----
     // The seller types a price per unit / pack / master pack, with or without GST. Everything is worked out from the

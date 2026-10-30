@@ -327,7 +327,7 @@ export default function SavePage() {
             <Seo
                 title="Buy B2B with confidence – Compare sellers, prices and MOQs | BBM"
                 description="Find industrial and wholesale products, compare verified sellers, prices, MOQs and delivery terms, and buy at the right terms on BBM."
-                path="/save"
+                path="/buy"
             />
             {/* Hero */}
             <section className="hero">

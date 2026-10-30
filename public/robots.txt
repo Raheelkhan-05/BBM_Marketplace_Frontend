@@ -15,8 +15,8 @@ Disallow: /account
 Disallow: /sell/
 Allow: /sell/details
 
-# SAVE: only the public brochure (/save) is crawlable
-Disallow: /save/
+# SAVE: only the public brochure (/buy) is crawlable
+Disallow: /buy/
 
 # Old filter URLs that now have clean versions (/brands/X, /sellers/X)
 Disallow: /*?brand=

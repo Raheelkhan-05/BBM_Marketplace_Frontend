@@ -57,7 +57,7 @@ export default function HomePage() {
     const dismissPromo = () => { setPromoDismissed(true); writePromoDismissed(); };
     const goSignIn = () =>
         navigate("/login", { state: { from: `${location.pathname}${location.search}${location.hash || ""}` } });
-    const goSell = () => navigate("/grow");
+    const goSell = () => navigate("/sell");
 
     const handleSuggestionSelect = (s) => {
         if (s.level === "brandFamily") {

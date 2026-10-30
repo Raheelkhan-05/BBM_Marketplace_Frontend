@@ -6,7 +6,7 @@
 export const safeFrom = (v) => (typeof v === "string" && v.startsWith("/") && !v.startsWith("//") ? v : null);
 
 // Enquiry pages we resume to: the list (/grow/enquiries[?tab=..]) and a single enquiry (/grow/enquiry/:id).
-export const isEnquiryPath = (p) => !!p && /^\/grow\/enquir(?:ies|y\/[^/?#]+)(?:[/?#]|$)/.test(p);
+export const isEnquiryPath = (p) => !!p && /^\/sell\/enquir(?:ies|y\/[^/?#]+)(?:[/?#]|$)/.test(p);
 
 // Link target for the "go back" button / redirect, or null when the seller did not come from an enquiry page.
 export const enquiryReturnTo = (from) => {

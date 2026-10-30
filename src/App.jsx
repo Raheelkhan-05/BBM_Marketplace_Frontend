@@ -324,7 +324,7 @@ function App() {
                     <Route path="/sell/customers" element={<GrowCustomersPage />} />
                   </Route>
 
-                  <Route path="/save" element={<SaveLayout />}>
+                  <Route path="/buy" element={<SaveLayout />}>
                     <Route index element={<SaveEntry />} />
                     <Route path="rfq" element={<SaveHomePage />} />
                     <Route path="orders" element={<SaveOrdersPage />} />

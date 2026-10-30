@@ -178,7 +178,7 @@ export default function PaymentReturnPage() {
 
     /* --------------------------------------------------------------- states */
     const forWallet = payment?.purpose === "wallet_topup";
-    const ordersPath = "/save/orders";
+    const ordersPath = "/buy/orders";
     let view;
     if (!validRef) {
         view = { tone: "bad", icon: XCircle, title: "Invalid payment link", text: "This payment reference isn't valid.", actions: [["Go to my orders", () => navigate(ordersPath), true]] };
@@ -199,7 +199,7 @@ export default function PaymentReturnPage() {
                 : `We received ${inr(payment.amount)}${payment.orderNumber ? ` for order ${payment.orderNumber}` : payment.groupNumber ? ` for ${payment.groupNumber}` : ""}. The seller has been notified.`,
             actions: forWallet
                 ? [["Back to wallet", () => navigate(walletPath), true]]
-                : [[payment.orderId ? "View order" : "View my orders", () => navigate(payment.orderId ? `/save/orders/${payment.orderId}` : ordersPath), true]],
+                : [[payment.orderId ? "View order" : "View my orders", () => navigate(payment.orderId ? `/buy/orders/${payment.orderId}` : ordersPath), true]],
         };
     } else if (payment.status === "refunded") {
         view = {

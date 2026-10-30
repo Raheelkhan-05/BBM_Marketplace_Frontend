@@ -12,13 +12,13 @@ import "../growSeller/grow-modules.css";
 // `exact`: only highlight on the exact path (the dashboard lives at /save, the parent of the other pages).
 // Explore points outside /save and simply navigates away. 8 tabs = two clean rows of 4 (one row of 8 on desktop).
 export const SAVE_TABS = [
-    { key: "dashboard", to: "/save", label: "Dashboard", Icon: LayoutGrid, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/save"], exact: true },
-    { key: "rfq", to: "/save/rfq", label: "RFQ", Icon: Megaphone, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/save/rfq"] },
-    { key: "orders", to: "/save/orders", label: "Orders", Icon: Receipt, a: "var(--gr, #22A06B)", ai: "var(--gt, #12794A)", match: ["/save/orders"], badge: "orders" },
-    { key: "cart", to: "/save/cart", label: "Cart", Icon: ShoppingCart, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/save/cart"], badge: "cart" },
-    { key: "chat", to: "/save/chat", label: "Chat", Icon: MessageSquare, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/save/chat"], badge: "chat" },
-    { key: "transport", to: "/save/transport", label: "Transport", Icon: Truck, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/save/transport"] },
-    { key: "credit", to: "/save/credit", label: "Credit", Icon: HandCoins, a: "var(--gr, #22A06B)", ai: "var(--gt, #12794A)", match: ["/save/credit"] },
+    { key: "dashboard", to: "/buy", label: "Dashboard", Icon: LayoutGrid, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/buy"], exact: true },
+    { key: "rfq", to: "/buy/rfq", label: "RFQ", Icon: Megaphone, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/buy/rfq"] },
+    { key: "orders", to: "/buy/orders", label: "Orders", Icon: Receipt, a: "var(--gr, #22A06B)", ai: "var(--gt, #12794A)", match: ["/buy/orders"], badge: "orders" },
+    { key: "cart", to: "/buy/cart", label: "Cart", Icon: ShoppingCart, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/buy/cart"], badge: "cart" },
+    { key: "chat", to: "/buy/chat", label: "Chat", Icon: MessageSquare, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/buy/chat"], badge: "chat" },
+    { key: "transport", to: "/buy/transport", label: "Transport", Icon: Truck, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/buy/transport"] },
+    { key: "credit", to: "/buy/credit", label: "Credit", Icon: HandCoins, a: "var(--gr, #22A06B)", ai: "var(--gt, #12794A)", match: ["/buy/credit"] },
     { key: "explore", to: "/home", label: "Explore", Icon: Compass, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: [] },
 ];
 

@@ -22,7 +22,7 @@ const NAV = [
 
 export default function GrowLayout() {
     const { pathname } = useLocation();
-    const isStart = pathname.replace(/\/+$/, "") === "/grow";
+    const isStart = pathname.replace(/\/+$/, "") === "/sell";
 
     useEffect(() => {
         window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -139,7 +139,7 @@ export default function GrowLayout() {
                         </nav>
                     )}
 
-                    <Link className="btn" to="/grow?start=1">Start selling</Link>
+                    <Link className="btn" to="/sell?start=1">Start selling</Link>
                 </div>
             </header>
 

@@ -121,7 +121,7 @@ export default function GrowEnquiryDetailPage() {
     const { token, isLoggedIn, needsOnboarding, initializing, profile } = useAuth();
     const [resume, clearResume] = useQuoteResume();
 
-    const goToStart = () => nav("/grow?start=1", { state: { from: `${location.pathname}${location.search}` } });
+    const goToStart = () => nav("/sell?start=1", { state: { from: `${location.pathname}${location.search}` } });
 
     const seeded = location.state?.enquiry && String(location.state.enquiry.id) === String(id) ? location.state.enquiry : null;
     const [item, setItem] = useState(seeded);
@@ -267,7 +267,7 @@ export default function GrowEnquiryDetailPage() {
         <>
             <div className="rqp-ac-n"><b>{quotes.length}</b><span>quote{quotes.length === 1 ? "" : "s"} received</span></div>
             {live && <button type="button" className="rqp-btn" onClick={onShare}><Share2 size={16} />Share with suppliers</button>}
-            <Link className="rqp-btn" to="/save">Back to my price list</Link>
+            <Link className="rqp-btn" to="/buy">Back to my price list</Link>
         </>
     ) : closed ? (
         <p className="rqp-note">This enquiry is closed and no longer takes quotes.</p>

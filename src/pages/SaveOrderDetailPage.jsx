@@ -102,7 +102,7 @@ export default function SaveOrderDetailPage() {
         if (id) markOrderRead(id, "buyer");
     }, [id, markOrderRead]);
 
-    const goBack = () => (location.key !== "default" ? navigate(-1) : navigate("/save/orders"));
+    const goBack = () => (location.key !== "default" ? navigate(-1) : navigate("/buy/orders"));
 
     if (loading && !rawOrder) {
         return (
@@ -118,7 +118,7 @@ export default function SaveOrderDetailPage() {
                 <div className="sh-emp">
                     <b>Order not found</b>
                     It may have been removed, or the link is wrong.
-                    <div><button type="button" className="sh-btn go" style={{ marginTop: 16 }} onClick={() => navigate("/save/orders")}>Back to orders</button></div>
+                    <div><button type="button" className="sh-btn go" style={{ marginTop: 16 }} onClick={() => navigate("/buy/orders")}>Back to orders</button></div>
                 </div>
             </div>
         );

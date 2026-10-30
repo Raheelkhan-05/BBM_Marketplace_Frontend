@@ -212,7 +212,7 @@ export default function GrowDashboardPage() {
 
     const ordersReady = !loading || orders != null;
 
-    const addProduct = () => nav("/grow?start=1", { state: { from: location.pathname + location.search } });
+    const addProduct = () => nav("/sell?start=1", { state: { from: location.pathname + location.search } });
 
     // Each hero has either a route (`to`) or a custom handler (`onClick`).
     const hero = (() => {

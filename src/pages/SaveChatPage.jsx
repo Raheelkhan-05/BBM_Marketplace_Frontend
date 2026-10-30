@@ -6,7 +6,7 @@ import GrowChatPage from "./GrowChatPage.jsx";
 export default function SaveChatPage() {
     return (
         <div className="sh-w svc">
-            <GrowChatPage basePath="/save/chat" />
+            <GrowChatPage basePath="/buy/chat" />
         </div>
     );
 }

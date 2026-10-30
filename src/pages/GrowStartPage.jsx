@@ -184,7 +184,7 @@ export default function GrowStartPage() {
     useEffect(() => { if (!initializing && pend.current) { pend.current = false; startRef.current(); } }, [initializing]);
     useEffect(() => { // /grow?start=1 (from the details page) goes straight into the flow
         if (sp.get("start") !== "1" || auto.current) return;
-        auto.current = true; nav("/grow", { replace: true }); startRef.current();
+        auto.current = true; nav("/sell", { replace: true }); startRef.current();
     }, [sp]); // eslint-disable-line
 
     // Cancel on the first Add Product step: go back where the seller came from, otherwise show the landing screen.

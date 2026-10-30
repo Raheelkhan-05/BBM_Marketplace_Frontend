@@ -73,7 +73,7 @@ const MessageBubble = memo(function MessageBubble({ message, isMine, groupPos, o
         const t = new Date(message.created_at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
         return (
             <div className={`gct-credit${isMine ? " mine" : ""}`}>
-                <Link to={isMine ? "/save/credit" : "/sell/customers"}>
+                <Link to={isMine ? "/buy/credit" : "/sell/customers"}>
                     <CreditCard size={13} style={{ color: "var(--k-tt)" }} />
                     <span>{label}</span>•<b>View in Credit</b>•<span>{t}</span>
                 </Link>

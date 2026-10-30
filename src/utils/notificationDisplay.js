@@ -27,7 +27,7 @@ const SALES_LINK = /^\/(?:seller|grow)\/orders(?:[/?#]|$)/;
 const PURCHASE_LINK = /^\/(?:save\/)?orders(?:[/?#]|$)/;
 const WALLET_LINK = /^\/(?:seller|grow)\/wallet/;
 const PRODUCTS_LINK = /^\/(?:seller|grow)\/(?:products|listings)|^\/home\?highlight=|^\/listings/;
-const CREDIT_LINK = /^\/credit|^\/grow\/customers/;
+const CREDIT_LINK = /^\/credit|^\/sell\/customers/;
 
 export function notificationCategory(n) {
     const type = typeof n?.type === "string" ? n.type : "";

@@ -266,21 +266,21 @@ export default function SaveDashboardPage() {
     const loaded = rfq.loaded && !ordersLoading && credit.sellersLoaded;
 
     const kpis = [
-        { key: "rfq", Icon: Send, a: "var(--k-or)", value: rfq.open ?? "–", label: "Open RFQs", to: "/save/rfq" },
-        { key: "quotes", Icon: Inbox, a: "var(--k-bl)", value: quotesTotal ?? "–", label: "Quotes received", to: "/save/rfq" },
-        { key: "orders", Icon: Package, a: "var(--k-gr)", value: ordersLoading ? "–" : orderStats.inProgress, label: "Orders in progress", to: "/save/orders" },
-        { key: "credit", Icon: CreditCard, a: "var(--k-tt)", value: credit.sellersLoaded ? fmtINR(creditStats.available) : "–", label: "Credit available", to: "/save/credit" },
+        { key: "rfq", Icon: Send, a: "var(--k-or)", value: rfq.open ?? "–", label: "Open RFQs", to: "/buy/rfq" },
+        { key: "quotes", Icon: Inbox, a: "var(--k-bl)", value: quotesTotal ?? "–", label: "Quotes received", to: "/buy/rfq" },
+        { key: "orders", Icon: Package, a: "var(--k-gr)", value: ordersLoading ? "–" : orderStats.inProgress, label: "Orders in progress", to: "/buy/orders" },
+        { key: "credit", Icon: CreditCard, a: "var(--k-tt)", value: credit.sellersLoaded ? fmtINR(creditStats.available) : "–", label: "Credit available", to: "/buy/credit" },
     ];
 
     const attention = [];
-    if (orderStats.unpaid > 0) attention.push({ key: "pay", Icon: Receipt, a: "var(--k-or)", title: `${plural(orderStats.unpaid, "order", "orders")} awaiting payment`, sub: "Complete payment so the seller can confirm", to: "/save/orders" });
-    if (badges.orders > 0) attention.push({ key: "ord", Icon: Package, a: "var(--k-gr)", title: `${plural(badges.orders, "order update", "order updates")}`, sub: "New activity on your orders", to: "/save/orders" });
-    if (quotesTotal > 0) attention.push({ key: "q", Icon: Inbox, a: "var(--k-bl)", title: `${plural(quotesTotal, "quote", "quotes")} received`, sub: "Compare supplier prices on your RFQs", to: "/save/rfq" });
-    if (rfq.rejected > 0) attention.push({ key: "rej", Icon: AlertCircle, a: "var(--k-red)", title: `${plural(rfq.rejected, "RFQ needs", "RFQs need")} changes`, sub: "Fix and resubmit for review", to: "/save/rfq" });
-    if (badges.cart > 0) attention.push({ key: "cart", Icon: ShoppingCart, a: "var(--k-yt)", title: `${plural(badges.cart, "item", "items")} in your cart`, sub: "Pick transport and pay", to: "/save/cart" });
-    if (badges.chat > 0) attention.push({ key: "chat", Icon: MessageSquare, a: "var(--k-bl)", title: `${plural(badges.chat, "unread message", "unread messages")}`, sub: "Reply to your sellers", to: "/save/chat" });
-    if (creditStats.out > 0) attention.push({ key: "limit", Icon: CreditCard, a: "var(--k-red)", title: `Credit limit reached with ${plural(creditStats.out, "seller", "sellers")}`, sub: "Ask for a higher limit", to: "/save/credit" });
-    if (creditStats.pending > 0) attention.push({ key: "cp", Icon: CreditCard, a: "var(--k-tt)", title: `${plural(creditStats.pending, "credit request", "credit requests")} pending`, sub: "Waiting for the seller to respond", to: "/save/credit" });
+    if (orderStats.unpaid > 0) attention.push({ key: "pay", Icon: Receipt, a: "var(--k-or)", title: `${plural(orderStats.unpaid, "order", "orders")} awaiting payment`, sub: "Complete payment so the seller can confirm", to: "/buy/orders" });
+    if (badges.orders > 0) attention.push({ key: "ord", Icon: Package, a: "var(--k-gr)", title: `${plural(badges.orders, "order update", "order updates")}`, sub: "New activity on your orders", to: "/buy/orders" });
+    if (quotesTotal > 0) attention.push({ key: "q", Icon: Inbox, a: "var(--k-bl)", title: `${plural(quotesTotal, "quote", "quotes")} received`, sub: "Compare supplier prices on your RFQs", to: "/buy/rfq" });
+    if (rfq.rejected > 0) attention.push({ key: "rej", Icon: AlertCircle, a: "var(--k-red)", title: `${plural(rfq.rejected, "RFQ needs", "RFQs need")} changes`, sub: "Fix and resubmit for review", to: "/buy/rfq" });
+    if (badges.cart > 0) attention.push({ key: "cart", Icon: ShoppingCart, a: "var(--k-yt)", title: `${plural(badges.cart, "item", "items")} in your cart`, sub: "Pick transport and pay", to: "/buy/cart" });
+    if (badges.chat > 0) attention.push({ key: "chat", Icon: MessageSquare, a: "var(--k-bl)", title: `${plural(badges.chat, "unread message", "unread messages")}`, sub: "Reply to your sellers", to: "/buy/chat" });
+    if (creditStats.out > 0) attention.push({ key: "limit", Icon: CreditCard, a: "var(--k-red)", title: `Credit limit reached with ${plural(creditStats.out, "seller", "sellers")}`, sub: "Ask for a higher limit", to: "/buy/credit" });
+    if (creditStats.pending > 0) attention.push({ key: "cp", Icon: CreditCard, a: "var(--k-tt)", title: `${plural(creditStats.pending, "credit request", "credit requests")} pending`, sub: "Waiting for the seller to respond", to: "/buy/credit" });
 
     return (
         <div className="sh-w svc">
@@ -297,7 +297,7 @@ export default function SaveDashboardPage() {
                         <h2>Tell suppliers what you need</h2>
                         <p>Add a product to your price list and sellers will send you their best prices.</p>
                     </div>
-                    <button type="button" className="gk-btn go" onClick={() => nav("/save/rfq?new=1")}><Send size={16} />Post an RFQ</button>
+                    <button type="button" className="gk-btn go" onClick={() => nav("/buy/rfq?new=1")}><Send size={16} />Post an RFQ</button>
                 </section>
 
                 {/* numbers */}
@@ -336,7 +336,7 @@ export default function SaveDashboardPage() {
                                 : creditStats.approved > 0 ? `Approved by ${plural(creditStats.approved, "seller", "sellers")}`
                                     : "No seller has approved credit yet"}
                         </p>
-                        <button type="button" className="gk-btn" onClick={() => nav("/save/credit")}>
+                        <button type="button" className="gk-btn" onClick={() => nav("/buy/credit")}>
                             {creditStats.approved > 0 ? "Manage credit" : "Request credit"}
                         </button>
                     </section>
@@ -410,7 +410,7 @@ export default function SaveDashboardPage() {
 
                     {/* recent orders */}
                     <section className="gk-card gd-panel gd-a-orders">
-                        <PanelHead title="Recent orders" to="/save/orders" nav={nav} />
+                        <PanelHead title="Recent orders" to="/buy/orders" nav={nav} />
                         {ordersLoading ? (
                             <div style={{ display: "grid", gap: 8 }} aria-busy="true">{[0, 1, 2].map((i) => <div key={i} className="gk-skel" style={{ height: 58 }} />)}</div>
                         ) : orders.length === 0 ? (
@@ -420,7 +420,7 @@ export default function SaveDashboardPage() {
                             const item = o.items?.[0];
                             const status = displayStatus(o);
                             return (
-                                <button key={o.id} type="button" className="gd-row" onClick={() => nav(`/save/orders/${o.id}`)}>
+                                <button key={o.id} type="button" className="gd-row" onClick={() => nav(`/buy/orders/${o.id}`)}>
                                     <Thumb src={item?.image_snapshot} name={item?.product_name_snapshot} />
                                     <span className="t">
                                         <b>{item?.product_name_snapshot || o.order_number}</b>
@@ -437,17 +437,17 @@ export default function SaveDashboardPage() {
 
                     {/* my RFQs */}
                     <section className="gk-card gd-panel gd-a-enq">
-                        <PanelHead title="My RFQs" to="/save/rfq" nav={nav} />
+                        <PanelHead title="My RFQs" to="/buy/rfq" nav={nav} />
                         {!rfq.loaded ? (
                             <div style={{ display: "grid", gap: 8 }} aria-busy="true">{[0, 1, 2].map((i) => <div key={i} className="gk-skel" style={{ height: 58 }} />)}</div>
                         ) : rfq.items.length === 0 ? (
                             <div className="gk-empty" style={{ padding: 24 }}><Send size={24} /><b>Your price list is empty</b>Add a product you buy and suppliers will price it.
-                                <button type="button" className="gk-btn go" onClick={() => nav("/save/rfq?new=1")}><Send size={16} />Post an RFQ</button></div>
+                                <button type="button" className="gk-btn go" onClick={() => nav("/buy/rfq?new=1")}><Send size={16} />Post an RFQ</button></div>
                         ) : rfq.items.slice(0, 4).map((it) => {
                             const units = Math.round(it.quantity * it.packSize * 1e6) / 1e6;
                             const count = Number(it.quotesCount ?? it.quoteCount ?? it.quotes?.length) || 0;
                             return (
-                                <button key={it.id} type="button" className="gd-row" onClick={() => nav("/save/rfq")}>
+                                <button key={it.id} type="button" className="gd-row" onClick={() => nav("/buy/rfq")}>
                                     <Thumb src={it.images?.[0]} name={it.productName} />
                                     <span className="t">
                                         <b>{toTitle(it.productName)}</b>

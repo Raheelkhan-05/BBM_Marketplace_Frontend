@@ -102,8 +102,8 @@ export default function GrowQuoteProductPage() {
     });
 
     const gate = {
-        NOT_AUTHENTICATED: { title: "Sign in to continue", body: "You'll need to sign in first.", cta: "Sign in", action: () => nav("/grow?start=1", { state: { from: enquiryPath(enquiryId) } }) },
-        SELLER_NOT_ONBOARDED: { title: "Set up your seller shop first", body: "Listing a product requires an approved seller shop.", cta: "Set up my shop", action: () => nav("/grow?start=1", { state: { from: enquiryPath(enquiryId) } }) },
+        NOT_AUTHENTICATED: { title: "Sign in to continue", body: "You'll need to sign in first.", cta: "Sign in", action: () => nav("/sell?start=1", { state: { from: enquiryPath(enquiryId) } }) },
+        SELLER_NOT_ONBOARDED: { title: "Set up your seller shop first", body: "Listing a product requires an approved seller shop.", cta: "Set up my shop", action: () => nav("/sell?start=1", { state: { from: enquiryPath(enquiryId) } }) },
         SELLER_NOT_APPROVED: { title: "Your shop isn't approved yet", body: "Check your shop status or contact support.", cta: "Check my shop status", action: () => nav("/seller/status") },
     }[access?.reason] || { title: "Can't list right now", body: "Please try again in a moment.", cta: "Go back", action: exit };
 

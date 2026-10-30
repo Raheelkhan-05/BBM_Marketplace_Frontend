@@ -264,7 +264,7 @@ export default function GrowPage() {
                                 <span className="tx"><b>Brands</b><small>Already on BBM Marketplace</small></span>
                                 <span className="ch" aria-hidden="true">›</span>
                             </a>
-                            <Link className="t2 b" to={"/grow?start=1"}>
+                            <Link className="t2 b" to={"/sell?start=1"}>
                                 <span className="ic">
                                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9M9 20v-6h6v6" /></svg>
                                 </span>
@@ -278,7 +278,7 @@ export default function GrowPage() {
                             Reach beyond your network, get requirements relevant to what you sell, and turn opportunities into orders.
                         </p>
                         <div>
-                            <Link className="btn" to={'/grow?start=1'}>Add your products</Link>
+                            <Link className="btn" to={'/sell?start=1'}>Add your products</Link>
                             <a className="btn ghost mt-3 sm:ms-2" href="#grow-pricing" onClick={goTo("grow-pricing")}>See how pricing works</a>
                         </div>
                         <div className="trio">
@@ -360,7 +360,7 @@ export default function GrowPage() {
                     </div>
                     <p>Add your products. Set your terms. Reach buyers. Manage orders. Build repeat business.</p>
                     <div className="button-grid flex items-center justify-center">
-                        <Link className="btn" to={'/grow?start=1'}>
+                        <Link className="btn" to={'/sell?start=1'}>
                             Add your products
                         </Link>
 
