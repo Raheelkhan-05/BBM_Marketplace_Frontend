@@ -7,7 +7,7 @@ export default function GrowOrderBookPage() {
     const { token } = useAuth();
     return (
         <div className="v">
-            <OrderBookList mode="team" api={teamOrderBook} token={token} base="/grow/order-book"
+            <OrderBookList mode="team" api={teamOrderBook} token={token} base="/sell/order-book"
                 title="Order Book" subtitle="Orders your salespeople punch for customers. Process, ship and complete them here." />
         </div>
     );

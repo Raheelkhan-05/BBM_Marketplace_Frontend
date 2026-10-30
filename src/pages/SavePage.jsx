@@ -12,7 +12,7 @@ import "../components/save/save-home.css";
 
 const BUY_TO = MENU_ROUTES.home;
 const EXPLORE_TO = MENU_ROUTES.home;
-const GROW_TO = "/grow/details";
+const GROW_TO = "/sell/details";
 
 const slug = (n) => n.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 

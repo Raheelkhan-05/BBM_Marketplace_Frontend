@@ -17,8 +17,8 @@ export default function OnboardingGate() {
         // Allow login, legal pages, and the grow/onboarding flow.
         if (
             ALLOWED_PATHS.includes(pathname) ||
-            pathname === "/grow" ||
-            pathname.startsWith("/grow/")
+            pathname === "/sell" ||
+            pathname.startsWith("/sell/")
         ) {
             return;
         }

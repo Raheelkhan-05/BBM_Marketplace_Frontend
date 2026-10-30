@@ -129,7 +129,7 @@ export default function GrowSellItemPage() {
                     <button className="sbtn" type="button" onClick={backToQuote} disabled={!live}>Continue to your quote</button>
                 )}
                 {enquiry && !live && <p className="cap">You can send your quote once this listing is approved.</p>}
-                <Link className={enquiry ? "sbtn gh" : "sbtn"} to="/grow/products">Go to my products</Link>
+                <Link className={enquiry ? "sbtn gh" : "sbtn"} to="/sell/products">Go to my products</Link>
                 {!enquiry && <button className="sbtn gh" type="button" onClick={() => nav(from, { replace: true })}>Back to browsing</button>}
                 {enquiry && !live && <button className="sbtn gh" type="button" onClick={() => nav(from, { replace: true })}>Back to the enquiry</button>}
             </section>

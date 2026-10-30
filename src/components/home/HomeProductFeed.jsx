@@ -3564,7 +3564,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     const handleSell = (item) => {
         closeDropdown();
-        navigate(`/grow/sell/${item.id}`, {
+        navigate(`/sell/sell/${item.id}`, {
             state: {
                 from: `${location.pathname}${location.search}${location.hash || ""}`,
                 brandItem: item,

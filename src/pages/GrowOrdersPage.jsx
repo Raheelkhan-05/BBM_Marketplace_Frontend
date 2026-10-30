@@ -184,7 +184,7 @@ export default function GrowOrdersPage() {
                 <div className="grid c2">
                     {list.map((o) => (
                         <OrderCard key={o.id} order={o} busy={busy} onAction={onAction}
-                            onOpen={(id) => nav(`/grow/orders/${id}`)}
+                            onOpen={(id) => nav(`/sell/orders/${id}`)}
                             unread={salesOrderUnreadCounts?.get(String(o.id)) || 0} />
                     ))}
                     {!list.length && <Empty title="No orders here" text="Orders will appear as buyers place them." />}

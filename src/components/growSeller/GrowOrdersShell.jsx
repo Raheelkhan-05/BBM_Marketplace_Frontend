@@ -5,15 +5,15 @@ import useGrowBadges from "./useGrowBadges.js";
 import useOrderBookPending from "../../hooks/useOrderBookPending.js";
 
 const SEGS = [
-    { key: "market", to: "/grow/orders", label: "Marketplace", color: "#22A06B" },
-    { key: "internal", to: "/grow/order-book", label: "Internal Orders", color: "#6D3FD1" },
+    { key: "market", to: "/sell/orders", label: "Marketplace", color: "#22A06B" },
+    { key: "internal", to: "/sell/order-book", label: "Internal Orders", color: "#6D3FD1" },
 ];
 
 export default function GrowOrdersShell() {
     const { pathname } = useLocation();
     const counts = useGrowBadges();
     const pendingOB = useOrderBookPending();
-    const activeKey = pathname.startsWith("/grow/order-book") ? "internal" : "market";
+    const activeKey = pathname.startsWith("/sell/order-book") ? "internal" : "market";
     const badge = { market: counts.orders || 0, internal: pendingOB || 0 };
 
     return (

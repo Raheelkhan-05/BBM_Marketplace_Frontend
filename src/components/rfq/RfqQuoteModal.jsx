@@ -204,7 +204,7 @@ export default function RfqQuoteModal({ enquiry, onClose, onDone, initialSubmiss
         },
     });
     // "Add a new product" (free-form) keeps its own page.
-    const goAdd = () => nav(`/grow/enquiry/${enquiry.id}/add-product`, { state: { from: `${loc.pathname}${loc.search}`, enquiry } });
+    const goAdd = () => nav(`/sell/enquiry/${enquiry.id}/add-product`, { state: { from: `${loc.pathname}${loc.search}`, enquiry } });
     const goSignIn = () => nav("/grow?start=1", { state: { from: enquiryPath(enquiry.id) } });
 
     // ---- price maths ----

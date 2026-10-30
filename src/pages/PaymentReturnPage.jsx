@@ -111,7 +111,7 @@ export default function PaymentReturnPage() {
 
     // takePaymentReturnPath() consumes the stored path, so read it ONCE (calling it on every render
     // returned null after the first poll update and always fell back to /grow/wallet).
-    const [walletPath] = useState(() => takePaymentReturnPath() || "/grow/wallet");
+    const [walletPath] = useState(() => takePaymentReturnPath() || "/sell/wallet");
 
     // Give the session a moment to restore after the full-page return from the gateway.
     useEffect(() => {

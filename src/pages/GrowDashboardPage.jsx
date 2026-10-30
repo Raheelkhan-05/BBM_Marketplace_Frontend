@@ -216,21 +216,21 @@ export default function GrowDashboardPage() {
 
     // Each hero has either a route (`to`) or a custom handler (`onClick`).
     const hero = (() => {
-        if (blocked) return { tone: "red", kicker: "Action needed", title: "New orders are paused", text: "Add credits to your wallet to start receiving orders again.", cta: "Add credits", to: "/grow/wallet", Icon: Wallet };
-        if (newOrders.length) return { tone: "bl", kicker: "Your next step", title: `Confirm ${newOrders.length} new order${newOrders.length > 1 ? "s" : ""}`, text: "Buyers are waiting. Confirm to start dispatch.", cta: "Review orders", to: "/grow/orders", Icon: Receipt };
-        if (toDispatch.length) return { tone: "gr", kicker: "Your next step", title: `Dispatch ${toDispatch.length} confirmed order${toDispatch.length > 1 ? "s" : ""}`, text: "Add the transport details and mark them as shipped.", cta: "Go to orders", to: "/grow/orders", Icon: Truck };
-        if (quotable.length || openEnq > 0) return { tone: "or", kicker: "Your next step", title: `Quote on ${openEnq || quotable.length} open enquir${(openEnq || quotable.length) > 1 ? "ies" : "y"}`, text: quotable[0] ? `${toTitleCase(quotable[0].productName)} · deliver to ${quotable[0].deliveryCity}` : "Buyers are asking for products you sell.", cta: "See enquiries", to: "/grow/enquiries", Icon: Megaphone };
+        if (blocked) return { tone: "red", kicker: "Action needed", title: "New orders are paused", text: "Add credits to your wallet to start receiving orders again.", cta: "Add credits", to: "/sell/wallet", Icon: Wallet };
+        if (newOrders.length) return { tone: "bl", kicker: "Your next step", title: `Confirm ${newOrders.length} new order${newOrders.length > 1 ? "s" : ""}`, text: "Buyers are waiting. Confirm to start dispatch.", cta: "Review orders", to: "/sell/orders", Icon: Receipt };
+        if (toDispatch.length) return { tone: "gr", kicker: "Your next step", title: `Dispatch ${toDispatch.length} confirmed order${toDispatch.length > 1 ? "s" : ""}`, text: "Add the transport details and mark them as shipped.", cta: "Go to orders", to: "/sell/orders", Icon: Truck };
+        if (quotable.length || openEnq > 0) return { tone: "or", kicker: "Your next step", title: `Quote on ${openEnq || quotable.length} open enquir${(openEnq || quotable.length) > 1 ? "ies" : "y"}`, text: quotable[0] ? `${toTitleCase(quotable[0].productName)} · deliver to ${quotable[0].deliveryCity}` : "Buyers are asking for products you sell.", cta: "See enquiries", to: "/sell/enquiries", Icon: Megaphone };
         return { tone: "gr", kicker: "You are all caught up", title: "Add more products", text: "More live products means more buyers can find and order from you.", cta: "Add product", onClick: addProduct, Icon: Plus };
     })();
 
     const attention = [];
-    if (blocked) attention.push({ to: "/grow/wallet", tone: "red", Icon: Wallet, t: "New orders are paused", s: "Add credits to resume" });
-    else if (lowWallet) attention.push({ to: "/grow/wallet", tone: "go", Icon: Wallet, t: "Wallet credits are running low", s: "Recharge to keep receiving orders" });
-    if (newOrders.length) attention.push({ to: "/grow/orders", tone: "bl", Icon: Receipt, t: `${newOrders.length} new order${newOrders.length > 1 ? "s" : ""} to confirm`, s: "Buyers are waiting" });
-    if (toDispatch.length) attention.push({ to: "/grow/orders", tone: "gr", Icon: Truck, t: `${toDispatch.length} order${toDispatch.length > 1 ? "s" : ""} ready to dispatch`, s: "Add LR and bill, then ship" });
-    if (unreadChats) attention.push({ to: "/grow/chat", tone: "bl", Icon: MessageSquare, t: `${unreadChats} unread message${unreadChats > 1 ? "s" : ""}`, s: "Reply to keep deals moving" });
-    if (proposals) attention.push({ to: "/grow/transport", tone: "go", Icon: RouteIcon, t: `${proposals} transport proposal${proposals > 1 ? "s" : ""}`, s: "Approve or decline" });
-    if (openEnq > 0) attention.push({ to: "/grow/enquiries", tone: "or", Icon: Megaphone, t: `${openEnq} enquir${openEnq > 1 ? "ies" : "y"} to quote`, s: quotable[0] ? `Newest ${timeAgo(quotable[0].publishedAt || quotable[0].createdAt)}` : "Buyers are asking now" });
+    if (blocked) attention.push({ to: "/sell/wallet", tone: "red", Icon: Wallet, t: "New orders are paused", s: "Add credits to resume" });
+    else if (lowWallet) attention.push({ to: "/sell/wallet", tone: "go", Icon: Wallet, t: "Wallet credits are running low", s: "Recharge to keep receiving orders" });
+    if (newOrders.length) attention.push({ to: "/sell/orders", tone: "bl", Icon: Receipt, t: `${newOrders.length} new order${newOrders.length > 1 ? "s" : ""} to confirm`, s: "Buyers are waiting" });
+    if (toDispatch.length) attention.push({ to: "/sell/orders", tone: "gr", Icon: Truck, t: `${toDispatch.length} order${toDispatch.length > 1 ? "s" : ""} ready to dispatch`, s: "Add LR and bill, then ship" });
+    if (unreadChats) attention.push({ to: "/sell/chat", tone: "bl", Icon: MessageSquare, t: `${unreadChats} unread message${unreadChats > 1 ? "s" : ""}`, s: "Reply to keep deals moving" });
+    if (proposals) attention.push({ to: "/sell/transport", tone: "go", Icon: RouteIcon, t: `${proposals} transport proposal${proposals > 1 ? "s" : ""}`, s: "Approve or decline" });
+    if (openEnq > 0) attention.push({ to: "/sell/enquiries", tone: "or", Icon: Megaphone, t: `${openEnq} enquir${openEnq > 1 ? "ies" : "y"} to quote`, s: quotable[0] ? `Newest ${timeAgo(quotable[0].publishedAt || quotable[0].createdAt)}` : "Buyers are asking now" });
 
     const kp = (v) => (v == null ? "–" : v);
     const HeroIcon = hero.Icon;
@@ -257,10 +257,10 @@ export default function GrowDashboardPage() {
 
             <div className="gd-kpis">
                 {[
-                    { l: "Delivered sales", v: ordersReady ? money(totals.delivered) : "–", Icon: IndianRupee, a: "var(--k-gr)", to: "/grow/orders" },
-                    { l: "Orders in progress", v: ordersReady ? money(totals.progress) : "–", Icon: Receipt, a: "var(--k-bl)", to: "/grow/orders" },
-                    { l: "Open enquiries", v: kp(openEnq), Icon: Megaphone, a: "var(--k-or)", to: "/grow/enquiries" },
-                    { l: "Live products", v: kp(stats.prod), Icon: Package, a: "var(--k-go)", to: "/grow/products" },
+                    { l: "Delivered sales", v: ordersReady ? money(totals.delivered) : "–", Icon: IndianRupee, a: "var(--k-gr)", to: "/sell/orders" },
+                    { l: "Orders in progress", v: ordersReady ? money(totals.progress) : "–", Icon: Receipt, a: "var(--k-bl)", to: "/sell/orders" },
+                    { l: "Open enquiries", v: kp(openEnq), Icon: Megaphone, a: "var(--k-or)", to: "/sell/enquiries" },
+                    { l: "Live products", v: kp(stats.prod), Icon: Package, a: "var(--k-go)", to: "/sell/products" },
                 ].map((k, i) => (
                     <button key={k.l} type="button" className="gd-kpi gk-rise" style={{ "--i": 2 + i, "--a": k.a }} onClick={() => nav(k.to)}>
                         <span className="gk-ico"><k.Icon /></span>
@@ -290,7 +290,7 @@ export default function GrowDashboardPage() {
                         <small>Wallet credits</small>
                         <div className="bal">{wallet ? money(wallet.balance_due) : "–"}</div>
                         <p>{blocked ? "Orders are paused until you add credits." : lowWallet ? "Running low. Recharge to keep receiving orders." : "Credits cover marketing fees when an order is generated."}</p>
-                        <button type="button" className="gk-btn sm" onClick={() => nav("/grow/wallet")}><Wallet size={16} />{blocked || lowWallet ? "Add credits" : "Open wallet"}</button>
+                        <button type="button" className="gk-btn sm" onClick={() => nav("/sell/wallet")}><Wallet size={16} />{blocked || lowWallet ? "Add credits" : "Open wallet"}</button>
                     </div>
                 </section>
 
@@ -362,11 +362,11 @@ export default function GrowDashboardPage() {
                 </section>
 
                 <section className="gk-card gd-panel gd-a-orders gk-rise" style={{ "--i": 9 }}>
-                    <div className="gd-ph"><h2>Latest orders</h2><button type="button" className="gd-link" onClick={() => nav("/grow/orders")}>View all<ChevronRight size={16} /></button></div>
+                    <div className="gd-ph"><h2>Latest orders</h2><button type="button" className="gd-link" onClick={() => nav("/sell/orders")}>View all<ChevronRight size={16} /></button></div>
                     {!ordersReady ? <div className="gk-skel" style={{ height: 150 }} />
                         : list.length === 0 ? <div className="gk-empty" style={{ border: 0, padding: "24px 8px" }}><Inbox size={22} /><b>No orders yet</b>Orders will appear as buyers place them.</div>
                             : list.slice(0, 4).map((o) => (
-                                <button key={o.id} type="button" className="gd-row" onClick={() => nav(`/grow/orders/${o.id}`)}>
+                                <button key={o.id} type="button" className="gd-row" onClick={() => nav(`/sell/orders/${o.id}`)}>
                                     {/* <span className="gd-th">{(o.buyer_business_name || o.buyer_contact_name || "B")[0].toUpperCase()}</span> */}
                                     <span className="t"><b>{o.buyer_business_name || o.buyer_contact_name}</b><small>{o.order_number} · {timeAgo(o.created_at)}</small></span>
                                     <span className="r"><b>{o.order_type === "sample" ? "Free" : money(o.subtotal_amount)}</b><span className="gk-pill" data-s={o.status}>{STATUS_LABEL[o.status] || o.status}</span></span>
@@ -375,11 +375,11 @@ export default function GrowDashboardPage() {
                 </section>
 
                 <section className="gk-card gd-panel gd-a-enq gk-rise" style={{ "--i": 10 }}>
-                    <div className="gd-ph"><h2>Live enquiries</h2><button type="button" className="gd-link" onClick={() => nav("/grow/enquiries")}>View all<ChevronRight size={16} /></button></div>
+                    <div className="gd-ph"><h2>Live enquiries</h2><button type="button" className="gd-link" onClick={() => nav("/sell/enquiries")}>View all<ChevronRight size={16} /></button></div>
                     {enquiries == null ? <div className="gk-skel" style={{ height: 150 }} />
                         : quotable.length === 0 ? <div className="gk-empty" style={{ border: 0, padding: "24px 8px" }}><Megaphone size={22} /><b>No live enquiries</b>New enquiries from buyers appear here.</div>
                             : quotable.slice(0, 3).map((e) => (
-                                <button key={e.id} type="button" className="gd-row" onClick={() => nav(`/grow/enquiry/${e.id}`, { state: { enquiry: e } })}>
+                                <button key={e.id} type="button" className="gd-row" onClick={() => nav(`/sell/enquiry/${e.id}`, { state: { enquiry: e } })}>
                                     <span className="gd-th">{e.images?.[0] ? <img src={e.images[0]} alt="" /> : (e.productName || "E")[0].toUpperCase()}</span>
                                     <span className="t"><b>{toTitleCase(e.productName)}</b><small>{fmtNum(e.quantity)} × {fmtNum(e.packSize)} {e.unit} · {e.deliveryCity}</small></span>
                                     <span className="r"><small style={{ color: "var(--k-mute)", fontWeight: 700, fontSize: ".74rem" }}>{timeAgo(e.publishedAt || e.createdAt)}</small></span>

@@ -302,7 +302,7 @@ export default function GrowEnquiryDetailPage() {
                 {error.kind === "retry" && <button type="button" className="rqp-btn go" onClick={() => setReloadKey((k) => k + 1)}>Try again</button>}
                 {error.kind === "missing" && (
                     isLoggedIn
-                        ? <button type="button" className="rqp-btn go" onClick={() => nav("/grow/enquiries")}>See all enquiries</button>
+                        ? <button type="button" className="rqp-btn go" onClick={() => nav("/sell/enquiries")}>See all enquiries</button>
                         : <button type="button" className="rqp-btn go" onClick={() => nav("/")}>Go to home</button>
                 )}
                 {error.kind === "retry" && !isLoggedIn && <button type="button" className="rqp-btn" onClick={goToStart}>Log in</button>}

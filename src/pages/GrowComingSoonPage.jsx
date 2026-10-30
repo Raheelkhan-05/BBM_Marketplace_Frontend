@@ -74,7 +74,7 @@ export default function GrowComingSoonPage({ kind = "customers" }) {
                     ))}
                 </ul>
 
-                <button className="bt go" type="button" style={{ marginTop: 22 }} onClick={() => nav("/grow/dashboard")}>
+                <button className="bt go" type="button" style={{ marginTop: 22 }} onClick={() => nav("/sell/dashboard")}>
                     Back to dashboard
                 </button>
             </section>

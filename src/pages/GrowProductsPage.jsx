@@ -398,7 +398,7 @@ export default function GrowProductsPage() {
                 </div>
 
                 <div className="products-actions">
-                    <button className="bt" type="button" onClick={() => nav("/grow/bulk")}>
+                    <button className="bt" type="button" onClick={() => nav("/sell/bulk")}>
                         Bulk upload
                     </button>
                     <button className="bt go" type="button" onClick={addProduct}>
@@ -414,7 +414,7 @@ export default function GrowProductsPage() {
                         <b>{bulkPending} product{bulkPending === 1 ? "" : "s"} waiting from your bulk upload</b>
                         <small style={{ display: "block", opacity: 0.7 }}>Saved automatically. Add photos, confirm and submit them one by one.</small>
                     </div>
-                    <button className="bt go sm" type="button" onClick={() => nav("/grow/bulk?resume=1")}>Continue bulk upload</button>
+                    <button className="bt go sm" type="button" onClick={() => nav("/sell/bulk?resume=1")}>Continue bulk upload</button>
                 </div>
             )}
 

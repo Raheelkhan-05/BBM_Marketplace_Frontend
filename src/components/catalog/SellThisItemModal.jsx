@@ -131,7 +131,7 @@ export default function SellThisItemModal({ brand, onClose }) {
                                         <div className="big" aria-hidden="true">✓</div>
                                         <h2>{live ? "Your listing is live" : "Your listing is submitted"}</h2>
                                         <p className="sub">{done.message || (live ? "Buyers can now see it." : "We will let you know once it is live for buyers.")}</p>
-                                        <Link className="sbtn" to="/grow/products" onClick={onClose}>Go to my products</Link>
+                                        <Link className="sbtn" to="/sell/products" onClick={onClose}>Go to my products</Link>
                                         <button className="sbtn gh" type="button" onClick={onClose}>Done</button>
                                     </section>
                                 ) : stillLoading ? (

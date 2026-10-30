@@ -189,7 +189,7 @@ export default function GrowStartPage() {
 
     // Cancel on the first Add Product step: go back where the seller came from, otherwise show the landing screen.
     const exitWizard = () => {
-        if (!returnTo) return nav("/grow/details");   // was: setView("land")
+        if (!returnTo) return nav("/sell/details");   // was: setView("land")
         if (window.history.state?.idx > 0) nav(-1);
         else nav(returnTo, { replace: true });
     };
@@ -202,7 +202,7 @@ export default function GrowStartPage() {
             <div className={`app${view === "land" ? " wide" : ""}${hasBar ? " hb" : ""}`}>
                 {view === "land" && (
                     <Landing onStart={start}
-                        backLabel={resumeBack ? (returnTo.startsWith("/grow/enquiry/") ? "Back to the enquiry" : "Back to enquiries") : ""}
+                        backLabel={resumeBack ? (returnTo.startsWith("/sell/enquiry/") ? "Back to the enquiry" : "Back to enquiries") : ""}
                         onBack={resumeBack ? () => nav(returnTo, { replace: true }) : null} />
                 )}
                 {view === "auth" && <GrowAuthFlow onAuthed={proceed} say={say} />}
@@ -246,10 +246,10 @@ export default function GrowStartPage() {
                         )}
                         {enquiry && !live && <p className="cap">You can send your quote once this listing is approved.</p>}
                         {!enquiry && <button className="sbtn" type="button" onClick={() => { setPick(null); setView("prod"); }}>Add another product</button>}
-                        <Link className="sbtn gh" to="/grow/products">Go to my products</Link>
+                        <Link className="sbtn gh" to="/sell/products">Go to my products</Link>
                         {enquiry
                             ? !live && <button className="sbtn gh" type="button" onClick={() => nav(returnTo, { replace: true })}>Back to the enquiry</button>
-                            : <Link className="sbtn gh" to="/grow/details">Back to the seller page</Link>}
+                            : <Link className="sbtn gh" to="/sell/details">Back to the seller page</Link>}
                     </section>
                 )}
             </div>
@@ -281,7 +281,7 @@ function Landing({ onStart, onBack, backLabel }) {
             <div className="l-cta">
                 <button className="sbtn" type="button" onClick={onStart}>Start selling</button>
                 {onBack && <button className="sbtn gh" type="button" onClick={onBack}>{backLabel}</button>}
-                <Link className="sbtn gh" to="/grow/details">See the full seller page</Link>
+                <Link className="sbtn gh" to="/sell/details">See the full seller page</Link>
             </div>
         </section>
     );

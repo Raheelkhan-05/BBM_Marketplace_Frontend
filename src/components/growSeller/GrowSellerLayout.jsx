@@ -68,7 +68,7 @@ export default function GrowSellerLayout() {
     const section = pathname.split("/").slice(0, 3).join("/"); // "/grow/chat", "/grow/orders", ...
     useEffect(() => { toTop(); }, [section]);
 
-    const openWallet = async () => { await markWalletTopupViewed?.(); nav("/grow/wallet"); };
+    const openWallet = async () => { await markWalletTopupViewed?.(); nav("/sell/wallet"); };
 
     const ctx = useMemo(() => ({ root, say, wallet, refreshWallet, setBadge }), [root, say, wallet, refreshWallet, setBadge]);
 

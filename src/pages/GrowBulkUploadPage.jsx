@@ -264,7 +264,7 @@ export default function GrowBulkUploadPage() {
         if (!n) { setView("done"); return; }
         setShowErr(false); setCurId(n.id);
     };
-    const saveExit = async () => { await flush(); nav("/grow/products"); };
+    const saveExit = async () => { await flush(); nav("/sell/products"); };
 
     const removeCurrent = async () => {
         if (!cur || busy) return;
@@ -364,7 +364,7 @@ export default function GrowBulkUploadPage() {
                             <h2>Bulk upload isn't available yet</h2>
                             <p className="sub">Finish your seller setup and get your shop approved, then come back. If this keeps happening, check your internet and reload.</p>
                             <Link className="sbtn" to="/grow?start=1">Go to seller setup</Link>
-                            <Link className="sbtn gh" to="/grow/products">Back to my products</Link>
+                            <Link className="sbtn gh" to="/sell/products">Back to my products</Link>
                         </section>
                     )}
 
@@ -415,7 +415,7 @@ export default function GrowBulkUploadPage() {
                                     </label>
                                 </div>
                             </div>
-                            <Link className="sbtn gh" to="/grow/products" style={{ marginTop: 14 }}>Back to my products</Link>
+                            <Link className="sbtn gh" to="/sell/products" style={{ marginTop: 14 }}>Back to my products</Link>
                         </section>
                     )}
 
@@ -561,7 +561,7 @@ export default function GrowBulkUploadPage() {
                                 {pending.length ? `, ${pending.length} still waiting. They're saved, so you can finish any time.` : "."}
                             </p>
                             {pending.length > 0 && <button className="sbtn" type="button" onClick={() => { setCurId(pending[0].id); setShowErr(false); setView("review"); }}>Continue with the rest</button>}
-                            <Link className="sbtn" to="/grow/products">Go to my products</Link>
+                            <Link className="sbtn" to="/sell/products">Go to my products</Link>
                             <button className="sbtn gh" type="button" onClick={() => { setItems((l) => l.filter((i) => i.status === "pending")); setView("intro"); }}>Upload another file</button>
                         </section>
                     )}

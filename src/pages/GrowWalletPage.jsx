@@ -348,7 +348,7 @@ export default function GrowWalletPage() {
 
                                 {shown.length === 0 ? (
                                     <p className="sub2" style={{ margin: "14px 0 4px" }}>Nothing in this view.</p>
-                                ) : shown.map((t) => <TxnRow key={t.id} t={t} onOrder={(id) => nav(`/grow/orders/${id}`)} />)}
+                                ) : shown.map((t) => <TxnRow key={t.id} t={t} onOrder={(id) => nav(`/sell/orders/${id}`)} />)}
 
                                 {/* Scroll trigger + loading / error state */}
                                 {hasMore && (

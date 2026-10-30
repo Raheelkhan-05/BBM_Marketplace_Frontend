@@ -212,7 +212,7 @@ function App() {
 
                 {/* Single, shareable enquiry. Standalone (own header, no Layout / GrowSellerRoot)
                     so a link opened by someone who isn't a seller yet still renders. */}
-                <Route path="/grow/enquiry/:id" element={<GrowEnquiryDetailPage />} />
+                <Route path="/sell/enquiry/:id" element={<GrowEnquiryDetailPage />} />
 
                 <Route element={<Layout />}>
                   <Route path="/" element={<Navigate to="/home" replace />} />
@@ -298,30 +298,30 @@ function App() {
 
                 <Route element={<GrowProviders />}>
                   <Route element={<GrowLayout />}>
-                    <Route path="/grow" element={<GrowEntry />} />
-                    <Route path="/grow/details" element={<GrowPage />} />
+                    <Route path="/sell" element={<GrowEntry />} />
+                    <Route path="/sell/details" element={<GrowPage />} />
                     {/* "I want to sell this" from the catalogue: locked-identity add-product wizard */}
-                    <Route path="/grow/sell/:brandId" element={<GrowSellItemPage />} />
-                    <Route path="/grow/enquiry/:enquiryId/add-product" element={<GrowQuoteProductPage />} />
-                    <Route path="/grow/enquiry/:enquiryId/add-product/:brandId" element={<GrowQuoteProductPage />} />
+                    <Route path="/sell/sell/:brandId" element={<GrowSellItemPage />} />
+                    <Route path="/sell/enquiry/:enquiryId/add-product" element={<GrowQuoteProductPage />} />
+                    <Route path="/sell/enquiry/:enquiryId/add-product/:brandId" element={<GrowQuoteProductPage />} />
                   </Route>
 
                   <Route element={<GrowSellerRoot />}>
-                    <Route path="/grow/dashboard" element={<GrowDashboardPage />} />
-                    <Route path="/grow/enquiries" element={<GrowEnquiriesPage />} />
-                    <Route path="/grow/transport" element={<GrowTransportPage />} />
-                    <Route path="/grow/chat/:conversationId?" element={<GrowChatPage />} />
-                    <Route path="/grow/products" element={<GrowProductsPage />} />
-                    <Route path="/grow/bulk" element={<GrowBulkUploadPage />} />
-                    <Route path="/grow/wallet" element={<GrowWalletPage />} />
-                    <Route path="/grow/shop" element={<GrowStorePage />} />
+                    <Route path="/sell/dashboard" element={<GrowDashboardPage />} />
+                    <Route path="/sell/enquiries" element={<GrowEnquiriesPage />} />
+                    <Route path="/sell/transport" element={<GrowTransportPage />} />
+                    <Route path="/sell/chat/:conversationId?" element={<GrowChatPage />} />
+                    <Route path="/sell/products" element={<GrowProductsPage />} />
+                    <Route path="/sell/bulk" element={<GrowBulkUploadPage />} />
+                    <Route path="/sell/wallet" element={<GrowWalletPage />} />
+                    <Route path="/sell/shop" element={<GrowStorePage />} />
                     <Route element={<GrowOrdersShell />}>
-                      <Route path="/grow/orders" element={<GrowOrdersPage />} />
-                      <Route path="/grow/order-book" element={<GrowOrderBookPage />} />
+                      <Route path="/sell/orders" element={<GrowOrdersPage />} />
+                      <Route path="/sell/order-book" element={<GrowOrderBookPage />} />
                     </Route>
-                    <Route path="/grow/orders/:id" element={<GrowOrderDetailPage />} />
-                    <Route path="/grow/order-book/:id" element={<GrowOrderBookDetailPage />} />
-                    <Route path="/grow/customers" element={<GrowCustomersPage />} />
+                    <Route path="/sell/orders/:id" element={<GrowOrderDetailPage />} />
+                    <Route path="/sell/order-book/:id" element={<GrowOrderBookDetailPage />} />
+                    <Route path="/sell/customers" element={<GrowCustomersPage />} />
                   </Route>
 
                   <Route path="/save" element={<SaveLayout />}>

@@ -327,7 +327,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
     );
     const unreadNotifCount = useMemo(() => consoleNotifs.filter((n) => !n.read).length, [consoleNotifs]);
 
-    const inGrow = pathname === "/grow" || pathname.startsWith("/grow/");
+    const inGrow = pathname === "/sell" || pathname.startsWith("/sell/");
     const inSave = pathname === "/save" || pathname.startsWith("/save/");
     const inLogin = pathname === "/login" || pathname.startsWith("/login/");
     const inModule = inGrow || inSave; // third slot is Home inside Grow / Save, Console everywhere else
@@ -337,7 +337,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const tileGap = 8;
 
     // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
-    const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/grow/dashboard" : "/grow";
+    const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/sell/dashboard" : "/grow";
 
     // Always the same two tiles, in the same order: Grow, Save.
     const tiles = [TILES.grow, TILES.save].map((t, i) => ({

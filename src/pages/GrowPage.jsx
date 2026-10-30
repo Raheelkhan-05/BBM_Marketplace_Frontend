@@ -250,7 +250,7 @@ export default function GrowPage() {
             <Seo
                 title="Sell B2B online with BBM Marketplace – Reach buyers, manage orders"
                 description="List your products, set your own prices, MOQs and delivery terms, and reach verified B2B buyers. Transaction fees start as low as 0.25%."
-                path="/grow/details"
+                path="/sell/details"
             />
             {/* Hero */}
             <section className="hero">

@@ -11,9 +11,9 @@ Disallow: /payment/
 Disallow: /p/
 Disallow: /account
 
-# GROW: only the public brochure (/grow/details) is crawlable
-Disallow: /grow/
-Allow: /grow/details
+# GROW: only the public brochure (/sell/details) is crawlable
+Disallow: /sell/
+Allow: /sell/details
 
 # SAVE: only the public brochure (/save) is crawlable
 Disallow: /save/

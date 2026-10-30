@@ -348,7 +348,7 @@ function ConversationList({ conversations, loading, activeId, onSelect, reload, 
     );
 }
 
-export default function GrowChatPage({ basePath = "/grow/chat" }) {
+export default function GrowChatPage({ basePath = "/sell/chat" }) {
     const { conversationId } = useParams();
     const navigate = useNavigate();
     const { conversations, loading, reload, markLocalRead } = useChatContext();

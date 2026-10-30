@@ -11,7 +11,7 @@ export default function GrowOrderBookDetailPage() {
     const { say } = useGrowSeller();
     return (
         <div className="v">
-            <OrderBookDetail mode="team" id={id} api={teamOrderBook} token={token} say={say} backTo="/grow/order-book" backLabel="Order Book" />
+            <OrderBookDetail mode="team" id={id} api={teamOrderBook} token={token} say={say} backTo="/sell/order-book" backLabel="Order Book" />
         </div>
     );
 }

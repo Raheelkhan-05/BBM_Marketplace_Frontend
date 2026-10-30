@@ -91,7 +91,7 @@ export default function GrowOrderDetailPage() {
     if (!order) return (
         <div className="v" style={{ marginTop: 28 }}>
             <Empty title="Order not found" text="">
-                <br /><button className="bt go" type="button" onClick={() => nav("/grow/orders")}>Back to orders</button>
+                <br /><button className="bt go" type="button" onClick={() => nav("/sell/orders")}>Back to orders</button>
             </Empty>
         </div>
     );
@@ -127,7 +127,7 @@ export default function GrowOrderDetailPage() {
     return (
         <div className="v">
             <div className="back">
-                <button className="ib" type="button" aria-label="Back" onClick={() => nav("/grow/orders")}><Ic n="back" /></button>
+                <button className="ib" type="button" aria-label="Back" onClick={() => nav("/sell/orders")}><Ic n="back" /></button>
                 <div className="hh">
                     <h1>{order.order_number}</h1>
                     <div className="live"><i />Live</div>
