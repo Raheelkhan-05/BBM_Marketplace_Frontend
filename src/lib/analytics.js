@@ -68,21 +68,11 @@ function beforeSend(event) {
 const GA_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
 let gaLoaded = false;
 
-function loadGA() {
-    if (!GA_ID || gaLoaded || typeof window === "undefined") return;
-    gaLoaded = true;
-    window.dataLayer = window.dataLayer || [];
-    window.gtag = function () { window.dataLayer.push(arguments); };
-    window.gtag("js", new Date());
-    window.gtag("config", GA_ID, { anonymize_ip: true });
-    const s = document.createElement("script");
-    s.async = true;
-    s.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
-    document.head.appendChild(s);
+export function gaGrant() {
+    if (window.gtag) window.gtag("consent", "update", { analytics_storage: "granted" });
 }
-
-function stopGA() {
-    if (GA_ID) window[`ga-disable-${GA_ID}`] = true;
+export function gaDeny() {
+    if (window.gtag) window.gtag("consent", "update", { analytics_storage: "denied" });
 }
 
 function loadClarity() {
@@ -151,7 +141,7 @@ export function initAnalytics() {
         persistence: "localStorage+cookie",
         before_send: beforeSend,
         loaded: () => {
-            if (posthog.get_explicit_consent_status() === "granted") loadClarity();
+            if (posthog.get_explicit_consent_status() === "granted") loadClarity(); gaGrant();
         },
     });
 
@@ -168,6 +158,7 @@ export function getConsent() {
 export function grantConsent() {
     if (!initialized) return;
     posthog.opt_in_capturing();
+    gaGrant();
     loadClarity();
     if (currentIdentity) {
         posthog.identify(currentIdentity.id, currentIdentity.traits);
@@ -179,6 +170,7 @@ export function grantConsent() {
 export function denyConsent() {
     if (!initialized) return;
     posthog.opt_out_capturing();
+    gaDeny();
     stopClarity();
 }
 
