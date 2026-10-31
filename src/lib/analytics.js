@@ -65,6 +65,26 @@ function beforeSend(event) {
     return event;
 }
 
+const GA_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
+let gaLoaded = false;
+
+function loadGA() {
+    if (!GA_ID || gaLoaded || typeof window === "undefined") return;
+    gaLoaded = true;
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function () { window.dataLayer.push(arguments); };
+    window.gtag("js", new Date());
+    window.gtag("config", GA_ID, { anonymize_ip: true });
+    const s = document.createElement("script");
+    s.async = true;
+    s.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
+    document.head.appendChild(s);
+}
+
+function stopGA() {
+    if (GA_ID) window[`ga-disable-${GA_ID}`] = true;
+}
+
 function loadClarity() {
     if (!CLARITY_ID || clarityLoaded || typeof window === "undefined") return;
     clarityLoaded = true;
