@@ -1,11 +1,13 @@
 // components/team/SalesMonitorPanel.jsx: the "Sales" tab inside the Console sheet (team admin / owner only).
-// People: one card per salesperson (live status, counts, gaps). Timeline: realtime log of everything they do.
-// Gap rule (done on the server): between 9:00 AM and 6:00 PM IST, more than 30 min with no activity marks the next
-// entry red, per salesperson.
-// Clicking a log: enquiries open the read-only thread viewer, orders open the Order Book page.
+// Two steps:
+//   1. Overview  : one card per salesperson (status, enquiries worked on, orders punched, long breaks).
+//   2. Activity  : the live log of everything one salesperson (or everyone) did. Search and filters live here.
+// Long break (decided on the server): between 9:00 AM and 6:00 PM IST, more than 30 min with no activity marks the
+// next entry red, per salesperson. A new day starts counting from 9:00 AM.
+// Clicking a log: enquiries open the read-only viewer (with a Back button), orders open the Order Book page.
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, ChevronRight, Users, ClipboardList, Search, X, Clock, ArrowLeft } from "lucide-react";
+import { Loader2, ChevronRight, Users, ClipboardList, Search, X, Clock, ArrowLeft, Activity } from "lucide-react";
 import { fetchMonitorPeople, fetchMonitorFeed } from "../../utils/salesMonitorApi.js";
 import { useSocket } from "../../context/SocketContext.jsx";
 import { formatTime, dateKeyOf, dateLabelOf } from "../../utils/notificationDisplay.js";
@@ -17,6 +19,7 @@ const C = {
 };
 const MOD_COLOR = { enquiry: "#114072", order: "#22A06B", customer: "#7A3EB1" };
 const MOD_LABEL = { enquiry: "Enquiry", order: "Order", customer: "Customer" };
+const OPEN_LABEL = { enquiry: "View enquiry", order: "View order", customer: "View customers" };
 
 const IST_MS = 19_800_000, DAY_MS = 86_400_000, WORK_START = 540, WORK_END = 1080, IDLE_MIN = 30;
 const istDate = (ms) => new Date(ms + IST_MS).toISOString().slice(0, 10);
@@ -24,14 +27,21 @@ const addDays = (ymd, n) => { const d = new Date(`${ymd}T00:00:00Z`); d.setUTCDa
 const istDayStart = (ms) => Math.floor((ms + IST_MS) / DAY_MS) * DAY_MS - IST_MS;
 const istMinutes = (ms) => { const d = new Date(ms + IST_MS); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
 const fmtGap = (m) => { const n = Math.max(0, Math.round(m)); return n < 60 ? `${n} min` : `${Math.floor(n / 60)}h ${n % 60 ? `${n % 60}m` : ""}`.trim(); };
+const agoText = (now, iso) => { const m = Math.floor((now - Date.parse(iso)) / 60_000); return m < 1 ? "just now" : `${fmtGap(m)} ago`; };
+const dLabel = (ymd) => new Date(`${ymd}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const count = (v, one, many) => `${v} ${v === 1 ? one : many}`;
 
-const PRESETS = [["today", "Today"], ["yesterday", "Yesterday"], ["7d", "7 days"], ["30d", "30 days"], ["custom", "Custom"]];
+const PRESETS = [["today", "Today"], ["yesterday", "Yesterday"], ["7d", "Last 7 days"], ["30d", "Last 30 days"], ["custom", "Pick dates"]];
 function rangeFor(preset, custom) {
     const today = istDate(Date.now());
     if (preset === "yesterday") { const y = addDays(today, -1); return { from: y, to: y }; }
     if (preset === "7d") return { from: addDays(today, -6), to: today };
     if (preset === "30d") return { from: addDays(today, -29), to: today };
-    if (preset === "custom") return { from: custom.from || today, to: custom.to || custom.from || today };
+    if (preset === "custom") {
+        let from = custom.from || today, to = custom.to || custom.from || today;
+        if (from > to) [from, to] = [to, from];
+        return { from, to };
+    }
     return { from: today, to: today };
 }
 
@@ -53,6 +63,7 @@ const HEAD_CLS = "shrink-0 px-5 pb-2 pt-3 md:px-7 md:pb-3 md:pt-4";
 const TIME_W = 44, RAIL_W = 12, GAP = 8, DOT = 10, DOT_Y = 17;
 const GRID = `${TIME_W}px ${RAIL_W}px minmax(0,1fr)`;
 const chipStyle = (on) => (on ? { background: "#000", color: "#fff" } : { background: C.tile, color: C.muted });
+const INPUT_RING = { borderColor: C.hair, color: C.ink, "--tw-ring-color": "rgba(11,114,133,.35)" };
 
 const Avatar = ({ name }) => (
     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-extrabold text-white" style={{ background: C.secondary }}>
@@ -73,27 +84,40 @@ function Empty({ Icon, title, text }) {
 function Skeleton() {
     const fill = { background: C.tile };
     return (
-        <section className="flex min-h-0 flex-1 flex-col" aria-busy="true" aria-label="Loading sales monitor">
+        <section className="flex min-h-0 flex-1 flex-col" aria-busy="true" aria-label="Loading sales activity">
             <div className={HEAD_CLS}><div className="h-[20px] w-32 animate-pulse rounded-md" style={fill} /></div>
             <div className={`${SCROLL_CLS} overflow-hidden`}>
-                <div className="mb-3 h-10 animate-pulse rounded-xl" style={fill} />
-                <ul className="space-y-2">{[0, 1, 2].map((i) => <li key={i} className="h-[84px] animate-pulse rounded-2xl" style={fill} />)}</ul>
+                <div className="mb-3 h-8 animate-pulse rounded-full" style={fill} />
+                <ul className="space-y-2">{[0, 1, 2].map((i) => <li key={i} className="h-[128px] animate-pulse rounded-2xl" style={fill} />)}</ul>
             </div>
         </section>
     );
 }
 
-/* ------------------------------- people ------------------------------- */
-const Stat = ({ label, value, red }) => (
-    <div className="rounded-xl px-2 py-1.5 text-center" style={{ background: red ? "rgba(210,70,43,.1)" : C.tile }}>
-        <div className="text-[15px] font-extrabold leading-none tabular-nums" style={{ color: red ? C.red : C.ink }}>{value}</div>
-        <div className="mt-1 text-[10px] font-bold uppercase tracking-wide" style={{ color: red ? C.red : C.muted }}>{label}</div>
+/* -------------------------------- stats -------------------------------- */
+const Tile = ({ value, label, sub, red }) => (
+    <div className="rounded-xl px-2 py-2 text-center" style={{ background: red ? "rgba(210,70,43,.1)" : C.tile }}>
+        <div className="text-[18px] font-extrabold leading-none tabular-nums" style={{ color: red ? C.red : C.ink }}>{value}</div>
+        <div className="mt-1.5 text-[11.5px] font-bold leading-tight" style={{ color: red ? C.red : C.ink }}>{label}</div>
+        <div className="mt-0.5 text-[10.5px] font-medium leading-tight" style={{ color: red ? C.red : C.muted }}>{sub}</div>
     </div>
+);
+
+// Enquiries = different enquiries worked on (each counted once). Orders = orders punched. Long breaks = 30+ min gaps.
+const Tiles = ({ p }) => (
+    <div className="grid grid-cols-3 gap-1.5">
+        <Tile value={p.enquiries} label={p.enquiries === 1 ? "Enquiry" : "Enquiries"} sub={p.newEnquiries ? `${p.newEnquiries} new` : "worked on"} />
+        <Tile value={p.orders} label={p.orders === 1 ? "Order" : "Orders"} sub="punched" />
+        <Tile value={p.idleCount} label={p.idleCount === 1 ? "Long break" : "Long breaks"} sub={`over ${IDLE_MIN} min`} red={p.idleCount > 0} />
+    </div>
+);
+
+const StatusPill = ({ s }) => (
+    <span className="shrink-0 rounded-full px-2 py-[3px] text-[10.5px] font-bold uppercase leading-none tracking-wide" style={{ background: s.bg, color: s.fg }}>{s.label}</span>
 );
 
 const PersonCard = memo(function PersonCard({ p, now, onPick }) {
     const s = statusOf(p, now);
-    const last = p.lastAny ? fmtGap((now - Date.parse(p.lastAny)) / 60_000) : null;
     return (
         <li>
             <button type="button" onClick={() => onPick(p.userId)}
@@ -103,24 +127,19 @@ const PersonCard = memo(function PersonCard({ p, now, onPick }) {
                     <Avatar name={p.name} />
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                            <span className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{p.name}</span>
-                            <span className="shrink-0 rounded-full px-2 py-[3px] text-[10.5px] font-bold uppercase leading-none tracking-wide" style={{ background: s.bg, color: s.fg }}>{s.label}</span>
+                            <span className="truncate text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>{p.name}</span>
+                            <StatusPill s={s} />
                         </div>
                         <div className="truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
-                            {last ? `Last activity ${last} ago` : "No activity yet"}
+                            {count(p.total, "update", "updates")} · {p.lastAny ? `Last activity ${agoText(now, p.lastAny)}` : "No activity yet"}
                         </div>
                     </div>
                     <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.muted }} />
                 </div>
-                <div className="mt-2.5 grid grid-cols-4 gap-1.5">
-                    <Stat label="Actions" value={p.total} />
-                    <Stat label="Enquiries" value={p.enquiries} />
-                    <Stat label="Orders" value={p.orders} />
-                    <Stat label="Gaps" value={p.idleCount} red={p.idleCount > 0} />
-                </div>
+                <div className="mt-2.5"><Tiles p={p} /></div>
                 {p.idleCount > 0 && (
                     <p className="mt-2 flex items-center gap-1 text-[11.5px] font-bold" style={{ color: C.red }}>
-                        <Clock className="h-3 w-3" />Longest gap {fmtGap(p.longestGap)}
+                        <Clock className="h-3 w-3" />Longest break {fmtGap(p.longestGap)}
                     </p>
                 )}
             </button>
@@ -131,8 +150,11 @@ const PersonCard = memo(function PersonCard({ p, now, onPick }) {
 /* ------------------------------ timeline row ------------------------------ */
 const Row = memo(function Row({ e, isLast, onOpen }) {
     const color = e.idle ? C.red : (MOD_COLOR[e.module] || C.muted);
-    const clickable = e.module === "order" ? !!e.entityId : e.module === "enquiry" ? !!e.entityId : true;
+    const clickable = e.module === "customer" ? true : !!e.entityId;
     const Card = clickable ? "button" : "div";
+    const breakText = e.idle
+        ? (e.meta?.gapFrom === "day_start" ? `First activity came ${fmtGap(e.gapMinutes)} after 9:00 AM` : `No activity for ${fmtGap(e.gapMinutes)} before this`)
+        : null;
     return (
         <div className="grid" style={{ gridTemplateColumns: GRID, columnGap: GAP }}>
             <time className="select-none text-right text-[10.5px] font-semibold tabular-nums leading-none"
@@ -150,7 +172,7 @@ const Row = memo(function Row({ e, isLast, onOpen }) {
             </div>
 
             <div className="min-w-0 pb-1">
-                <Card {...(clickable ? { type: "button", onClick: () => onOpen(e), "aria-label": `${e.title}. Open` } : {})}
+                <Card {...(clickable ? { type: "button", onClick: () => onOpen(e), "aria-label": `${e.title}. ${OPEN_LABEL[e.module] || "Open"}` } : {})}
                     className={`block w-full rounded-xl px-2.5 py-2 text-left ${clickable ? "cursor-pointer transition-colors duration-150 active:bg-black/[0.05]" : ""}`}
                     style={e.idle ? { background: "rgba(210,70,43,.08)", boxShadow: "inset 0 0 0 1px rgba(210,70,43,.38)" } : undefined}>
                     <div className="flex items-center gap-2">
@@ -160,10 +182,14 @@ const Row = memo(function Row({ e, isLast, onOpen }) {
                         </span>
                         {e.idle && (
                             <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-[2px] text-[10.5px] font-bold leading-[14px] text-white" style={{ background: C.red }}>
-                                <Clock className="h-3 w-3" />{fmtGap(e.gapMinutes)} gap
+                                <Clock className="h-3 w-3" />{fmtGap(e.gapMinutes)} break
                             </span>
                         )}
-                        {clickable && <ChevronRight className="ml-auto h-4 w-4 shrink-0" style={{ color: e.idle ? C.red : C.muted }} />}
+                        {clickable && (
+                            <span className="ml-auto inline-flex items-center gap-0.5 text-[11px] font-bold" style={{ color: e.idle ? C.red : C.secondary }}>
+                                {OPEN_LABEL[e.module]}<ChevronRight className="h-3.5 w-3.5" />
+                            </span>
+                        )}
                     </div>
                     <div className="mt-1 text-[13px] font-semibold leading-snug tracking-wide" style={{ color: e.idle ? C.red : C.ink }}>{e.title}</div>
                     {e.subtitle && <div className="mt-0.5 truncate text-[12px] font-semibold" style={{ color: C.ink }}>{e.subtitle}</div>}
@@ -172,7 +198,7 @@ const Row = memo(function Row({ e, isLast, onOpen }) {
                     )}
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[11.5px] font-semibold tracking-wide" style={{ color: e.idle ? C.red : C.muted }}>
                         <span>{e.actorName || "Unknown"}</span>
-                        {e.idle && <span>{e.meta?.gapFrom === "day_start" ? "No activity since 9:00 AM" : "No activity since the previous update"}</span>}
+                        {breakText && <span>· {breakText}</span>}
                     </div>
                 </Card>
             </div>
@@ -251,7 +277,7 @@ function Timeline({ token, filters, socket, onOpen }) {
             </div>
         );
     }
-    if (!events.length) return <Empty Icon={ClipboardList} title="No activity found" text="Try a different date range or clear the filters." />;
+    if (!events.length) return <Empty Icon={ClipboardList} title="No activity found" text="Try another date range, or clear the search and filters." />;
 
     return (
         <div>
@@ -278,7 +304,7 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
     const navigate = useNavigate();
     const { socket } = useSocket();
 
-    const [view, setView] = useState("people");          // people | timeline
+    const [view, setView] = useState("overview");        // overview | activity
     const [preset, setPreset] = useState("today");
     const [custom, setCustom] = useState({ from: "", to: "" });
     const [qInput, setQInput] = useState("");
@@ -291,6 +317,7 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
     const [now, setNow] = useState(() => Date.now());
     const [viewer, setViewer] = useState(null);          // { id, who }
     const peopleReq = useRef(0);
+    const scrollRef = useRef(null);
 
     const { from, to } = rangeFor(preset, custom);
     const live = to >= istDate(Date.now());
@@ -298,6 +325,7 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
     useEffect(() => { const t = setTimeout(() => setQ(qInput.trim()), 300); return () => clearTimeout(t); }, [qInput]);
     useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
     useEffect(() => { if (!active) setViewer(null); }, [active]);
+    useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [view, actorId]);
 
     const loadPeople = useCallback(async (silent) => {
         const id = ++peopleReq.current;
@@ -309,7 +337,7 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
 
     useEffect(() => { if (active && token) loadPeople(false); }, [active, token, loadPeople]);
 
-    // Counts refresh on live activity (debounced, the server caches and invalidates by version).
+    // Counts refresh on live activity (debounced; the server caches and invalidates by version).
     useEffect(() => {
         if (!socket) return undefined;
         let t;
@@ -320,20 +348,27 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
 
     const filters = useMemo(() => ({ actorId, module: moduleF, idleOnly: idleOnly ? "1" : "", q, from, to }), [actorId, moduleF, idleOnly, q, from, to]);
 
+    const openActivity = useCallback((id, opts = {}) => {
+        setActorId(id || ""); setQInput(""); setQ(""); setModuleF(""); setIdleOnly(!!opts.idleOnly); setView("activity");
+    }, []);
+    const backToOverview = useCallback(() => {
+        setView("overview"); setActorId(""); setQInput(""); setQ(""); setModuleF(""); setIdleOnly(false);
+    }, []);
+
     const openItem = useCallback((e) => {
         if (e.module === "enquiry" && e.entityId) setViewer({ id: e.entityId, who: e.actorName });
         else if (e.module === "order" && e.entityId) navigate(`/sell/order-book/${e.entityId}`);
         else if (e.module === "customer") navigate("/sell/customers");
     }, [navigate]);
 
-    const pick = useCallback((id) => { setActorId(id); setView("timeline"); }, []);
     const selected = actorId && people ? people.find((p) => p.userId === actorId) : null;
-    const gapsTotal = people ? people.reduce((a, p) => a + p.idleCount, 0) : 0;
+    const breaksTotal = people ? people.reduce((a, p) => a + p.idleCount, 0) : 0;
+    const rangeText = from === to ? dLabel(from) : `${dLabel(from)} – ${dLabel(to)}`;
 
     if (!people && !peopleErr) return <Skeleton />;
     if (peopleErr && !people) {
         return (
-            <section className="flex min-h-0 flex-1 flex-col" aria-label="Sales monitor">
+            <section className="flex min-h-0 flex-1 flex-col" aria-label="Sales activity">
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-10 text-center">
                     <p className="text-[13px] font-bold" style={{ color: C.ink }}>{peopleErr}</p>
                     <button type="button" onClick={() => { setPeopleErr(""); loadPeople(false); }} className="rounded-full px-4 py-2 text-[12px] font-bold tracking-wide text-white" style={{ background: C.secondary }}>Try again</button>
@@ -342,45 +377,35 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
         );
     }
 
+    const title = view === "overview" ? "Sales activity" : (selected?.name || "All activity");
+
     return (
-        <section className="flex min-h-0 flex-1 flex-col" aria-label="Sales monitor">
+        <section className="flex min-h-0 flex-1 flex-col" aria-label="Sales activity">
             {/* header */}
             <div className={HEAD_CLS}>
-                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-2">
-                    <h3 className="flex items-center gap-2 text-[15px] font-extrabold tracking-wide md:text-[16px]" style={{ color: C.ink }}>
-                        Sales monitor
-                        {live && socket && (
-                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10px] font-bold uppercase leading-none" style={{ background: "rgba(34,160,107,.14)", color: C.green }}>
-                                <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-70" style={{ background: C.green }} /><span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: C.green }} /></span>
-                                Live
-                            </span>
-                        )}
-                    </h3>
-                    <div role="group" aria-label="Sales monitor sections" className="flex gap-1 rounded-full p-0.5" style={{ background: C.tile }}>
-                        {[["people", "People"], ["timeline", "Timeline"]].map(([k, t]) => (
-                            <button key={k} type="button" aria-pressed={view === k} onClick={() => setView(k)}
-                                className="rounded-full px-3 py-1 text-[11.5px] font-bold tracking-wide transition-colors duration-150" style={chipStyle(view === k)}>{t}</button>
-                        ))}
-                    </div>
+                <div className="flex items-center gap-2">
+                    {view === "activity" && (
+                        <button type="button" onClick={backToOverview} aria-label="Back to salespeople"
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition hover:bg-black/10 active:scale-95" style={{ background: C.tile, color: C.ink }}>
+                            <ArrowLeft className="h-4 w-4" />
+                        </button>
+                    )}
+                    <h3 className="min-w-0 flex-1 truncate text-[15px] font-extrabold tracking-wide md:text-[16px]" style={{ color: C.ink }}>{title}</h3>
+                    {live && socket && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-[3px] text-[10px] font-bold uppercase leading-none" style={{ background: "rgba(34,160,107,.14)", color: C.green }}>
+                            <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-70" style={{ background: C.green }} /><span className="relative inline-flex h-1.5 w-1.5 rounded-full" style={{ background: C.green }} /></span>
+                            Live
+                        </span>
+                    )}
                 </div>
+                {view === "overview" && (
+                    <p className="mt-1 text-[12px] font-medium leading-snug" style={{ color: C.muted }}>See what your salespeople are doing. Tap a person for their full activity.</p>
+                )}
             </div>
 
-            <div {...scrollProps} className={SCROLL_CLS} style={{ overscrollBehavior: "contain" }}>
-                {/* filters */}
+            <div ref={scrollRef} {...scrollProps} className={SCROLL_CLS} style={{ overscrollBehavior: "contain" }}>
+                {/* date range (both steps) */}
                 <div className="space-y-2 px-1 pb-2 pt-1">
-                    <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: C.muted }} />
-                        <input value={qInput} onChange={(e) => { setQInput(e.target.value); if (view !== "timeline") setView("timeline"); }}
-                            placeholder="Search customer, product, order, person" aria-label="Search activity" autoComplete="off"
-                            className="h-10 w-full rounded-xl border bg-white pl-9 pr-9 text-[13px] font-semibold tracking-wide outline-none focus:ring-2"
-                            style={{ borderColor: C.hair, color: C.ink, "--tw-ring-color": "rgba(11,114,133,.35)" }} />
-                        {qInput && (
-                            <button type="button" aria-label="Clear search" onClick={() => setQInput("")} className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full hover:bg-black/5" style={{ color: C.muted }}>
-                                <X className="h-3.5 w-3.5" />
-                            </button>
-                        )}
-                    </div>
-
                     <div role="group" aria-label="Date range" className="flex gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
                         {PRESETS.map(([k, t]) => (
                             <button key={k} type="button" aria-pressed={preset === k}
@@ -388,84 +413,105 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
                                 className="shrink-0 rounded-full px-3 py-1.5 text-[11.5px] font-bold tracking-wide" style={chipStyle(preset === k)}>{t}</button>
                         ))}
                     </div>
-
                     {preset === "custom" && (
                         <div className="grid grid-cols-2 gap-2">
                             {[["from", "From"], ["to", "To"]].map(([k, t]) => (
                                 <label key={k} className="block">
                                     <span className="mb-0.5 block text-[10.5px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{t}</span>
                                     <input type="date" value={custom[k]} max={istDate(Date.now())} onChange={(e) => setCustom((c) => ({ ...c, [k]: e.target.value }))}
-                                        className="h-9 w-full rounded-xl border bg-white px-2.5 text-[12.5px] font-semibold outline-none focus:ring-2"
-                                        style={{ borderColor: C.hair, color: C.ink, "--tw-ring-color": "rgba(11,114,133,.35)" }} />
+                                        className="h-9 w-full rounded-xl border bg-white px-2.5 text-[12.5px] font-semibold outline-none focus:ring-2" style={INPUT_RING} />
                                 </label>
                             ))}
                         </div>
                     )}
-
-                    {view === "timeline" && (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            {[["", "All"], ["enquiry", "Enquiries"], ["order", "Orders"], ["customer", "Customers"]].map(([k, t]) => (
-                                <button key={k || "all"} type="button" aria-pressed={moduleF === k} onClick={() => setModuleF(k)}
-                                    className="rounded-full px-3 py-1.5 text-[11.5px] font-bold tracking-wide" style={chipStyle(moduleF === k)}>{t}</button>
-                            ))}
-                            <button type="button" aria-pressed={idleOnly} onClick={() => setIdleOnly((v) => !v)}
-                                className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
-                                style={idleOnly ? { background: C.red, color: "#fff" } : { background: "rgba(210,70,43,.1)", color: C.red }}>
-                                <Clock className="h-3 w-3" />Gaps only
-                            </button>
-                        </div>
-                    )}
-
-                    {view === "timeline" && people && people.length > 0 && (
-                        <select value={actorId} onChange={(e) => setActorId(e.target.value)} aria-label="Filter by salesperson"
-                            className="h-9 w-full rounded-xl border bg-white px-3 text-[12.5px] font-semibold tracking-wide outline-none focus:ring-2"
-                            style={{ borderColor: C.hair, color: C.ink, "--tw-ring-color": "rgba(11,114,133,.35)" }}>
-                            <option value="">All salespeople</option>
-                            {people.map((p) => <option key={p.userId} value={p.userId}>{p.name}</option>)}
-                        </select>
-                    )}
+                    <p className="text-[11.5px] font-semibold" style={{ color: C.muted }}>Showing {rangeText}</p>
                 </div>
 
-                {/* content */}
                 {people && people.length === 0 ? (
                     <Empty Icon={Users} title="No salespeople yet" text="Invite a salesperson from the Team tab. Their work will show up here live." />
-                ) : view === "people" ? (
-                    <div className="pt-1">
-                        {gapsTotal > 0 && (
-                            <button type="button" onClick={() => { setIdleOnly(true); setActorId(""); setView("timeline"); }}
-                                className="mb-2 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-[12px] font-bold" style={{ background: "rgba(210,70,43,.1)", color: C.red }}>
-                                <Clock className="h-4 w-4 shrink-0" />{gapsTotal} gap{gapsTotal === 1 ? "" : "s"} over {IDLE_MIN} min in this period
-                                <ChevronRight className="ml-auto h-4 w-4" />
+                ) : view === "overview" ? (
+                    <div className="space-y-2 pt-1">
+                        <button type="button" onClick={() => openActivity("")}
+                            className="flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition-colors hover:bg-black/[0.025] active:bg-black/[0.04]" style={{ borderColor: C.hair, background: "rgba(11,114,133,0.04)" }}>
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: C.secondary, color: "#fff" }}><Activity className="h-4 w-4" /></span>
+                            <span className="min-w-0 flex-1">
+                                <span className="block text-[13.5px] font-bold tracking-wide" style={{ color: C.ink }}>All activity</span>
+                                <span className="block text-[11.5px] font-medium" style={{ color: C.muted }}>Everything everyone did, newest first</span>
+                            </span>
+                            <ChevronRight className="h-4 w-4 shrink-0" style={{ color: C.muted }} />
+                        </button>
+
+                        {breaksTotal > 0 && (
+                            <button type="button" onClick={() => openActivity("", { idleOnly: true })}
+                                className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[12px] font-bold" style={{ background: "rgba(210,70,43,.1)", color: C.red }}>
+                                <Clock className="h-4 w-4 shrink-0" />{count(breaksTotal, "long break", "long breaks")} in this period. Tap to see them.
+                                <ChevronRight className="ml-auto h-4 w-4 shrink-0" />
                             </button>
                         )}
-                        <ul className="space-y-2">{people.map((p) => <PersonCard key={p.userId} p={p} now={now} onPick={pick} />)}</ul>
-                        <p className="px-1 pt-3 text-[11px] font-medium leading-snug" style={{ color: C.muted }}>
-                            Gaps are counted per salesperson between 9:00 AM and 6:00 PM (IST). A new day starts counting from 9:00 AM.
-                        </p>
+
+                        <ul className="space-y-2">{people.map((p) => <PersonCard key={p.userId} p={p} now={now} onPick={openActivity} />)}</ul>
+
+                        <div className="rounded-xl px-3 py-2.5 text-[11.5px] font-medium leading-relaxed" style={{ background: C.tile, color: C.muted }}>
+                            <b style={{ color: C.ink }}>Enquiries</b> counts each enquiry once, however many updates were added to it.{" "}
+                            <b style={{ color: C.ink }}>Orders</b> are orders punched.{" "}
+                            <b style={{ color: C.ink }}>Updates</b> are all actions in total.{" "}
+                            A <b style={{ color: C.red }}>long break</b> is {IDLE_MIN}+ minutes without any activity between 9:00 AM and 6:00 PM (IST). Each day starts counting from 9:00 AM.
+                        </div>
                     </div>
                 ) : (
                     <div>
                         {selected && (
-                            <div className="mb-1 rounded-2xl border p-3" style={{ borderColor: C.hair, background: "rgba(11,114,133,0.04)" }}>
+                            <div className="mb-2 rounded-2xl border p-3" style={{ borderColor: C.hair, background: "rgba(11,114,133,0.04)" }}>
                                 <div className="flex items-center gap-3">
-                                    <button type="button" onClick={() => setActorId("")} aria-label="Show all salespeople"
-                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-black/5" style={{ background: C.tile, color: C.ink }}>
-                                        <ArrowLeft className="h-4 w-4" />
-                                    </button>
                                     <Avatar name={selected.name} />
                                     <div className="min-w-0 flex-1">
-                                        <div className="truncate text-[13.5px] font-extrabold" style={{ color: C.ink }}>{selected.name}</div>
-                                        {(() => { const s = statusOf(selected, now); return <span className="text-[11.5px] font-bold" style={{ color: s.fg }}>{s.label}</span>; })()}
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="truncate text-[13.5px] font-extrabold" style={{ color: C.ink }}>{selected.name}</span>
+                                            <StatusPill s={statusOf(selected, now)} />
+                                        </div>
+                                        <div className="truncate text-[11.5px] font-medium" style={{ color: C.muted }}>
+                                            {count(selected.total, "update", "updates")} · {selected.lastAny ? `Last activity ${agoText(now, selected.lastAny)}` : "No activity yet"}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="mt-2.5 grid grid-cols-4 gap-1.5">
-                                    <Stat label="Actions" value={selected.total} />
-                                    <Stat label="Enquiries" value={selected.enquiries} />
-                                    <Stat label="Orders" value={selected.orders} />
-                                    <Stat label="Gaps" value={selected.idleCount} red={selected.idleCount > 0} />
-                                </div>
+                                <div className="mt-2.5"><Tiles p={selected} /></div>
                             </div>
                         )}
+
+                        <div className="space-y-2 px-1 pb-1">
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: C.muted }} />
+                                <input value={qInput} onChange={(e) => setQInput(e.target.value)}
+                                    placeholder="Search customer, product, order…" aria-label="Search activity" autoComplete="off"
+                                    className="h-10 w-full rounded-xl border bg-white pl-9 pr-9 text-[13px] font-semibold tracking-wide outline-none focus:ring-2" style={INPUT_RING} />
+                                {qInput && (
+                                    <button type="button" aria-label="Clear search" onClick={() => setQInput("")} className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full hover:bg-black/5" style={{ color: C.muted }}>
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                {[["", "All"], ["enquiry", "Enquiries"], ["order", "Orders"], ["customer", "Customers"]].map(([k, t]) => (
+                                    <button key={k || "all"} type="button" aria-pressed={moduleF === k} onClick={() => setModuleF(k)}
+                                        className="rounded-full px-3 py-1.5 text-[11.5px] font-bold tracking-wide" style={chipStyle(moduleF === k)}>{t}</button>
+                                ))}
+                                <button type="button" aria-pressed={idleOnly} onClick={() => setIdleOnly((v) => !v)}
+                                    className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[11.5px] font-bold tracking-wide"
+                                    style={idleOnly ? { background: C.red, color: "#fff" } : { background: "rgba(210,70,43,.1)", color: C.red }}>
+                                    <Clock className="h-3 w-3" />Long breaks only
+                                </button>
+                            </div>
+
+                            {!actorId && people && people.length > 1 && (
+                                <select value={actorId} onChange={(e) => setActorId(e.target.value)} aria-label="Filter by salesperson"
+                                    className="h-9 w-full rounded-xl border bg-white px-3 text-[12.5px] font-semibold tracking-wide outline-none focus:ring-2" style={INPUT_RING}>
+                                    <option value="">Everyone</option>
+                                    {people.map((p) => <option key={p.userId} value={p.userId}>{p.name}</option>)}
+                                </select>
+                            )}
+                        </div>
+
                         <Timeline token={token} filters={filters} socket={socket} onOpen={openItem} />
                     </div>
                 )}

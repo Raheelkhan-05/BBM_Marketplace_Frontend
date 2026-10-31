@@ -1,10 +1,11 @@
 // components/team/SalesThreadViewer.jsx
-// Read-only view of one salesperson's enquiry thread, opened from the admin's Sales monitor.
+// Read-only view of one salesperson's enquiry thread, opened from the admin's Sales activity.
 // Shows everything the salesperson logged: notes, files, quotations, status and reminder. Refreshes live.
+// "Back" returns to the activity list the admin came from.
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-    X, Loader2, FileText, Download, Receipt, BadgeCheck, AlertCircle, Phone, Mail, Bell, Trophy, XCircle, Eye, User,
+    ArrowLeft, Loader2, FileText, Download, Receipt, BadgeCheck, AlertCircle, Phone, Mail, Bell, Trophy, XCircle, Eye, User,
 } from "lucide-react";
 import { fetchMonitorThread } from "../../utils/salesMonitorApi.js";
 import { useSocket } from "../../context/SocketContext.jsx";
@@ -177,26 +178,28 @@ export default function SalesThreadViewer({ token, id, who, onClose }) {
                 {/* header */}
                 <div className="shrink-0 border-b px-4 pb-3 pt-3 md:px-5" style={{ borderColor: C.hair }}>
                     <div className="mx-auto mb-2 h-1 w-10 rounded-full md:hidden" style={{ background: C.hair }} />
-                    <div className="flex items-start gap-3">
-                        <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                                <h2 className="truncate text-[16px] font-extrabold leading-tight" style={{ color: C.ink }}>{thread?.displayName || "Enquiry"}</h2>
-                                {st && <span className="shrink-0 rounded-full px-2 py-[3px] text-[10.5px] font-bold uppercase leading-none" style={{ background: st.bg, color: st.fg }}>{st.l}</span>}
-                            </div>
-                            {thread && <p className="mt-0.5 truncate text-[12.5px] font-semibold" style={{ color: C.muted }}>{thread.productName} · {thread.quantity} {thread.unit}</p>}
-                            <p className="mt-1 flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: C.muted }}>
-                                <User className="h-3 w-3" />{thread?.salespersonName || who || "Salesperson"}
-                                {thread && <span>· Posted {dt(thread.createdAt)}</span>}
-                            </p>
-                        </div>
-                        <button type="button" onClick={onClose} aria-label="Close"
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition hover:bg-black/5" style={{ background: C.tile, color: C.ink }}>
-                            <X className="h-4 w-4" />
+                    <div className="flex items-center justify-between gap-2">
+                        <button type="button" onClick={onClose} aria-label="Back to activity"
+                            className="inline-flex h-9 items-center gap-1.5 rounded-full pl-2.5 pr-3.5 text-[12.5px] font-bold tracking-wide transition hover:bg-black/10 active:scale-[.98]"
+                            style={{ background: C.tile, color: C.ink }}>
+                            <ArrowLeft className="h-4 w-4" />Back
                         </button>
+                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: "rgba(11,114,133,.1)", color: C.secondary }}>
+                            <Eye className="h-3 w-3" />View only · live
+                        </span>
                     </div>
-                    <p className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: "rgba(11,114,133,.1)", color: C.secondary }}>
-                        <Eye className="h-3 w-3" />View only. Updates appear live.
-                    </p>
+
+                    <div className="mt-3 min-w-0">
+                        <div className="flex items-center gap-2">
+                            <h2 className="truncate text-[16px] font-extrabold leading-tight" style={{ color: C.ink }}>{thread?.displayName || "Enquiry"}</h2>
+                            {st && <span className="shrink-0 rounded-full px-2 py-[3px] text-[10.5px] font-bold uppercase leading-none" style={{ background: st.bg, color: st.fg }}>{st.l}</span>}
+                        </div>
+                        {thread && <p className="mt-0.5 truncate text-[12.5px] font-semibold" style={{ color: C.muted }}>{thread.productName} · {thread.quantity} {thread.unit}</p>}
+                        <p className="mt-1 flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: C.muted }}>
+                            <User className="h-3 w-3" />{thread?.salespersonName || who || "Salesperson"}
+                            {thread && <span>· Posted {dt(thread.createdAt)}</span>}
+                        </p>
+                    </div>
                 </div>
 
                 {/* body */}
