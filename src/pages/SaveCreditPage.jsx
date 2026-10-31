@@ -14,6 +14,7 @@ import { useSocket } from "../context/SocketContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import useCreditCenter from "../hooks/useCreditCenter.js";
 import { fmtINR, shortDate, timeLabel, dayLabel } from "../components/credit/tokens.js";
+import { track } from "../lib/analytics.js";
 import "../components/save/save-credit.css";
 
 /* ---------- buyer-side state of one seller's credit (unchanged logic) ---------- */
@@ -432,7 +433,7 @@ export default function SaveCreditPage() {
                                     <ApprovedCard
                                         key={seller.sellerId} seller={seller} st={st}
                                         busy={!!(seller.credit?.id && c.busy[`c:${seller.credit.id}`])}
-                                        onAsk={() => c.askIncrease(seller.credit)}
+                                        onAsk={() => { track("credit_limit_increase_clicked", { source: "credit_page" }); c.askIncrease(seller.credit); }}
                                     />
                                 ))}
                             </div>
@@ -449,7 +450,7 @@ export default function SaveCreditPage() {
                                 <SellerRow
                                     key={seller.sellerId} seller={seller} st={st}
                                     busy={!!c.busy[`s:${seller.sellerId}`]}
-                                    onRequest={() => c.requestFrom(seller)}
+                                    onRequest={() => { track("credit_request_clicked", { source: "credit_page" }); c.requestFrom(seller); }}
                                 />
                             ))}
                         </div>

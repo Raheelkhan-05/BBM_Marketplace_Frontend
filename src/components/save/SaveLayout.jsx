@@ -12,6 +12,7 @@ import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { ShoppingCart } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import SmartLink from "../SmartLink.jsx";
+import { track } from "../../lib/analytics.js";
 import SaveTabs from "./SaveTabs.jsx";
 import { goTo } from "../grow/scrollTo.js";
 import { MENU_ROUTES } from "../menuItems.js";
@@ -105,7 +106,7 @@ function SavePublicHeader() {
                     ))}
                 </nav>
 
-                <Link className="btn" to={MENU_ROUTES.home}>Start buying</Link>
+                <Link className="btn" to={MENU_ROUTES.home} onClick={() => track("buyer_cta_clicked", { placement: "header" })}>Start buying</Link>
             </div>
         </header>
     );

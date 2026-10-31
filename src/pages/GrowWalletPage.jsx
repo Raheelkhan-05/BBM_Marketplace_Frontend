@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchWalletStatus, fetchWalletTransactions, fetchWalletPayments } from "../utils/walletApi.js";
 import { startWalletPayment, redirectToGateway } from "../utils/paymentsApi.js";
+import { track, safeCode } from "../lib/analytics.js";
 import Ic from "../components/growSeller/Ic.jsx";
 import { Empty } from "../components/growSeller/ui.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
@@ -216,7 +217,17 @@ export default function GrowWalletPage() {
         if (Number(raw) < 1 || Number(raw) > 1000000) { setAmountError("Amount must be between ₹1 and ₹10,00,000."); return; }
 
         setPaying(true);
+        track("wallet_topup_started", {
+            amount: Number(raw),
+            billing_mode: wallet?.billing_mode || null,
+            was_blocked: !!wallet?.is_blocked,
+        });
         const res = await startWalletPayment(token, raw);
+        if (res?.success) {
+            track("wallet_topup_payment_initiated", { amount: Number(raw) });
+        } else {
+            track("wallet_topup_failed", { stage: "start_payment", code: safeCode(res?.code) });
+        }
         if (!res?.success || !redirectToGateway(res.redirectUrl)) {
             setPaying(false);
             setAmountError(res?.message || "Couldn't start the payment. Please try again.");

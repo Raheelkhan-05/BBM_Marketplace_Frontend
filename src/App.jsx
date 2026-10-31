@@ -30,6 +30,7 @@ import GrowOrderBookDetailPage from "./pages/GrowOrderBookDetailPage.jsx";
 import SalesOrderBookDetailPage from "./pages/SalesOrderBookDetailPage.jsx";
 import SalesOrderBookPage from "./pages/SalesOrderBookPage.jsx";
 import GrowOrdersShell from "./components/growSeller/GrowOrdersShell.jsx";
+import AnalyticsBridge from "./components/analytics/AnalyticsBridge.jsx";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -161,6 +162,7 @@ function App() {
         <BrowserRouter>
           <ScrollToTop />
           <OnboardingGate />
+          <AnalyticsBridge />
           {/*
             InstallAppPrompt, PendingSubmissionWatcher, PendingPaymentGate and
             ContactsBootstrapper are app-wide background features unrelated

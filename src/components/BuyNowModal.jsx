@@ -65,6 +65,7 @@ import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
 import { resizedImageUrl } from "../utils/imageUrl";
 import { useOrderResume } from "../context/OrderResumeContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
+import { track, safeCode } from "../lib/analytics.js";
 
 /* ============================================================
    Pure logic — unchanged
@@ -549,6 +550,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const pickPayMode = (mode) => {
         payModeChoiceRef.current = mode;
         setOrderMode(mode);
+        track("payment_method_selected", { method: mode });
     };
 
     // The mode to use for a "standard order" (i.e. when leaving sample mode).
@@ -586,6 +588,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         setRequestingIncrease(false);
         if (!res?.success) { setCreditAskError(res?.message || "Couldn't send the request for a higher limit."); return; }
         setCreditStatus((prev) => (prev ? { ...prev, limit_increase_request_message_id: "pending" } : prev));
+        track("credit_limit_increase_requested", { source: "buy_modal" });
     };
 
     // Quick "Ask for credit" from the footer. requestCredit takes the seller's USER id
@@ -614,6 +617,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         setCreditStatus((prev) => ({ ...(prev || {}), status: "pending" }));
         setCreditState("ready");
         setToast("Credit request sent to the seller");
+        track("credit_requested", { source: "buy_modal" });
         await loadCreditStatus({ keepIfEmpty: true });
         setRequestingCredit(false);
     };
@@ -627,6 +631,16 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
             return local ? normalizeQuote(local) : prev;
         });
     }, [seller, quantity, basis, isSample, effectivePincode, effectiveState, deferPriceUntilConfirmed]);
+
+    useEffect(() => {
+        track("buy_modal_opened", {
+            product_id: product?.id ? String(product.id) : null,
+            has_sample: !!seller?.sampleAvailable,
+            stock_type: seller?.stockType || null,
+            resumed: !!(resumeIntentProp || location.state?.resumeIntent),
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         const lenis = window.lenis;
@@ -803,10 +817,15 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         setPendingPay({ orderId, orderNumber: orderNumber || null });
         const pay = await startOrderPayment(token, orderId);
         if (!pay?.success || !pay.redirectUrl) {
+            track("checkout_failed", { flow: "buy_now", stage: "start_payment", code: safeCode(pay?.code) });
             setSubmitting(false);
             setError(pay?.message || "Couldn't start the payment. Please try again.");
             return;
         }
+        track("payment_initiated", {
+            flow: "buy_now", item_count: 1, seller_count: 1,
+            cart_value: Math.round(Number(quote?.subtotal) || 0),
+        });
         setRedirecting(true);
         if (!redirectToGateway(pay.redirectUrl)) {
             setRedirecting(false);
@@ -834,6 +853,10 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
         const routeOptionId = override.routeOptionId ?? transportPreference?.routeOptionId;
         if (!routeOptionId) return setError("Please select a transport preference.");
+        track("checkout_started", {
+            flow: "buy_now", order_type: orderMode, item_count: 1, seller_count: 1,
+            cart_value: Math.round(Number(quote?.subtotal) || 0),
+        });
 
         setSubmitting(true);
         const confirmed = await awaitQuote();
@@ -861,6 +884,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
             transportRouteOptionId: routeOptionId,
         });
         if (!res?.success) {
+            track("checkout_failed", { flow: "buy_now", stage: "create_order", code: safeCode(res?.code) });
             setSubmitting(false);
             return setError(res?.message || "Couldn't place the order.");
         }
@@ -910,7 +934,15 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         setSubmitting(true);
         const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
         setSubmitting(false);
-        if (!res?.success) return setError(res?.message || "Couldn't add to cart.");
+        if (!res?.success) {
+            track("add_to_cart_failed", { code: safeCode(res?.code) });
+            return setError(res?.message || "Couldn't add to cart.");
+        }
+        track("add_to_cart", {
+            purchase_basis: basis,
+            quantity: Number(quantity),
+            cart_value: Math.round(Number(finalQuote?.subtotal) || 0),
+        });
         onClose();
         navigate("/buy/cart");
     };
@@ -1758,6 +1790,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                     onClose={() => { autoPlaceRef.current = false; setShowTransportModal(false); setTransportRemovedNotice(null); }}
                     onAddressChange={() => { /* address now lives in BuyerAddressContext */ }}
                     onResolved={(result) => {
+                        track("transport_resolved", { flow: "buy_now", pending: !!result?.pending });
                         setShowTransportModal(false);
                         setTransportRemovedNotice(null);
                         if (result?.pending) {

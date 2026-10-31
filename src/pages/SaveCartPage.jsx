@@ -20,6 +20,7 @@ import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../util
 import { startGroupPayment, redirectToGateway } from "../utils/paymentsApi.js";
 import { fetchOrderConstraints } from "../utils/api.js";
 import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
+import { track, safeCode } from "../lib/analytics.js";
 import { useOrderResume } from "../context/OrderResumeContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 import AddressBook from "../components/shipping/AddressBook.jsx";
@@ -28,6 +29,7 @@ import { BuyerAddressProvider, useBuyerAddress } from "../context/BuyerAddressCo
 import { useCart } from "../context/CartContext.jsx";
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
+import posthog from "../lib/posthog.js";
 import { routeTransportModeLabel } from "../../shared/routeTransportFields.js";
 import "../components/save/save-cart.css";
 
@@ -274,6 +276,14 @@ function CartPageInner() {
     }, [token, setCountOptimistic]);
 
     useEffect(() => { load(); }, [load]);
+
+    // Analytics: one cart_viewed per visit (counts only, no product names).
+    const cartViewedRef = useRef(false);
+    useEffect(() => {
+        if (loading || cartViewedRef.current || !items.length) return;
+        cartViewedRef.current = true;
+        track("cart_viewed", { item_count: items.length, seller_count: new Set(items.map((i) => i.seller_id)).size });
+    }, [loading, items]);
 
     // Forget deselections for items that are no longer in the cart.
     useEffect(() => {
@@ -578,6 +588,9 @@ function CartPageInner() {
             return;
         }
 
+        const checkoutProps = { flow: "cart", code: safeCode(res?.code), code: safeCode(pay?.code), item_count: selectedCount, seller_count: selectedSellerIds.length, cart_value: Math.round(grandTotal) };
+        track("checkout_started", checkoutProps);
+
         setChecking(true);
         let navigating = false;
         try {
@@ -594,6 +607,7 @@ function CartPageInner() {
                 submissionIds: selectedItems.map((it) => it.submission_id),
             });
             if (!res?.success) {
+                track("checkout_failed", { stage: "create_order", code: res?.code || null });
                 setError(res?.message || "Couldn't place the order.");
                 if (res?.code === "CART_CHANGED") load(); // cart moved under us: refresh it
                 return;
@@ -602,7 +616,12 @@ function CartPageInner() {
             // The order group exists (awaiting payment). Send the buyer to JioPay for the selected items.
             // If this step fails, tapping the button again retries.
             const pay = await startGroupPayment(token, res.orderGroupId);
-            if (!pay?.success) { setError(pay?.message || "Couldn't start the payment. Tap the button again to retry."); return; }
+            if (!pay?.success) {
+                track("checkout_failed", { stage: "start_payment", code: pay?.code || null });
+                setError(pay?.message || "Couldn't start the payment. Tap the button again to retry.");
+                return;
+            }
+            track("payment_initiated", checkoutProps);
             navigating = redirectToGateway(pay.redirectUrl);
             if (!navigating) setError("Couldn't open the payment page. Tap the button again to retry.");
         } finally {

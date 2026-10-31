@@ -12,6 +12,8 @@ import {
 import { useAuth } from "../context/AuthContext.jsx";
 import { AUTH_THEME_CSS, AuthHeader, useAuthTheme } from "../components/authTheme.jsx";
 import SmartLink from "../components/SmartLink.jsx";
+import { track } from "../lib/analytics.js";
+import posthog from "../lib/posthog.js";
 import {
   requestOtp, verifyOtp, completeProfile,
   requestContactOtp, verifyContactOtp, lookupGstin,
@@ -928,7 +930,7 @@ function Landing({
         <div className="w">
           <span><b>BBM</b> · People • Product • Partnership</span>
           <span>
-            <a href="/terms">Terms</a> · <a href="/privacy-policy">Privacy</a> · <a href="/refund-policy">Refunds</a> · <a href="/contact">Contact</a> · <a href="/services">Services</a> · <a href="/pricing">Pricing</a>
+            <a href="/terms">Terms</a> · <a href="/privacy-policy">Privacy</a> · <a href="/refund-policy">Refunds</a> · <a href="/contact">Contact</a> · <a href="/services">Services</a>  · <a href="/pricing">Pricing</a> · <button type="button" className="lnk" style={{ padding: 0, font: "inherit" }} onClick={() => window.dispatchEvent(new Event("bbm:open-consent"))}>Cookie settings</button>
           </span>
         </div>
       </footer>
@@ -1020,6 +1022,7 @@ export default function AuthPage() {
     withLoading(async () => {
       const res = await requestOtp(value);
       if (!res.success) return setError(res.message || "Couldn't send the code. Try again.");
+      track("login_otp_requested", { channel: res.channel || detectChannel(value) });
       setIdentifier(value);
       setLoginType(res.channel || detectChannel(value));
       setStep("otp");
@@ -1033,6 +1036,7 @@ export default function AuthPage() {
         const res = await verifyOtp(identifier, code);
         if (!res.success) {
           loginFlowRef.current = false;
+          track("login_otp_failed", { channel: detectChannel(identifier) });
           return setError(res.message || "That code didn't match. Check and try again.");
         }
         setToken(res.token);
@@ -1040,6 +1044,7 @@ export default function AuthPage() {
         // expects, or isLoggedIn (and every protected route) stays false.
         await setAuthSession?.(res.token);
         setIsNewUser(res.isNewUser);
+        track("login_otp_verified", { is_new_user: !!res.isNewUser, channel: detectChannel(identifier) });
 
         // `isNewUser` comes straight from the server (onboarding_step !==
         // "done"), so it is the single source of truth here.
@@ -1049,6 +1054,7 @@ export default function AuthPage() {
         } else {
           // Fully set-up user: never show the onboarding screen at all.
           // Keep loginFlowRef true; we're leaving this page.
+          track("login_completed", { channel: detectChannel(identifier) });
           setRedirecting(true);
           finishAndRedirect();
         }
@@ -1076,6 +1082,7 @@ export default function AuthPage() {
     withLoading(async () => {
       const res = await completeProfile(token, payload);
       if (!res.success) return setError(res.message || "Couldn't save your details. Try again.");
+      track("signup_completed", { method: loginType });
       await refreshProfile?.();
       finishAndRedirect();
     });
@@ -1391,6 +1398,7 @@ function OnboardingPanel({ token, loginType, profile, onSubmit, loading, serverE
     setGstData(res.data);
     setDisplayName((prev) => prev || res.data.trade_name || res.data.legal_name);
     setGstStage("found");
+    track("onboarding_gstin_verified");
   };
 
   const nameOk = name.trim().length >= 2;

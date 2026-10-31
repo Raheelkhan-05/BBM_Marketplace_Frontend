@@ -8,6 +8,7 @@ import { House } from "lucide-react";
 import { goTo } from "./scrollTo.js";
 import PublicFooter from "../PublicFooter.jsx";
 import SmartLink from "../SmartLink.jsx";
+import { track } from "../../lib/analytics.js";
 import "./grow.css";
 // import BottomNavStrip from "../BottomNavStrip.jsx";
 
@@ -139,7 +140,7 @@ export default function GrowLayout() {
                         </nav>
                     )}
 
-                    <Link className="btn" to="/sell?start=1">Start selling</Link>
+                    <Link className="btn" to="/sell?start=1" onClick={() => track("seller_cta_clicked", { placement: "header" })}>Start selling</Link>
                 </div>
             </header>
 

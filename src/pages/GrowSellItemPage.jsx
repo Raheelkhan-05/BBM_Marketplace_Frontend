@@ -13,6 +13,7 @@ import { fetchSellerAccessStatus, createSellerListingForBrand, fetchBrandItemDet
 import { Wizard } from "./GrowStartPage.jsx";
 import GrowCheckSkeleton from "../components/grow/GrowCheckSkeleton.jsx";
 import { useDropGuard } from "../components/grow/growUi.js";
+import posthog from "../lib/posthog.js";
 import "../components/grow/grow-sell-item.css"; // keep AFTER the GrowStartPage import (its CSS loads first)
 
 export default function GrowSellItemPage() {
@@ -162,7 +163,12 @@ export default function GrowSellItemPage() {
                 onExit={exit}
                 onNeedOnboarding={() => setAccess({ canPublish: false, reason: "SELLER_NOT_ONBOARDED" })}
                 onNeedLogin={async () => { await clearSession(); setAccess({ canPublish: false, reason: "NOT_AUTHENTICATED" }); }}
-                onSubmitted={(_card, res) => setDone(res || {})}
+                onSubmitted={(_card, res) => {
+                    posthog?.capture("seller_listing_submitted", {
+                        listing_status: res?.submission?.review_status || "submitted",
+                    });
+                    setDone(res || {});
+                }}
             />
         );
     }

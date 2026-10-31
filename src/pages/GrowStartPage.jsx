@@ -41,6 +41,7 @@ import GrowCheckSkeleton from "../components/grow/GrowCheckSkeleton.jsx";
 import { safeFrom, isEnquiryPath } from "../components/grow/growReturn.js";
 import { useDrop, useDropGuard } from "../components/grow/growUi.js";
 import { peekAccess, loadAccess, setAccess } from "../components/grow/growAccess.js";
+import { track, safeCode } from "../lib/analytics.js";
 import "../components/grow/grow-start.css";
 import "../components/grow/grow-extras.css"; // keep AFTER grow-start.css
 import "../components/grow/grow-access.css"; // after grow-extras.css
@@ -125,6 +126,7 @@ export default function GrowStartPage() {
 
     const say = (m) => { setToast(m); clearTimeout(tt.current); tt.current = setTimeout(() => setToast(""), 2800); };
     useEffect(() => { toTop(); }, [view]);
+    useEffect(() => { toTop(); track("seller_flow_step", { step: view }); }, [view]);
 
     // Prefetch access status so "Start selling" resolves instantly.
     useEffect(() => { if (token && !needsOnboarding) loadAccess(token); }, [token, needsOnboarding]);
@@ -159,6 +161,7 @@ export default function GrowStartPage() {
     };
 
     const route = (a) => {
+        track("seller_access_checked", { can_publish: !!a?.canPublish, reason: a?.reason || null, seller_status: a?.sellerStatus || null });
         if (a?.canPublish) return finishFlow();
         if (a?.reason === "SELLER_NOT_ONBOARDED") return setView("onb");
         if (a?.reason === "SELLER_NOT_APPROVED") {
@@ -201,7 +204,8 @@ export default function GrowStartPage() {
         <div className="gs">
             <div className={`app${view === "land" ? " wide" : ""}${hasBar ? " hb" : ""}`}>
                 {view === "land" && (
-                    <Landing onStart={start}
+                    // <Landing onStart={start}
+                    <Landing onStart={() => { track("seller_start_clicked", { logged_in: !!isLoggedIn }); start(); }}
                         backLabel={resumeBack ? (returnTo.startsWith("/sell/enquiry/") ? "Back to the enquiry" : "Back to enquiries") : ""}
                         onBack={resumeBack ? () => nav(returnTo, { replace: true }) : null} />
                 )}
@@ -213,8 +217,8 @@ export default function GrowStartPage() {
                 )}
                 {view === "prod" && !sellPrefill && !pick && (
                     <GrowProductPicker token={token} say={say} brand={brandSel} setBrand={setBrandSel} onExit={exitWizard}
-                        onExisting={(item) => setPick({ kind: "existing", item })}
-                        onNew={(identity) => setPick({ kind: "new", identity })} />
+                        onExisting={(item) => { track("listing_product_chosen", { kind: "existing" }); setPick({ kind: "existing", item }); }}
+                        onNew={(identity) => { track("listing_product_chosen", { kind: "new" }); setPick({ kind: "new", identity }); }} />
                 )}
                 {view === "prod" && (sellPrefill || pick) && (
                     <Wizard key={pick?.item?.id || pick?.identity?.productName || "enquiry"}
@@ -311,12 +315,14 @@ function Onboarding({ token, profile, refreshProfile, onDone, say }) {
     const [open, setOpenRaw] = useState("gst");
     const setOpen = (id) => { // open a card and bring it to the top of the screen
         setOpenRaw(id);
+        if (id) track("seller_onboarding_section_opened", { section: id });
         if (id) setTimeout(() => document.getElementById(`ob-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 90);
     };
     const [busy, setBusy] = useState(false);
     const [logoBusy, setLogoBusy] = useState(false);
     const [pinMsg, setPinMsg] = useState("");
     const hydrated = useRef(false);
+    useEffect(() => { track("seller_onboarding_started"); }, []);
     const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
     const toggle = (k, v) => setF((x) => ({ ...x, [k]: x[k].includes(v) ? x[k].filter((i) => i !== v) : [...x[k], v] }));
 
@@ -391,10 +397,11 @@ function Onboarding({ token, profile, refreshProfile, onDone, say }) {
             const s1 = await saveSellerProgress(token, { ...form, onboarding_step: "review" });
             const merged = { ...form, ...(s1?.success ? s1.seller : {}), ...f, logo_url: f.logo_url || null };
             const b = await saveSellerBankDetails(token, { account_number: f.bank_account_number, ifsc_code: f.bank_ifsc_code });
-            if (!b?.success) return say(b?.message || "Could not save bank details.");
+            if (!b?.success) { track("seller_onboarding_failed", { stage: "bank_details" }); return say(b?.message || "Could not save bank details."); }
             const r = await submitSellerOnboarding(token, merged);
-            if (!r?.success) return say(r?.message || "Could not submit. Please check the required fields.");
+            if (!r?.success) { track("seller_onboarding_failed", { stage: "submit" }); return say(r?.message || "Could not submit. Please check the required fields."); }
             await refreshProfile?.();
+            track("seller_onboarding_submitted");
             onDone(r.seller);
         } finally { setBusy(false); }
     };
@@ -557,6 +564,7 @@ function CertRow({ c, busy, onRename, onReplace, onRemove }) {
 // onSubmitted(card, res) receives the raw API response as a 2nd argument.
 export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSubmitted, locked = null, prefill = null, identity = null, exitLabel = "", enquiryId = null, enquiryBuyer = null, submitFn = null, onStep, quiet = false }) {
     const { seller } = useSellerProfileStatus(token);
+    const wizardMode = locked ? "locked" : prefill ? "enquiry" : identity ? "new_product" : "manual";
     const [P, setP] = useState(() => (locked ? lockedBlank(locked) : prefill ? prefillBlank(prefill) : identity ? identityBlank(identity) : blank()));
     const [ps, setPs] = useState(0);
     const [busy, setBusy] = useState(false);
@@ -567,7 +575,7 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
     const [dpMsg, setDpMsg] = useState("");
     const india = useRef(null);
     const dpInit = useRef(false);
-    useEffect(() => { toTop(); onStep?.(ps); }, [ps]); // eslint-disable-line
+    useEffect(() => { toTop(); onStep?.(ps); track("listing_step_viewed", { step: ps + 1, mode: wizardMode }); }, [ps]); // eslint-disable-line
     const set = (k, v) => setP((x) => ({ ...x, [k]: v }));
     const fixedEnq = !locked && !!prefill; // name / brand / unit fixed to the enquiry
     const fixedImg = fixedEnq && !!prefill.image; // the enquiry's image is locked too
@@ -969,11 +977,24 @@ export function Wizard({ token, say, onExit, onNeedOnboarding, onNeedLogin, onSu
                 : payload.genericProductBrandId ? await createListingForExistingBrand(token, payload) : await createSellerSubmission(token, payload);
             if (!res?.success) {
                 const code = res?.code;
+                track("listing_submit_failed", { mode: wizardMode, code: safeCode(code) });
                 if (code === "SELLER_NOT_ONBOARDED") return onNeedOnboarding();
                 if (code === "NOT_AUTHENTICATED" || res?.status === 401) { say("Please sign in to submit your listing."); return onNeedLogin(); }
                 if (code === "SELLER_NOT_APPROVED") return say(res.sellerStatus === "pending_review" ? "Your shop is still under review. We will notify you once it is approved." : "Your shop is not approved yet.");
                 return say(res?.message || "Could not submit. Please check the required fields.");
             }
+            track("listing_submitted", {
+                mode: wizardMode,
+                from_enquiry: !!(fixedEnq && enquiryId),
+                live: res?.submission?.review_status === "approved",
+                has_slabs: P.sl.length > 0,
+                sample_available: !!P.sm,
+                price_basis: P.basis || null,
+                stock_type: P.ful || null,
+                delivery_mode: P.dl?.mode || null,
+                buyer_access: P.ba?.mode || null,
+                promo_services: Array.isArray(P.ms) ? P.ms.length : 0,
+            });
             onSubmitted({ name: P.n.trim(), img: P.im[0], meta: [P.nb ? "No brand" : P.b, pk ? `₹${pk.toLocaleString("en-IN")} / pack` : ""].filter(Boolean).join(" · ") }, res);
         } finally { setBusy(false); }
     };

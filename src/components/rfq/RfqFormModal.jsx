@@ -7,6 +7,7 @@ import RfqFormFields from "./RfqFormFields.jsx";
 import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
 import { createRfq, updateRfq } from "../../utils/rfqApi.js";
 import { EMPTY_RFQ_FORM, validateRfqForm, toPayload, fromDto } from "../../utils/rfqUtils.js";
+import posthog from "../../lib/posthog.js";
 
 function useSavedAddress() {
     let addr = null;
@@ -60,6 +61,7 @@ export default function RfqFormModal({ mode = "create", initial = null, token, o
             const payload = toPayload(form);
             const res = mode === "edit" ? await updateRfq(token, initial.id, payload) : await createRfq(token, payload);
             if (!res.success) { setError(res.message || "Couldn't submit. Please try again."); return; }
+            posthog?.capture(mode === "edit" ? "rfq_resubmitted" : "rfq_submitted");
             onSubmitted?.(res);
         } finally {
             setSubmitting(false);

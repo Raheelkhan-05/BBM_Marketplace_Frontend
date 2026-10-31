@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../utils/supabaseClient.js";
 import { fetchMe } from "../utils/api.js";
+import posthog from "../lib/posthog.js";
 
 const AuthContext = createContext(null);
 const DEV_TOKEN_KEY = "bbm_dev_bypass_token";
@@ -27,6 +28,7 @@ export function AuthProvider({ children }) {
   // Lazy initializer — runs once, synchronously, on first render.
   const [session, setSession] = useState(readStoredSession);
   const [profile, setProfile] = useState(null);
+  const identifiedUserIdRef = useRef(null);
 
   // Only tracks whether the PROFILE fetch for an already-known session is
   // still in flight. A guest (no stored token) starts with this already false.
@@ -102,6 +104,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const clearSession = useCallback(async () => {
+    posthog?.reset();
+    identifiedUserIdRef.current = null;
     localStorage.removeItem(DEV_TOKEN_KEY);
     localStorage.removeItem(AUTH_TOKEN_KEY);
     setSession(null);
@@ -110,6 +114,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    posthog?.reset();
+    identifiedUserIdRef.current = null;
     localStorage.removeItem(DEV_TOKEN_KEY);
     localStorage.removeItem(AUTH_TOKEN_KEY);
     await supabase.auth.signOut();
@@ -132,6 +138,31 @@ export function AuthProvider({ children }) {
     setSession({ access_token: token });
     return loadProfile(token);
   }, [loadProfile]);
+
+  // The profile is resolved after login and on a restored session. Identifying
+  // here attributes all later browser captures and errors without repeating it
+  // at individual pages or event call sites.
+  useEffect(() => {
+    const distinctId = profile?.id ? String(profile.id) : null;
+
+    if (!distinctId) {
+      if (identifiedUserIdRef.current) {
+        posthog?.reset();
+        identifiedUserIdRef.current = null;
+      }
+      return;
+    }
+
+    if (identifiedUserIdRef.current === distinctId) return;
+
+    if (identifiedUserIdRef.current) posthog?.reset();
+
+    posthog?.identify(distinctId, {
+      ...(profile.email ? { email: profile.email } : {}),
+      ...(profile.team?.role ? { role: profile.team.role } : {}),
+    });
+    identifiedUserIdRef.current = distinctId;
+  }, [profile]);
 
   useEffect(() => {
     let mounted = true;

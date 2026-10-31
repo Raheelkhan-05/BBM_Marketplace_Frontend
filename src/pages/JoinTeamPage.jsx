@@ -8,6 +8,7 @@ import { ArrowRight, Loader2, Lock, Users, ShieldCheck, AlertCircle, Mail, Phone
 import { useAuth } from "../context/AuthContext.jsx";
 import { AUTH_THEME_CSS, AuthHeader, useAuthTheme } from "../components/authTheme.jsx";
 import { fetchInviteInfo, requestInviteOtp, acceptTeamInvite } from "../utils/teamApi.js";
+import { track, safeCode } from "../lib/analytics.js";
 
 const RESEND_SECONDS = 30;
 
@@ -73,6 +74,8 @@ export default function JoinTeamPage() {
             const res = await fetchInviteInfo(inviteToken);
             if (!live) return;
             if (!res.success) { setFatal(res.message || "This invite link isn't valid."); setStage("invalid"); return; }
+            if (!res.success) { track("team_invite_invalid"); setFatal(res.message || "This invite link isn't valid."); setStage("invalid"); return; }
+            track("team_invite_viewed", { role: res.role || null, channel: res.channel || null });
             setInfo(res);
             setStage("ready");
         })();
@@ -102,6 +105,7 @@ export default function JoinTeamPage() {
         sending.current = false; setBusy(false);
         if (!res.success) { setError(res.message || "Couldn't send the codes. Try again."); return; }
         setCode(""); setExtraCode(""); setExtraSent(res.extra || null);
+        track("team_invite_codes_sent", { channel: invitedByEmail ? "email" : "phone" });
         setSeconds(RESEND_SECONDS); setStage("otp");
     };
 
@@ -112,7 +116,8 @@ export default function JoinTeamPage() {
         setBusy(true); setError("");
         const value = invitedByEmail ? cleanPhone(extra) : extra.trim().toLowerCase();
         const res = await acceptTeamInvite(inviteToken, { otp: code, name: name.trim(), extraValue: value, extraOtp: extraCode });
-        if (!res.success) { setBusy(false); setError(res.message || "Couldn't join the team. Try again."); return; }
+        if (!res.success) { track("team_invite_failed", { code: safeCode(res.code) }); setBusy(false); setError(res.message || "Couldn't join the team. Try again."); return; }
+        track("team_invite_accepted", { role: res.role || null });
 
         setStage("joining");
         try {

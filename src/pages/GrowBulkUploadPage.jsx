@@ -28,6 +28,7 @@ import { toTop } from "../components/grow/GrowAuthFlow.jsx";
 import GrowCheckSkeleton from "../components/grow/GrowCheckSkeleton.jsx";
 import BulkItemForm from "../components/grow/BulkItemForm.jsx";
 import { useDrop, useDropGuard } from "../components/grow/growUi.js";
+import posthog from "../lib/posthog.js";
 import "../components/grow/grow-start.css";
 import "../components/grow/grow-extras.css"; // keep AFTER grow-start.css
 import "../components/grow/grow-access.css";
@@ -326,6 +327,7 @@ export default function GrowBulkUploadPage() {
             }
 
             dirty.current.delete(cur.id);
+            posthog?.capture("seller_bulk_listing_submitted");
             markBulkItem(token, cur.id, { status: "submitted", submissionId: res.submission?.id || null });
             const list = items.map((i) => (i.id === cur.id ? { ...i, status: "submitted" } : i));
             setItems(list);

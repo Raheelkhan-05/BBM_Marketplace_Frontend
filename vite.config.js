@@ -8,6 +8,10 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png"],
+      workbox: {
+        // Never answer these navigations with index.html.
+        navigateFallbackDenylist: [/^\/ingest/, /^\/sitemap\.xml$/],
+      },
       manifest: {
         name: "BBM Marketplace",
         short_name: "BBM Marketplace",
@@ -19,24 +23,31 @@ export default defineConfig({
         start_url: "/",
         scope: "/",
         icons: [
-          {
-            src: "/icons/icon-192.png",
-            sizes: "192x192",
-            type: "image/png",
-          },
-          {
-            src: "/icons/icon-512.png",
-            sizes: "512x512",
-            type: "image/png",
-          },
-          {
-            src: "/icons/icon-512-maskable.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "maskable",
-          },
+          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: "/icons/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
       },
     }),
   ],
+  // Local dev only: mirrors the /ingest rewrites in vercel.json. Order matters (specific first).
+  server: {
+    proxy: {
+      "/ingest/static": {
+        target: "https://us-assets.i.posthog.com",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/ingest/, ""),
+      },
+      "/ingest/array": {
+        target: "https://us-assets.i.posthog.com",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/ingest/, ""),
+      },
+      "/ingest": {
+        target: "https://us.i.posthog.com",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/ingest/, ""),
+      },
+    },
+  },
 });

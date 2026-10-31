@@ -10,6 +10,7 @@ import {
 import { fetchProductDetail } from "../utils/api";
 import ImageLightbox from "../components/ImageLightbox";
 import { FONT_BODY } from "./ui";
+import { track } from "../lib/analytics.js";
 
 export default function ProductDetailPage() {
     const { id } = useParams();
@@ -35,6 +36,13 @@ export default function ProductDetailPage() {
                 setSpecSummary(Array.isArray(res.specSummary) ? res.specSummary : []);
                 setSpecSampleSize(res.specSampleSize || 0);
                 setSellerCount(res.sellerCount || 0);
+                track("product_viewed", {
+                    product_id: String(res.product?.id ?? id),
+                    product_name: String(res.product?.name || "").slice(0, 120),
+                    category: res.product?.subcategory?.category?.name || null,
+                    subcategory: res.product?.subcategory?.name || null,
+                    seller_count: res.sellerCount || 0,
+                });
             } else {
                 setNotFound(true);
             }
@@ -194,7 +202,7 @@ export default function ProductDetailPage() {
                     subtitle="Get best quotes from verified sellers"
                     gradient="from-[#0B8A93] to-[#047084]"
                     points={["Live quotes from multiple sellers", "Compare price, delivery & quality", "100% secure & best price guarantee"]}
-                    onClick={() => {/* wire to RFQ / seller-list flow */ }}
+                    onClick={() => { track("product_cta_clicked", { cta: "buy", placement: "top", product_id: String(id) }); /* wire to RFQ / seller-list flow */ }}
                 />
                 <CTACard
                     icon={Tag}
@@ -202,7 +210,8 @@ export default function ProductDetailPage() {
                     subtitle="List your product and reach buyers"
                     gradient="from-[#F15A24] to-[#d2462b]"
                     points={["Reach thousands of serious buyers", "Showcase your stock & brand", "Grow your business on BBM marketplace"]}
-                    onClick={() => navigate("/seller/onboarding")}
+                    onClick={() => { track("product_cta_clicked", { cta: "sell", placement: "top", product_id: String(id) }); navigate("/seller/onboarding"); }}
+
                 />
             </div>
 
@@ -337,11 +346,11 @@ export default function ProductDetailPage() {
                     <IconAction icon={Share2} label="Share" />
                 </div>
                 <div className="flex flex-1 gap-1.5 sm:flex-initial sm:gap-2">
-                    <button className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#047084] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-[#035c6d] sm:flex-initial sm:gap-2 sm:rounded-xl sm:px-5 sm:py-2.5 sm:text-[13px]">
+                    <button onClick={() => track("product_cta_clicked", { cta: "buy", placement: "bottom", product_id: String(id) })} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#047084] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-[#035c6d] sm:flex-initial sm:gap-2 sm:rounded-xl sm:px-5 sm:py-2.5 sm:text-[13px]">
                         <ShoppingCart className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Buy
                     </button>
                     <button
-                        onClick={() => navigate("/seller/onboarding")}
+                        onClick={() => { track("product_cta_clicked", { cta: "sell", placement: "top", product_id: String(id) }); navigate("/seller/onboarding"); }}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#F15A24] px-3 py-2 text-[11px] font-bold text-white transition hover:bg-[#d2462b] sm:flex-initial sm:gap-2 sm:rounded-xl sm:px-5 sm:py-2.5 sm:text-[13px]">
                         <Tag className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Sell
                     </button>

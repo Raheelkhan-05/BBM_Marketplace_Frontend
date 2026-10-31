@@ -15,6 +15,7 @@ import { useCart } from "../context/CartContext.jsx";
 import {
     fetchPaymentStatus, startOrderPayment, startGroupPayment, redirectToGateway, takePaymentReturnPath,
 } from "../utils/paymentsApi.js";
+import { track } from "../lib/analytics.js";
 
 const REF_RE = /^BBM[0-9A-F]{17}$/;
 const POLL_MS = 2500;
@@ -155,6 +156,22 @@ export default function PaymentReturnPage() {
         }
     }, [payment, cart]);
 
+    // One analytics event per payment outcome. The sessionStorage guard stops a page refresh from
+    // counting it twice. The payment reference itself is never sent to analytics.
+    useEffect(() => {
+        if (!payment || !(payment.final || payment.status === "success")) return;
+        const key = `bbm_ph_pay_${ref}`;
+        try {
+            if (sessionStorage.getItem(key)) return;
+            sessionStorage.setItem(key, "1");
+        } catch { /* private mode: accept a possible duplicate */ }
+        track(payment.status === "success" ? "payment_completed" : "payment_failed", {
+            status: payment.status,
+            purpose: payment.purpose,
+            amount: Number(payment.amount) || 0,
+        });
+    }, [payment, ref]);
+
     const retry = async () => {
         if (!payment || retrying) return;
         setRetrying(true);
@@ -254,7 +271,8 @@ export default function PaymentReturnPage() {
                 </div>
             </header>
 
-            <main className="mx-auto w-full max-w-md px-4 pb-10 pt-8 sm:pt-12">
+            {/* data-clarity-mask: session recordings never show amounts or the payment reference */}
+            <main data-clarity-mask="True" className="mx-auto w-full max-w-md px-4 pb-10 pt-8 sm:pt-12">
                 <section
                     role="status"
                     aria-live="polite"

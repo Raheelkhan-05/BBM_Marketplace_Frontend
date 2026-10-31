@@ -57,6 +57,9 @@ const CSS = `
 
 .bbmf-bot{margin-top:18px;border-top:1px solid var(--f-line);padding:10px 0 calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;gap:2px 20px;justify-content:space-between;font-size:.76rem;line-height:1.5;color:rgba(255,255,255,.55)}
 .bbmf-ids{display:flex;flex-wrap:wrap;gap:2px 14px}
+.bbmf-cookie{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px;transition:color .15s}
+.bbmf-cookie:hover{color:var(--f-go)}
+.bbmf-cookie:focus-visible{outline:2px solid var(--f-go);outline-offset:3px}
 
 /* space for the fixed bottom dock (only when the dock prop is on) */
 .bbmf.bbmf-dock .bbmf-bot{padding-bottom:calc(100px + env(safe-area-inset-bottom,0px))}
@@ -64,6 +67,9 @@ const CSS = `
 `;
 
 export default function PublicFooter({ dock = false }) {
+
+    const openCookieSettings = () => window.dispatchEvent(new Event("bbm:open-consent"));
+
     return (
         <footer className={`bbmf${dock ? " bbmf-dock" : ""}`} aria-label="Company information and policies">
             <style>{CSS}</style>
@@ -115,6 +121,9 @@ export default function PublicFooter({ dock = false }) {
                         <span>CIN {COMPANY.cin}</span>
                         {COMPANY.gstin ? <span>GSTIN {COMPANY.gstin}</span> : null}
                         {COMPANY.supportHours ? <span>{COMPANY.supportHours}</span> : null}
+                        <button type="button" className="bbmf-cookie" onClick={openCookieSettings}>
+                            Cookie settings
+                        </button>
                     </span>
                 </div>
             </div>

@@ -187,6 +187,7 @@ import { GroupBannerCard } from "./GroupBannerCarousel.jsx";
 import GroupBannerBlock from "./GroupBannerBlock.jsx";
 import useHomeBannerPlan from "../../hooks/useHomeBannerPlan";
 import useGroupBanners from "../../hooks/useGroupBanners";
+import { track } from "../../lib/analytics.js";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
@@ -2968,11 +2969,14 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const dismissTip = () => { setTipDismissed(true); writeFlag(FOLLOW_TIP_KEY); };
 
     const requireLogin = useCallback(
-        (message) => setLoginPrompt({
-            message: message || (needsOnboarding
-                ? "Finish setting up your account to view seller pricing and place orders."
-                : "You need to login to view seller pricing and place an order."),
-        }),
+        (message) => {
+            track("login_prompt_shown", { needs_onboarding: !!needsOnboarding, surface: "home_feed" });
+            setLoginPrompt({
+                message: message || (needsOnboarding
+                    ? "Finish setting up your account to view seller pricing and place orders."
+                    : "You need to login to view seller pricing and place an order."),
+            });
+        },
         [needsOnboarding]
     );
 
@@ -2981,6 +2985,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // after login/onboarding, instead of a bare /home.
     const confirmLogin = useCallback(() => {
         setLoginPrompt(null);
+        track("login_prompt_accepted", { surface: "home_feed" });
         navigate("/login", {
             state: { from: `${location.pathname}${location.search}${location.hash || ""}` },
         });
@@ -2989,6 +2994,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
 
     const abortRef = useRef(null);
+    const searchTrackRef = useRef(null);
     const debounceRef = useRef(null);
     const queryTokenRef = useRef(0);
     const isFirstRun = useRef(true);
@@ -3069,6 +3075,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             closeDropdown();
             return;
         }
+        track("seller_list_opened", { source: "home_feed", product_id: String(item.id) });
         setOpenItemId(item.id);
         loadSellersFor(item.id);
     }, [openItemId, closeDropdown, loadSellersFor]);
@@ -3382,6 +3389,22 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 setTotal(res.total ?? incoming.length ?? null);
                 setHasMore(!!res.hasMore);
                 if (groupId) setGroupInfo(res.group || null);
+
+                // Analytics: ONE search_performed per finished search, after the user stops typing.
+                if (!append && trimmed) {
+                    clearTimeout(searchTrackRef.current);
+                    searchTrackRef.current = setTimeout(() => {
+                        track("search_performed", {
+                            query: trimmed.toLowerCase().slice(0, 80),
+                            result_count: Number(res.total ?? incoming.length) || 0,
+                            has_results: incoming.length > 0,
+                            in_shop: !!shopSlug,
+                            has_category: !!category?.id,
+                        });
+                    }, 1200);
+                } else if (!append) {
+                    clearTimeout(searchTrackRef.current);
+                }
             })
             .catch((err) => { if (err?.name !== "AbortError") setHasMore(false); })
             .finally(() => {
@@ -3446,6 +3469,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     }, [category?.id, q, token, shopSlug, shopDestKey, brandsKey, groupId]);
 
     useEffect(() => () => sellerAbortRef.current?.abort(), []);
+    useEffect(() => () => clearTimeout(searchTrackRef.current), []);
 
     // Live order: pinned group on top, everyone else in their DEFAULT order.
     // Derived from isFollowed(), so pin/unpin reorders instantly, and a failed
@@ -3529,6 +3553,10 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     const openGroup = (groupItem) => {
         dismissHint();
+        track("product_group_opened", {
+            group_id: String(groupItem.group_id || groupItem.generic_product_id || groupItem.id),
+            variant_count: Number(groupItem.variant_count) || 0,
+        });
         closeDropdown();
         // Remember the feed so Back restores it instantly, at the same scroll position.
         feedSnapshotRef.current = { key: feedKey, items, total, hasMore, scrollY: window.scrollY, t: Date.now() };
@@ -3556,6 +3584,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // with this seller. The decision (or explicit "no preference") is
     // looked up from the DB, per buyer-seller pair — not per device.
     const handleBuySeller = (item, seller) => {
+        track("buy_now_clicked", { source: "seller_list", logged_in: !!effectiveLoggedIn, product_id: String(item.id) });
         if (!effectiveLoggedIn) { requireLogin(); return; }
         if (!token) { requireLogin("You need to login to place an order with this seller."); return; }
         closeDropdown();
@@ -3563,6 +3592,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     };
 
     const handleSell = (item) => {
+        track("sell_this_clicked", { source: "seller_list", product_id: String(item.id) });
         closeDropdown();
         navigate(`/sell/sell/${item.id}`, {
             state: {
@@ -3573,6 +3603,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     };
 
     const handleShopBuy = async (item) => {
+        track("buy_now_clicked", { source: "store_view", logged_in: !!effectiveLoggedIn, product_id: String(item.id) });
         if (!effectiveLoggedIn) { requireLogin(); return; }
         if (!token) { requireLogin("You need to login to place an order with this seller."); return; }
         if (isFeedRowOutOfStock(item)) { showToast({ message: "Out of stock" }, 2000); return; }
@@ -3632,6 +3663,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         }
         const willFollow = toggleFollow(item.id);
         if (willFollow === null) return;
+        track("product_pinned", { pinned: !!willFollow });
         setUnpinnedIds((prev) => {
             const n = new Set(prev);
             if (willFollow) n.delete(item.id); else n.add(item.id);
