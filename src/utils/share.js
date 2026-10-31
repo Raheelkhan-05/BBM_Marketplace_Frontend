@@ -3,7 +3,7 @@ export async function shareProductLink({ submissionId, productName, sellerName }
     const url = `${window.location.origin}/p/${submissionId}`;
     const shareData = {
         title: productName,
-        text: `${productName} — sold by ${sellerName}`,
+        text: `${productName}`,
         url,
     };
     if (navigator.share) {
