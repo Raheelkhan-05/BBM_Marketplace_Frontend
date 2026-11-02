@@ -19,8 +19,9 @@ async function call(path, { token, params, signal } = {}) {
     }
 }
 
-// { from, to }  inclusive IST dates, YYYY-MM-DD
-export const fetchMonitorPeople = (token, { from, to, signal } = {}) => call("/people", { token, signal, params: { from, to } });
+// { from, to }  inclusive IST dates, YYYY-MM-DD.  { all: true } = every date available.
+export const fetchMonitorPeople = (token, { from, to, all, signal } = {}) =>
+    call("/people", { token, signal, params: all ? { all: "1" } : { from, to } });
 
 // { actorId, module, idleOnly: "1", q, from, to, limit, before, beforeId, after }
 export const fetchMonitorFeed = (token, params = {}) => call("/feed", { token, params });

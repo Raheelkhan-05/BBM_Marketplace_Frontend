@@ -2,6 +2,7 @@
 // Two steps:
 //   1. Overview  : one card per salesperson (status, enquiries worked on, orders punched, long breaks).
 //   2. Activity  : the live log of everything one salesperson (or everyone) did. Search and filters live here.
+// Date range quick filters: All (default) | Today | Yesterday | Last 7 days | Last 30 days | Pick dates.
 // Long break (decided on the server): between 9:00 AM and 6:00 PM IST, more than 30 min with no activity marks the
 // next entry red, per salesperson. A new day starts counting from 9:00 AM.
 // Clicking a log: enquiries open the read-only viewer (with a Back button), orders open the Order Book page.
@@ -31,18 +32,20 @@ const agoText = (now, iso) => { const m = Math.floor((now - Date.parse(iso)) / 6
 const dLabel = (ymd) => new Date(`${ymd}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const count = (v, one, many) => `${v} ${v === 1 ? one : many}`;
 
-const PRESETS = [["today", "Today"], ["yesterday", "Yesterday"], ["7d", "Last 7 days"], ["30d", "Last 30 days"], ["custom", "Pick dates"]];
+const PRESETS = [["all", "All"], ["today", "Today"], ["yesterday", "Yesterday"], ["7d", "Last 7 days"], ["30d", "Last 30 days"], ["custom", "Pick dates"]];
 function rangeFor(preset, custom) {
     const today = istDate(Date.now());
-    if (preset === "yesterday") { const y = addDays(today, -1); return { from: y, to: y }; }
-    if (preset === "7d") return { from: addDays(today, -6), to: today };
-    if (preset === "30d") return { from: addDays(today, -29), to: today };
+    // All = no date limit (empty from / to are simply not sent to the server).
+    if (preset === "all") return { from: "", to: "", all: true };
+    if (preset === "yesterday") { const y = addDays(today, -1); return { from: y, to: y, all: false }; }
+    if (preset === "7d") return { from: addDays(today, -6), to: today, all: false };
+    if (preset === "30d") return { from: addDays(today, -29), to: today, all: false };
     if (preset === "custom") {
         let from = custom.from || today, to = custom.to || custom.from || today;
         if (from > to) [from, to] = [to, from];
-        return { from, to };
+        return { from, to, all: false };
     }
-    return { from: today, to: today };
+    return { from: today, to: today, all: false };
 }
 
 // Live status of a salesperson, always about "right now" (independent of the chosen date range).
@@ -305,7 +308,7 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
     const { socket } = useSocket();
 
     const [view, setView] = useState("overview");        // overview | activity
-    const [preset, setPreset] = useState("today");
+    const [preset, setPreset] = useState("all");         // all (default) | today | yesterday | 7d | 30d | custom
     const [custom, setCustom] = useState({ from: "", to: "" });
     const [qInput, setQInput] = useState("");
     const [q, setQ] = useState("");
@@ -319,8 +322,8 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
     const peopleReq = useRef(0);
     const scrollRef = useRef(null);
 
-    const { from, to } = rangeFor(preset, custom);
-    const live = to >= istDate(Date.now());
+    const { from, to, all } = rangeFor(preset, custom);
+    const live = all || to >= istDate(Date.now());
 
     useEffect(() => { const t = setTimeout(() => setQ(qInput.trim()), 300); return () => clearTimeout(t); }, [qInput]);
     useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
@@ -329,11 +332,11 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
 
     const loadPeople = useCallback(async (silent) => {
         const id = ++peopleReq.current;
-        const res = await fetchMonitorPeople(token, { from, to });
+        const res = await fetchMonitorPeople(token, { from, to, all });
         if (id !== peopleReq.current) return;
         if (res.success) { setPeople(res.people); setPeopleErr(""); }
         else if (!silent) setPeopleErr(res.message || "Couldn't load your salespeople.");
-    }, [token, from, to]);
+    }, [token, from, to, all]);
 
     useEffect(() => { if (active && token) loadPeople(false); }, [active, token, loadPeople]);
 
@@ -346,6 +349,7 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
         return () => { clearTimeout(t); socket.off("sales:monitor", onPing); };
     }, [socket, loadPeople]);
 
+    // For "All", from / to are empty, so the feed request carries no date limit.
     const filters = useMemo(() => ({ actorId, module: moduleF, idleOnly: idleOnly ? "1" : "", q, from, to }), [actorId, moduleF, idleOnly, q, from, to]);
 
     const openActivity = useCallback((id, opts = {}) => {
@@ -363,7 +367,7 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
 
     const selected = actorId && people ? people.find((p) => p.userId === actorId) : null;
     const breaksTotal = people ? people.reduce((a, p) => a + p.idleCount, 0) : 0;
-    const rangeText = from === to ? dLabel(from) : `${dLabel(from)} – ${dLabel(to)}`;
+    const rangeText = all ? "all activity" : from === to ? dLabel(from) : `${dLabel(from)} – ${dLabel(to)}`;
 
     if (!people && !peopleErr) return <Skeleton />;
     if (peopleErr && !people) {
