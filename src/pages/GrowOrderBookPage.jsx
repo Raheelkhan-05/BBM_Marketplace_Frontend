@@ -2,13 +2,16 @@
 import { useAuth } from "../context/AuthContext.jsx";
 import { teamOrderBook } from "../utils/orderBookApi.js";
 import OrderBookList from "../components/orderBook/OrderBookList.jsx";
+import DispatcherManager from "../components/orderBook/DispatcherManager.jsx";
+
 
 export default function GrowOrderBookPage() {
     const { token } = useAuth();
     return (
         <div className="v">
             <OrderBookList mode="team" api={teamOrderBook} token={token} base="/sell/order-book"
-                title="Order Book" subtitle="Orders your salespeople punch for customers. Process, ship and complete them here." />
+                title="Order Book" subtitle="Orders your salespeople punch for customers. Process, ship and complete them here."
+                action={<DispatcherManager />} />
         </div>
     );
 }

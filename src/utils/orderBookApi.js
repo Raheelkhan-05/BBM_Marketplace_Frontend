@@ -44,4 +44,10 @@ export const teamOrderBook = {
     ship: (token, id, formData) => call(`${T}/${id}/ship`, { token, method: "POST", body: formData }),
     complete: (token, id) => call(`${T}/${id}/complete`, { token, method: "POST", body: {} }),
     cancel: (token, id, reason) => call(`${T}/${id}/cancel`, { token, method: "POST", body: { reason: reason || "" } }),
+    dispatchers: {
+        list: (token) => call(`${T}/dispatchers`, { token }),
+        add: (token, payload) => call(`${T}/dispatchers`, { token, method: "POST", body: payload }),
+        update: (token, id, payload) => call(`${T}/dispatchers/${id}`, { token, method: "PATCH", body: payload }),
+        remove: (token, id) => call(`${T}/dispatchers/${id}`, { token, method: "DELETE" }),
+    },
 };
