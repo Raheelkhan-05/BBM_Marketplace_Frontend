@@ -6,14 +6,16 @@
 // The composer is its own component, so typing never re-renders the log.
 // Sending is optimistic: the entry shows instantly (local: true) and is saved in the background, in order.
 //
-// Composer: one full-width bar. "+" opens a menu (Add files, Send quotation, Mark as won, Mark as lost).
+// Composer: one full-width bar. "+" opens a menu (Add files, Add product [cold calls], Send quotation, Set reminder,
+// Mark as won, Mark as lost). A cold call starts with no product: a banner + the menu ask for it, and "Send quotation"
+// stays unavailable until it is added (the heading updates the moment it is saved).
 // Closing an enquiry always records an outcome: won or lost. A closed enquiry can be reopened.
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useOutletContext, useParams } from "react-router-dom";
 import {
     ArrowLeft, ArrowDown, Send, Paperclip, X, FileText, FileSpreadsheet, Download, Receipt, Loader2, ChevronDown,
-    Phone, Mail, RotateCw, AlertCircle, BadgeCheck, Plus, Trophy, XCircle, RotateCcw, Bell
+    Phone, Mail, RotateCw, AlertCircle, BadgeCheck, Plus, Trophy, XCircle, RotateCcw, Bell, PackagePlus
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import useRfqLive from "../hooks/useRfqLive.js";
@@ -21,12 +23,14 @@ import { useGstLookup } from "../hooks/useSalesSheet.js";
 import { fetchThread, updateThread, setThreadStatus, setThreadReminder, addThreadEntry, uploadThreadFile, resendThreadQuote } from "../utils/salesThreadApi.js";
 import { cacheGet, cacheSet, threadKey, FIRST_PAGE, OLDER_PAGE } from "../utils/salesThreadCache.js";
 import SalesQuoteSheet from "../components/sales/SalesQuoteSheet.jsx";
+import SalesAddProductSheet from "../components/sales/SalesAddProductSheet.jsx";
 import {
     ALLOWED_FILES, FILE_ACCEPT, MAX_FILE_BYTES, MAX_FILES, GSTIN_RE, cleanGstin, cleanPhone, cleanEmail,
     clock, dateTime, dayLabel, fileSize, inr, qty, dateShort,
 } from "../components/sales/salesThreadFmt.js";
 import "../components/sales/sales-threads.css";
 import "../components/sales/sales-threads.polish.css";
+import "../components/sales/sales-threads.cold.css";
 
 const byTime = (a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1);
 // Merge by id. Returns the SAME array when nothing changed, so quiet refreshes cause no re-render.
@@ -243,7 +247,6 @@ function OutcomeDialog({ kind, open, busy, onCancel, onConfirm, onExited }) {
     }, [open, onExited]);
     const won = kind === "won";
     return createPortal(
-        // <div className="st-ov" data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onCancel(); }}>
         <div className={`st-ov${open ? "" : " out"}`} data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget && !busy && open) onCancel(); }}>
             <div className="st-sheet st-confirm" role="alertdialog" aria-modal="true" aria-label={`Mark as ${kind}`}>
                 <div className="st-sh-b">
@@ -343,7 +346,7 @@ function ReminderDialog({ current, open, busy, onCancel, onSave, onExited }) {
 
 // Owns its own state (text, files, menu), so keystrokes never re-render the thread above it.
 // Enter sends, Shift+Enter makes a new line. Sending is instant: the parent shows the entry and saves it in the background.
-function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, hasReminder }) {
+function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, onAddProduct, hasReminder, hasProduct }) {
     const [text, setText] = useState("");
     const [files, setFiles] = useState([]);
     const [menu, setMenu] = useState(false);
@@ -428,10 +431,14 @@ function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, 
                         <Plus size={20} />
                     </button>
                     <div className={`st-menu${menu ? " show" : ""}`} role="menu" aria-label="Enquiry actions" aria-hidden={!menu}>
-                        {/* same buttons as before */}
-
                         <button type="button" role="menuitem" onClick={run(() => fileRef.current?.click())}><Paperclip size={17} />Add files</button>
-                        <button type="button" role="menuitem" onClick={run(onQuote)}><Receipt size={17} />Send quotation</button>
+                        {!hasProduct && (
+                            <button type="button" role="menuitem" className="hl" onClick={run(onAddProduct)}><PackagePlus size={17} />Add product</button>
+                        )}
+                        <button type="button" role="menuitem" aria-disabled={!hasProduct} className={hasProduct ? undefined : "dis"} onClick={run(onQuote)}>
+                            <Receipt size={17} />
+                            {hasProduct ? "Send quotation" : <span className="st-mi"><b>Send quotation</b><small>Add the product first</small></span>}
+                        </button>
                         <button type="button" role="menuitem" onClick={run(onRemind)}><Bell size={17} />{hasReminder ? "Change reminder" : "Set reminder"}</button>
                         <hr />
                         <button type="button" role="menuitem" className="ok" onClick={run(() => onOutcome("won"))}><Trophy size={17} />Mark as won</button>
@@ -468,6 +475,7 @@ export default function SalesThreadPage() {
     const [state, setState] = useState(seed ? "ready" : "loading"); // loading | ready | missing | error
     const [msg, setMsg] = useState("");
     const [quoting, setQuoting] = useState(false);
+    const [adding, setAdding] = useState(false);     // the "Add product" sheet
     const [busyKey, setBusyKey] = useState("");
     const [statusBusy, setStatusBusy] = useState(false);
     const [ask, setAsk] = useState(null);            // "won" | "lost" while the confirm dialog is open
@@ -485,6 +493,9 @@ export default function SalesThreadPage() {
     const olderBusy = useRef(false);
     const queueRef = useRef(Promise.resolve());   // saves run one after another, so order is kept
 
+    // Older cached threads have no flag: they always had a product.
+    const hasProduct = thread ? thread.hasProduct !== false : true;
+
     // mode "fresh": newest page, replaces the list. mode "after": only what's new since the last saved entry we hold.
     const load = useCallback(async (mode) => {
         const mine = threadId;
@@ -499,7 +510,7 @@ export default function SalesThreadPage() {
             return;
         }
         if (res.reset) return load("fresh");   // too much happened while away: reload the newest page
-        setThread(res.thread);
+        setThread(res.thread);                 // heading, product and banner follow the server (live refresh included)
         if (useAfter) {
             if (res.entries?.length && distFromBottom() < 260) stickRef.current = true;   // follow new entries only if already near the end
             setEntries((prev) => mergeIncoming(prev, res.entries));
@@ -687,7 +698,23 @@ export default function SalesThreadPage() {
     };
 
     const onCustomerSaved = useCallback((t) => setThread((s) => ({ ...s, ...t })), []);
-    const openQuote = useCallback(() => setQuoting(true), []);
+
+    // "Send quotation" needs a product. Without one, the same tap opens the Add product sheet instead.
+    const openQuote = useCallback(() => {
+        if (!hasProduct) { say("Add the product first, then send the quotation."); setAdding(true); return; }
+        setQuoting(true);
+    }, [hasProduct, say]);
+    const openAddProduct = useCallback(() => setAdding(true), []);
+    const closeAddProduct = useCallback(() => setAdding(false), []);
+
+    // The product was saved: the heading, the banner, the menu and the log all update right now (no refresh needed).
+    const onProductAdded = useCallback((res) => {
+        setThread((t) => (t ? { ...t, ...res.thread } : t));
+        if (res.entry) { stickRef.current = true; setEntries((prev) => mergeIncoming(prev, [res.entry])); }
+        setAdding(false);
+        say("Product added. You can send a quotation now.");
+    }, [say]);
+
     const askOutcome = useCallback((k) => setAsk({ kind: k, open: true }), []);
     const closeAsk = useCallback(() => setAsk((a) => (a ? { ...a, open: false } : a)), []);
     const askGone = useCallback(() => setAsk(null), []);
@@ -726,6 +753,7 @@ export default function SalesThreadPage() {
 
     const closed = thread.status === "closed";
     const st = stateOf(thread);
+    const cold = thread.kind === "cold_call";
 
     return (
         <div className="gd st-page" ref={pageRef}>
@@ -733,13 +761,21 @@ export default function SalesThreadPage() {
                 <Link to="/sales/enquiries" className="st-ib" aria-label="Back to RFQs"><ArrowLeft size={18} /></Link>
                 <div className="st-head-t">
                     <h1>{thread.displayName}</h1>
-                    <p>{thread.productName} · {qty(thread.quantity)} {thread.unit}</p>
-                    <p className="sub">Posted {dateTime(thread.createdAt)}</p>
+                    <p>{hasProduct ? `${thread.productName} · ${qty(thread.quantity)} ${thread.unit}` : "Cold call · no product yet"}</p>
+                    <p className="sub">{cold ? "Logged" : "Posted"} {dateTime(thread.createdAt)}{cold && hasProduct ? " · Started as a cold call" : ""}</p>
                 </div>
                 <span className={`st-state ${st.k}`}>{st.l}</span>
             </header>
 
             <CustomerCard token={token} thread={thread} say={say} onSaved={onCustomerSaved} />
+
+            {!hasProduct && !closed && (
+                <div className="st-noprod" role="status">
+                    <PackagePlus size={16} />
+                    <span>No product added yet. Add the product before sending a quotation.</span>
+                    <button type="button" className="st-btn pri" onClick={openAddProduct}><PackagePlus size={15} />Add product</button>
+                </div>
+            )}
 
             {thread.reminderAt && !closed && (() => {
                 const due = new Date(thread.reminderAt).getTime() <= Date.now();
@@ -784,13 +820,18 @@ export default function SalesThreadPage() {
                     </div>
                 ) : (
                     <Composer key={threadId} token={token} threadId={threadId} say={say} onSend={onSend} onQuote={openQuote}
-                        onOutcome={askOutcome} onRemind={askRemind} hasReminder={!!thread.reminderAt} />
+                        onOutcome={askOutcome} onRemind={askRemind} onAddProduct={openAddProduct}
+                        hasReminder={!!thread.reminderAt} hasProduct={hasProduct} />
                 )}
             </div>
 
-            {quoting && (
+            {quoting && hasProduct && (
                 <SalesQuoteSheet token={token} thread={thread} onClose={() => setQuoting(false)}
                     onSent={() => { stickRef.current = true; load("after"); }} />
+            )}
+
+            {adding && !hasProduct && (
+                <SalesAddProductSheet token={token} thread={thread} onClose={closeAddProduct} onAdded={onProductAdded} />
             )}
 
             {ask && <OutcomeDialog kind={ask.kind} open={ask.open} busy={statusBusy}

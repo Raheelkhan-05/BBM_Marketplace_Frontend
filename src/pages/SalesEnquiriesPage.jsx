@@ -1,26 +1,26 @@
 // src/pages/SalesEnquiriesPage.jsx
 // The salesperson's own enquiry threads, newest activity first (like a chat list):
 // customer company, product, when the enquiry was posted (the same customer can ask for the same product again),
-// and the outcome (open / won / lost).
+// and the outcome (open / won / lost). Cold calls (call logs with no product yet) are tagged and have their own tab.
 // Opens instantly from cache and refreshes quietly; hovering/touching a row warms up its thread.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
-import { Plus, Search, X, Receipt, Inbox, Loader2, Trophy, XCircle, Bell } from "lucide-react";
-import { dateTime, listTime, qty } from "../components/sales/salesThreadFmt.js";   // initialOf no longer needed
+import { Plus, Search, X, Receipt, Inbox, Loader2, Trophy, XCircle, Bell, PhoneCall } from "lucide-react";
+import { dateTime, listTime, qty } from "../components/sales/salesThreadFmt.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import useRfqLive from "../hooks/useRfqLive.js";
 import { fetchThreads } from "../utils/salesThreadApi.js";
 import { cacheGet, cacheSet, nsOf, prefetchThread } from "../utils/salesThreadCache.js";
 import SalesNewEnquirySheet from "../components/sales/SalesNewEnquirySheet.jsx";
-// import { dateTime, initialOf, listTime, qty } from "../components/sales/salesThreadFmt.js";
 import "../components/sales/sales-threads.css";
+import "../components/sales/sales-threads.cold.css";
 
 const PAGE = 15;
 const MAX_PAGE = 100; // server cap
 const mergeUnique = (prev, inc) => { const s = new Set(prev.map((i) => i.id)); return [...prev, ...inc.filter((i) => !s.has(i.id))]; };
-const TABS = [["all", "All"], ["open", "Open"], ["reminder", "Reminders"], ["won", "Won"], ["lost", "Lost"]];
-const EMPTY_COUNTS = { all: 0, open: 0, reminder: 0, won: 0, lost: 0 };
+const TABS = [["all", "All"], ["open", "Open"], ["reminder", "Reminders"], ["cold", "Cold calls"], ["won", "Won"], ["lost", "Lost"]];
+const EMPTY_COUNTS = { all: 0, open: 0, reminder: 0, cold: 0, won: 0, lost: 0 };
 
 const kindOf = (t) => (t.status !== "closed" ? "open" : t.outcome === "won" ? "won" : t.outcome === "lost" ? "lost" : "closed");
 
@@ -28,6 +28,8 @@ const ThreadRow = memo(function ThreadRow({ t, onWarm }) {
     const kind = kindOf(t);
     const warm = () => onWarm(t.id);
     const due = !!t.reminderAt && new Date(t.reminderAt).getTime() <= Date.now();
+    const hasProduct = t.hasProduct !== false;       // older cached rows have no flag: they always had a product
+    const cold = t.kind === "cold_call";
 
     return (
         <li>
@@ -37,11 +39,14 @@ const ThreadRow = memo(function ThreadRow({ t, onWarm }) {
                         <b>{t.displayName}</b>
                         <time dateTime={t.lastActivityAt}>{listTime(t.lastActivityAt)}</time>
                     </span>
-                    <span className="st-row-2">{t.productName} · {qty(t.quantity)} {t.unit}</span>
+                    <span className="st-row-2">
+                        {hasProduct ? `${t.productName} · ${qty(t.quantity)} ${t.unit}` : <span className="st-noprod-t">No product yet</span>}
+                    </span>
                     {t.lastPreview && <span className="st-row-4">{t.lastPreview}</span>}
                     <span className="st-row-3">
-                        <small>Posted {dateTime(t.createdAt)}</small>
+                        <small>{cold ? "Logged" : "Posted"} {dateTime(t.createdAt)}</small>
                         <span className="st-badges">
+                            {cold && <span className="st-bd cold" title="Started as a cold call"><PhoneCall size={12} />Cold call</span>}
                             {t.reminderAt && kind === "open" && (
                                 <span className={`st-bd rem${due ? " due" : ""}`} title={due ? "Reminder due" : "Reminder"}>
                                     <Bell size={12} />{due ? "Due " : ""}{dateTime(t.reminderAt)}
@@ -139,20 +144,22 @@ export default function SalesEnquiriesPage() {
 
     const emptyTitle = q ? "No enquiries match your search"
         : filter === "reminder" ? "No reminders set"
-            : filter === "won" ? "No won enquiries yet"
-                : filter === "lost" ? "No lost enquiries"
-                    : filter === "open" ? "No open enquiries" : "No enquiries yet";
+            : filter === "cold" ? "No cold calls logged"
+                : filter === "won" ? "No won enquiries yet"
+                    : filter === "lost" ? "No lost enquiries"
+                        : filter === "open" ? "No open enquiries" : "No enquiries yet";
     const emptyText = q ? "Try a different company, product or GST number."
         : filter === "reminder" ? "Open an enquiry, tap + and choose Set reminder. Reminders clear when you add an update."
-            : filter === "won" ? "Enquiries you mark as won will show up here."
-                : filter === "lost" ? "Enquiries you mark as lost will show up here."
-                    : filter === "open" ? "Everything is closed. Start a new enquiry when a customer asks for a price."
-                        : "When a customer asks for a price, start an enquiry and keep every update in one place.";
+            : filter === "cold" ? "Tap New enquiry, choose Cold call / other, and log the call. Add the product later when they ask for one."
+                : filter === "won" ? "Enquiries you mark as won will show up here."
+                    : filter === "lost" ? "Enquiries you mark as lost will show up here."
+                        : filter === "open" ? "Everything is closed. Start a new enquiry when a customer asks for a price."
+                            : "When a customer asks for a price, start an enquiry. Spoke to someone who isn't ready yet? Log it as a cold call.";
 
     return (
         <div className="gd st-listpage">
             <div className="gk-ph" style={{ marginTop: 22 }}>
-                <div><h1>RFQs</h1><p>Price requests you take from customers. Only you can see them.</p></div>
+                <div><h1>RFQs</h1><p>Price requests and calls you take from customers. Only you can see them.</p></div>
                 <button type="button" className="st-btn pri" onClick={() => setCreating(true)}><Plus size={16} />New enquiry</button>
             </div>
 
@@ -193,7 +200,7 @@ export default function SalesEnquiriesPage() {
 
             {creating && (
                 <SalesNewEnquirySheet token={token} onClose={() => setCreating(false)}
-                    onCreated={(t) => { setCreating(false); say("Enquiry created."); nav(`/sales/enquiries/${t.id}`); }} />
+                    onCreated={(t) => { setCreating(false); say(t?.kind === "cold_call" ? "Cold call logged." : "Enquiry created."); nav(`/sales/enquiries/${t.id}`); }} />
             )}
         </div>
     );

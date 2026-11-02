@@ -1,0 +1,184 @@
+/* src/components/sales/sales-threads.cold.css
+   Cold calls + "add product later". Import AFTER sales-threads.css (the components above already do). */
+
+/* ---------- type picker in the new-enquiry sheet ---------- */
+.st-kind {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.st-kind button {
+    all: unset;
+    box-sizing: border-box;
+    display: grid;
+    align-content: start;
+    gap: 3px;
+    padding: 11px 12px;
+    border-radius: 12px;
+    border: 1.5px solid var(--st-line);
+    background: var(--st-s);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: border-color .15s, background .15s;
+}
+
+.st-kind button b {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: .88rem;
+    font-weight: 800;
+}
+
+.st-kind button small {
+    font-size: .72rem;
+    line-height: 1.3;
+    color: var(--st-mute);
+}
+
+.st-kind button:hover {
+    background: var(--st-s2);
+}
+
+.st-kind button[aria-checked="true"] {
+    border-color: var(--st-pri);
+    background: color-mix(in srgb, var(--st-pri) 7%, var(--st-s));
+}
+
+.st-kind button[aria-checked="true"] b {
+    color: var(--st-pri-d);
+}
+
+.st-kind button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--st-lk) 70%, transparent);
+    outline-offset: 2px;
+}
+
+@media (max-width: 380px) {
+    .st-kind {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* quick-fill chips for the call note */
+.st-qchips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.st-qchips button {
+    all: unset;
+    box-sizing: border-box;
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-size: .76rem;
+    font-weight: 700;
+    background: var(--st-s2);
+    color: var(--st-ink);
+    border: 1px solid var(--st-line);
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s;
+}
+
+.st-qchips button:hover {
+    background: var(--st-s3);
+}
+
+.st-qchips button:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--st-lk) 70%, transparent);
+    outline-offset: 2px;
+}
+
+/* ---------- list: cold call badge, no-product text, tab ---------- */
+.st-bd.cold {
+    background: color-mix(in srgb, var(--st-pri) 12%, var(--st-s));
+    color: var(--st-pri-d);
+}
+
+.st-noprod-t {
+    font-weight: 700;
+    color: var(--st-mute);
+}
+
+.st-tab.cold[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--st-pri) 10%, var(--st-s));
+    border-color: var(--st-pri);
+    color: var(--st-pri-d);
+}
+
+.st-tab.cold[aria-pressed="true"] .n {
+    background: var(--st-pri);
+}
+
+/* ---------- thread: "add the product first" banner ---------- */
+.st-noprod {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    padding: 8px 8px 8px 12px;
+    border-radius: 12px;
+    font-size: .8rem;
+    font-weight: 700;
+    border: 1px solid color-mix(in srgb, var(--st-pri) 40%, var(--st-line));
+    background: color-mix(in srgb, var(--st-pri) 6%, var(--st-s));
+}
+
+.st-noprod>svg {
+    flex: none;
+    color: var(--st-pri);
+}
+
+.st-noprod>span {
+    flex: 1;
+    min-width: 0;
+    line-height: 1.35;
+}
+
+.st-noprod .st-btn {
+    flex: none;
+    min-height: 34px;
+    padding: 0 12px;
+    font-size: .78rem;
+}
+
+@media (max-width: 460px) {
+    .st-noprod {
+        flex-wrap: wrap;
+    }
+
+    .st-noprod .st-btn {
+        width: 100%;
+    }
+}
+
+/* ---------- "+" menu: add product / disabled quotation ---------- */
+.st-menu button.hl {
+    background: color-mix(in srgb, var(--st-pri) 8%, transparent);
+    color: var(--st-pri-d);
+}
+
+.st-menu button.hl svg {
+    color: var(--st-pri);
+}
+
+.st-menu button.dis {
+    opacity: .6;
+}
+
+.st-menu .st-mi {
+    display: grid;
+    line-height: 1.2;
+}
+
+.st-menu .st-mi small {
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--st-mute);
+}

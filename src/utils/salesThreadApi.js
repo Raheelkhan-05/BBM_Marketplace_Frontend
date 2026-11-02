@@ -21,8 +21,11 @@ async function call(path, { token, method = "GET", body, signal, params } = {}) 
     }
 }
 
-// status: "" | "open" | "won" | "lost"
+// status: "" | "open" | "won" | "lost" | "reminder" | "cold"
 export const fetchThreads = (token, { q, status, limit, offset, signal } = {}) => call("", { token, signal, params: { q, status, limit, offset } });
+
+// Enquiry:   { kind: "enquiry", customer..., productSubmissionId? | productName, quantity, unit, ... }
+// Cold call: { kind: "cold_call", customer..., note }
 export const createThread = (token, payload) => call("", { token, method: "POST", body: payload });
 
 // The company's product catalog (used to tag a product when starting an enquiry, and in the Punch order sheet).
@@ -39,6 +42,8 @@ export const fetchThread = (token, id, { before, beforeId, after, limit, signal 
     call(`/${id}`, { token, signal, params: { before, beforeId, after, limit } });
 
 export const updateThread = (token, id, payload) => call(`/${id}`, { token, method: "PATCH", body: payload });
+// Adds the product to a cold call that has none yet (allowed once). Resolves { thread, entry }.
+export const setThreadProduct = (token, id, payload) => call(`/${id}/product`, { token, method: "PATCH", body: payload });
 // status: "open" (reopen) | "won" | "lost"
 export const setThreadStatus = (token, id, status) => call(`/${id}/status`, { token, method: "PATCH", body: { status } });
 export const addThreadEntry = (token, id, payload) => call(`/${id}/entries`, { token, method: "POST", body: payload });

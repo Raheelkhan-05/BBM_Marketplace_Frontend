@@ -1,11 +1,12 @@
 // components/team/SalesThreadViewer.jsx
 // Read-only view of one salesperson's enquiry thread, opened from the admin's Sales activity.
 // Shows everything the salesperson logged: notes, files, quotations, status and reminder. Refreshes live.
+// A cold call (no product yet) says so in the header, and switches to the product the moment it is added.
 // "Back" returns to the activity list the admin came from.
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
-    ArrowLeft, Loader2, FileText, Download, Receipt, BadgeCheck, AlertCircle, Phone, Mail, Bell, Trophy, XCircle, Eye, User,
+    ArrowLeft, Loader2, FileText, Download, Receipt, BadgeCheck, AlertCircle, Phone, Mail, Bell, Trophy, XCircle, Eye, User, PhoneCall,
 } from "lucide-react";
 import { fetchMonitorThread } from "../../utils/salesMonitorApi.js";
 import { useSocket } from "../../context/SocketContext.jsx";
@@ -123,7 +124,7 @@ export default function SalesThreadViewer({ token, id, who, onClose }) {
         }
         const el = scrollRef.current;
         stickRef.current = firstRef.current || !el || el.scrollHeight - el.scrollTop - el.clientHeight < 140;
-        setThread(res.thread);
+        setThread(res.thread);   // header follows the server, so a product added later shows up without closing the viewer
         setEntries((prev) => merge(prev, res.entries || []));
         if (firstRef.current) setHasOlder(!!res.hasOlder);
         firstRef.current = false;
@@ -168,6 +169,8 @@ export default function SalesThreadViewer({ token, id, who, onClose }) {
     };
 
     const st = thread ? stateOf(thread) : null;
+    const hasProduct = thread ? thread.hasProduct !== false : true;
+    const cold = thread?.kind === "cold_call";
     let lastDay = "";
 
     return createPortal(
@@ -193,11 +196,20 @@ export default function SalesThreadViewer({ token, id, who, onClose }) {
                         <div className="flex items-center gap-2">
                             <h2 className="truncate text-[16px] font-extrabold leading-tight" style={{ color: C.ink }}>{thread?.displayName || "Enquiry"}</h2>
                             {st && <span className="shrink-0 rounded-full px-2 py-[3px] text-[10.5px] font-bold uppercase leading-none" style={{ background: st.bg, color: st.fg }}>{st.l}</span>}
+                            {cold && (
+                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-[3px] text-[10.5px] font-bold uppercase leading-none" style={{ background: "rgba(244,81,30,.12)", color: "#c23a0b" }}>
+                                    <PhoneCall className="h-3 w-3" />Cold call
+                                </span>
+                            )}
                         </div>
-                        {thread && <p className="mt-0.5 truncate text-[12.5px] font-semibold" style={{ color: C.muted }}>{thread.productName} · {thread.quantity} {thread.unit}</p>}
+                        {thread && (
+                            <p className="mt-0.5 truncate text-[12.5px] font-semibold" style={{ color: C.muted }}>
+                                {hasProduct ? `${thread.productName} · ${thread.quantity} ${thread.unit}` : "Cold call · no product yet"}
+                            </p>
+                        )}
                         <p className="mt-1 flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: C.muted }}>
                             <User className="h-3 w-3" />{thread?.salespersonName || who || "Salesperson"}
-                            {thread && <span>· Posted {dt(thread.createdAt)}</span>}
+                            {thread && <span>· {cold ? "Logged" : "Posted"} {dt(thread.createdAt)}{cold && hasProduct ? " · Started as a cold call" : ""}</span>}
                         </p>
                     </div>
                 </div>
