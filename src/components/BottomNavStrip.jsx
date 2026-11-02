@@ -135,14 +135,21 @@ ${HIDE_WHEN_MENU_OPEN.map((s) => `body[data-bbm-menu="open"] ${s}`).join(",\n")}
 `;
 
 // Hide the dock while a screen with its own sticky action bar, or any modal dialog, is open.
+
 const HIDE_DOCK_CSS = `
 .bbm-dock[data-hidden="true"],
 body:has(.gs .app.hb) .bbm-dock,
 body:has(.gax-edit) .bbm-dock,
 body:has(.sh-portal) .bbm-dock,
 body:has(.bbm-buynow) .bbm-dock,
-body:has([role="dialog"][aria-modal="true"]) .bbm-dock { display: none !important; }
+body:has([role="dialog"][aria-modal="true"]) .bbm-dock,
+body:has([role="alertdialog"][aria-modal="true"]) .bbm-dock,
+body:has(.st-ov) .bbm-dock {
+    display: none !important;
+}
 `;
+
+
 
 // Mobile: bottom sheet (unchanged height + motion). Desktop (md+): one panel above the dock.
 const SHEET_CSS = `
