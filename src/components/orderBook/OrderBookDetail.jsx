@@ -158,6 +158,19 @@ function LineText({ i }) {
     );
 }
 
+const GENERIC_ACTORS = new Set(["", "salesperson", "team member", "team", "system"]);
+
+// Real person's name for an activity row. The server sometimes sends only a role ("Salesperson" / "Team member").
+function actorFor(e, o) {
+    const n = (e.actorName || "").trim();
+    if (n && !GENERIC_ACTORS.has(n.toLowerCase())) return n;
+    if (/punched/i.test(e.body || "") && o.salespersonName) return o.salespersonName;
+    return null;
+}
+
+// "Order punched by Salesperson" -> "Order punched" (the name is shown on the line below instead)
+const cleanBody = (b = "") => b.replace(/\s+by\s+(salesperson|team member)\s*$/i, "");
+
 export default function OrderBookDetail({ mode, id, api, token, say, backTo, backLabel }) {
     const team = mode === "team";
     const [order, setOrder] = useState(null);
@@ -330,12 +343,15 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
                     <section className="ob-card">
                         <h2>Activity</h2>
                         <ol className="ob-tl">
-                            {events.map((e) => (
-                                <li key={e.id} className={e.kind}>
-                                    <span className="ob-tl-d" />
-                                    <span><b>{e.body}</b><small>{e.actorName ? `${e.actorName} · ` : ""}{dateTime(e.createdAt)}</small></span>
-                                </li>
-                            ))}
+                            {events.map((e) => {
+                                const who = actorFor(e, o);
+                                return (
+                                    <li key={e.id} className={e.kind}>
+                                        <span className="ob-tl-d" />
+                                        <span><b>{cleanBody(e.body)}</b><small>{who ? `${who} · ` : ""}{dateTime(e.createdAt)}</small></span>
+                                    </li>
+                                );
+                            })}
                         </ol>
                     </section>
                 </div>
