@@ -11,6 +11,7 @@ import { useSheetBehavior } from "../../hooks/useSalesSheet.js";
 import { FLOW, STATUS_LABEL, inr, qty, dateTime, dateShort } from "./orderBookFmt.js";
 import { basisWord, itemPack, packLines } from "./orderBookPack.js";
 import StatusChip from "./StatusChip.jsx";
+import OrderBookBill, { ProductLink } from "./OrderBookBill.jsx";
 import "../sales/sales-threads.css";
 import "./order-book.css";
 
@@ -34,6 +35,8 @@ function Steps({ o }) {
         </ol>
     );
 }
+
+const hasDetails = (d) => !!d && !!(d.packagingType || d.hsnCode || d.manufacturer || d.modelNo || d.gradeVariant || d.description || d.specs?.length || d.docs?.length);
 
 // Confirmation for the two steps that can't be undone: complete and cancel.
 function Confirm({ kind, busy, onCancel, onConfirm }) {
@@ -145,11 +148,11 @@ function LineText({ i }) {
                     : `${qty(i.quantity)} ${i.unit} × ${inr(i.unitPrice, 4)}`}
                 {i.brandName ? ` · ${i.brandName}` : ""}
             </small>
-            {packed && i.totalUnits > 0 && (
+            {/* {packed && i.totalUnits > 0 && (
                 <small className="ob-pk">
                     = {qty(i.totalUnits)} {i.baseUnit} in total
                 </small>
-            )}
+            )} */}
             {pk && packLines(pk).map((t) => <small key={t} className="ob-pk">{t}</small>)}
         </span>
     );
@@ -261,23 +264,29 @@ export default function OrderBookDetail({ mode, id, api, token, say, backTo, bac
 
             <div className="ob-grid">
                 <div className="ob-col">
-                    <section className="ob-card">
-                        <h2>Products</h2>
-                        <ul className="ob-lines">
-                            {o.items.map((i, k) => (
-                                <li key={`${i.submissionId || i.productName}-${k}`}>
-                                    <span className="ob-th">{i.image ? <img src={i.image} alt="" loading="lazy" /> : (i.productName || "?")[0].toUpperCase()}</span>
-                                    <LineText i={i} />
-                                    <b className="ob-amt">{inr(i.lineTotal)}</b>
-                                    {i.details && <div className="ob-li-d"><ProductDetails item={i} /></div>}
-                                </li>
-                            ))}
-                        </ul>
-                        <p className="ob-total"><span>Order total</span><b>{inr(o.total)}</b></p>
-                        <p className="ob-fine">Prices are logged as entered by the salesperson (GST included).</p>
-                        {o.poNumber && <p className="ob-notes"><b>PO number</b>{o.poNumber}</p>}
-                        {o.notes && <p className="ob-notes"><b>Notes</b>{o.notes}</p>}
-                    </section>
+                    <OrderBookBill o={o} />
+
+                    {o.items.some((i) => hasDetails(i.details)) && (
+                        <section className="ob-card">
+                            <h2>Product details</h2>
+                            <ul className="ob-lines">
+                                {o.items.filter((i) => hasDetails(i.details)).map((i, k) => (
+                                    <li key={`${i.submissionId || i.productName}-${k}`}>
+                                        <span className="ob-th">{i.image ? <img src={i.image} alt="" loading="lazy" /> : (i.productName || "?")[0].toUpperCase()}</span>
+                                        <span className="ob-lt"><ProductLink i={i} />{i.brandName && <small>{i.brandName}</small>}</span>
+                                        <div className="ob-li-d"><ProductDetails item={i} /></div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </section>
+                    )}
+
+                    {o.notes && (
+                        <section className="ob-card">
+                            <h2>Notes</h2>
+                            <p className="ob-notes" style={{ margin: 0 }}>{o.notes}</p>
+                        </section>
+                    )}
 
                     {hasShipment && (
                         <section className="ob-card">
