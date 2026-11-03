@@ -330,6 +330,16 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     const growBadges = useGrowBadges();
 
+    // Console state. Declared up here because values derived below (canChat) read `tab`.
+    const [pageOpen, setPageOpen] = useState(false);
+    const [everOpened, setEverOpened] = useState(false); // notifications list mounts on first open only
+    const [tab, setTab] = useState("notifications"); // notifications | team | sales | enquiries
+    const [teamOpened, setTeamOpened] = useState(false); // Team panel mounts on first visit only
+    const [salesOpened, setSalesOpened] = useState(false); // Sales panel mounts on first visit only
+    const [enquiriesOpened, setEnquiriesOpened] = useState(false);
+    const [deepId, setDeepId] = useState("");
+    const typing = useTypingActive();
+
     // Everything except chat, newest first (stable order when the server sends no timestamps).
     const consoleNotifs = useMemo(
         () => (notifications || [])
@@ -354,8 +364,6 @@ export default function BottomNavStrip({ onOpenRfq }) {
 
     const isMemberRole = teamRole === "member";
     const chat = useChatUnread(token, effectiveLoggedIn && !!profile?.team && teamRole !== "salesperson");
-    const [enquiriesOpened, setEnquiriesOpened] = useState(false);
-    const [deepId, setDeepId] = useState("");
     const canChat = isMemberRole && (chat.threads > 0 || tab === "enquiries");
 
     // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
@@ -365,13 +373,6 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const tiles = [TILES.grow, TILES.save].map((t, i) => ({
         ...t, to: t.key === "grow" ? growTo : t.to, slot: SLOT[i], badge: t.key === "grow" ? growBadges.total : 0,
     }));
-
-    const [pageOpen, setPageOpen] = useState(false);
-    const [everOpened, setEverOpened] = useState(false); // notifications list mounts on first open only
-    const [tab, setTab] = useState("notifications"); // notifications | team | sales
-    const [teamOpened, setTeamOpened] = useState(false); // Team panel mounts on first visit only
-    const [salesOpened, setSalesOpened] = useState(false); // Sales panel mounts on first visit only
-    const typing = useTypingActive();
 
     // Measurements used to keep the Console button exactly where it was while the dock shrinks.
     const tilesInnerRef = useRef(null);
@@ -430,6 +431,13 @@ export default function BottomNavStrip({ onOpenRfq }) {
     // Console button badge = unread notifications only.
     const badgeTotal = unreadNotifCount + chat.total;
 
+    const showTab = (k) => {
+        setTab(k);
+        if (k === "team") setTeamOpened(true);
+        if (k === "enquiries") setEnquiriesOpened(true);
+        if (k === "sales") setSalesOpened(true);
+    };
+
     useEffect(() => {
         const id = new URLSearchParams(search).get("enquiry");
         if (!id || !effectiveLoggedIn || !profile) return;
@@ -448,12 +456,6 @@ export default function BottomNavStrip({ onOpenRfq }) {
         else window.location.assign(link);
     }, [markRead, navigate]);
 
-    const showTab = (k) => {
-        setTab(k);
-        if (k === "team") setTeamOpened(true);
-        if (k === "enquiries") setEnquiriesOpened(true);
-        if (k === "sales") setSalesOpened(true);
-    };
     const tabs = [["notifications", "Notifications"], ["team", "Team"],
     ...(canMonitor ? [["sales", "Sales"]] : []), ...(canChat ? [["enquiries", "Enquiries"]] : [])];
 
