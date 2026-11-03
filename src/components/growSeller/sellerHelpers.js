@@ -4,7 +4,7 @@ import { DEFAULT_VALIDITY_HOURS } from "../../shared/listingValidity.js";
 
 export const H = 36e5;
 export const D = 864e5;
-export const LOW_STOCK_THRESHOLD = 10;
+export const LOW_STOCK_THRESHOLD = 1;
 
 const UNIT_SHORT = {
     pieces: "Pc", piece: "Pc", kg: "Kg", grams: "G", gram: "G",

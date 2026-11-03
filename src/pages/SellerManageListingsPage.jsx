@@ -83,7 +83,7 @@ const C = {
 };
 
 const EASE = [0.16, 1, 0.3, 1];
-const LOW_STOCK_THRESHOLD = 10;
+const LOW_STOCK_THRESHOLD = 1;
 
 // Attribute marking "this element may scroll while the modal scroll-lock is active".
 const SCROLL_LOCK_ALLOW_SELECTOR = "[data-lenis-prevent], [data-scroll-lock-allow]";

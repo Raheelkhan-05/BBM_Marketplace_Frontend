@@ -41,7 +41,7 @@ const C = {
     hairSoft: "rgba(11,17,22,0.05)",
 };
 const EASE = [0.16, 1, 0.3, 1];
-const LOW_STOCK_THRESHOLD = 10;
+const LOW_STOCK_THRESHOLD = 1;
 const LIST_MAX_HEIGHT = 428; // px — roughly 5 rows before it scrolls
 
 /* ---------------- shared primitives ---------------- */
