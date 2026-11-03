@@ -1,9 +1,10 @@
 // src/components/orderBook/OrderBookSheet.jsx
 // Punch an order (salesperson).  CUSTOMER: pick one of your customers, or add a new one by GST number.
-// The customer must have a mobile number or an email (at least one), so they can be told when the order is placed / processed.
-// A picked customer who is missing a mobile number or an email gets input(s) for just the missing one(s). What is typed is
-// saved on the customer by the server, so it is pre-filled the next time that customer is picked.
-// BUYER ADDRESS: filled from the GST number (full registered address), then editable.
+// WHO GETS THE UPDATES: a picked customer's saved contacts are listed under the company; tick the people who should get the
+// order confirmation (WhatsApp / email) and add another contact on the spot (it is saved on the customer). A new customer takes
+// one or more contacts (name optional; a mobile number or an email each) with a "send updates" tick on each. At least one
+// contact must be ticked.
+// BUYER ADDRESS: the customer's saved address, or the full registered address from the GST number, then editable.
 // PRODUCTS: tag products from the company catalog (or type a name). Catalog products are ordered in whole packs or
 // master packs, never single units; the sheet shows what one pack / master pack contains.
 // PRICES SHOWN: every product shows its marketplace price. Once the customer has a full GST number, it also shows the custom
@@ -20,11 +21,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Loader2, BadgeCheck, Search, UserPlus, PackagePlus, Plus, Trash2, Check } from "lucide-react";
 import { fetchCatalogProducts } from "../../utils/salesThreadApi.js";
-import { fetchSalesCustomers } from "../../utils/salesApi.js";
+import { fetchSalesCustomers, addCustomerContact } from "../../utils/salesApi.js";
 import { salesOrderBook } from "../../utils/orderBookApi.js";
 import { RFQ_UNITS } from "../../utils/rfqUtils.js";
 import { useSheetBehavior } from "../../hooks/useSalesSheet.js";
-import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, ov, ol, initialOf, qty, inr } from "../sales/salesThreadFmt.js";
+import { GSTIN_RE, cleanGstin, ov, ol, initialOf, qty, inr } from "../sales/salesThreadFmt.js";
+import { ContactRowsEditor, ContactPicker, blankContact, collectContacts } from "../sales/ContactFields.jsx";
 import { packLines, unitsPerSale, basisWord, minQty } from "./orderBookPack.js";
 import { MANUAL, productPack, priceUnitOptions, defaultPriceUnit, inclPerUnit, salePrice } from "./orderBookPrice.js";
 import "../sales/sales-threads.css";
@@ -32,7 +34,6 @@ import "./order-book.css";
 
 const PAGE = 8;
 const MAX_LINES = 20;
-const CONTACT_MSG = "Add a mobile number or an email (at least one) so the customer gets their order updates.";
 
 function useDebounced(value, ms = 300) {
     const [d, setD] = useState(value.trim());
@@ -122,12 +123,20 @@ function Thumb({ src, name }) {
     return <span className="st-th">{src ? <img src={src} alt="" loading="lazy" /> : (name || "?").trim()[0]?.toUpperCase()}</span>;
 }
 
-const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", phone: "", email: "", fromGst: false };
+const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", fromGst: false };
 const blankAddr = { address: "", city: "", state: "", pincode: "", touched: false, fromGst: false };
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const r4 = (n) => Math.round((Number(n) + Number.EPSILON) * 1e4) / 1e4;
 const samePrice = (a, b) => Math.abs(a - b) < 0.00005;
+
+// The contact ticked by default: the primary one, else the first.
+const defaultSel = (cu) => {
+    const list = cu?.contacts || [];
+    const d = list.find((x) => x.isPrimary) || list[0];
+    return d ? new Set([d.id]) : new Set();
+};
+const justContact = ({ name, phone, email }) => ({ name, phone, email });
 
 // Price of one line, per pack / master pack (or per unit for typed products), GST included.
 const lineSale = (l) => salePrice({ price: l.price, pu: l.pu, incl: l.incl, pct: l.gstPct, f: l.pack || MANUAL, basis: l.pack ? l.basis : null });
@@ -157,6 +166,8 @@ function PriceHints({ as: Tag = "small", list, custom, last, f, basis, hasCustom
 export default function OrderBookSheet({ token, onClose, onCreated }) {
     useSheetBehavior(onClose);
     const [c, setC] = useState(blankCustomer);
+    const [rows, setRows] = useState(() => [blankContact()]);   // new customer: the contacts typed
+    const [sel, setSel] = useState(() => new Set());            // picked customer: ids of the contacts that get the updates
     const [addr, setAddr] = useState(blankAddr);
     const [lines, setLines] = useState([]);
     const [picking, setPicking] = useState(true);       // product picker open
@@ -176,10 +187,12 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     const units = useMemo(() => (RFQ_UNITS || []).map((o) => ({ value: ov(o), label: ol(o) })), []);
     const touch = () => setFormErr("");
-    const patchC = (patch) => { setC((s) => ({ ...s, ...patch })); setErrors((e) => ({ ...e, contact: undefined })); touch(); };
+    const patchC = (patch) => { setC((s) => ({ ...s, ...patch })); touch(); };
     const patchAddr = (patch) => { setAddr((a) => ({ ...a, ...patch, touched: true, fromGst: false })); setErrors((e) => ({ ...e, pincode: undefined })); touch(); };
     const patchLine = (key, patch) => { setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l))); touch(); };
     const removeLine = (key) => { setLines((ls) => { const next = ls.filter((l) => l.key !== key); if (!next.length) setPicking(true); return next; }); touch(); };
+    const changeRows = (next) => { setRows(next); setErrors((e) => ({ ...e, contact: undefined, rows: undefined })); touch(); };
+    const changeSel = (next) => { setSel(next); setErrors((e) => ({ ...e, contact: undefined })); touch(); };
 
     // Packs <-> master packs only changes the quantity (it restarts at the MOQ). The price is entered in its own unit, so it stays as typed.
     const switchBasis = (l, basis) => patchLine(l.key, { basis, quantity: String(minQty(l.pack, basis, l.moq)) });
@@ -195,6 +208,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     // The customer's full GST number ("" until there is one). BBM prices are found by it.
     const picked = c.picked;
+    const pickedContacts = c.mode === "picked" ? picked?.contacts || [] : [];
     const rawGstin = c.mode === "picked" ? cleanGstin(picked?.gstin || "") : c.mode === "new" ? cleanGstin(c.gstin) : "";
     const pricingGstin = GSTIN_RE.test(rawGstin) ? rawGstin : "";
 
@@ -246,8 +260,8 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [c.gstin, c.mode]);
 
-    // Picked customer with a GST number: prefill the address the same way.
-    const pickedGstin = c.mode === "picked" ? c.picked?.gstin || "" : "";
+    // Picked customer with a GST number but no saved address: fetch it the same way.
+    const pickedGstin = c.mode === "picked" && !c.picked?.address ? c.picked?.gstin || "" : "";
     useEffect(() => {
         if (!pickedGstin) return undefined;
         let live = true;
@@ -259,10 +273,25 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     const pickCustomer = (cu) => {
         setC({ ...blankCustomer, mode: "picked", picked: cu });
-        setAddr(blankAddr); gst.reset();
-        setErrors((e) => ({ ...e, customer: undefined, contact: undefined, phone: undefined, email: undefined })); touch();
+        setSel(defaultSel(cu));
+        setRows([blankContact()]);
+        // the customer's saved address is used as it is (no GST lookup needed)
+        setAddr(cu.address ? { address: cu.address, city: cu.city || "", state: cu.state || "", pincode: cu.pincode || "", touched: false, fromGst: true } : blankAddr);
+        gst.reset();
+        setErrors((e) => ({ ...e, customer: undefined, contact: undefined, rows: undefined })); touch();
     };
-    const resetCustomer = () => { setC({ ...blankCustomer }); setAddr(blankAddr); gst.reset(); };
+    const resetCustomer = () => { setC({ ...blankCustomer }); setAddr(blankAddr); setSel(new Set()); setRows([blankContact()]); gst.reset(); };
+
+    // A new contact for the picked customer is saved on the customer straight away and ticked.
+    const addPickedContact = async (input) => {
+        const res = await addCustomerContact(token, picked.id, input);
+        if (!res.success) return res;
+        const list = res.contacts || [];
+        setC((s) => ({ ...s, picked: { ...s.picked, contacts: list, contactName: list[0]?.name || null, phone: list[0]?.phone || null, email: list[0]?.email || null } }));
+        setSel((s) => new Set([...s, res.contact.id]));
+        setErrors((e) => ({ ...e, contact: undefined })); touch();
+        return res;
+    };
 
     const addCatalog = (pr) => {
         if (pr.reason || lines.some((l) => l.submissionId === pr.submissionId) || lines.length >= MAX_LINES) return;
@@ -294,14 +323,6 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     const total = lines.reduce((a, l) => a + lineTotalOf(l), 0);
 
-    // The contact the order will be sent with. A picked customer's saved details win; for whatever they are missing,
-    // the phone / email typed in the sheet are used (and saved on the customer by the server).
-    const needPhone = c.mode === "picked" && !!picked && !picked.phone;
-    const needEmail = c.mode === "picked" && !!picked && !picked.email;
-    const pickedMissing = needPhone || needEmail;
-    const contactPhone = c.mode === "picked" ? (picked?.phone || c.phone.trim()) : c.phone.trim();
-    const contactEmail = c.mode === "picked" ? (picked?.email || c.email.trim()) : c.email.trim();
-
     // BBM prices are found by the customer's GST number, so they only apply to catalog lines of a customer with a full GST number.
     const hasCatalogLine = lines.some((l) => !!l.submissionId);
     const canSetPrices = hasCatalogLine && !!pricingGstin;
@@ -313,6 +334,30 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
             : prodList.buyer?.onBbm === false ? "This customer isn't on BBM yet. The prices you set are saved and apply as soon as they join."
                 : prodList.buyer?.onBbm ? `Showing marketplace prices and ${prodList.buyer.name || "this customer"}'s custom prices.` : "";
 
+    // Who gets the updates (recipients) and which new contacts are saved on the customer.
+    const buildContacts = () => {
+        if (c.mode === "picked") {
+            const recipients = pickedContacts.filter((x) => sel.has(x.id)).map(justContact);
+            if (recipients.length) return { errors: {}, recipients, saved: [] };
+            return {
+                errors: {
+                    contact: pickedContacts.length
+                        ? "Choose at least one contact to send the order updates to."
+                        : "Add a contact (a mobile number or an email) to send the order updates to."
+                },
+                recipients: [], saved: [],
+            };
+        }
+        if (c.mode === "new") {
+            const col = collectContacts(rows);
+            if (!col.ok) return { errors: { rows: col.errors }, recipients: [], saved: [] };
+            const recipients = col.list.filter((x) => x.send).map(justContact);
+            if (!recipients.length) return { errors: { contact: "Tick at least one contact to send the order updates to." }, recipients: [], saved: [] };
+            return { errors: {}, recipients, saved: col.list.map(justContact) };
+        }
+        return { errors: {}, recipients: [], saved: [] };
+    };
+
     const validate = () => {
         const e = {};
         if (c.mode === "pick") e.customer = "Choose a customer, or add a new one.";
@@ -321,12 +366,6 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
             if (g && !GSTIN_RE.test(g)) e.gstin = "Enter all 15 characters of the GST number, or clear it.";
             if (!g && !c.name.trim()) e.name = "Enter the GST number or the company name.";
         }
-        if (c.mode === "new" || pickedMissing) {
-            if (c.phone.trim() && !cleanPhone(c.phone)) e.phone = "Enter a valid 10-digit mobile number.";
-            if (c.email.trim() && !cleanEmail(c.email)) e.email = "Enter a valid email address.";
-        }
-        // At least one way to reach the customer.
-        if (c.mode !== "pick" && !contactPhone && !contactEmail) e.contact = CONTACT_MSG;
         if (addr.pincode.trim() && !/^\d{6}$/.test(addr.pincode.trim())) e.pincode = "Enter a valid 6-digit pincode.";
         if (!lines.length) e.items = "Add at least one product.";
         const le = {};
@@ -345,18 +384,20 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
     const submit = async () => {
         if (busy) return;
-        const e = validate();
+        const cc = buildContacts();
+        const e = { ...validate(), ...cc.errors };
         setErrors(e);
         if (Object.keys(e).length) { setFormErr(e.contact && Object.keys(e).length === 1 ? e.contact : "Please fix the highlighted fields."); return; }
 
-        // customerId lets the server save the contact on the picked customer even when they have no GST number.
+        // customerId lets the server save new contacts on the picked customer even when they have no GST number.
         const cu = c.mode === "picked"
-            ? { customerId: picked.id, customerGstin: picked.gstin || "", customerName: picked.name || "", customerPhone: contactPhone, customerEmail: contactEmail }
-            : { customerGstin: cleanGstin(c.gstin), customerName: c.name.trim(), customerPhone: c.phone.trim(), customerEmail: c.email.trim() };
+            ? { customerId: picked.id, customerGstin: picked.gstin || "", customerName: picked.name || "" }
+            : { customerGstin: cleanGstin(c.gstin), customerName: c.name.trim() };
 
         setBusy(true); setFormErr("");
         const res = await salesOrderBook.create(token, {
-            ...cu, notes: notes.trim(), poNumber: po.trim(), setCustomPrices: setCustom,
+            ...cu, recipients: cc.recipients, contacts: cc.saved,
+            notes: notes.trim(), poNumber: po.trim(), setCustomPrices: setCustom,
             customerAddress: addr.address.trim(), customerCity: addr.city.trim(), customerState: addr.state.trim(), customerPincode: addr.pincode.trim(),
             items: lines.map((l) => ({
                 productSubmissionId: l.submissionId || undefined, productName: l.productName,
@@ -373,36 +414,6 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
     const gstHint = gst.status === "loading" ? "Finding the company and its address…"
         : gst.status === "ok" ? "Company name and address filled from the GST number."
             : gst.status === "fail" ? "Couldn't find this GST number. Type the company name below." : "Optional. We fill in the company name and address from it.";
-
-    // Mobile + email inputs. Used for a new customer (both), and for a picked customer for whatever they are missing.
-    const contactFields = (idSuffix, showPhone = true, showEmail = true) => {
-        const both = showPhone && showEmail;
-        const phoneField = showPhone && (
-            <div className="st-f">
-                <label htmlFor={`ob-ph${idSuffix}`}>Mobile number</label>
-                <input id={`ob-ph${idSuffix}`} className="st-in" inputMode="tel" autoComplete="off" placeholder="10 digits" value={c.phone}
-                    onChange={(e) => patchC({ phone: e.target.value.replace(/[^\d+\s-]/g, "") })} />
-                {errors.phone && <p className="st-err">{errors.phone}</p>}
-            </div>
-        );
-        const emailField = showEmail && (
-            <div className="st-f">
-                <label htmlFor={`ob-em${idSuffix}`}>Email</label>
-                <input id={`ob-em${idSuffix}`} className="st-in" type="email" autoComplete="off" placeholder="name@company.com" value={c.email} onChange={(e) => patchC({ email: e.target.value })} />
-                {errors.email && <p className="st-err">{errors.email}</p>}
-            </div>
-        );
-        return (
-            <>
-                {both ? <div className="st-two">{phoneField}{emailField}</div> : <>{phoneField}{emailField}</>}
-                {errors.contact
-                    ? <p className="st-err" role="alert">{errors.contact}</p>
-                    : both
-                        ? <p className="st-hint">Add at least one. The customer gets an order confirmation on WhatsApp / email as soon as the order is placed.{c.mode === "picked" ? " It is also saved to this customer for next time." : ""}</p>
-                        : <p className="st-hint">Optional. Saved to this customer for next time.</p>}
-            </>
-        );
-    };
 
     return createPortal(
         <div className="st-ov" data-lenis-prevent onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
@@ -423,11 +434,14 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 <span className="st-prod-t">
                                     <b>{picked.name}</b>
                                     {picked.gstin && <small>GSTIN {picked.gstin}</small>}
-                                    <small>{[picked.phone, picked.email].filter(Boolean).join(" · ") || "No phone or email saved yet."}</small>
+                                    {picked.addressLine && <small>{picked.addressLine}</small>}
                                 </span>
                                 <button type="button" className="st-lnk" onClick={resetCustomer}>Change</button>
                             </div>
-                            {pickedMissing && <div style={{ marginTop: 10 }}>{contactFields("-p", needPhone, needEmail)}</div>}
+                            <div style={{ marginTop: 10 }}>
+                                <ContactPicker company={picked} contacts={pickedContacts} selected={sel} onSelect={changeSel} onAdd={addPickedContact} idPrefix="ob-pc" />
+                                {errors.contact && <p className="st-err" role="alert" style={{ marginTop: 6 }}>{errors.contact}</p>}
+                            </div>
                         </>
                     )}
 
@@ -442,11 +456,15 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                         <span className="st-prod-t">
                                             <b>{i.name}</b>
                                             <small>{[i.gstin ? `GSTIN ${i.gstin}` : null, i.status === "active" ? "On BBM" : null].filter(Boolean).join(" · ")}</small>
-                                            {(i.phone || i.email) && <small>{[i.phone, i.email].filter(Boolean).join(" · ")}</small>}
+                                            {i.contacts?.length > 0 && (
+                                                <small>{i.contacts.length > 1
+                                                    ? `${i.contacts.length} contacts`
+                                                    : [i.contacts[0].name, i.contacts[0].phone, i.contacts[0].email].filter(Boolean).join(" · ")}</small>
+                                            )}
                                         </span>
                                     </button>
                                 )} />
-                            <button type="button" className="st-btn st-full" onClick={() => { setC({ ...blankCustomer, mode: "new" }); setAddr(blankAddr); touch(); }}>
+                            <button type="button" className="st-btn st-full" onClick={() => { setC({ ...blankCustomer, mode: "new" }); setAddr(blankAddr); setRows([blankContact()]); touch(); }}>
                                 <UserPlus size={16} />Customer not listed? Add a new one
                             </button>
                             {errors.customer && <p className="st-err" style={{ marginTop: 6 }}>{errors.customer}</p>}
@@ -471,7 +489,11 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 {c.fromGst && <p className="st-hint">From the GST records. The saved name always comes from the GST number.</p>}
                                 {errors.name && <p className="st-err">{errors.name}</p>}
                             </div>
-                            {contactFields("")}
+
+                            <p className="st-sec">Who gets the order updates?</p>
+                            <ContactRowsEditor rows={rows} onChange={changeRows} errors={errors.rows || {}} idPrefix="ob-c" selectable />
+                            {errors.contact && <p className="st-err" role="alert">{errors.contact}</p>}
+                            <p className="st-hint">Each ticked contact gets the order confirmation on WhatsApp / email. The contact person's name is optional. All contacts are saved on this customer for next time.</p>
                             {!cleanGstin(c.gstin) && <p className="st-hint">Without a GST number the customer is only saved on this order, not added to your customers.</p>}
                             <button type="button" className="st-lnk" onClick={resetCustomer}>Search my customers instead</button>
                         </>
@@ -487,7 +509,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                     placeholder="Building, street, area" onChange={(e) => patchAddr({ address: e.target.value })} />
                                 <p className="st-hint">
                                     {gst.status === "loading" ? "Fetching the address from the GST number…"
-                                        : addr.fromGst ? "Filled from the GST records. Change anything that is different."
+                                        : addr.fromGst ? "Filled from the saved customer / GST records. Change anything that is different."
                                             : "Optional. Add it so the team knows where the order goes."}
                                 </p>
                             </div>

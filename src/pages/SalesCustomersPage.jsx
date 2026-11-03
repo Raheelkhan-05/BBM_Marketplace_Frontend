@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
-import { UserPlus, Phone, Mail, MapPin, Receipt, Search, X, Plus } from "lucide-react";
+import { UserPlus, MapPin, Receipt, Search, X, Plus } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import useSalesRealtime from "../hooks/useSalesRealtime.js";
@@ -8,12 +8,13 @@ import { fetchSalesCustomers } from "../utils/salesApi.js";
 import { toTitleCase } from "../components/growSeller/sellerHelpers.js";
 import SalesAddCustomerSheet from "../components/sales/SalesAddCustomerSheet.jsx";
 import SalesNewEnquirySheet from "../components/sales/SalesNewEnquirySheet.jsx";
+import { ContactManager } from "../components/sales/ContactFields.jsx";
 
 const PAGE = 12;
 const day = (iso) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "");
 const mergeUnique = (prev, inc) => { const s = new Set(prev.map((i) => i.id)); return [...prev, ...inc.filter((i) => !s.has(i.id))]; };
 
-function Card({ c, onEnquire }) {
+function Card({ c, token, say, onContacts, onEnquire }) {
     const active = c.status === "active";
     return (
         <article className="gk-card gs-card">
@@ -22,13 +23,13 @@ function Card({ c, onEnquire }) {
             </h3>
             {c.gstin && <b className="q">GSTIN {c.gstin}</b>}
             <div className="gs-lines">
-                {c.location && <span><MapPin size={15} />{c.location}</span>}
-                {c.contactName && <span>{c.contactName}</span>}
-                {c.phone && <a href={`tel:+91${c.phone}`}><Phone size={15} />+91 {c.phone}</a>}
-                {c.email && <a href={`mailto:${c.email}`}><Mail size={15} /><span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{c.email}</span></a>}
+                {c.addressLine && <span className="sc-addr"><MapPin size={15} />{c.addressLine}</span>}
                 {active && <span><Receipt size={15} />{c.ordersCount ? `${c.ordersCount} order${c.ordersCount === 1 ? "" : "s"}${c.lastOrderAt ? ` · last ${day(c.lastOrderAt)}` : ""}` : "No orders yet"}</span>}
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 10 }}>
+            <div style={{ marginTop: 12 }}>
+                <ContactManager token={token} customer={c} onContacts={onContacts} say={say} />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
                 <small>Added {day(c.addedAt)}</small>
                 <button type="button" className="gk-btn go" onClick={() => onEnquire(c)}><Plus size={15} />New enquiry</button>
             </div>
@@ -95,6 +96,13 @@ export default function SalesCustomersPage() {
         { lookahead: 600, disabled: loading || loadingMore || !hasMore },
     );
 
+    // A contact was added / edited / removed on a card: update that card at once (the server list is primary-first).
+    const onContacts = useCallback((id, contacts) => {
+        setItems((prev) => prev.map((c) => (c.id === id
+            ? { ...c, contacts, contactName: contacts[0]?.name || null, phone: contacts[0]?.phone || null, email: contacts[0]?.email || null }
+            : c)));
+    }, []);
+
     const chips = [["all", "All", counts.all], ["active", "On BBM", counts.active], ["invited", "Not on BBM yet", counts.invited]];
 
     return (
@@ -106,7 +114,7 @@ export default function SalesCustomersPage() {
 
             <div className="gk-search" style={{ marginTop: 14 }}>
                 <Search size={16} />
-                <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search by name, contact or GST number" aria-label="Search customers" />
+                <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search by company, contact, mobile, email or GST number" aria-label="Search customers" />
                 {qInput && <button type="button" className="gk-icbtn" style={{ width: 28, height: 28, border: 0 }} aria-label="Clear search" onClick={() => setQInput("")}><X size={14} /></button>}
             </div>
 
@@ -122,11 +130,11 @@ export default function SalesCustomersPage() {
                 <div className="gs-list">{[0, 1, 2].map((i) => <div key={i} className="gk-skel" style={{ height: 150 }} />)}</div>
             ) : (
                 <div className="gs-list">
-                    {items.map((c) => <Card key={c.id} c={c} onEnquire={setEnquiryFor} />)}
+                    {items.map((c) => <Card key={c.id} c={c} token={token} say={say} onContacts={onContacts} onEnquire={setEnquiryFor} />)}
                     {!loading && !error && items.length === 0 && (
                         <div className="gk-empty" style={{ gridColumn: "1 / -1" }}>
                             <b>{q ? "No customers match your search" : "No customers yet"}</b>
-                            {q ? "Try a different name or GST number." : "Add a business by its GST number. Customers your admin assigns to you show up here instantly."}
+                            {q ? "Try a different name, contact or GST number." : "Add a business by its GST number. Customers your admin assigns to you show up here instantly."}
                         </div>
                     )}
                 </div>

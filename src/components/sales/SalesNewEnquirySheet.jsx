@@ -1,19 +1,20 @@
 // src/components/sales/SalesNewEnquirySheet.jsx
 // Start an enquiry or log a call.
-//  CUSTOMER: pick one of your existing customers (search) -> or add a new one by GST number / company name + contact.
+//  CUSTOMER: pick one of your existing customers (search) -> or add a new one by GST number / company name + one or more contacts.
+//            A contact has an optional person name and a mobile number and/or an email. Contacts are optional here, but you
+//            need a GST number and at least one contact to send a quotation. They are saved on the customer with the first quotation.
 //  TYPE:     "Enquiry" (the customer asked for a product / price) or "Cold call / other" (no enquiry yet).
 //    Enquiry   -> tag a product from your company catalog (locked afterwards) or type its name, plus the quantity.
-//    Cold call -> a free text note about what happened. The thread is created with it as the first message, and the
-//                 product can be added later from the thread (it is needed before a quotation can be sent).
-// The company name is always taken from the GST number by the server; a new customer is added to the customer list
-// automatically when the first quotation is sent. `initialCustomer` pre-selects a customer (used from the Customers page).
+//    Cold call -> a free text note about what happened. The product can be added later from the thread.
+// `initialCustomer` pre-selects a customer (used from the Customers page).
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Loader2, BadgeCheck, UserPlus, PhoneCall, MessageSquareText } from "lucide-react";
 import { createThread } from "../../utils/salesThreadApi.js";
 import { fetchSalesCustomers } from "../../utils/salesApi.js";
 import { useSheetBehavior, useGstLookup } from "../../hooks/useSalesSheet.js";
-import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, initialOf } from "./salesThreadFmt.js";
+import { GSTIN_RE, cleanGstin, initialOf } from "./salesThreadFmt.js";
+import { ContactRowsEditor, blankContact, collectContacts } from "./ContactFields.jsx";
 import { SearchList, useDebounced, useRemoteList, useProductForm, ProductFields, LIST_PAGE } from "./SalesProductFields.jsx";
 import "./sales-threads.css";
 import "../orderBook/order-book.css";
@@ -21,11 +22,19 @@ import "./sales-threads.cold.css";
 
 const NOTE_MAX = 4000;
 const QUICK_NOTES = ["Didn't pick up", "Call back later", "Not interested", "Interested, will share requirement"];
-const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", phone: "", email: "", fromGst: false };
+const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", fromGst: false };
+const justContact = ({ name, phone, email }) => ({ name, phone, email });
+
+// "Ravi · 98xxxxxx · a@b.com" for one contact, "3 contacts" for several.
+const contactsLine = (list) => {
+    if (!list?.length) return "";
+    return list.length > 1 ? `${list.length} contacts` : [list[0].name, list[0].phone, list[0].email].filter(Boolean).join(" · ");
+};
 
 export default function SalesNewEnquirySheet({ token, onClose, onCreated, initialCustomer = null }) {
     useSheetBehavior(onClose);
     const [c, setC] = useState(() => (initialCustomer ? { ...blankCustomer, mode: "picked", picked: initialCustomer } : blankCustomer));
+    const [rows, setRows] = useState(() => [blankContact()]);   // new customer: the contacts typed
     const [kind, setKind] = useState("enquiry");     // enquiry | cold_call
     const [note, setNote] = useState("");
     const [cSearch, setCSearch] = useState("");
@@ -58,6 +67,9 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
     }, [c.gstin, c.mode]);
 
     const pickCustomer = (cu) => { setC({ ...blankCustomer, mode: "picked", picked: cu }); setErrors((e) => ({ ...e, customer: undefined })); touch(); };
+    const startNew = () => { setC({ ...blankCustomer, mode: "new" }); setRows([blankContact()]); touch(); };
+    const backToSearch = () => { setC({ ...blankCustomer }); setRows([blankContact()]); gst.reset(); };
+    const changeRows = (next) => { setRows(next); setErrors((e) => ({ ...e, rows: undefined })); touch(); };
 
     const chooseKind = (k) => { setKind(k); setErrors({}); touch(); };
     const addQuick = (t) => { setNote((n) => (n.trim() ? `${n.trim()}\n${t}` : t).slice(0, NOTE_MAX)); setErrors((e) => ({ ...e, note: undefined })); touch(); };
@@ -69,8 +81,8 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
             const g = cleanGstin(c.gstin);
             if (g && !GSTIN_RE.test(g)) e.gstin = "Enter all 15 characters of the GST number, or clear it.";
             if (!g && !c.name.trim()) e.name = "Enter the GST number or the company name.";
-            if (c.phone.trim() && !cleanPhone(c.phone)) e.phone = "Enter a valid 10-digit mobile number.";
-            if (c.email.trim() && !cleanEmail(c.email)) e.email = "Enter a valid email address.";
+            const col = collectContacts(rows);
+            if (!col.blank && !col.ok) e.rows = col.errors;   // contacts are optional, but a typed one must be valid
         }
         return e;
     };
@@ -86,8 +98,8 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
         if (Object.keys(ce).length || Object.keys(ne).length || !productOk) return;
 
         const cu = c.mode === "picked"
-            ? { customerGstin: c.picked.gstin || "", customerName: c.picked.name || "", customerPhone: c.picked.phone || "", customerEmail: c.picked.email || "" }
-            : { customerGstin: cleanGstin(c.gstin), customerName: c.name.trim(), customerPhone: c.phone.trim(), customerEmail: c.email.trim() };
+            ? { customerGstin: c.picked.gstin || "", customerName: c.picked.name || "", contacts: (c.picked.contacts || []).map(justContact) }
+            : { customerGstin: cleanGstin(c.gstin), customerName: c.name.trim(), contacts: collectContacts(rows).list.map(justContact) };
 
         setBusy(true); setFormErr("");
         const res = await createThread(token, cold
@@ -122,9 +134,9 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
                             <span className="st-prod-t">
                                 <b>{picked.name}</b>
                                 {picked.gstin && <small>GSTIN {picked.gstin}</small>}
-                                <small>{[picked.phone, picked.email].filter(Boolean).join(" · ") || "No phone or email yet. You can add it in the thread."}</small>
+                                <small>{contactsLine(picked.contacts) || "No contact saved yet. You can add one in the thread."}</small>
                             </span>
-                            <button type="button" className="st-lnk" onClick={() => setC({ ...blankCustomer })}>Change</button>
+                            <button type="button" className="st-lnk" onClick={backToSearch}>Change</button>
                         </div>
                     )}
 
@@ -139,11 +151,11 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
                                         <span className="st-prod-t">
                                             <b>{i.name}</b>
                                             <small>{[i.gstin ? `GSTIN ${i.gstin}` : null, i.status === "active" ? "On BBM" : null].filter(Boolean).join(" · ")}</small>
-                                            {(i.phone || i.email) && <small>{[i.phone, i.email].filter(Boolean).join(" · ")}</small>}
+                                            {i.contacts?.length > 0 && <small>{contactsLine(i.contacts)}</small>}
                                         </span>
                                     </button>
                                 )} />
-                            <button type="button" className="st-btn st-full" onClick={() => { setC({ ...blankCustomer, mode: "new" }); touch(); }}>
+                            <button type="button" className="st-btn st-full" onClick={startNew}>
                                 <UserPlus size={16} />Customer not listed? Add a new one
                             </button>
                             {errors.customer && <p className="st-err" style={{ marginTop: 6 }}>{errors.customer}</p>}
@@ -171,22 +183,10 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
                                 {errors.name && <p className="st-err">{errors.name}</p>}
                             </div>
 
-                            <div className="st-two">
-                                <div className="st-f">
-                                    <label htmlFor="ne-ph">Mobile number</label>
-                                    <input id="ne-ph" className="st-in" inputMode="tel" autoComplete="off" placeholder="10 digits" value={c.phone}
-                                        onChange={(e) => patchC({ phone: e.target.value.replace(/[^\d+\s-]/g, "") })} />
-                                    {errors.phone && <p className="st-err">{errors.phone}</p>}
-                                </div>
-                                <div className="st-f">
-                                    <label htmlFor="ne-em">Email</label>
-                                    <input id="ne-em" className="st-in" type="email" autoComplete="off" placeholder="name@company.com" value={c.email}
-                                        onChange={(e) => patchC({ email: e.target.value })} />
-                                    {errors.email && <p className="st-err">{errors.email}</p>}
-                                </div>
-                            </div>
-                            <p className="st-hint" style={{ marginTop: -4 }}>You need the GST number plus a mobile number or email to send a quotation. This customer is added to your customers when you send it.</p>
-                            <button type="button" className="st-lnk" onClick={() => { setC({ ...blankCustomer }); gst.reset(); }}>Search my customers instead</button>
+                            <p className="st-sec">Contacts (optional)</p>
+                            <ContactRowsEditor rows={rows} onChange={changeRows} errors={errors.rows || {}} idPrefix="ne-c" />
+                            <p className="st-hint">Add everyone you deal with: the person's name is optional, but each contact needs a mobile number or an email. You need the GST number and at least one contact to send a quotation. This customer is added to your customers, with all these contacts, when you send it.</p>
+                            <button type="button" className="st-lnk" onClick={backToSearch}>Search my customers instead</button>
                         </>
                     )}
 
@@ -203,7 +203,6 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
                         </button>
                     </div>
 
-                    {/* ------------------------------ cold call: free note ------------------------------ */}
                     {cold && (
                         <>
                             <div className="st-f" style={{ marginTop: 12 }}>
@@ -220,7 +219,6 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
                         </>
                     )}
 
-                    {/* ------------------------------ enquiry: product + quantity ------------------------------ */}
                     {!cold && <ProductFields form={form} idPrefix="ne" />}
                 </div>
 

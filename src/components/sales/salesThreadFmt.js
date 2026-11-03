@@ -13,6 +13,18 @@ export const cleanEmail = (v) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : "";
 };
 
+// A thread's contacts with a stable id each (for the contact picker). Older threads fall back to the single phone / email.
+export const threadContacts = (t) => {
+    const list = (t?.contacts || [])
+        .filter((c) => c.phone || c.email)
+        .map((c) => ({ id: c.phone || c.email, name: c.name || "", phone: c.phone || "", email: c.email || "", isPrimary: false }));
+    if (!list.length && (t?.customerPhone || t?.customerEmail)) {
+        list.push({ id: t.customerPhone || t.customerEmail, name: "", phone: t.customerPhone || "", email: t.customerEmail || "", isPrimary: false });
+    }
+    if (list[0]) list[0].isPrimary = true;
+    return list;
+};
+
 export const ALLOWED_FILES = /\.(jpe?g|png|webp|gif|heic|pdf|docx?|xlsx?|csv|txt|pptx?)$/i;
 export const FILE_ACCEPT = ".jpg,.jpeg,.png,.webp,.gif,.heic,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.ppt,.pptx";
 export const MAX_FILE_BYTES = 15 * 1024 * 1024;

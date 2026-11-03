@@ -23,7 +23,16 @@ export const fetchSalesSummary = (token, signal) => call("/sales/summary", { tok
 export const fetchSalesCustomers = (token, { q, filter, limit, offset, signal } = {}) =>
     call("/sales/customers", { token, signal, params: { q, filter, limit, offset } });
 export const lookupSalesCustomer = (token, gstin) => call("/sales/customers/lookup", { token, method: "POST", body: { gstin } });
+// payload: { gstin, contacts: [{ name?, phone?, email? }] }
 export const addSalesCustomer = (token, payload) => call("/sales/customers", { token, method: "POST", body: payload });
+
+// contacts of one customer. Each call resolves { success, contact, contacts (the full updated list), message }.
+export const addCustomerContact = (token, customerId, payload) =>
+    call(`/sales/customers/${customerId}/contacts`, { token, method: "POST", body: payload });
+export const updateCustomerContact = (token, customerId, contactId, payload) =>
+    call(`/sales/customers/${customerId}/contacts/${contactId}`, { token, method: "PATCH", body: payload });
+export const deleteCustomerContact = (token, customerId, contactId) =>
+    call(`/sales/customers/${customerId}/contacts/${contactId}`, { token, method: "DELETE" });
 
 // admin (Grow > Customers)
 export const fetchCustomersAdmin = (token, { q, filter, limit, offset, sync, assignee, signal } = {}) =>

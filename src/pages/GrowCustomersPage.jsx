@@ -125,7 +125,7 @@ function CustomerCard({ c, hl, busy, on, canAssign }) {
                         <span className={`stt rfq ${active ? "approved" : "pending_review"}`}>{active ? "Customer" : "Invite"}</span>
                     </h3>
                     {c.gstin && <b className="q">GSTIN {c.gstin}</b>}
-                    {c.location && <small>{c.location}</small>}
+                    {(c.addressLine || c.location) && <small>{c.addressLine || c.location}</small>}
                 </div>
             </div>
             {c.assignment !== undefined && (canAssign || c.assignment) && (
@@ -137,7 +137,15 @@ function CustomerCard({ c, hl, busy, on, canAssign }) {
                     {canAssign && <button type="button" className="bt sm" style={{ marginLeft: "auto" }} onClick={() => on.assign(c)}>{c.assignment ? "Change" : "Assign"}</button>}
                 </div>
             )}
-            {c.savedContact && (
+            {c.contacts?.length > 0 ? (
+                <ul className="cr-note" style={{ margin: "0 0 10px", padding: 0, listStyle: "none", display: "grid", gap: 4 }}>
+                    {c.contacts.map((k) => (
+                        <li key={k.id}>
+                            {[k.name, k.phone, k.email].filter(Boolean).join(" · ")}{k.isPrimary && c.contacts.length > 1 ? " (primary)" : ""}
+                        </li>
+                    ))}
+                </ul>
+            ) : c.savedContact && (
                 <p className="cr-note" style={{ margin: "0 0 10px" }}>
                     {[c.savedContact.name, c.savedContact.phone, c.savedContact.email].filter(Boolean).join(" · ")}
                 </p>

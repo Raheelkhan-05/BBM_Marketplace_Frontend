@@ -25,9 +25,10 @@ import { cacheGet, cacheSet, threadKey, FIRST_PAGE, OLDER_PAGE } from "../utils/
 import SalesQuoteSheet from "../components/sales/SalesQuoteSheet.jsx";
 import SalesAddProductSheet from "../components/sales/SalesAddProductSheet.jsx";
 import {
-    ALLOWED_FILES, FILE_ACCEPT, MAX_FILE_BYTES, MAX_FILES, GSTIN_RE, cleanGstin, cleanPhone, cleanEmail,
+    ALLOWED_FILES, FILE_ACCEPT, MAX_FILE_BYTES, MAX_FILES, GSTIN_RE, cleanGstin, threadContacts,
     clock, dateTime, dayLabel, fileSize, inr, qty, dateShort,
 } from "../components/sales/salesThreadFmt.js";
+import { ContactRowsEditor, blankContact, collectContacts } from "../components/sales/ContactFields.jsx";
 import "../components/sales/sales-threads.css";
 import "../components/sales/sales-threads.polish.css";
 import "../components/sales/sales-threads.cold.css";
@@ -115,7 +116,7 @@ function QuoteCard({ e, busyKey, onRetry }) {
             <div className="st-q-d">
                 {Object.entries(q.delivery || {}).map(([ch, d]) => (
                     <span key={ch} className={`st-dl ${d.status === "sent" ? "ok" : "bad"}`} title={d.error || ""}>
-                        {d.status === "sent" ? <BadgeCheck size={13} /> : <AlertCircle size={13} />}{CH[ch] || ch} {d.status === "sent" ? "sent" : "failed"}
+                        {d.status === "sent" ? <BadgeCheck size={13} /> : <AlertCircle size={13} />}{CH[ch] || ch} {d.status === "sent" ? "sent" : `failed${d.total > 1 ? ` (${d.total - (d.sent || 0)} of ${d.total})` : ""}`}
                         {d.status !== "sent" && !expired && (
                             <button type="button" disabled={busyKey === `${q.id}:${ch}`} onClick={() => onRetry(q.id, ch)} aria-label={`Retry ${CH[ch] || ch}`}>
                                 {busyKey === `${q.id}:${ch}` ? <Loader2 size={12} className="st-spin" /> : <RotateCw size={12} />}Retry
@@ -168,12 +169,19 @@ const Timeline = memo(function Timeline({ entries, busyKey, onRetry, onResend, o
 const CustomerCard = memo(function CustomerCard({ token, thread, onSaved, say }) {
     const [open, setOpen] = useState(false);
     const [d, setD] = useState({});
+    const [rows, setRows] = useState([]);
+    const [rowErrs, setRowErrs] = useState({});
     const [busy, setBusy] = useState(false);
     const [err, setErr] = useState("");
     const gst = useGstLookup(token);
-    const missing = !thread.customerGstin || (!thread.customerPhone && !thread.customerEmail);
+    const contacts = threadContacts(thread);
+    const missing = !thread.customerGstin || contacts.length === 0;
 
-    const begin = () => { setD({ name: thread.customerName, gstin: thread.customerGstin, phone: thread.customerPhone, email: thread.customerEmail }); setErr(""); gst.reset(); setOpen(true); };
+    const begin = () => {
+        setD({ name: thread.customerName, gstin: thread.customerGstin });
+        setRows(contacts.length ? contacts.map((c) => ({ ...blankContact(), name: c.name, phone: c.phone, email: c.email })) : [blankContact()]);
+        setRowErrs({}); setErr(""); gst.reset(); setOpen(true);
+    };
 
     useEffect(() => {
         if (!open) return undefined;
@@ -188,11 +196,14 @@ const CustomerCard = memo(function CustomerCard({ token, thread, onSaved, say })
     const save = async () => {
         const g = cleanGstin(d.gstin);
         if (g && !GSTIN_RE.test(g)) return setErr("Enter all 15 characters of the GST number.");
-        if (d.phone?.trim() && !cleanPhone(d.phone)) return setErr("Enter a valid 10-digit mobile number.");
-        if (d.email?.trim() && !cleanEmail(d.email)) return setErr("Enter a valid email address.");
         if (!g && !String(d.name || "").trim()) return setErr("Keep either the company name or the GST number.");
+        const col = collectContacts(rows);
+        if (!col.blank && !col.ok) { setRowErrs(col.errors); return setErr("Fix the highlighted contact."); }
         setBusy(true); setErr("");
-        const res = await updateThread(token, thread.id, { customerName: d.name || "", customerGstin: g, customerPhone: d.phone || "", customerEmail: d.email || "" });
+        const res = await updateThread(token, thread.id, {
+            customerName: d.name || "", customerGstin: g,
+            contacts: col.blank ? [] : col.list.map(({ name, phone, email }) => ({ name, phone, email })),
+        });
         setBusy(false);
         if (!res.success) return setErr(res.message || "Couldn't save. Please try again.");
         onSaved(res.thread); setOpen(false); say("Customer details saved.");
@@ -203,13 +214,15 @@ const CustomerCard = memo(function CustomerCard({ token, thread, onSaved, say })
             <button type="button" className="st-cust-h" aria-expanded={open} onClick={() => (open ? setOpen(false) : begin())}>
                 <span className="st-cust-s">
                     <span>{thread.customerGstin ? `GSTIN ${thread.customerGstin}` : "GST number missing"}</span>
-                    {thread.customerPhone && <span><Phone size={12} />{thread.customerPhone}</span>}
-                    {thread.customerEmail && <span><Mail size={12} />{thread.customerEmail}</span>}
-                    {!thread.customerPhone && !thread.customerEmail && <span>No phone or email</span>}
+                    {contacts.slice(0, 2).map((c) => (
+                        <span key={c.id}>{c.phone ? <Phone size={12} /> : <Mail size={12} />}{[c.name, c.phone || c.email].filter(Boolean).join(" · ")}</span>
+                    ))}
+                    {contacts.length > 2 && <span>+{contacts.length - 2} more</span>}
+                    {contacts.length === 0 && <span>No contact yet</span>}
                 </span>
                 <span className="st-cust-a">{open ? "Cancel" : "Edit"}<ChevronDown size={16} className={open ? "up" : ""} /></span>
             </button>
-            {missing && !open && <p className="st-hint warn">Add the GST number and a mobile number or email to send quotations.</p>}
+            {missing && !open && <p className="st-hint warn">Add the GST number and at least one contact (mobile number or email) to send quotations.</p>}
             {open && (
                 <div className="st-cust-b">
                     <div className="st-f"><label htmlFor="cc-gst">GST number</label>
@@ -219,12 +232,9 @@ const CustomerCard = memo(function CustomerCard({ token, thread, onSaved, say })
                     </div>
                     <div className="st-f"><label htmlFor="cc-name">Company name</label>
                         <input id="cc-name" className="st-in" value={d.name || ""} onChange={(e) => setD((s) => ({ ...s, name: e.target.value }))} /></div>
-                    <div className="st-two">
-                        <div className="st-f"><label htmlFor="cc-ph">Mobile number</label>
-                            <input id="cc-ph" className="st-in" inputMode="tel" value={d.phone || ""} onChange={(e) => setD((s) => ({ ...s, phone: e.target.value.replace(/[^\d+\s-]/g, "") }))} /></div>
-                        <div className="st-f"><label htmlFor="cc-em">Email</label>
-                            <input id="cc-em" className="st-in" type="email" value={d.email || ""} onChange={(e) => setD((s) => ({ ...s, email: e.target.value }))} /></div>
-                    </div>
+                    <p className="st-sec">Contacts</p>
+                    <ContactRowsEditor rows={rows} errors={rowErrs} idPrefix="cc-c"
+                        onChange={(n) => { setRows(n); setRowErrs({}); setErr(""); }} />
                     {err && <p className="st-err" role="alert">{err}</p>}
                     <button type="button" className="st-btn pri" disabled={busy} onClick={save}>{busy ? <Loader2 size={16} className="st-spin" /> : null}Save details</button>
                 </div>
@@ -827,6 +837,7 @@ export default function SalesThreadPage() {
 
             {quoting && hasProduct && (
                 <SalesQuoteSheet token={token} thread={thread} onClose={() => setQuoting(false)}
+                    onThread={(t) => setThread((s) => ({ ...s, ...t }))}
                     onSent={() => { stickRef.current = true; load("after"); }} />
             )}
 

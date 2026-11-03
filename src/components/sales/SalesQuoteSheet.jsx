@@ -12,7 +12,8 @@ import { createPortal } from "react-dom";
 import { X, Search, Check, Loader2, ArrowLeft, Trash2, MessageCircle, Mail, AlertCircle } from "lucide-react";
 import { fetchQuoteProducts, sendThreadQuote, updateThread } from "../../utils/salesThreadApi.js";
 import { useSheetBehavior } from "../../hooks/useSalesSheet.js";
-import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, inr, qty, round4 } from "./salesThreadFmt.js";
+import { GSTIN_RE, cleanGstin, cleanPhone, cleanEmail, threadContacts, inr, qty, round4 } from "./salesThreadFmt.js";
+import { ContactPicker } from "./ContactFields.jsx";
 import { packLines, unitsPerSale, basisWord, minQty } from "../orderBook/orderBookPack.js";
 import { gstFactor, unitsIn, priceUnitOptions, defaultPriceUnit, productPack } from "../orderBook/orderBookPrice.js";
 import "./sales-threads.css";
@@ -81,7 +82,7 @@ function CustomPricingNote({ cp }) {
     );
 }
 
-export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
+export default function SalesQuoteSheet({ token, thread, onClose, onSent, onThread }) {
     const [view, setView] = useState("pick"); // pick | review | done
     const [search, setSearch] = useState("");
     const [q, setQ] = useState("");
@@ -92,9 +93,8 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
     const [loadError, setLoadError] = useState("");
     const [lines, setLines] = useState([]); // { p, f, basis, qty, price, gstIncl, setCustom }
     const [gstin, setGstin] = useState(thread.customerGstin || "");
-    const [phone, setPhone] = useState(thread.customerPhone || "");
-    const [email, setEmail] = useState(thread.customerEmail || "");
-    const [chan, setChan] = useState({ whatsapp: !!thread.customerPhone, email: !!thread.customerEmail });
+    const [contacts, setContacts] = useState(() => threadContacts(thread));
+    const [sel, setSel] = useState(() => new Set(threadContacts(thread).slice(0, 1).map((c) => c.id)));   // the first contact is ticked
     const [note, setNote] = useState("");
     const [busy, setBusy] = useState(false);
     const [buyer, setBuyer] = useState(null);
@@ -174,6 +174,21 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
         const c = calcLine(l); return { taxable: a.taxable + c.taxable, total: a.total + c.total };
     }, { taxable: 0, total: 0 }), [lines]);
 
+    // A contact added here is saved on the thread (and on the customer if they are already in your list), then ticked.
+    const addContact = async (input) => {
+        const next = [...contacts.map(({ name, phone, email }) => ({ name, phone, email })), input];
+        const res = await updateThread(token, thread.id, { contacts: next });
+        if (!res.success) return res;
+        const list = threadContacts(res.thread);
+        setContacts(list);
+        onThread?.(res.thread);
+        const p = cleanPhone(input.phone), e = cleanEmail(input.email);
+        const added = list.find((c) => (p && c.phone === p) || (e && c.email === e));
+        if (added) setSel((s) => new Set([...s, added.id]));
+        setErr("");
+        return { success: true };
+    };
+
     const goReview = () => {
         if (!lines.length) return setErr("Choose at least one product.");
         setErr(""); setView("review");
@@ -190,19 +205,14 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
         }
         const g = cleanGstin(gstin);
         if (!GSTIN_RE.test(g)) return setErr("Enter the customer's 15-character GST number. It's needed to send a quotation.");
-        const channels = ["whatsapp", "email"].filter((c) => chan[c]);
-        if (!channels.length) return setErr("Choose WhatsApp, email or both.");
-        if (chan.whatsapp && !cleanPhone(phone)) return setErr("Enter a valid 10-digit mobile number for WhatsApp.");
-        if (chan.email && !cleanEmail(email)) return setErr("Enter a valid email address.");
+        const recipients = contacts.filter((c) => sel.has(c.id)).map(({ name, phone, email }) => ({ name, phone, email }));
+        if (!recipients.length) return setErr("Tick at least one contact to send the quotation to.");
 
         setBusy(true); setErr("");
-        const patch = {};
-        if (g !== thread.customerGstin) patch.customerGstin = g;
-        if (chan.whatsapp && cleanPhone(phone) !== thread.customerPhone) patch.customerPhone = phone;
-        if (chan.email && cleanEmail(email) !== thread.customerEmail) patch.customerEmail = email;
-        if (Object.keys(patch).length) {
-            const u = await updateThread(token, thread.id, patch);
+        if (g !== thread.customerGstin) {
+            const u = await updateThread(token, thread.id, { customerGstin: g });
             if (!u.success) { setBusy(false); return setErr(u.message || "Couldn't save the customer details."); }
+            onThread?.(u.thread);
         }
         const res = await sendThreadQuote(token, thread.id, {
             // quantity / price stay per listing unit (what the quotation and custom prices already understand);
@@ -217,7 +227,7 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
                     basis: l.basis, packQuantity: n, packPrice: round4(perUnit * per), unitsPerSaleUnit: per, priceUnit: l.pu,
                 };
             }),
-            channels, note: note.trim(),
+            recipients, note: note.trim(),
         });
         setBusy(false);
         if (!res.success) return setErr(res.message || "Couldn't send the quotation. Please try again.");
@@ -368,18 +378,9 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent }) {
                                 <p className="st-hint">Required. The prices you set are saved against this GST number.</p>
                             </div>
                         )}
-                        <div className={`st-chan${chan.whatsapp ? " on" : ""}`}>
-                            <button type="button" role="checkbox" aria-checked={chan.whatsapp} onClick={() => setChan((s) => ({ ...s, whatsapp: !s.whatsapp }))}>
-                                <i>{chan.whatsapp ? <Check size={14} strokeWidth={3} /> : null}</i><MessageCircle size={16} />WhatsApp
-                            </button>
-                            {chan.whatsapp && <input className="st-in" inputMode="tel" aria-label="Customer mobile number" placeholder="Customer's 10-digit mobile number" value={phone} onChange={(e) => { setPhone(e.target.value.replace(/[^\d+\s-]/g, "")); setErr(""); }} />}
-                        </div>
-                        <div className={`st-chan${chan.email ? " on" : ""}`}>
-                            <button type="button" role="checkbox" aria-checked={chan.email} onClick={() => setChan((s) => ({ ...s, email: !s.email }))}>
-                                <i>{chan.email ? <Check size={14} strokeWidth={3} /> : null}</i><Mail size={16} />Email
-                            </button>
-                            {chan.email && <input className="st-in" type="email" aria-label="Customer email" placeholder="Customer's email address" value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }} />}
-                        </div>
+                        <ContactPicker company={{ name: thread.displayName }} contacts={contacts} selected={sel}
+                            onSelect={(n) => { setSel(n); setErr(""); }} onAdd={addContact} idPrefix="qs-c" />
+                        <p className="st-hint">Each ticked contact gets the quotation on WhatsApp if they have a mobile number, and by email if they have an email.</p>
 
                         <div className="st-f" style={{ marginTop: 14 }}>
                             <label htmlFor="qs-note">Message to the customer (optional)</label>
