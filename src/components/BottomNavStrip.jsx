@@ -34,7 +34,8 @@ import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { LayoutGrid, X, LogOut, Home, LogIn } from "lucide-react";
-
+import EnquiryChatsPanel from "./team/EnquiryChatsPanel.jsx";
+import useChatUnread from "../hooks/useChatUnread.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import { useNotificationActions } from "../context/NotificationActionsContext.jsx";
@@ -314,7 +315,7 @@ function DockItem({
 export default function BottomNavStrip({ onOpenRfq }) {
     const primary = useIsPrimaryInstance();
     const navigate = useNavigate();
-    const { pathname } = useLocation();
+    const { pathname, search } = useLocation();
     const { token, effectiveLoggedIn, profile, signOut } = useAuth();
     const { notifications, markRead, markAllRead } = useNotifications();
     const { refresh: refreshActions } = useNotificationActions();
@@ -350,6 +351,12 @@ export default function BottomNavStrip({ onOpenRfq }) {
     // The Sales monitor tab is for the company owner / team admins. The server enforces it too.
     const teamRole = profile?.team?.role;
     const canMonitor = effectiveLoggedIn && (!teamRole || teamRole === "admin");
+
+    const isMemberRole = teamRole === "member";
+    const chat = useChatUnread(token, effectiveLoggedIn && !!profile?.team && teamRole !== "salesperson");
+    const [enquiriesOpened, setEnquiriesOpened] = useState(false);
+    const [deepId, setDeepId] = useState("");
+    const canChat = isMemberRole && (chat.threads > 0 || tab === "enquiries");
 
     // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
     const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/sell/dashboard" : "/sell";
@@ -416,10 +423,21 @@ export default function BottomNavStrip({ onOpenRfq }) {
     }, [pageOpen, primary]);
 
     // If the person loses admin access while the Sales tab is selected, fall back to notifications.
-    useEffect(() => { if (tab === "sales" && !canMonitor) setTab("notifications"); }, [tab, canMonitor]);
+    useEffect(() => {
+        if ((tab === "sales" && !canMonitor) || (tab === "enquiries" && !canChat)) setTab("notifications");
+    }, [tab, canMonitor, canChat]);
 
     // Console button badge = unread notifications only.
-    const badgeTotal = unreadNotifCount;
+    const badgeTotal = unreadNotifCount + chat.total;
+
+    useEffect(() => {
+        const id = new URLSearchParams(search).get("enquiry");
+        if (!id || !effectiveLoggedIn || !profile) return;
+        setDeepId(id); setPageOpen(true);
+        showTab(canMonitor ? "sales" : "enquiries");
+        navigate({ pathname, search: "" }, { replace: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [search, effectiveLoggedIn, profile, canMonitor]);
 
     const openNotification = useCallback((n) => {
         if (!n.read) markRead(n.id);
@@ -433,10 +451,11 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const showTab = (k) => {
         setTab(k);
         if (k === "team") setTeamOpened(true);
+        if (k === "enquiries") setEnquiriesOpened(true);
         if (k === "sales") setSalesOpened(true);
     };
-
-    const tabs = [["notifications", "Notifications"], ["team", "Team"], ...(canMonitor ? [["sales", "Sales"]] : [])];
+    const tabs = [["notifications", "Notifications"], ["team", "Team"],
+    ...(canMonitor ? [["sales", "Sales"]] : []), ...(canChat ? [["enquiries", "Enquiries"]] : [])];
 
     // A chat thread is open: /grow/chat/:id (hide the dock for an immersive view)
     const inChatThread = /^\/sell\/chat\/[^/]+/.test(pathname);
@@ -647,6 +666,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                                 {countLabel(unreadNotifCount)}
                                             </span>
                                         )}
+                                        {((k === "sales" && canMonitor) || k === "enquiries") && chat.total > 0 && (
+                                            <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#d2462b] px-1 text-[10px] font-bold text-white">{countLabel(chat.total)}</span>
+                                        )}
                                     </button>
                                 );
                             })}
@@ -673,7 +695,10 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         <TeamPanel token={token} active={pageOpen} scrollProps={scrollProps} />
                     )}
                     {salesOpened && canMonitor && tab === "sales" && (
-                        <SalesMonitorPanel token={token} active={pageOpen} scrollProps={scrollProps} />
+                        <SalesMonitorPanel token={token} active={pageOpen} scrollProps={scrollProps} openId={deepId} onOpenedId={() => setDeepId("")} />
+                    )}
+                    {enquiriesOpened && canChat && tab === "enquiries" && (
+                        <EnquiryChatsPanel token={token} active={pageOpen} scrollProps={scrollProps} openId={deepId} onOpenedId={() => setDeepId("")} />
                     )}
                 </div>
             </div>

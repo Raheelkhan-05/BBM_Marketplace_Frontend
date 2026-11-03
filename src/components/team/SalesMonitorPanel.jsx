@@ -303,7 +303,7 @@ function Timeline({ token, filters, socket, onOpen }) {
 }
 
 /* ----------------------------------- panel ----------------------------------- */
-export default function SalesMonitorPanel({ token, active, scrollProps }) {
+export default function SalesMonitorPanel({ token, active, scrollProps, openId, onOpenedId }) {
     const navigate = useNavigate();
     const { socket } = useSocket();
 
@@ -329,6 +329,7 @@ export default function SalesMonitorPanel({ token, active, scrollProps }) {
     useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
     useEffect(() => { if (!active) setViewer(null); }, [active]);
     useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [view, actorId]);
+    useEffect(() => { if (openId && active) { setViewer({ id: openId, who: "" }); onOpenedId?.(); } }, [openId, active, onOpenedId]);
 
     const loadPeople = useCallback(async (silent) => {
         const id = ++peopleReq.current;

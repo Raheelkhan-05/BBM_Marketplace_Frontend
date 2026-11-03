@@ -52,7 +52,7 @@ function MarqueeText({ text, width = 96, className, style }) {
     <div
       ref={containerRef}
       className="overflow-hidden whitespace-nowrap"
-      style={isMobile ? { width: "auto", maxWidth: "100%" } : { width: `${width}px` }}
+      style={isMobile ? { width: "auto", maxWidth: "100%" } : { width: `${(width) + 85}px` }}
     >
       <div
         className="inline-flex"

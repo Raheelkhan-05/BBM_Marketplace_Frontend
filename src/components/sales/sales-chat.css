@@ -1,0 +1,463 @@
+/* src/components/sales/sales-chat.css : enquiry group chat (prefix sc-). Reuses the --st-* tokens from sales-threads.css. */
+
+/* ---------- viewer dialog (admin / member) ---------- */
+.sc-ov {
+    align-items: flex-end;
+}
+
+.sc-dlg {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 680px;
+    height: 92vh;
+    height: 92dvh;
+    overflow: hidden;
+    background: var(--st-s);
+    color: var(--st-ink);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -8px 40px rgba(0, 0, 0, .22);
+    animation: st-up .2s ease-out;
+}
+
+@media (min-width: 640px) {
+    .sc-ov {
+        align-items: center;
+        padding: 20px;
+    }
+
+    .sc-dlg {
+        border-radius: 20px;
+        height: min(760px, 88dvh);
+    }
+}
+
+.sc-hd {
+    flex: none;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--st-line);
+}
+
+.sc-hd-r {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.sc-hd-t {
+    margin-top: 8px;
+    min-width: 0;
+}
+
+.sc-hd-n {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.sc-hd-n h2 {
+    margin: 0;
+    min-width: 0;
+    font-size: 1rem;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sc-hd-t p {
+    margin: 1px 0 0;
+    font-size: .78rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sc-hd-t p.sub {
+    font-size: .7rem;
+    font-weight: 500;
+    color: var(--st-mute);
+}
+
+.sc-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    overflow-anchor: none;
+    display: grid;
+    align-content: start;
+    gap: 3px;
+    padding: 10px 14px;
+    background: color-mix(in srgb, var(--st-s2) 55%, var(--st-s));
+}
+
+.sc-info {
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    border-radius: 12px;
+    border: 1px solid var(--st-line);
+    background: var(--st-s);
+    font-size: .78rem;
+}
+
+.sc-info-r {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    font-weight: 600;
+}
+
+.sc-info-r span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    overflow-wrap: anywhere;
+}
+
+.sc-info p {
+    margin: 6px 0 0;
+    color: var(--st-mute);
+}
+
+.sc-info p b {
+    color: var(--st-ink);
+}
+
+.sc-out {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 800;
+}
+
+.sc-out.won {
+    color: var(--st-ok);
+}
+
+.sc-out.lost {
+    color: var(--st-bad);
+}
+
+.sc-out.rem {
+    color: var(--st-warn);
+}
+
+.sc-foot {
+    position: relative;
+    flex: none;
+    display: grid;
+    gap: 5px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--st-line);
+    background: var(--st-s);
+}
+
+.sc-cmp {
+    position: relative;
+}
+
+.sc-closed {
+    margin: 4px 0;
+    text-align: center;
+    font-size: .82rem;
+    font-weight: 700;
+    color: var(--st-mute);
+}
+
+/* ---------- messages from other people (left) ---------- */
+.sc-msg {
+    display: flex;
+    align-items: flex-end;
+    gap: 7px;
+    margin: 1px 0;
+}
+
+.sc-av {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--sc, var(--st-lk));
+    color: #fff;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.sc-bub {
+    max-width: min(600px, 82%);
+    min-width: 72px;
+    padding: 6px 10px 4px;
+    border-radius: 14px 14px 14px 4px;
+    font-size: .9rem;
+    background: var(--st-s);
+    border: 1px solid var(--st-line);
+    border-left: 3px solid var(--sc, var(--st-lk));
+}
+
+.sc-bub.quote {
+    background: color-mix(in srgb, var(--st-pri) 5%, var(--st-s));
+}
+
+.sc-nm {
+    display: block;
+    margin-bottom: 1px;
+    font-size: .72rem;
+    font-weight: 800;
+    color: var(--sc, var(--st-lk));
+}
+
+.sc-bub>time {
+    display: block;
+    text-align: right;
+    margin-top: 1px;
+    font-size: .63rem;
+    line-height: 1.2;
+    color: var(--st-mute);
+}
+
+.sc-tag {
+    padding: 0 3px;
+    border-radius: 5px;
+    font-weight: 800;
+    color: var(--st-lk);
+    background: color-mix(in srgb, var(--st-lk) 12%, transparent);
+}
+
+.sc-tag.me {
+    color: var(--st-pri-d);
+    background: color-mix(in srgb, var(--st-pri) 16%, transparent);
+}
+
+/* ---------- typing indicator (floats above the composer: no layout shift) ---------- */
+.sc-typing {
+    position: absolute;
+    left: 12px;
+    bottom: calc(100% + 6px);
+    z-index: 12;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: calc(100% - 24px);
+    padding: 4px 11px;
+    border-radius: 999px;
+    font-size: .74rem;
+    font-weight: 700;
+    color: var(--st-mute);
+    background: var(--st-s);
+    border: 1px solid var(--st-line);
+    box-shadow: var(--st-shadow);
+    animation: sc-in .18s ease-out;
+}
+
+.st-dock .sc-typing {
+    left: 2px;
+}
+
+@keyframes sc-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+}
+
+.sc-dots {
+    display: inline-flex;
+    gap: 3px;
+}
+
+.sc-dots i {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--st-lk);
+    animation: sc-dot 1s infinite ease-in-out;
+}
+
+.sc-dots i:nth-child(2) {
+    animation-delay: .15s;
+}
+
+.sc-dots i:nth-child(3) {
+    animation-delay: .3s;
+}
+
+@keyframes sc-dot {
+
+    0%,
+    80%,
+    100% {
+        opacity: .3;
+        transform: translateY(0);
+    }
+
+    40% {
+        opacity: 1;
+        transform: translateY(-3px);
+    }
+}
+
+/* ---------- @ mention popup ---------- */
+.sc-mn {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 6px);
+    z-index: 30;
+    list-style: none;
+    margin: 0;
+    padding: 5px;
+    display: grid;
+    gap: 2px;
+    border-radius: 14px;
+    background: var(--st-s);
+    border: 1px solid var(--st-line);
+    box-shadow: 0 14px 38px -10px rgba(8, 39, 48, .4);
+    animation: sc-in .14s ease-out;
+}
+
+.sc-mn button {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    min-height: 40px;
+    padding: 0 10px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: .88rem;
+}
+
+.sc-mn button span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sc-mn button small {
+    font-size: .7rem;
+    color: var(--st-mute);
+    font-weight: 600;
+}
+
+.sc-mn button:hover,
+.sc-mn button.on {
+    background: var(--st-s2);
+}
+
+/* ---------- participants ---------- */
+.sc-stack {
+    all: unset;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 0 10px 0 6px;
+    border-radius: 999px;
+    cursor: pointer;
+    border: 1.5px solid var(--st-line);
+    background: var(--st-s);
+    color: var(--st-ink);
+    font-weight: 800;
+    font-size: .8rem;
+}
+
+.sc-stack:hover {
+    background: var(--st-s2);
+}
+
+.sc-stack:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--st-lk) 70%, transparent);
+    outline-offset: 2px;
+}
+
+.sc-stack-av {
+    display: inline-flex;
+}
+
+.sc-stack-av .sc-av {
+    border: 2px solid var(--st-s);
+}
+
+.sc-stack-av .sc-av+.sc-av {
+    margin-left: -9px;
+}
+
+.sc-stack svg {
+    color: var(--st-lk);
+}
+
+.sc-ppl {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.sc-ppl li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 2px;
+}
+
+.sc-ppl-t {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+}
+
+.sc-ppl-t b {
+    font-size: .88rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sc-ppl-t small {
+    font-size: .72rem;
+    color: var(--st-mute);
+}
+
+/* ---------- unread badge on the enquiry list ---------- */
+.sc-unread {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: .68rem;
+    font-weight: 800;
+    color: #fff;
+    background: var(--st-lk);
+}
+
+.sc-unread.tag {
+    background: var(--st-pri);
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .sc-dlg,
+    .sc-typing,
+    .sc-mn {
+        animation: none;
+    }
+
+    .sc-dots i {
+        animation: none;
+        opacity: .7;
+    }
+}

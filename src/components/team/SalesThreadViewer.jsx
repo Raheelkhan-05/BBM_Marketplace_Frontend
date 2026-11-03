@@ -1,152 +1,161 @@
 // components/team/SalesThreadViewer.jsx
-// Read-only view of one salesperson's enquiry thread, opened from the admin's Sales activity.
-// Shows everything the salesperson logged: notes, files, quotations, status and reminder. Refreshes live.
-// A cold call (no product yet) says so in the header, and switches to the product the moment it is added.
-// "Back" returns to the activity list the admin came from.
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+// The enquiry group chat for admins and added team members (replaces the old read-only viewer).
+// Opens from Console > Sales (admin) or Console > Enquiries (member), or from a WhatsApp link.
+// Salesperson entries sit on the left with their name; my own messages on the right. Live over the socket,
+// optimistic sending, @ tagging, files, typing indicator, read tracking (drives unread badges + the 1-hour reminder).
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-    ArrowLeft, Loader2, FileText, Download, Receipt, BadgeCheck, AlertCircle, Phone, Mail, Bell, Trophy, XCircle, Eye, User, PhoneCall,
-} from "lucide-react";
-import { fetchMonitorThread } from "../../utils/salesMonitorApi.js";
+import { ArrowLeft, Loader2, Paperclip, Send, X, Receipt, Phone, Mail, Bell, Trophy, XCircle, PhoneCall, AlertCircle, BadgeCheck, FileText } from "lucide-react";
+import { fetchChatThread, postChatMessage, markChatRead, uploadChatFile } from "../../utils/salesChatApi.js";
 import { useSocket } from "../../context/SocketContext.jsx";
+import useChatSocket from "../../hooks/useChatSocket.js";
+import useMentions from "../../hooks/useMentions.js";
+import { ALLOWED_FILES, FILE_ACCEPT, MAX_FILE_BYTES, MAX_FILES, clock, dayLabel, dateTime, inr, qty } from "../sales/salesThreadFmt.js";
+import { Attachment, BodyText, OtherBubble, TypingLine, ParticipantStack, MentionList, colorFor } from "./chat/ChatBits.jsx";
+import ParticipantsSheet from "./chat/ParticipantsSheet.jsx";
 
-const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)", tile: "rgba(20,27,34,0.06)", red: "#d2462b", green: "#12794A" };
 const Z_VIEWER = 10000;
 const CH = { whatsapp: "WhatsApp", email: "Email" };
+const COMPOSER_MAX = 136;
 
-const inr = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
-const dt = (iso) => (iso ? new Date(iso).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true }) : "");
-const clock = (iso) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true });
-const dayOf = (iso) => new Date(iso).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-const size = (b) => (!b ? "" : b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
-const byTime = (a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1);
+// Saved messages sort by server time. Messages still being sent (local) always stay at the bottom in the order
+// they were sent, so a phone clock that is a little off can never make a bubble jump when the server confirms it.
+const byTime = (a, b) => (Number(!!a.local) - Number(!!b.local))
+    || (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1);
 const merge = (prev, inc) => {
+    if (!inc?.length) return prev;
     const m = new Map(prev.map((e) => [e.id, e]));
-    inc.forEach((e) => m.set(e.id, e));
+    inc.forEach((e) => { const o = m.get(e.id); m.set(e.id, o?.clientKey && !e.clientKey ? { ...e, clientKey: o.clientKey } : e); });
     return [...m.values()].sort(byTime);
 };
-
-const stateOf = (t) => (t.status !== "closed" ? { l: "Open", bg: "rgba(30,120,214,.14)", fg: "#0F63B5" }
-    : t.outcome === "won" ? { l: "Won", bg: "rgba(34,160,107,.14)", fg: C.green }
-        : t.outcome === "lost" ? { l: "Lost", bg: "rgba(210,70,43,.12)", fg: C.red } : { l: "Closed", bg: C.tile, fg: C.muted });
-
-const Attachment = ({ a }) => (
-    (a.type || "").startsWith("image/") && a.url
-        ? <a href={a.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl" aria-label={`Open ${a.name}`}>
-            <img src={a.url} alt={a.name} loading="lazy" className="max-h-48 w-full object-cover" />
-        </a>
-        : <a href={a.url || undefined} target="_blank" rel="noreferrer" aria-disabled={!a.url}
-            className="flex items-center gap-2 rounded-xl border bg-white px-2.5 py-2" style={{ borderColor: C.hair }}>
-            <FileText className="h-4 w-4 shrink-0" style={{ color: C.muted }} />
-            <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] font-bold" style={{ color: C.ink }}>{a.name}</span>
-                <span className="block text-[10.5px] font-semibold" style={{ color: C.muted }}>{size(a.size)}</span>
-            </span>
-            <Download className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} />
-        </a>
-);
+const sig = (e) => `${e.body || ""}|${(e.attachments || []).map((a) => a.path).join(",")}`;
+// drop my own "sending" copies once the saved version has arrived through a refresh
+const mergeIncoming = (prev, inc) => {
+    const have = new Set((inc || []).filter((e) => e.kind === "note").map(sig));
+    return merge(prev.filter((e) => !(e.local && !e.failed && have.has(sig(e)))), inc);
+};
+const stateOf = (t) => (t.status !== "closed" ? { k: "open", l: "Open" } : t.outcome === "won" ? { k: "won", l: "Won" } : t.outcome === "lost" ? { k: "lost", l: "Lost" } : { k: "closed", l: "Closed" });
 
 function Quote({ q }) {
     return (
-        <div className="rounded-xl border bg-white p-2.5" style={{ borderColor: C.hair }}>
-            <div className="flex items-center gap-1.5 text-[12.5px] font-extrabold" style={{ color: C.ink }}>
-                <Receipt className="h-4 w-4" style={{ color: C.secondary }} />Quotation sent
-                <span className="ml-auto">{inr(q.total)}</span>
-            </div>
-            <ul className="mt-1.5 space-y-1">
-                {(q.items || []).map((i) => (
-                    <li key={i.submissionId} className="flex items-start justify-between gap-2 text-[12px] font-medium" style={{ color: C.ink }}>
-                        <span className="min-w-0">
-                            {i.productName}
-                            <span className="block text-[10.5px] font-semibold" style={{ color: C.muted }}>{i.quantity} {i.unit} × {inr(i.unitPriceIncl)}</span>
-                        </span>
-                        <b className="shrink-0">{inr(i.totalIncl)}</b>
-                    </li>
-                ))}
-            </ul>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-                {Object.entries(q.delivery || {}).map(([ch, d]) => (
-                    <span key={ch} className="inline-flex items-center gap-1 rounded-full px-2 py-[3px] text-[10.5px] font-bold"
-                        style={d.status === "sent" ? { background: "rgba(34,160,107,.14)", color: C.green } : { background: "rgba(210,70,43,.12)", color: C.red }}>
-                        {d.status === "sent" ? <BadgeCheck className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-                        {CH[ch] || ch} {d.status === "sent" ? "sent" : "failed"}
-                    </span>
-                ))}
-            </div>
-            {q.note && <p className="mt-1.5 text-[11.5px] font-medium" style={{ color: C.muted }}>{q.note}</p>}
+        <div className="st-q">
+            <p className="st-q-h"><Receipt size={16} /><b>Quotation sent</b><span>{inr(q.total)}</span></p>
+            <ul>{(q.items || []).map((i) => (
+                <li key={i.submissionId}><span>{i.productName}<small>{qty(i.quantity)} {i.unit} × {inr(i.unitPriceIncl, 4)}</small></span><b>{inr(i.totalIncl)}</b></li>
+            ))}</ul>
+            <div className="st-q-d">{Object.entries(q.delivery || {}).map(([ch, d]) => (
+                <span key={ch} className={`st-dl ${d.status === "sent" ? "ok" : "bad"}`}>
+                    {d.status === "sent" ? <BadgeCheck size={13} /> : <AlertCircle size={13} />}{CH[ch] || ch} {d.status === "sent" ? "sent" : "failed"}
+                </span>
+            ))}</div>
+            {q.note && <p className="st-q-n">{q.note}</p>}
         </div>
     );
 }
 
-const Entry = memo(function Entry({ e }) {
-    if (e.kind === "system") {
-        return (
-            <div className="flex justify-center py-0.5">
-                <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: C.tile, color: C.muted }}>
-                    {e.body} · {clock(e.createdAt)}
-                </span>
-            </div>
-        );
-    }
+const Entry = memo(function Entry({ e, meId, ownerId, who, names, meName, onResend, onDiscard }) {
+    if (e.kind === "system") return <div className="st-sys"><span>{e.body}</span><time>{clock(e.createdAt)}</time></div>;
+    const author = e.authorId || ownerId;
+    const mine = author === meId;
+    const isQuote = e.kind === "quote" && e.quote;
+    const content = (
+        <>
+            {isQuote ? <Quote q={e.quote} /> : e.body && <p className="st-body"><BodyText body={e.body} names={names} meName={meName} /></p>}
+            {e.attachments?.length > 0 && <div className="st-atts">{e.attachments.map((a) => <Attachment key={a.path} a={a} />)}</div>}
+        </>
+    );
+    if (!mine) return <OtherBubble name={who(author, e.authorName)} id={author} time={clock(e.createdAt)} quote={isQuote}>{content}</OtherBubble>;
     return (
-        <div className="flex justify-end">
-            <div className="w-full max-w-[92%] rounded-2xl rounded-tr-md border p-2.5" style={{ borderColor: C.hair, background: "rgba(11,114,133,0.06)" }}>
-                {e.kind === "quote" && e.quote ? <Quote q={e.quote} />
-                    : e.body && <p className="whitespace-pre-wrap break-words text-[13px] font-medium leading-snug" style={{ color: C.ink }}>{e.body}</p>}
-                {e.attachments?.length > 0 && <div className="mt-2 space-y-1.5">{e.attachments.map((a) => <Attachment key={a.path} a={a} />)}</div>}
-                <time className="mt-1 block text-right text-[10.5px] font-semibold" style={{ color: C.muted }}>{clock(e.createdAt)}</time>
+        <div className={`st-msg${e.clientKey ? " pop" : ""}`}>
+            <div className={`st-bub${e.failed ? " failed" : ""}${isQuote ? " quote" : ""}`}>
+                {content}
+                <time dateTime={e.createdAt}>{clock(e.createdAt)}</time>
+                {e.failed && (
+                    <div className="st-fail" role="alert"><AlertCircle size={13} /><span>Not sent</span>
+                        <button type="button" onClick={() => onResend(e.id)}>Retry</button>
+                        <button type="button" onClick={() => onDiscard(e.id)}>Delete</button>
+                    </div>
+                )}
             </div>
         </div>
     );
 });
 
-export default function SalesThreadViewer({ token, id, who, onClose }) {
-    const { socket } = useSocket();
+export default function SalesThreadViewer({ token, id, who: whoFallback, onClose }) {
+    const { socket } = useSocket() || {};
     const [thread, setThread] = useState(null);
+    const [people, setPeople] = useState([]);
+    const [meId, setMeId] = useState("");
+    const [canManage, setCanManage] = useState(false);
     const [entries, setEntries] = useState([]);
     const [hasOlder, setHasOlder] = useState(false);
-    const [state, setState] = useState("loading"); // loading | ready | missing | error
+    const [state, setState] = useState("loading");     // loading | ready | missing | error
     const [msg, setMsg] = useState("");
     const [loadingOlder, setLoadingOlder] = useState(false);
-    const scrollRef = useRef(null);
-    const stickRef = useRef(true);
-    const anchorRef = useRef(null);
-    const firstRef = useRef(true);
+    const [sheet, setSheet] = useState(false);
+    const [text, setText] = useState("");
+    const [files, setFiles] = useState([]);
+    const [note, setNote] = useState("");
+
+    const scrollRef = useRef(null), stickRef = useRef(true), anchorRef = useRef(null), firstRef = useRef(true);
     const entriesRef = useRef([]); entriesRef.current = entries;
+    const sheetRef = useRef(false); sheetRef.current = sheet;
+    const queueRef = useRef(Promise.resolve());
+    const taRef = useRef(null), fileRef = useRef(null);
+
+    const nearBottom = () => { const el = scrollRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 140; };
 
     const load = useCallback(async () => {
-        const res = await fetchMonitorThread(token, id, { limit: 30 });
-        if (!res.success) {
+        const r = await fetchChatThread(token, id, { limit: 30 });
+        if (!r.success) {
             if (!firstRef.current) return;
-            if (res.status === 404) setState("missing"); else { setMsg(res.message || "Couldn't load this enquiry."); setState("error"); }
+            if (r.status === 404) setState("missing"); else { setMsg(r.message || "Couldn't load this enquiry."); setState("error"); }
             return;
         }
-        const el = scrollRef.current;
-        stickRef.current = firstRef.current || !el || el.scrollHeight - el.scrollTop - el.clientHeight < 140;
-        setThread(res.thread);   // header follows the server, so a product added later shows up without closing the viewer
-        setEntries((prev) => merge(prev, res.entries || []));
-        if (firstRef.current) setHasOlder(!!res.hasOlder);
+        stickRef.current = firstRef.current || nearBottom();
+        setThread(r.thread); setPeople(r.participants || []); setMeId(r.me || ""); setCanManage(!!r.canManage);
+        setEntries((prev) => mergeIncoming(prev, r.entries || []));
+        if (firstRef.current) setHasOlder(!!r.hasOlder);
         firstRef.current = false;
         setState("ready");
     }, [token, id]);
 
     useEffect(() => { firstRef.current = true; setState("loading"); setEntries([]); load(); }, [load]);
 
-    // Live: any salesperson activity ping refreshes the newest page (cheap, admin only).
+    // live: messages arrive over the socket; status / quote lines by the salesperson arrive on the next light refresh
+    const chat = useChatSocket(id, {
+        selfId: meId,
+        onMessage: (p) => { if (!p.entry) return; stickRef.current = nearBottom(); setEntries((prev) => mergeIncoming(prev, [p.entry])); },
+        onParticipants: () => load(),
+        onReconnect: () => { if (!firstRef.current) load(); },
+    });
     useEffect(() => {
         if (!socket) return undefined;
         let t;
-        const onPing = () => { clearTimeout(t); t = setTimeout(load, 600); };
-        socket.on("sales:monitor", onPing);
-        return () => { clearTimeout(t); socket.off("sales:monitor", onPing); };
+        const ping = () => { clearTimeout(t); t = setTimeout(load, 600); };
+        socket.on("sales:monitor", ping);
+        return () => { clearTimeout(t); socket.off("sales:monitor", ping); };
     }, [socket, load]);
+    useEffect(() => {
+        const t = setInterval(() => { if (document.visibilityState === "visible") load(); }, 25000);
+        return () => clearInterval(t);
+    }, [load]);
 
     useEffect(() => {
-        const k = (e) => { if (e.key === "Escape") onClose(); };
+        const k = (e) => { if (e.key === "Escape" && !sheetRef.current) onClose(); };
         document.addEventListener("keydown", k);
         return () => document.removeEventListener("keydown", k);
     }, [onClose]);
+
+    // reading = the chat is open and visible. Drives unread badges and stops the 1-hour reminder.
+    const inChat = people.some((p) => p.userId === meId);
+    useEffect(() => {
+        if (state !== "ready" || !inChat) return undefined;
+        const fire = () => { if (document.visibilityState === "visible") markChatRead(token, id); };
+        const t = setTimeout(fire, 400);
+        document.addEventListener("visibilitychange", fire);
+        return () => { clearTimeout(t); document.removeEventListener("visibilitychange", fire); };
+    }, [state, inChat, entries.length, token, id]);
 
     useLayoutEffect(() => {
         const el = scrollRef.current; if (!el) return;
@@ -155,124 +164,209 @@ export default function SalesThreadViewer({ token, id, who, onClose }) {
     }, [entries, state]);
 
     const loadOlder = async () => {
-        const first = entriesRef.current[0];
+        const first = entriesRef.current.find((e) => !e.local);
         if (!first || loadingOlder) return;
         setLoadingOlder(true);
-        const res = await fetchMonitorThread(token, id, { before: first.createdAt, beforeId: first.id, limit: 30 });
+        const r = await fetchChatThread(token, id, { before: first.createdAt, beforeId: first.id, limit: 30 });
         setLoadingOlder(false);
-        if (!res.success) return;
+        if (!r.success) return;
         const el = scrollRef.current;
         anchorRef.current = { h: el?.scrollHeight || 0, top: el?.scrollTop || 0 };
         stickRef.current = false;
-        setEntries((prev) => merge(prev, res.entries || []));
-        setHasOlder(!!res.hasOlder);
+        setEntries((prev) => merge(prev, r.entries || []));
+        setHasOlder(!!r.hasOlder);
+    };
+
+    /* ----- people / names ----- */
+    const nameMap = useMemo(() => new Map(people.map((p) => [p.userId, p.name])), [people]);
+    const who = useCallback((uid, fb) => nameMap.get(uid) || fb || whoFallback || "Teammate", [nameMap, whoFallback]);
+    const names = useMemo(() => people.map((p) => p.name), [people]);
+    const meName = nameMap.get(meId) || "";
+    const others = useMemo(() => people.filter((p) => p.userId !== meId), [people, meId]);
+    const mn = useMentions({ people: others, text, setText, taRef });
+
+    /* ----- composer ----- */
+    useLayoutEffect(() => {
+        const t = taRef.current; if (!t) return;
+        t.style.height = "auto";
+        t.style.height = `${Math.min(t.scrollHeight, COMPOSER_MAX)}px`;
+        t.style.overflowY = t.scrollHeight > COMPOSER_MAX ? "auto" : "hidden";
+    }, [text, state]);
+
+    const addFiles = (list) => {
+        const picked = Array.from(list || []);
+        const room = MAX_FILES - files.length;
+        if (picked.length > room) setNote(`You can attach up to ${MAX_FILES} files.`);
+        picked.slice(0, Math.max(room, 0)).forEach((file) => {
+            if (!ALLOWED_FILES.test(file.name)) return setNote(`${file.name}: this file type isn't supported.`);
+            if (file.size > MAX_FILE_BYTES) return setNote(`${file.name} is larger than 15 MB.`);
+            const fid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            const preview = /^image\/(jpe?g|png|webp|gif)$/i.test(file.type) ? URL.createObjectURL(file) : null;
+            setFiles((p) => [...p, { id: fid, name: file.name, size: file.size, status: "uploading", preview }]);
+            uploadChatFile(token, id, file).then((r) => setFiles((p) => p.map((f) => (f.id !== fid ? f
+                : r.success ? { ...f, status: "done", attachment: r.attachment } : { ...f, status: "error", error: r.message }))));
+        });
+    };
+    const uploading = files.some((f) => f.status === "uploading");
+    const ready = files.filter((f) => f.status === "done");
+    const canSend = !uploading && (text.trim().length > 0 || ready.length > 0);
+
+    // saves run one after another, so quick sends keep their order
+    const post = useCallback((tmpId, payload) => {
+        queueRef.current = queueRef.current.then(async () => {
+            const r = await postChatMessage(token, id, payload);
+            if (!r.success) { setEntries((prev) => prev.map((e) => (e.id === tmpId ? { ...e, failed: true, error: r.message } : e))); return; }
+            setEntries((prev) => {
+                const rest = prev.filter((e) => e.id !== tmpId);
+                return rest.some((e) => e.id === r.entry.id) ? rest : merge(rest, [{ ...r.entry, clientKey: tmpId }]);
+            });
+        }).catch(() => { /* never break the queue */ });
+    }, [token, id]);
+
+    const send = () => {
+        if (!canSend) return;
+        const body = text.trim();
+        const now = new Date().toISOString();
+        const tmpId = `tmp-${now}-${Math.random().toString(36).slice(2, 8)}`;
+        const payload = { body, attachments: ready.map((f) => f.attachment), mentions: mn.collect(text) };
+        const tmp = {
+            id: tmpId, clientKey: tmpId, local: true, kind: "note", authorId: meId, authorName: meName, body, createdAt: now, payload,
+            attachments: ready.map((f) => ({ ...f.attachment, url: f.preview || null })),
+        };
+        stickRef.current = true;
+        setEntries((prev) => merge(prev, [tmp]));
+        post(tmpId, payload);
+        setText(""); setFiles([]); setNote(""); mn.reset(); chat.emitTyping(false);
+        taRef.current?.focus();
+    };
+    const resend = useCallback((tid) => {
+        const e = entriesRef.current.find((x) => x.id === tid); if (!e?.payload) return;
+        setEntries((prev) => prev.map((x) => (x.id === tid ? { ...x, failed: false, error: undefined } : x)));
+        post(tid, e.payload);
+    }, [post]);
+    const discard = useCallback((tid) => setEntries((prev) => prev.filter((x) => x.id !== tid)), []);
+
+    const onKey = (e) => {
+        if (mn.onKeyDown(e)) return;
+        if (e.key !== "Enter" || e.shiftKey || e.nativeEvent?.isComposing) return;
+        e.preventDefault(); send();
+    };
+    const onChange = (e) => {
+        setText(e.target.value);
+        mn.detect(e.target.value, e.target.selectionStart);
+        if (e.target.value.trim()) chat.emitTyping(true); else chat.emitTyping(false);
     };
 
     const st = thread ? stateOf(thread) : null;
     const hasProduct = thread ? thread.hasProduct !== false : true;
     const cold = thread?.kind === "cold_call";
+    const closed = thread?.status === "closed";
     let lastDay = "";
 
     return createPortal(
-        <div className="fixed inset-0 flex items-end justify-center md:items-center md:p-6" style={{ zIndex: Z_VIEWER }}>
-            <div className="absolute inset-0 bg-black/45" onClick={onClose} aria-hidden="true" />
-            <div role="dialog" aria-modal="true" aria-label="Enquiry details"
-                className="relative flex h-[92dvh] w-full max-w-[640px] flex-col overflow-hidden rounded-t-[24px] bg-white shadow-2xl md:h-[min(760px,88dvh)] md:rounded-[24px]">
-                {/* header */}
-                <div className="shrink-0 border-b px-4 pb-3 pt-3 md:px-5" style={{ borderColor: C.hair }}>
-                    <div className="mx-auto mb-2 h-1 w-10 rounded-full md:hidden" style={{ background: C.hair }} />
-                    <div className="flex items-center justify-between gap-2">
-                        <button type="button" onClick={onClose} aria-label="Back to activity"
-                            className="inline-flex h-9 items-center gap-1.5 rounded-full pl-2.5 pr-3.5 text-[12.5px] font-bold tracking-wide transition hover:bg-black/10 active:scale-[.98]"
-                            style={{ background: C.tile, color: C.ink }}>
-                            <ArrowLeft className="h-4 w-4" />Back
-                        </button>
-                        <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: "rgba(11,114,133,.1)", color: C.secondary }}>
-                            <Eye className="h-3 w-3" />View only · live
-                        </span>
+        <div className="st-ov sc-ov" style={{ zIndex: Z_VIEWER }} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            <div role="dialog" aria-modal="true" aria-label="Enquiry chat" className="sc-dlg">
+                <header className="sc-hd">
+                    <div className="sc-hd-r">
+                        <button type="button" className="st-btn" onClick={onClose} aria-label="Back"><ArrowLeft size={16} />Back</button>
+                        {state === "ready" && <ParticipantStack people={people} onClick={() => setSheet(true)} />}
                     </div>
-
-                    <div className="mt-3 min-w-0">
-                        <div className="flex items-center gap-2">
-                            <h2 className="truncate text-[16px] font-extrabold leading-tight" style={{ color: C.ink }}>{thread?.displayName || "Enquiry"}</h2>
-                            {st && <span className="shrink-0 rounded-full px-2 py-[3px] text-[10.5px] font-bold uppercase leading-none" style={{ background: st.bg, color: st.fg }}>{st.l}</span>}
-                            {cold && (
-                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-[3px] text-[10.5px] font-bold uppercase leading-none" style={{ background: "rgba(244,81,30,.12)", color: "#c23a0b" }}>
-                                    <PhoneCall className="h-3 w-3" />Cold call
-                                </span>
-                            )}
+                    <div className="sc-hd-t">
+                        <div className="sc-hd-n">
+                            <h2>{thread?.displayName || "Enquiry"}</h2>
+                            {st && <span className={`st-state ${st.k}`}>{st.l}</span>}
+                            {cold && <span className="st-bd cold"><PhoneCall size={12} />Cold call</span>}
                         </div>
-                        {thread && (
-                            <p className="mt-0.5 truncate text-[12.5px] font-semibold" style={{ color: C.muted }}>
-                                {hasProduct ? `${thread.productName} · ${thread.quantity} ${thread.unit}` : "Cold call · no product yet"}
-                            </p>
-                        )}
-                        <p className="mt-1 flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: C.muted }}>
-                            <User className="h-3 w-3" />{thread?.salespersonName || who || "Salesperson"}
-                            {thread && <span>· {cold ? "Logged" : "Posted"} {dt(thread.createdAt)}{cold && hasProduct ? " · Started as a cold call" : ""}</span>}
-                        </p>
+                        {thread && <p>{hasProduct ? `${thread.productName} · ${qty(thread.quantity)} ${thread.unit}` : "Cold call · no product yet"}</p>}
+                        {thread && <p className="sub">{thread.salespersonName || whoFallback || "Salesperson"} · {cold ? "Logged" : "Posted"} {dateTime(thread.createdAt)}</p>}
                     </div>
-                </div>
+                </header>
 
-                {/* body */}
-                <div ref={scrollRef} data-lenis-prevent="" onWheel={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()}
-                    className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-4 py-3 md:px-5" style={{ overscrollBehavior: "contain" }}>
-                    {state === "loading" && (
-                        <div className="space-y-2" aria-busy="true">
-                            {[0, 1, 2].map((i) => <div key={i} className="h-16 animate-pulse rounded-2xl" style={{ background: C.tile }} />)}
-                        </div>
-                    )}
+                <div ref={scrollRef} data-lenis-prevent="" onWheel={(e) => e.stopPropagation()} onTouchMove={(e) => e.stopPropagation()} className="sc-body">
+                    {state === "loading" && <div aria-busy="true">{[0, 1, 2].map((i) => <div key={i} className="st-sk tall" />)}</div>}
                     {(state === "missing" || state === "error") && (
-                        <div className="flex flex-col items-center gap-2 py-12 text-center">
-                            <p className="text-[13px] font-bold" style={{ color: C.ink }}>{state === "missing" ? "This enquiry isn't available" : msg}</p>
-                            {state === "error" && <button type="button" onClick={() => { setState("loading"); load(); }} className="rounded-full px-4 py-2 text-[12px] font-bold text-white" style={{ background: C.secondary }}>Try again</button>}
+                        <div className="st-empty-card">
+                            <b>{state === "missing" ? "This enquiry isn't available" : msg}</b>
+                            {state === "error" && <button type="button" className="st-btn pri" onClick={() => { setState("loading"); load(); }}>Try again</button>}
                         </div>
                     )}
                     {state === "ready" && thread && (
                         <>
-                            <section className="rounded-2xl border p-3" style={{ borderColor: C.hair }}>
-                                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] font-semibold" style={{ color: C.ink }}>
+                            <section className="sc-info">
+                                <div className="sc-info-r">
                                     <span>{thread.customerGstin ? `GSTIN ${thread.customerGstin}` : "GST number missing"}</span>
-                                    {thread.customerPhone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{thread.customerPhone}</span>}
-                                    {thread.customerEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{thread.customerEmail}</span>}
+                                    {thread.customerPhone && <span><Phone size={12} />{thread.customerPhone}</span>}
+                                    {thread.customerEmail && <span><Mail size={12} />{thread.customerEmail}</span>}
                                 </div>
-                                {thread.specifications && <p className="mt-2 text-[12px] font-medium leading-snug" style={{ color: C.muted }}><b style={{ color: C.ink }}>Specifications </b>{thread.specifications}</p>}
-                                {thread.status === "closed" && thread.outcome && (
-                                    <p className="mt-2 flex items-center gap-1.5 text-[12px] font-bold" style={{ color: thread.outcome === "won" ? C.green : C.red }}>
-                                        {thread.outcome === "won" ? <Trophy className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                                        This enquiry was {thread.outcome}.
-                                    </p>
+                                {thread.specifications && <p><b>Specifications </b>{thread.specifications}</p>}
+                                {closed && thread.outcome && (
+                                    <p className={`sc-out ${thread.outcome}`}>{thread.outcome === "won" ? <Trophy size={15} /> : <XCircle size={15} />}This enquiry was {thread.outcome}.</p>
                                 )}
-                                {thread.reminderAt && thread.status !== "closed" && (
-                                    <p className="mt-2 flex items-center gap-1.5 text-[12px] font-bold" style={{ color: new Date(thread.reminderAt) <= new Date() ? C.red : C.secondary }}>
-                                        <Bell className="h-4 w-4" />Reminder · {dt(thread.reminderAt)}
-                                    </p>
-                                )}
+                                {thread.reminderAt && !closed && <p className="sc-out rem"><Bell size={15} />Salesperson reminder · {dateTime(thread.reminderAt)}</p>}
                             </section>
 
                             {hasOlder && (
-                                <div className="flex justify-center">
-                                    <button type="button" onClick={loadOlder} disabled={loadingOlder}
-                                        className="inline-flex h-9 items-center gap-1.5 rounded-full border px-4 text-[12px] font-bold disabled:opacity-60" style={{ borderColor: C.hair, color: C.ink }}>
-                                        {loadingOlder && <Loader2 className="h-3.5 w-3.5 animate-spin" />}Show earlier updates
+                                <div className="st-older">
+                                    <button type="button" className="st-btn" onClick={loadOlder} disabled={loadingOlder}>
+                                        {loadingOlder && <Loader2 size={14} className="st-spin" />}Show earlier messages
                                     </button>
                                 </div>
                             )}
-
-                            {entries.length === 0 && <p className="py-6 text-center text-[12.5px] font-semibold" style={{ color: C.muted }}>No updates yet.</p>}
+                            {entries.length === 0 && <p className="st-empty">No messages yet. Say hello.</p>}
                             {entries.map((e) => {
-                                const d = dayOf(e.createdAt); const head = d !== lastDay; lastDay = d;
+                                const d = dayLabel(e.createdAt); const head = d !== lastDay; lastDay = d;
                                 return (
-                                    <div key={e.id} className="space-y-2.5">
-                                        {head && <div className="flex justify-center pt-1"><span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: C.muted }}>{d}</span></div>}
-                                        <Entry e={e} />
+                                    <div key={e.clientKey || e.id}>
+                                        {head && <div className="st-day"><span>{d}</span></div>}
+                                        <Entry e={e} meId={meId} ownerId={thread.salespersonId} who={who} names={names} meName={meName} onResend={resend} onDiscard={discard} />
                                     </div>
                                 );
                             })}
                         </>
                     )}
                 </div>
+
+                {state === "ready" && (
+                    <footer className="sc-foot">
+                        <TypingLine names={chat.typingNames} />
+                        {closed ? (
+                            <p className="sc-closed">This enquiry is closed. The salesperson can reopen it to continue the chat.</p>
+                        ) : (
+                            <>
+                                {files.length > 0 && (
+                                    <div className="st-pend">{files.map((f) => (
+                                        <span key={f.id} className={`st-chip ${f.status}`} title={f.error || ""}>
+                                            {f.status === "uploading" ? <Loader2 size={13} className="st-spin" /> : f.status === "error" ? <AlertCircle size={13} /> : <FileText size={13} />}
+                                            <span className="n">{f.name}</span>
+                                            <button type="button" aria-label={`Remove ${f.name}`} onClick={() => setFiles((p) => p.filter((x) => x.id !== f.id))}><X size={13} /></button>
+                                        </span>
+                                    ))}</div>
+                                )}
+                                <input ref={fileRef} type="file" multiple hidden accept={FILE_ACCEPT} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+                                <div className="sc-cmp">
+                                    <MentionList options={mn.options} idx={mn.idx} onPick={mn.pick} />
+                                    <div className="st-bar">
+                                        <button type="button" className="st-plus" aria-label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip size={18} /></button>
+                                        <textarea ref={taRef} className="st-ta" rows={1} value={text} maxLength={4000} aria-label="Write a message"
+                                            placeholder={others.length ? "Message the team… type @ to tag" : "Write a message…"} enterKeyHint="send"
+                                            onChange={onChange} onSelect={(e) => mn.detect(e.target.value, e.target.selectionStart)} onKeyDown={onKey}
+                                            onBlur={() => chat.emitTyping(false)}
+                                            onPaste={(e) => { if (e.clipboardData?.files?.length) addFiles(e.clipboardData.files); }} />
+                                        <button type="button" className="st-send" aria-label="Send message" disabled={!canSend} onClick={send}><Send size={18} /></button>
+                                    </div>
+                                </div>
+                                {note && <p className="st-err" role="alert">{note}</p>}
+                                <small className="st-bar-h">Enter to send · Shift+Enter for a new line · @ to tag someone</small>
+                            </>
+                        )}
+                    </footer>
+                )}
             </div>
+
+            {sheet && thread && (
+                <ParticipantsSheet token={token} threadId={id} people={people} meId={meId} canManage={canManage} z={Z_VIEWER + 5}
+                    onClose={() => setSheet(false)} onChanged={(list) => { setPeople(list); load(); }} />
+            )}
         </div>,
         document.body,
     );

@@ -13,8 +13,10 @@ import useRfqLive from "../hooks/useRfqLive.js";
 import { fetchThreads } from "../utils/salesThreadApi.js";
 import { cacheGet, cacheSet, nsOf, prefetchThread } from "../utils/salesThreadCache.js";
 import SalesNewEnquirySheet from "../components/sales/SalesNewEnquirySheet.jsx";
+import useChatUnread from "../hooks/useChatUnread.js";
 import "../components/sales/sales-threads.css";
 import "../components/sales/sales-threads.cold.css";
+import "../components/sales/sales-chat.css";
 
 const PAGE = 15;
 const MAX_PAGE = 100; // server cap
@@ -24,7 +26,7 @@ const EMPTY_COUNTS = { all: 0, open: 0, reminder: 0, cold: 0, won: 0, lost: 0 };
 
 const kindOf = (t) => (t.status !== "closed" ? "open" : t.outcome === "won" ? "won" : t.outcome === "lost" ? "lost" : "closed");
 
-const ThreadRow = memo(function ThreadRow({ t, onWarm }) {
+const ThreadRow = memo(function ThreadRow({ t, onWarm, unread }) {
     const kind = kindOf(t);
     const warm = () => onWarm(t.id);
     const due = !!t.reminderAt && new Date(t.reminderAt).getTime() <= Date.now();
@@ -37,6 +39,7 @@ const ThreadRow = memo(function ThreadRow({ t, onWarm }) {
                 <span className="st-row-m">
                     <span className="st-row-1">
                         <b>{t.displayName}</b>
+                        {unread?.unread > 0 && <span className={`sc-unread${unread.mentions ? " tag" : ""}`}>{unread.unread > 99 ? "99+" : unread.unread}</span>}
                         <time dateTime={t.lastActivityAt}>{listTime(t.lastActivityAt)}</time>
                     </span>
                     <span className="st-row-2">
@@ -73,6 +76,8 @@ export default function SalesEnquiriesPage() {
     const { say } = useOutletContext();
     const nav = useNavigate();
     const [sp, setSp] = useSearchParams();
+
+    const chat = useChatUnread(token, !!token);
 
     const [qInput, setQInput] = useState("");
     const [q, setQ] = useState("");
@@ -183,7 +188,7 @@ export default function SalesEnquiriesPage() {
                 <div className="st-list">{[0, 1, 2, 3].map((i) => <div key={i} className="st-sk tall" />)}</div>
             ) : items.length > 0 ? (
                 <ul className={`st-list${loading ? " busy" : ""}`}>
-                    {items.map((t) => <ThreadRow key={t.id} t={t} onWarm={warm} />)}
+                    {items.map((t) => <ThreadRow key={t.id} t={t} onWarm={warm} unread={chat.byThread[t.id]} />)}
                 </ul>
             ) : !loading && !error && (
                 <div className="st-empty-card" style={{ marginTop: 10 }}>

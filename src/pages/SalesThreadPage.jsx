@@ -23,6 +23,11 @@ import { useGstLookup } from "../hooks/useSalesSheet.js";
 import { fetchThread, updateThread, setThreadStatus, setThreadReminder, addThreadEntry, uploadThreadFile, resendThreadQuote } from "../utils/salesThreadApi.js";
 import { cacheGet, cacheSet, threadKey, FIRST_PAGE, OLDER_PAGE } from "../utils/salesThreadCache.js";
 import SalesQuoteSheet from "../components/sales/SalesQuoteSheet.jsx";
+import useChatSocket from "../hooks/useChatSocket.js";
+import useMentions from "../hooks/useMentions.js";
+import { fetchChatParticipants, markChatRead } from "../utils/salesChatApi.js";
+import { OtherBubble, Attachment as ChatAttachment, BodyText, TypingLine, ParticipantStack, MentionList, colorFor } from "../components/team/chat/ChatBits.jsx";
+import ParticipantsSheet from "../components/team/chat/ParticipantsSheet.jsx";
 import SalesAddProductSheet from "../components/sales/SalesAddProductSheet.jsx";
 import {
     ALLOWED_FILES, FILE_ACCEPT, MAX_FILE_BYTES, MAX_FILES, GSTIN_RE, cleanGstin, threadContacts,
@@ -33,7 +38,11 @@ import "../components/sales/sales-threads.css";
 import "../components/sales/sales-threads.polish.css";
 import "../components/sales/sales-threads.cold.css";
 
-const byTime = (a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1);
+// Saved entries sort by server time. Entries still being sent (local) always stay at the bottom in send order,
+// so a slightly wrong phone clock can never make a bubble jump when the server confirms it.
+const byTime = (a, b) => (Number(!!a.local) - Number(!!b.local))
+    || (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.id < b.id ? -1 : 1);
+
 // Merge by id. Returns the SAME array when nothing changed, so quiet refreshes cause no re-render.
 // clientKey (the React key of an entry we sent ourselves) is preserved so the bubble never re-mounts.
 const mergeEntries = (prev, inc) => {
@@ -131,12 +140,21 @@ function QuoteCard({ e, busyKey, onRetry }) {
     );
 }
 
-const Entry = memo(function Entry({ e, busyKey, onRetry, onResend, onDiscard }) {
+const Entry = memo(function Entry({ e, busyKey, onRetry, onResend, onDiscard, ownerId, who, tagNames }) {
     if (e.kind === "system") return <div className="st-sys"><span>{e.body}</span><time>{clock(e.createdAt)}</time></div>;
+    // A message from someone else in the chat: left side, with their name.
+    if (e.authorId && e.authorId !== ownerId) {
+        return (
+            <OtherBubble name={who(e.authorId, e.authorName)} id={e.authorId} time={clock(e.createdAt)}>
+                {e.body && <p className="st-body"><BodyText body={e.body} names={tagNames} meName={who(ownerId, "")} /></p>}
+                {e.attachments?.length > 0 && <div className="st-atts">{e.attachments.map((a) => <ChatAttachment key={a.path} a={a} />)}</div>}
+            </OtherBubble>
+        );
+    }
     return (
         <div className={`st-msg${e.clientKey ? " pop" : ""}`}>
             <div className={`st-bub${e.failed ? " failed" : ""}${e.kind === "quote" ? " quote" : ""}`}>
-                {e.kind === "quote" ? <QuoteCard e={e} busyKey={busyKey} onRetry={onRetry} /> : e.body && <p className="st-body">{e.body}</p>}
+                {e.kind === "quote" ? <QuoteCard e={e} busyKey={busyKey} onRetry={onRetry} /> : e.body && <p className="st-body"><BodyText body={e.body} names={tagNames} /></p>}
                 {e.attachments?.length > 0 && (
                     <div className="st-atts">{e.attachments.map((a) => <Attachment key={a.path} a={a} />)}</div>
                 )}
@@ -153,7 +171,7 @@ const Entry = memo(function Entry({ e, busyKey, onRetry, onResend, onDiscard }) 
     );
 });
 
-const Timeline = memo(function Timeline({ entries, busyKey, onRetry, onResend, onDiscard }) {
+const Timeline = memo(function Timeline({ entries, busyKey, onRetry, onResend, onDiscard, ownerId, who, tagNames }) {
     const rows = useMemo(() => {
         let last = "";
         return entries.map((e) => { const day = dayLabel(e.createdAt); const head = day !== last; last = day; return { e, day, head }; });
@@ -161,7 +179,7 @@ const Timeline = memo(function Timeline({ entries, busyKey, onRetry, onResend, o
     return rows.map(({ e, day, head }) => (
         <div key={e.clientKey || e.id}>
             {head && <div className="st-day"><span>{day}</span></div>}
-            <Entry e={e} busyKey={busyKey} onRetry={onRetry} onResend={onResend} onDiscard={onDiscard} />
+            <Entry e={e} busyKey={busyKey} onRetry={onRetry} onResend={onResend} onDiscard={onDiscard} ownerId={ownerId} who={who} tagNames={tagNames} />
         </div>
     ));
 });
@@ -356,13 +374,14 @@ function ReminderDialog({ current, open, busy, onCancel, onSave, onExited }) {
 
 // Owns its own state (text, files, menu), so keystrokes never re-render the thread above it.
 // Enter sends, Shift+Enter makes a new line. Sending is instant: the parent shows the entry and saves it in the background.
-function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, onAddProduct, hasReminder, hasProduct }) {
+function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, onAddProduct, hasReminder, hasProduct, people, onTyping }) {
     const [text, setText] = useState("");
     const [files, setFiles] = useState([]);
     const [menu, setMenu] = useState(false);
     const taRef = useRef(null);
     const fileRef = useRef(null);
     const wrapRef = useRef(null);
+    const mn = useMentions({ people, text, setText, taRef });
 
     // Grow with the text up to ~5 lines, then scroll inside the box.
     const fit = useCallback(() => {
@@ -410,12 +429,13 @@ function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, 
         if (!canSend) return;
         const previews = {};
         ready.forEach((f) => { if (f.preview) previews[f.attachment.path] = f.preview; });
-        onSend({ body: text.trim(), attachments: ready.map((f) => f.attachment), previews });
-        setText(""); setFiles([]);
-        taRef.current?.focus();   // keep the keyboard open for the next update
+        onSend({ body: text.trim(), attachments: ready.map((f) => f.attachment), previews, mentions: mn.collect(text) });
+        setText(""); setFiles([]); mn.reset(); onTyping?.(false);
+        taRef.current?.focus();
     };
     const onKey = (e) => {
-        if (e.key !== "Enter" || e.shiftKey || e.nativeEvent?.isComposing) return;   // Shift+Enter = new line
+        if (mn.onKeyDown(e)) return;
+        if (e.key !== "Enter" || e.shiftKey || e.nativeEvent?.isComposing) return;
         e.preventDefault();
         send();
     };
@@ -435,6 +455,7 @@ function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, 
                 </div>
             )}
             <input ref={fileRef} type="file" multiple hidden accept={FILE_ACCEPT} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+            <MentionList options={mn.options} idx={mn.idx} onPick={mn.pick} />
             <div className={`st-bar${PLUS_ON_LEFT ? "" : " flip"}`}>
                 <div className="st-plusw" ref={wrapRef}>
                     <button type="button" className="st-plus" aria-label="More actions" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
@@ -459,13 +480,16 @@ function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, 
                 <textarea ref={taRef} className="st-ta" rows={1} value={text} maxLength={4000} aria-label="Write an update"
                     placeholder="Write an update…"
                     enterKeyHint="send"
-                    onChange={(e) => setText(e.target.value)} onKeyDown={onKey}
+                    onChange={(e) => { setText(e.target.value); mn.detect(e.target.value, e.target.selectionStart); onTyping?.(!!e.target.value.trim()); }}
+                    onSelect={(e) => mn.detect(e.target.value, e.target.selectionStart)}
+                    onBlur={() => onTyping?.(false)}
+                    onKeyDown={onKey}
                     onPaste={(e) => { if (e.clipboardData?.files?.length) { addFiles(e.clipboardData.files); } }} />
                 <button type="button" className="st-send" aria-label="Save update" disabled={!canSend} onClick={send}>
                     <Send size={18} />
                 </button>
             </div>
-            <small className="st-bar-h">Enter to send · Shift+Enter for a new line · Only you can see this log</small>
+            <small className="st-bar-h">Enter to send · Shift+Enter for a new line · @ to tag a teammate</small>
         </div>
     );
 }
@@ -543,6 +567,39 @@ export default function SalesThreadPage() {
     }, [token, threadId, load]);
 
     useRfqLive(() => loadRef.current("after"), { enabled: !!token && state === "ready" });
+
+    // ---- chat: people, live events, read tracking ----
+    const isReady = state === "ready";
+    const [people, setPeople] = useState({ list: [], canManage: false });
+    const [sheet, setSheet] = useState(false);
+
+    const loadPeople = useCallback(async () => {
+        const r = await fetchChatParticipants(token, threadId);
+        if (r.success) setPeople({ list: r.participants || [], canManage: !!r.canManage });
+    }, [token, threadId]);
+    useEffect(() => { if (token && isReady) loadPeople(); }, [token, threadId, isReady, loadPeople]);
+
+    const chat = useChatSocket(threadId, {
+        selfId: thread?.salespersonId,
+        onMessage: (p) => {
+            if (!p.entry) return;
+            if (distFromBottom() < 260) stickRef.current = true;
+            setEntries((prev) => mergeIncoming(prev, [p.entry]));
+        },
+        onParticipants: loadPeople,
+    });
+
+    const nameMap = useMemo(() => new Map(people.list.map((p) => [p.userId, p.name])), [people.list]);
+    const who = useCallback((id, fb) => nameMap.get(id) || fb || "Teammate", [nameMap]);
+    const tagNames = useMemo(() => people.list.map((p) => p.name), [people.list]);
+    const tagPeople = useMemo(() => people.list.filter((p) => p.userId !== thread?.salespersonId), [people.list, thread?.salespersonId]);
+
+    // Reading the chat (tab visible) clears unread badges and stops the 1-hour WhatsApp reminder.
+    useEffect(() => {
+        if (!isReady || !token) return undefined;
+        const t = setTimeout(() => { if (document.visibilityState === "visible") markChatRead(token, threadId); }, 500);
+        return () => clearTimeout(t);
+    }, [isReady, token, threadId, entries.length]);
 
     // keep the cache warm for next time (never cache unsent local entries)
     useEffect(() => {
@@ -648,19 +705,19 @@ export default function SalesThreadPage() {
     }, [token, threadId]);
 
     // Instant: show the entry now, save it behind the scenes.
-    const onSend = useCallback(({ body, attachments, previews }) => {
+    const onSend = useCallback(({ body, attachments, previews, mentions }) => {
         const now = new Date().toISOString();
         const id = `tmp-${now}-${Math.random().toString(36).slice(2, 8)}`;
         const tmp = {
-            id, clientKey: id, local: true, kind: "note", body, createdAt: now,
+            id, clientKey: id, local: true, kind: "note", authorId: thread?.salespersonId, body, createdAt: now,
             attachments: attachments.map((a) => ({ ...a, url: previews?.[a.path] || null })),
-            payload: { body, attachments },
+            payload: { body, attachments, mentions },
         };
         stickRef.current = true;
         setEntries((prev) => mergeEntries(prev, [tmp]));
         setThread((t) => (t ? { ...t, lastActivityAt: now, reminderAt: null } : t));
         post(id, tmp.payload);
-    }, [post]);
+    }, [post, thread?.salespersonId]);
 
     const onResend = useCallback((id) => {
         const e = entriesRef.current.find((x) => x.id === id);
@@ -774,6 +831,7 @@ export default function SalesThreadPage() {
                     <p>{hasProduct ? `${thread.productName} · ${qty(thread.quantity)} ${thread.unit}` : "Cold call · no product yet"}</p>
                     <p className="sub">{cold ? "Logged" : "Posted"} {dateTime(thread.createdAt)}{cold && hasProduct ? " · Started as a cold call" : ""}</p>
                 </div>
+                <ParticipantStack people={people.list} onClick={() => setSheet(true)} />
                 <span className={`st-state ${st.k}`}>{st.l}</span>
             </header>
 
@@ -809,11 +867,13 @@ export default function SalesThreadPage() {
                             : <button type="button" className="st-btn" onClick={loadOlder}>Show earlier updates</button>}
                     </div>
                 )}
-                <Timeline entries={entries} busyKey={busyKey} onRetry={retry} onResend={onResend} onDiscard={onDiscard} />
+                <Timeline entries={entries} busyKey={busyKey} onRetry={retry} onResend={onResend} onDiscard={onDiscard}
+                    ownerId={thread.salespersonId} who={who} tagNames={tagNames} />
             </div>
 
             {/* Sticky dock: the "Latest" button lives inside it, so it always sits just above the composer, whatever its height. */}
             <div className="st-dock">
+                <TypingLine names={chat.typingNames} />
                 <button type="button" className={`st-jump${far ? " show" : ""}`} onClick={smoothToBottom}
                     aria-label="Jump to the latest update" aria-hidden={!far} tabIndex={far ? 0 : -1}>
                     <ArrowDown size={16} />Latest
@@ -831,6 +891,7 @@ export default function SalesThreadPage() {
                 ) : (
                     <Composer key={threadId} token={token} threadId={threadId} say={say} onSend={onSend} onQuote={openQuote}
                         onOutcome={askOutcome} onRemind={askRemind} onAddProduct={openAddProduct}
+                        people={tagPeople} onTyping={chat.emitTyping}
                         hasReminder={!!thread.reminderAt} hasProduct={hasProduct} />
                 )}
             </div>
@@ -850,6 +911,12 @@ export default function SalesThreadPage() {
 
             {remind && <ReminderDialog current={thread.reminderAt} open={remind.open} busy={remBusy}
                 onCancel={closeRemind} onSave={saveReminder} onExited={remindGone} />}
+
+            {sheet && (
+                <ParticipantsSheet token={token} threadId={threadId} people={people.list} meId={thread.salespersonId}
+                    canManage={people.canManage} onClose={() => setSheet(false)}
+                    onChanged={(list) => setPeople((p) => ({ ...p, list }))} />
+            )}
         </div>
     );
 }
