@@ -155,7 +155,7 @@ export default function SalesNewEnquirySheet({ token, onClose, onCreated, initia
                                         </span>
                                     </button>
                                 )} />
-                            <button type="button" className="st-btn st-full" onClick={startNew}>
+                            <button type="button" className="st-btn st-full st-new" onClick={startNew}>
                                 <UserPlus size={16} />Customer not listed? Add a new one
                             </button>
                             {errors.customer && <p className="st-err" style={{ marginTop: 6 }}>{errors.customer}</p>}

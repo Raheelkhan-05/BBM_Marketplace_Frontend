@@ -464,7 +464,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                         </span>
                                     </button>
                                 )} />
-                            <button type="button" className="st-btn st-full" onClick={() => { setC({ ...blankCustomer, mode: "new" }); setAddr(blankAddr); setRows([blankContact()]); touch(); }}>
+                            <button type="button" className="st-btn st-full st-new" onClick={() => { setC({ ...blankCustomer, mode: "new" }); setAddr(blankAddr); setRows([blankContact()]); touch(); }}>
                                 <UserPlus size={16} />Customer not listed? Add a new one
                             </button>
                             {errors.customer && <p className="st-err" style={{ marginTop: 6 }}>{errors.customer}</p>}
@@ -665,7 +665,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                         </button>
                                     );
                                 }} />
-                            <button type="button" className="st-btn st-full" onClick={() => { setManual(true); touch(); }}><PackagePlus size={16} />Product not listed? Type its name</button>
+                            <button type="button" className="st-btn st-full st-new" onClick={() => { setManual(true); touch(); }}><PackagePlus size={16} />Product not listed? Type its name</button>
                             {lines.length > 0 && <button type="button" className="st-lnk" style={{ marginTop: 8 }} onClick={() => setPicking(false)}>Done adding products</button>}
                         </>
                     )}
@@ -687,7 +687,7 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                     )}
 
                     {!picking && lines.length < MAX_LINES && (
-                        <button type="button" className="st-btn st-full" onClick={() => setPicking(true)}><Plus size={16} />Add another product</button>
+                        <button type="button" className="st-btn st-full st-new" onClick={() => setPicking(true)}><Plus size={16} />Add another product</button>
                     )}
                     {errors.items && <p className="st-err" style={{ marginTop: 6 }}>{errors.items}</p>}
 

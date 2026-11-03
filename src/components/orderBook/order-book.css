@@ -882,3 +882,40 @@
         transition: none;
     }
 }
+
+/* Highlighted "add new" buttons: yellow background, bold black text */
+.st-btn.st-new,
+.st-btn.st-new:visited {
+    background: #FFD60A;
+    border-color: #FFD60A;
+    color: #000;
+    font-weight: 700;
+}
+
+.st-btn.st-new svg {
+    color: #000;
+}
+
+.st-btn.st-new:hover:not(:disabled) {
+    background: #F2C900;
+    border-color: #F2C900;
+}
+
+.st-btn.st-new:focus-visible {
+    outline: 2px solid #000;
+    outline-offset: 2px;
+}
+
+.st-btn.st-new:disabled {
+    opacity: .6;
+}
+
+/* When the customer / product list reaches its end, keep scrolling the whole sheet */
+.st-sheet .st-pick {
+    overscroll-behavior: auto;
+}
+
+/* The sheet body should still not push the page behind it */
+.st-sheet .st-sh-b {
+    overscroll-behavior: contain;
+}

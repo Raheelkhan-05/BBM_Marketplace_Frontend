@@ -196,7 +196,7 @@ export function ProductFields({ form, idPrefix = "pf" }) {
                                 </span>
                             </button>
                         )} />
-                    <button type="button" className="st-btn st-full" onClick={() => resetProduct("manual")}>
+                    <button type="button" className="st-btn st-full st-new" onClick={() => resetProduct("manual")}>
                         <PackagePlus size={16} />Product not listed? Type its name
                     </button>
                     {errors.product && <p className="st-err" style={{ marginTop: 6 }}>{errors.product}</p>}
