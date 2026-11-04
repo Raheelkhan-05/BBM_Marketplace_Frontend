@@ -135,7 +135,8 @@ body[data-bbm-menu="open"] .bbm-tile { opacity: 0 !important; pointer-events: no
 ${HIDE_WHEN_MENU_OPEN.map((s) => `body[data-bbm-menu="open"] ${s}`).join(",\n")} { visibility: hidden !important; }
 `;
 
-// Hide the dock while a screen with its own sticky action bar, or any modal dialog, is open.
+// Hide the dock while a screen with its own sticky action bar, any modal dialog,
+// or a FilterSelect dropdown (.ddp: floating menu / phone bottom sheet) is open.
 
 const HIDE_DOCK_CSS = `
 .bbm-dock[data-hidden="true"],
@@ -146,7 +147,8 @@ body:has(.bbm-buynow) .bbm-dock,
 body:has(.gsl .bulkbar) .bbm-dock,
 body:has([role="dialog"][aria-modal="true"]) .bbm-dock,
 body:has([role="alertdialog"][aria-modal="true"]) .bbm-dock,
-body:has(.st-ov) .bbm-dock {
+body:has(.st-ov) .bbm-dock,
+body:has(.ddp) .bbm-dock {
     display: none !important;
 }
 `;
