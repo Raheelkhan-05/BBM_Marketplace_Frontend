@@ -1648,12 +1648,12 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             }}
         >
             <AnimatePresence>{showTapHint && <HintRing key="hint-ring" />}</AnimatePresence>
-            <div className={`grid w-full grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 sm:px-4 ${shopMode ? "pb-2.5" : "pb-3 min-h-[7.5rem]"}`}
+            <div className={`grid w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 sm:px-4 ${shopMode ? "pb-2.5" : "pb-3 min-h-[7.5rem]"}`}
             >
                 {/* COL 1 — IMAGE */}
                 <div className="flex h-full items-center justify-center">
                     <span
-                        className="flex h-20 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+                        className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl"
                         style={{ borderColor: C.hair, background: C.imgBg }}
                     >
                         <ProductImage
