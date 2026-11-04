@@ -1,0 +1,402 @@
+/* src/components/team/monitor/monitor-lists.css  (replaces the old file)
+   Shared by the monitor shell, Enquiries list, Orders list and the full-page chat. Prefix ml-.
+   Import it LAST on each page so it wins over sales-threads.css. */
+
+/* tokens for pages that don't carry .st-listpage (the shell) */
+.ml-nav,
+.ml-filters,
+.ml-page {
+    --ml-line: var(--st-line, #d8e4e7);
+    --ml-ink: var(--st-ink, #0a2730);
+    --ml-mute: var(--st-mute, #587078);
+    --ml-s: var(--st-s, #fff);
+    --ml-s2: var(--st-s2, #f1f6f7);
+    --ml-pri: var(--st-pri, #f4511e);
+    --ml-lk: var(--st-lk, #0d6c79);
+}
+
+:is([data-theme="dark"], .dark) :is(.ml-nav, .ml-filters, .ml-page) {
+    --ml-line: #29495a;
+    --ml-ink: #e5f0f2;
+    --ml-mute: #95acb3;
+    --ml-s: #142830;
+    --ml-s2: #1a3440;
+    --ml-pri: #ff6a3d;
+    --ml-lk: #62c8d5;
+}
+
+/* ---------- section switcher: one segmented control, equal thirds on phones ---------- */
+/* back button + switcher share one row, so every tab has the same exit in the same place */
+.ml-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.ml-back {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    cursor: pointer;
+    color: var(--ml-ink);
+    background: var(--ml-s);
+    border: 1px solid var(--ml-line);
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s, transform .12s;
+}
+
+.ml-back:hover {
+    background: var(--ml-s2);
+}
+
+.ml-back:active {
+    transform: scale(.94);
+}
+
+.ml-back:focus-visible {
+    outline: 2px solid var(--ml-lk);
+    outline-offset: 2px;
+}
+
+.ml-bar .ml-nav {
+    flex: 1;
+    margin-top: 0;
+}
+
+.ml-nav {
+    display: flex;
+    gap: 2px;
+    margin-top: 12px;
+    padding: 3px;
+    border-radius: 12px;
+    background: var(--ml-s2);
+    border: 1px solid var(--ml-line);
+    max-width: 460px;
+}
+
+.ml-tab {
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 10px;
+    border-radius: 9px;
+    font-size: .8rem;
+    font-weight: 800;
+    letter-spacing: .01em;
+    text-decoration: none;
+    white-space: nowrap;
+    color: var(--ml-mute);
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s, color .15s, box-shadow .15s;
+}
+
+.ml-tab:hover {
+    color: var(--ml-ink);
+}
+
+.ml-tab.on {
+    color: var(--ml-ink);
+    background: var(--ml-s);
+    box-shadow: 0 1px 3px rgba(8, 39, 48, .16);
+}
+
+.ml-tab.on svg {
+    color: var(--ml-pri);
+}
+
+.ml-tab:focus-visible {
+    outline: 2px solid var(--ml-lk);
+    outline-offset: 1px;
+}
+
+@media (max-width: 360px) {
+    .ml-tab svg {
+        display: none;
+    }
+}
+
+/* ---------- filters used by Enquiries / Orders (MonitorFilters) ---------- */
+.ml-filters {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.ml-chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 -12px;
+    padding: 1px 12px;
+    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 18px), transparent 100%);
+}
+
+.ml-chips::-webkit-scrollbar {
+    display: none;
+}
+
+.ml-chip {
+    flex: none;
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    font: inherit;
+    font-size: .78rem;
+    font-weight: 700;
+    color: var(--ml-ink);
+    background: var(--ml-s);
+    border: 1.5px solid var(--ml-line);
+    transition: background .15s, border-color .15s, color .15s;
+}
+
+.ml-chip:hover {
+    background: var(--ml-s2);
+}
+
+.ml-chip.on {
+    color: var(--st-pri-d, #c23a0b);
+    border-color: var(--ml-pri);
+    background: color-mix(in srgb, var(--ml-pri) 10%, var(--ml-s));
+}
+
+.ml-chip:focus-visible {
+    outline: 2px solid var(--ml-lk);
+    outline-offset: 2px;
+}
+
+.ml-dates {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    max-width: 380px;
+}
+
+.ml-dates span {
+    display: block;
+    margin-bottom: 2px;
+    font-size: .7rem;
+    font-weight: 700;
+    color: var(--ml-mute);
+}
+
+@media (min-width: 760px) {
+    .ml-chips {
+        margin: 0;
+        padding: 1px 0;
+        flex-wrap: wrap;
+        overflow: visible;
+        mask-image: none;
+    }
+
+    .ml-chip {
+        min-height: 30px;
+        font-size: .76rem;
+    }
+}
+
+/* ---------- list pages ---------- */
+.ml-page {
+    padding-bottom: 48px;
+}
+
+.ml-page .gk-ph {
+    margin-top: 12px !important;
+}
+
+.ml-page .gk-ph h1 {
+    font-size: 1.15rem;
+}
+
+.ml-page .gk-ph p {
+    font-size: .76rem;
+    margin-top: 1px;
+}
+
+.ml-page .st-srch {
+    margin-bottom: 0;
+    border-radius: 10px;
+}
+
+.ml-page .st-srch input {
+    min-height: 38px;
+}
+
+/* status tabs: one scrolling line, edge to edge on phones */
+.ml-page .st-tabs {
+    margin: 10px -12px 0;
+    padding: 1px 12px 2px;
+    gap: 5px;
+    scroll-snap-type: x proximity;
+    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 18px), transparent 100%);
+}
+
+.ml-page .st-tab {
+    min-height: 34px;
+    padding: 0 6px 0 12px;
+    font-size: .78rem;
+    scroll-snap-align: start;
+}
+
+.ml-page .st-tab .n {
+    min-width: 20px;
+    padding: 1px 6px;
+}
+
+.ml-page .gd-note {
+    margin: 10px 2px 0;
+    font-size: .76rem;
+    color: var(--ml-mute);
+}
+
+/* rows: one tidy list on phones, a card grid on wide screens */
+.ml-page .st-list {
+    margin-top: 8px;
+    border: 1px solid var(--ml-line);
+    border-radius: 14px;
+    overflow: hidden;
+    background: var(--ml-s);
+}
+
+.ml-page .st-list>li+li {
+    border-top: 1px solid var(--ml-line);
+}
+
+.ml-page .st-row {
+    padding: 10px 12px;
+}
+
+.ml-page .st-row-1 b {
+    font-size: .92rem;
+}
+
+.ml-page .st-row-2 {
+    font-size: .8rem;
+}
+
+.ml-page .st-row-3 {
+    margin-top: 4px;
+}
+
+.ml-by {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px 10px;
+    margin-top: 2px;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--ml-mute);
+}
+
+.ml-by b {
+    font-weight: 800;
+    color: var(--ml-ink);
+}
+
+.ml-by .upd,
+.ml-by .upd b {
+    color: var(--ml-lk);
+}
+
+@media (min-width: 900px) {
+    .ml-page .st-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+        gap: 10px;
+        border: 0;
+        border-radius: 0;
+        overflow: visible;
+        background: transparent;
+    }
+
+    .ml-page .st-list>li {
+        border: 1px solid var(--ml-line) !important;
+        border-radius: 14px;
+        overflow: hidden;
+        background: var(--ml-s);
+        transition: border-color .15s, box-shadow .15s;
+    }
+
+    .ml-page .st-list>li:hover {
+        border-color: color-mix(in srgb, var(--ml-lk) 45%, var(--ml-line)) !important;
+        box-shadow: 0 6px 18px -10px rgba(8, 39, 48, .35);
+    }
+
+    .ml-page .st-list>.st-sk {
+        border-radius: 14px;
+        border: 1px solid var(--ml-line);
+    }
+
+    .ml-page .st-tabs {
+        margin: 10px 0 0;
+        padding: 1px 0 2px;
+        flex-wrap: wrap;
+        mask-image: none;
+    }
+}
+
+/* ---------- full-page chat (add className "ml-thread" to the page root) ---------- */
+.ml-thread .st-head {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding: 6px 0 8px;
+}
+
+.ml-thread .st-head-t {
+    flex: 1 1 calc(100% - 110px);
+}
+
+.ml-thread .st-head-t p {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+}
+
+.ml-thread .st-state,
+.ml-thread .st-head .st-bd {
+    order: 3;
+}
+
+@media (max-width: 559px) {
+    .ml-thread .st-head>.st-ib {
+        align-self: flex-start;
+    }
+
+    .ml-thread .st-head .sc-stack {
+        order: 2;
+    }
+
+    .ml-thread .st-state,
+    .ml-thread .st-head .st-bd {
+        margin-left: 46px;
+    }
+}
+
+.ml-thread .sc-info {
+    margin-top: 8px;
+    font-size: .76rem;
+}
+
+.ml-thread .st-bub,
+.ml-thread .sc-bub {
+    max-width: min(600px, 90%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .ml-tab,
+    .ml-chip,
+    .ml-page .st-list>li {
+        transition: none;
+    }
+}

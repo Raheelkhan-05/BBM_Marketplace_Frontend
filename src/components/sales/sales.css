@@ -248,7 +248,7 @@
 .gs-main {
     max-width: 1180px;
     margin: 0 auto;
-    padding: 0 16px 48px;
+    padding: 0 16px 8px;
 }
 
 /* Tabs: everything comes from grow-modules.css so it matches GrowTabs.

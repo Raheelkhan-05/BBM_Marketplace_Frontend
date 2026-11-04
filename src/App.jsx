@@ -9,6 +9,7 @@ import Layout from "./components/Layout.jsx";
 import GrowLayout from "./components/grow/GrowLayout.jsx";
 import GrowSellerRoot from "./components/growSeller/GrowSellerRoot.jsx";
 import SalesLayout from "./components/sales/SalesLayout.jsx";
+import SalesMonitorLayout from "./components/sales/SalesMonitorLayout.jsx";
 import AuthLayout from "./components/AuthLayout.jsx";
 import InstallAppPrompt from "./components/InstallAppPrompt.jsx";
 import PendingSubmissionWatcher from "./components/PendingSubmissionWatcher.jsx";
@@ -126,7 +127,7 @@ const SalesCustomersPage = lazy(() => import("./pages/SalesCustomersPage.jsx"));
 const SalesEnquiriesPage = lazy(() => import("./pages/SalesEnquiriesPage.jsx"));
 const SalesPipelinePage = lazy(() => import("./pages/SalesPipelinePage.jsx"));
 const SalesThreadPage = lazy(() => import("./pages/SalesThreadPage.jsx"));
-
+const SalesMonitorRoutes = lazy(() => import("./pages/SalesMonitorRoutes.jsx"));
 
 
 function CatalogLevelPageWithKey({ configKey }) {
@@ -335,6 +336,10 @@ function App() {
                     <Route path="orders/:id" element={<SaveOrderDetailPage />} />
                     <Route path="cart" element={<SaveCartPage />} />
                     <Route path="credit" element={<SaveCreditPage />} />
+                  </Route>
+
+                  <Route element={<SalesMonitorLayout />}>
+                    <Route path="/sales/monitor/*" element={<SalesMonitorRoutes />} />
                   </Route>
 
                   <Route path="/sales" element={<SalesLayout />}>

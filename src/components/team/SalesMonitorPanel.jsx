@@ -6,13 +6,17 @@
 // Long break (decided on the server): between 9:00 AM and 6:00 PM IST, more than 30 min with no activity marks the
 // next entry red, per salesperson. A new day starts counting from 9:00 AM.
 // Clicking a log: enquiries open the read-only viewer (with a Back button), orders open the Order Book page.
+// "Full page" opens the same view as a page (pages/SalesMonitorPage.jsx) with the current filters.
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, ChevronRight, Users, ClipboardList, Search, X, Clock, ArrowLeft, Activity } from "lucide-react";
+import { Loader2, ChevronRight, Users, ClipboardList, Search, X, Clock, ArrowLeft, Activity, Maximize2 } from "lucide-react";
 import { fetchMonitorPeople, fetchMonitorFeed } from "../../utils/salesMonitorApi.js";
 import { useSocket } from "../../context/SocketContext.jsx";
 import { formatTime, dateKeyOf, dateLabelOf } from "../../utils/notificationDisplay.js";
 import SalesThreadViewer from "./SalesThreadViewer.jsx";
+
+// Route of the full-page monitor (see the router).
+const MONITOR_PATH = "/sales/monitor";
 
 const C = {
     ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)",
@@ -360,6 +364,20 @@ export default function SalesMonitorPanel({ token, active, scrollProps, openId, 
         setView("overview"); setActorId(""); setQInput(""); setQ(""); setModuleF(""); setIdleOnly(false);
     }, []);
 
+    // Open the full-page monitor, carrying over what the admin is looking at right now.
+    const openFullPage = useCallback(() => {
+        const p = new URLSearchParams();
+        if (view === "activity") {
+            if (actorId) p.set("actor", actorId);
+            if (moduleF) p.set("mod", moduleF);
+            if (idleOnly) p.set("idle", "1");
+            if (q) p.set("q", q);
+        }
+        p.set("range", preset);
+        if (preset === "custom") { p.set("from", from); p.set("to", to); }
+        navigate(`${MONITOR_PATH}?${p.toString()}`);
+    }, [navigate, view, actorId, moduleF, idleOnly, q, preset, from, to]);
+
     const openItem = useCallback((e) => {
         if (e.module === "enquiry" && e.entityId) setViewer({ id: e.entityId, who: e.actorName });
         else if (e.module === "order" && e.entityId) navigate(`/sell/order-book/${e.entityId}`);
@@ -402,6 +420,11 @@ export default function SalesMonitorPanel({ token, active, scrollProps, openId, 
                             Live
                         </span>
                     )}
+                    <button type="button" onClick={openFullPage} aria-label="Open in full page" title="Open in full page"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-[5px] text-[11px] font-bold tracking-wide text-white transition active:scale-95"
+                        style={{ background: C.secondary }}>
+                        <Maximize2 className="h-3 w-3" />Full page
+                    </button>
                 </div>
                 {view === "overview" && (
                     <p className="mt-1 text-[12px] font-medium leading-snug" style={{ color: C.muted }}>See what your salespeople are doing. Tap a person for their full activity.</p>
