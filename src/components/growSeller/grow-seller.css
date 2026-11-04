@@ -2118,3 +2118,712 @@
         transition: none
     }
 }
+
+/* APPEND to the GROW seller stylesheet (the .gsl one), after the existing rules.
+   Uses only the existing tokens (--ink, --line, --s, --s2, --bl, --gb, --red, --gt, --mute, --f). */
+
+/* ===== Filters: category / sub-category / generic product ===== */
+.gsl .pfl {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+    align-items: center
+}
+
+.gsl .sf {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 0 36px 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--s) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2352686F' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center / 16px;
+    -webkit-appearance: none;
+    appearance: none;
+    font: 700 .9rem var(--f);
+    color: var(--ink);
+    text-overflow: ellipsis;
+    cursor: pointer
+}
+
+.gsl .sf.on {
+    border-color: var(--ink);
+    background-color: color-mix(in srgb, var(--ink) 6%, var(--s))
+}
+
+.gsl .sf:disabled {
+    opacity: .5;
+    cursor: not-allowed
+}
+
+.gsl .sf:focus-visible,
+.gsl .selhit:focus-visible,
+.gsl .selall:focus-visible,
+.gsl .bb:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--bl) 55%, transparent);
+    outline-offset: 2px
+}
+
+/* ===== Selection ===== */
+.gsl .card {
+    position: relative
+}
+
+.gsl .selhit {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border: 0;
+    padding: 0;
+    border-radius: 24px;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent
+}
+
+.gsl .selbox {
+    position: absolute;
+    top: -9px;
+    left: -9px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--s);
+    border: 2px solid var(--line);
+    display: grid;
+    place-items: center;
+    color: transparent;
+    box-shadow: 0 4px 10px -4px rgba(8, 34, 43, .35);
+    transition: background .15s, border-color .15s, color .15s
+}
+
+.gsl .selbox .ic {
+    width: 16px;
+    height: 16px;
+    stroke-width: 3
+}
+
+.gsl .selhit[aria-checked=true] .selbox,
+.gsl .selall[aria-checked=true] .selbox {
+    background: var(--bl);
+    border-color: var(--bl);
+    color: #fff
+}
+
+.gsl .card.picked {
+    border-color: var(--bl);
+    box-shadow: 0 0 0 3px var(--gb), 0 12px 30px -22px rgba(8, 34, 43, .3)
+}
+
+.gsl .seltb {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    padding: 6px 14px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--s2);
+    font-weight: 700;
+    font-size: .9rem;
+    color: var(--mute)
+}
+
+.gsl .selall {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 40px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: 800 .92rem var(--f);
+    color: var(--ink);
+    cursor: pointer
+}
+
+.gsl .selall:disabled {
+    opacity: .5;
+    cursor: not-allowed
+}
+
+.gsl .selall .selbox {
+    position: static;
+    width: 24px;
+    height: 24px;
+    box-shadow: none
+}
+
+.gsl .selall .selbox .ic {
+    width: 14px;
+    height: 14px
+}
+
+/* ===== Bulk action bar (sits above the mobile dock) ===== */
+.gsl .bulkbar {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(98px + env(safe-area-inset-bottom, 0px));
+    z-index: 60;
+    width: min(calc(100% - 24px), 760px);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 8px 8px 16px;
+    border-radius: 28px;
+    background: var(--ink);
+    color: var(--bg);
+    box-shadow: 0 18px 40px -14px rgba(8, 34, 43, .55)
+}
+
+.gsl .bbn {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 700;
+    font-size: .9rem;
+    white-space: nowrap
+}
+
+.gsl .bbn b {
+    font: 900 1.05rem var(--f);
+    font-variant-numeric: tabular-nums
+}
+
+.gsl .bbx {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin-left: 2px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .14);
+    color: inherit;
+    cursor: pointer;
+    padding: 0
+}
+
+.gsl .bbx .ic {
+    width: 14px;
+    height: 14px
+}
+
+.gsl .bbs {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    justify-content: flex-end
+}
+
+.gsl .bbs::-webkit-scrollbar {
+    display: none
+}
+
+.gsl .bb {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 42px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .22);
+    background: rgba(255, 255, 255, .1);
+    color: #fff;
+    font: 800 .85rem var(--f);
+    cursor: pointer;
+    white-space: nowrap
+}
+
+.gsl .bb:hover {
+    background: rgba(255, 255, 255, .2)
+}
+
+.gsl .bb .ic {
+    width: 16px;
+    height: 16px
+}
+
+.gsl .bulk-spacer {
+    height: 96px
+}
+
+/* ===== Bulk sheets ===== */
+.gsl .suf {
+    padding-right: 14px;
+    font-weight: 800;
+    color: var(--mute)
+}
+
+.gsl .qk {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px
+}
+
+.gsl .qk button {
+    min-height: 38px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--s);
+    color: var(--ink);
+    font: 800 .85rem var(--f);
+    cursor: pointer
+}
+
+.gsl .qk button[aria-pressed=true] {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink)
+}
+
+.gsl .seg.segw {
+    width: 100%
+}
+
+.gsl .seg.segw button {
+    flex: 1;
+    padding: 0 8px;
+    font-size: .82rem
+}
+
+.gsl .pvw {
+    margin-top: 14px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden
+}
+
+.gsl .pvw>div {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: .9rem
+}
+
+.gsl .pvw>div:last-child {
+    border-bottom: 0
+}
+
+.gsl .pvw span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700
+}
+
+.gsl .pvw b {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums
+}
+
+.gsl .pvw b s {
+    margin-right: 8px;
+    color: var(--mute);
+    font-weight: 600
+}
+
+.gsl .bhits {
+    margin-top: 8px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    max-height: 240px;
+    overflow-y: auto
+}
+
+.gsl .bhit {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    padding: 10px 14px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: none;
+    text-align: left;
+    font-family: var(--f);
+    color: inherit;
+    cursor: pointer
+}
+
+.gsl .bhit:last-child {
+    border-bottom: 0
+}
+
+.gsl .bhit:hover {
+    background: var(--s2)
+}
+
+.gsl .bhit small,
+.gsl .bhx {
+    color: var(--mute);
+    font-weight: 600;
+    font-size: .84rem
+}
+
+.gsl .bhx {
+    padding: 12px 14px
+}
+
+.gsl .pks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px
+}
+
+.gsl .pk {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 4px 4px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--s2);
+    font-weight: 700;
+    font-size: .85rem
+}
+
+.gsl .pk button {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--mute);
+    cursor: pointer
+}
+
+.gsl .pk button .ic {
+    width: 14px;
+    height: 14px
+}
+
+.gsl .ck {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-top: 14px;
+    font-weight: 600;
+    font-size: .9rem;
+    cursor: pointer
+}
+
+.gsl .ck input {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin: 1px 0 0;
+    accent-color: var(--ink)
+}
+
+.gsl .optl {
+    display: grid;
+    gap: 10px
+}
+
+.gsl .optl button {
+    text-align: left;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1.5px solid var(--line);
+    background: var(--s);
+    font-family: var(--f);
+    color: var(--ink);
+    cursor: pointer
+}
+
+.gsl .optl button b {
+    display: block;
+    font-weight: 800
+}
+
+.gsl .optl button small {
+    display: block;
+    margin-top: 2px;
+    color: var(--mute);
+    font-weight: 600;
+    font-size: .86rem
+}
+
+.gsl .optl button[aria-checked=true] {
+    border-color: var(--ink);
+    background: color-mix(in srgb, var(--ink) 5%, var(--s))
+}
+
+/* result view */
+.gsl .bres {
+    text-align: center;
+    padding: 8px 0 0
+}
+
+.gsl .bok {
+    width: 44px;
+    height: 44px;
+    margin: 6px auto 0;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--gr) 16%, var(--s));
+    color: var(--gt)
+}
+
+.gsl .bok.none {
+    background: color-mix(in srgb, #F2A600 18%, var(--s));
+    color: var(--am)
+}
+
+.gsl .bres>b {
+    display: block;
+    font-weight: 800
+}
+
+.gsl .skl {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: var(--s2);
+    text-align: left
+}
+
+.gsl .skl>div {
+    padding: 6px 0
+}
+
+.gsl .skl b {
+    font-weight: 800;
+    font-size: .9rem
+}
+
+.gsl .skl em {
+    font-style: normal;
+    margin-left: 6px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--s);
+    color: var(--mute);
+    font-size: .75rem
+}
+
+.gsl .skl small {
+    display: block;
+    color: var(--mute);
+    font-weight: 600;
+    font-size: .84rem
+}
+
+@media (min-width: 1024px) {
+    .gsl .bulkbar {
+        bottom: 24px
+    }
+
+    .gsl .bulk-spacer {
+        height: 70px
+    }
+}
+
+@media (max-width: 380px) {
+    .gsl .bb {
+        padding: 0 10px
+    }
+
+    .gsl .bb .ic {
+        display: none
+    }
+}
+
+/* ======================================================================
+   Responsive pass: phones (<640), small tablets (<768), tablets, desktop
+   ====================================================================== */
+
+/* Sheets: the primary button stays reachable while long content scrolls */
+.gsl .sfoot {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    margin: 16px -20px calc(-24px - env(safe-area-inset-bottom, 0px));
+    padding: 14px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to bottom, transparent, var(--s) 14px)
+}
+
+.gsl .sheet.lt .sfoot {
+    background: linear-gradient(to bottom, transparent, #fff 14px)
+}
+
+.gsl .sfoot.stack {
+    display: grid;
+    gap: 10px
+}
+
+/* Segmented control that may wrap its labels on narrow screens */
+.gsl .seg.segw {
+    width: 100%;
+    gap: 2px;
+    border-radius: 20px
+}
+
+.gsl .seg.segw button {
+    flex: 1;
+    min-height: 44px;
+    padding: 6px 8px;
+    border-radius: 16px;
+    font-size: .8rem;
+    line-height: 1.15;
+    white-space: normal
+}
+
+/* Search + Select stay on one row */
+.gsl .tb .srch {
+    flex: 1 1 0;
+    min-width: 0
+}
+
+.gsl .tb .bt {
+    flex: none
+}
+
+/* Toast must not hide behind the bulk bar */
+.gsl:has(.bulkbar) .toast {
+    bottom: calc(170px + env(safe-area-inset-bottom, 0px))
+}
+
+/* ---- Phones and small tablets ---- */
+@media (max-width: 767px) {
+
+    /* filters become one swipeable row instead of three stacked ones */
+    .gsl .pfl {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        margin: 0 -16px 14px;
+        padding: 0 16px;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch
+    }
+
+    .gsl .pfl::-webkit-scrollbar {
+        display: none
+    }
+
+    .gsl .sf {
+        flex: none;
+        width: 176px;
+        font-size: 16px
+            /* 16px stops iOS zooming the page on focus */
+    }
+
+    .gsl .pfl .bt {
+        flex: none
+    }
+
+    .gsl .sheet .srch input,
+    .gsl .sheet .inp input {
+        font-size: 16px
+    }
+
+    .gsl .seltb {
+        padding: 4px 12px
+    }
+}
+
+/* ---- Phones: bulk bar becomes two rows with four equal buttons ---- */
+@media (max-width: 639px) {
+    .gsl .bulkbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        padding: 10px 10px 10px 14px;
+        border-radius: 24px
+    }
+
+    .gsl .bbn {
+        justify-content: space-between
+    }
+
+    .gsl .bbn .bbx {
+        margin-left: auto
+    }
+
+    .gsl .bbs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        overflow: visible
+    }
+
+    .gsl .bb {
+        flex-direction: column;
+        justify-content: center;
+        gap: 3px;
+        min-height: 54px;
+        padding: 6px 2px;
+        border-radius: 16px;
+        font-size: .7rem;
+        letter-spacing: -.01em
+    }
+
+    .gsl .bb .ic {
+        display: block;
+        width: 18px;
+        height: 18px
+    }
+
+    .gsl .bulk-spacer {
+        height: 200px
+    }
+
+    .gsl:has(.bulkbar) .toast {
+        bottom: calc(210px + env(safe-area-inset-bottom, 0px))
+    }
+}
+
+/* ---- Tablets: dock still visible, bar is a single row ---- */
+@media (min-width: 640px) and (max-width: 1023px) {
+    .gsl .bulk-spacer {
+        height: 120px
+    }
+}
+
+/* ---- Tablets and up: filters become one aligned row ---- */
+@media (min-width: 768px) {
+    .gsl .pfl {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) auto
+    }
+}
+
+/* ---- Desktop: no dock, bar sits near the bottom ---- */
+@media (min-width: 1024px) {
+    .gsl:has(.bulkbar) .toast {
+        bottom: 96px
+    }
+}
+
+/* ---- Short landscape phones: keep the bar compact ---- */
+@media (max-height: 480px) and (orientation: landscape) {
+    .gsl .bulkbar {
+        bottom: calc(76px + env(safe-area-inset-bottom, 0px))
+    }
+
+    .gsl .bb {
+        min-height: 38px
+    }
+}

@@ -143,6 +143,7 @@ body:has(.gs .app.hb) .bbm-dock,
 body:has(.gax-edit) .bbm-dock,
 body:has(.sh-portal) .bbm-dock,
 body:has(.bbm-buynow) .bbm-dock,
+body:has(.gsl .bulkbar) .bbm-dock,
 body:has([role="dialog"][aria-modal="true"]) .bbm-dock,
 body:has([role="alertdialog"][aria-modal="true"]) .bbm-dock,
 body:has(.st-ov) .bbm-dock {

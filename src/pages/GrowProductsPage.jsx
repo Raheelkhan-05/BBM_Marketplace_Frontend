@@ -1,9 +1,10 @@
 // src/pages/GrowProductsPage.jsx — "My products" in the new UI.
-// Same data and actions as SellerManageListingsPage: fetchMySellerSubmissions, live/paused switch,
-// one-tap reactivate, price + promotion editor, full edit form, share, GST toggle, realtime updates.
+// Same data and actions as before, plus:
+//   - cascading Category > Sub-category > Generic product filters (built from the seller's own listings),
+//   - multi-select ("Select" mode, "Select all in this view"),
+//   - a bulk action bar: change prices by %, marketing & promotion, buyer visibility, pause / go live.
 // Rejected listings are never shown as live: they get a Rejected badge, the reason, and "Edit & resubmit".
-// Bulk upload: a "Bulk upload" button, plus a banner that resumes unfinished (soft-saved) bulk products.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -25,6 +26,12 @@ import { resizedImageUrl } from "../utils/imageUrl.js";
 import Ic from "../components/growSeller/Ic.jsx";
 import { Sheet, Thumb, Empty, ListSkeleton } from "../components/growSeller/ui.jsx";
 import EditPriceSheet from "../components/growSeller/EditPriceSheet.jsx";
+import ProductFilters, { UNMAPPED } from "../components/growSeller/ProductFilters.jsx";
+import BulkActionBar from "../components/growSeller/BulkActionBar.jsx";
+import BulkPriceSheet from "../components/growSeller/BulkPriceSheet.jsx";
+import BulkMarketingSheet from "../components/growSeller/BulkMarketingSheet.jsx";
+import BulkVisibilitySheet from "../components/growSeller/BulkVisibilitySheet.jsx";
+import BulkActiveSheet from "../components/growSeller/BulkActiveSheet.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
 import {
     fmtQty, inr, toTitleCase, isHiddenLabel, stockState, needsRestock, packagingLabel, compactSaleUnit,
@@ -37,9 +44,34 @@ const FILTERS = [["all", "All"], ["low", "Needs restock"], ["exp", "Expired"], [
 
 const isRejected = (it) => it.review_status === "rejected";
 
-function ProductCard({
-    it, includeGst, nowMs, highlighted, togglingId, savingPriceId, refreshingId,
-    onToggleActive, onShare, onEditPrice, onEditSection, onRenew, onOpenImage,
+// Category chain comes from the brand item (server flattens it onto each listing).
+// A placeholder name such as "Pending" counts as "not categorised yet".
+const catKey = (it) => (it.category_id && !isHiddenLabel(it.category_name) ? it.category_id : null);
+const subKey = (it) => (it.subcategory_id && !isHiddenLabel(it.subcategory_name) ? it.subcategory_id : null);
+const gpKey = (it) => (it.generic_product_id && !isHiddenLabel(it.generic_product_name) ? it.generic_product_id : null);
+
+function buildOptions(list, keyFn, nameFn) {
+    const m = new Map();
+    for (const it of list) {
+        const k = keyFn(it);
+        if (!k) continue;
+        const cur = m.get(k);
+        if (cur) cur.count += 1;
+        else m.set(k, { value: k, label: nameFn(it) || "Unnamed", count: 1 });
+    }
+    return [...m.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// Keeps the chosen option in the list even when the other filters leave it with 0 matches.
+function withSelected(options, selected, all, keyFn, nameFn) {
+    if (!selected || selected === UNMAPPED || options.some((o) => o.value === selected)) return options;
+    const src = all.find((it) => keyFn(it) === selected);
+    return [...options, { value: selected, label: src ? nameFn(src) : "Selected", count: 0 }];
+}
+
+const ProductCard = memo(function ProductCard({
+    it, includeGst, nowMs, highlighted, togglingId, savingPriceId, refreshingId, selectMode, picked,
+    onToggleActive, onShare, onEditPrice, onEditSection, onRenew, onOpenImage, onPick,
 }) {
     const name = it.brand?.name || it.product_name || "Product";
     const brandName = it.brand?.brand_name || it.brand_name;
@@ -97,7 +129,13 @@ function ProductCard({
     const showValidity = !rejected && expiry.tracked && !isExpired;
 
     return (
-        <article className={`card${highlighted ? " hl" : ""}${!isActive ? " dim" : ""}`}>
+        <article className={`card${highlighted ? " hl" : ""}${!isActive ? " dim" : ""}${picked ? " picked" : ""}`}>
+            {selectMode && (
+                <button type="button" className="selhit" role="checkbox" aria-checked={picked}
+                    aria-label={`Select ${toTitleCase(name)}`} onClick={() => onPick(it.id)}>
+                    <i className="selbox"><Ic n="check" /></i>
+                </button>
+            )}
             <div className="pr">
                 <div className="in">
                     <div className="top">
@@ -172,7 +210,7 @@ function ProductCard({
             </div>
         </article>
     );
-}
+});
 
 export default function GrowProductsPage() {
     const { token, profile, registerResyncHandler } = useAuth();
@@ -189,6 +227,7 @@ export default function GrowProductsPage() {
     const [loading, setLoading] = useState(!warm);
     const [query, setQuery] = useState("");
     const [pf, setPf] = useState(() => (new URLSearchParams(location.search).get("filter") === "expired" ? "exp" : "all"));
+    const [fl, setFl] = useState({ cat: "", sub: "", gp: "" });   // category / sub-category / generic product
     const [includeGst, setIncludeGst] = useState(true);
     const [togglingId, setTogglingId] = useState(null);
     const [savingPriceId, setSavingPriceId] = useState(null);
@@ -199,6 +238,9 @@ export default function GrowProductsPage() {
     const [priceFor, setPriceFor] = useState(null);
     const [lightbox, setLightbox] = useState(null);
     const [bulkPending, setBulkPending] = useState(0); // unfinished bulk-upload products waiting to be submitted
+    const [selMode, setSelMode] = useState(false);
+    const [sel, setSel] = useState(() => new Set());   // selected listing ids (as strings)
+    const [bulk, setBulk] = useState(null);            // { kind, items } snapshot taken when a bulk sheet opens
 
     const { listingApprovalUnreadCount, listingRejectionUnreadCount } = useNotifications();
     const unreadListingNotifs = (listingApprovalUnreadCount || 0) + (listingRejectionUnreadCount || 0);
@@ -280,7 +322,6 @@ export default function GrowProductsPage() {
     }, [items, nowMs]);
 
     useEffect(() => { setBadge("prod", stats.expired + stats.rejected); }, [stats.expired, stats.rejected, setBadge]);
-    // useEffect(() => { reportRestockCount?.(stats.low + stats.out); }, [stats.low, stats.out, reportRestockCount]);
     useEffect(() => {
         if (loading) return; // don't report "0" while the list is still empty
         reportRestockCount?.(stats.low + stats.out);
@@ -288,7 +329,8 @@ export default function GrowProductsPage() {
 
     const counts = { all: stats.total, low: stats.low + stats.out, exp: stats.expired, soon: stats.soon, rej: stats.rejected };
 
-    const filtered = useMemo(() => {
+    // Status chip + search first. The category filters are built from (and then narrow) this list.
+    const base = useMemo(() => {
         let list = items;
         const expired = (it) => !isRejected(it) && getListingExpiry(it, nowMs).expired;
         if (pf === "low") list = list.filter((it) => !isRejected(it) && ["low", "out"].includes(stockState(it.stock_quantity, it.moq)));
@@ -300,14 +342,69 @@ export default function GrowProductsPage() {
             list = list.filter((it) => {
                 const n = (it.brand?.name || it.product_name || "").toLowerCase();
                 const b = (it.brand?.brand_name || it.brand_name || "").toLowerCase();
-                return n.includes(term) || b.includes(term);
+                const m = (it.model_no || it.brand?.model_no || "").toLowerCase();
+                return n.includes(term) || b.includes(term) || m.includes(term);
             });
         }
         return list;
     }, [items, pf, query, nowMs]);
 
+    const catMatch = useCallback((it) => (!fl.cat ? true : fl.cat === UNMAPPED ? catKey(it) === null : catKey(it) === fl.cat), [fl.cat]);
+    const subMatch = useCallback((it) => (!fl.sub ? true : subKey(it) === fl.sub), [fl.sub]);
+    const gpMatch = useCallback((it) => (!fl.gp ? true : gpKey(it) === fl.gp), [fl.gp]);
+
+    const catOptions = useMemo(() => {
+        const o = buildOptions(base, catKey, (it) => it.category_name);
+        const unmapped = base.reduce((n, it) => n + (catKey(it) === null ? 1 : 0), 0);
+        const withSel = withSelected(o, fl.cat, items, catKey, (it) => it.category_name);
+        return unmapped || fl.cat === UNMAPPED ? [...withSel, { value: UNMAPPED, label: "Not categorised yet", count: unmapped }] : withSel;
+    }, [base, items, fl.cat]);
+    const subOptions = useMemo(
+        () => withSelected(buildOptions(base.filter(catMatch), subKey, (it) => it.subcategory_name), fl.sub, items, subKey, (it) => it.subcategory_name),
+        [base, items, catMatch, fl.sub],
+    );
+    const gpOptions = useMemo(
+        () => withSelected(buildOptions(base.filter((it) => catMatch(it) && subMatch(it)), gpKey, (it) => it.generic_product_name), fl.gp, items, gpKey, (it) => it.generic_product_name),
+        [base, items, catMatch, subMatch, fl.gp],
+    );
+
+    const filtered = useMemo(() => base.filter((it) => catMatch(it) && subMatch(it) && gpMatch(it)), [base, catMatch, subMatch, gpMatch]);
+
+    const changeFilters = useCallback((patch) => setFl((f) => ({ ...f, ...patch })), []);
+    const clearFilters = useCallback(() => setFl({ cat: "", sub: "", gp: "" }), []);
+
+    // Selection only ever holds listings that are visible: changing a filter or the search drops the rest,
+    // so a bulk action can never touch something the seller can't see.
+    const filteredRef = useRef(filtered);
+    filteredRef.current = filtered;
+    useEffect(() => {
+        setSel((prev) => {
+            if (!prev.size) return prev;
+            const visible = new Set(filteredRef.current.map((it) => String(it.id)));
+            const next = new Set([...prev].filter((id) => visible.has(id)));
+            return next.size === prev.size ? prev : next;
+        });
+    }, [pf, query, fl]);
+
+    const selItems = useMemo(() => items.filter((it) => sel.has(String(it.id))), [items, sel]);
+    const allPicked = filtered.length > 0 && filtered.every((it) => sel.has(String(it.id)));
+
+    const toggleSel = useCallback((id) => setSel((prev) => {
+        const next = new Set(prev);
+        const k = String(id);
+        if (next.has(k)) next.delete(k); else next.add(k);
+        return next;
+    }), []);
+    const toggleAll = () => setSel(allPicked ? new Set() : new Set(filtered.map((it) => String(it.id))));
+    const exitSelect = () => { setSelMode(false); setSel(new Set()); };
+
     const patchItem = (id, patch) => setItems((prev) => {
         const next = prev.map((it) => (it.id === id ? { ...it, ...patch } : it));
+        CACHE = { token, items: next };
+        return next;
+    });
+    const patchMany = (patches) => setItems((prev) => {
+        const next = prev.map((it) => (patches.has(String(it.id)) ? { ...it, ...patches.get(String(it.id)) } : it));
         CACHE = { token, items: next };
         return next;
     });
@@ -378,7 +475,47 @@ export default function GrowProductsPage() {
         reload();
     };
 
+    /* ---------------- bulk actions ---------------- */
+    const openBulk = (kind) => setBulk({ kind, items: selItems });
+    const closeBulk = () => setBulk(null);
+
+    // Patches the screen from the server's answer at once, then reloads to confirm.
+    const applyBulk = (kind, res) => {
+        const ups = res.updated || [];
+        if (ups.length) {
+            const patches = new Map();
+            for (const u of ups) {
+                const k = String(u.id);
+                if (kind === "price") patches.set(k, { price: u.price, base_price: u.base_price });
+                else if (kind === "active") patches.set(k, { is_active: u.is_active });
+                else if (kind === "mkt") patches.set(k, u);
+                else if (kind === "vis" && res.visibilityMode) patches.set(k, { visibility_mode: res.visibilityMode });
+            }
+            if (patches.size) patchMany(patches);
+            exitSelect();
+            reload();
+        }
+        const skipped = (res.skipped || []).length;
+        say(ups.length
+            ? `${ups.length} listing${ups.length === 1 ? "" : "s"} updated${skipped ? `, ${skipped} skipped` : ""}.`
+            : (res.message || "Nothing was changed."));
+    };
+
+    // Stable handlers so one selection change doesn't re-render every card.
+    const latest = useRef({});
+    latest.current = { setActive, handleShare, handleRenew };
+    const cardHandlers = useMemo(() => ({
+        onToggleActive: (...a) => latest.current.setActive(...a),
+        onShare: (...a) => latest.current.handleShare(...a),
+        onRenew: (...a) => latest.current.handleRenew(...a),
+        onEditPrice: setPriceFor,
+        onEditSection: (id, section) => setEdit({ id, section }),
+        onOpenImage: setLightbox,
+        onPick: toggleSel,
+    }), [toggleSel]);
+
     const editing = edit ? items.find((x) => x.id === edit.id) : null;
+    const showBar = selMode && sel.size > 0;
 
     return (
         <div className="v">
@@ -418,11 +555,18 @@ export default function GrowProductsPage() {
                 </div>
             )}
 
-            <label className="srch" style={{ marginBottom: 12 }}>
-                <Ic n="search" />
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by product or brand" aria-label="Search your listings" />
-                {query && <button type="button" className="clr" aria-label="Clear search" onClick={() => setQuery("")}><Ic n="x" /></button>}
-            </label>
+            <div className="tb">
+                <label className="srch" style={{ margin: 0 }}>
+                    <Ic n="search" />
+                    <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by product, brand or model" aria-label="Search your listings" />
+                    {query && <button type="button" className="clr" aria-label="Clear search" onClick={() => setQuery("")}><Ic n="x" /></button>}
+                </label>
+                {items.length > 1 && (
+                    <button className="bt" type="button" aria-pressed={selMode} onClick={() => (selMode ? exitSelect() : setSelMode(true))}>
+                        {selMode ? "Cancel" : <><Ic n="check" />Select</>}
+                    </button>
+                )}
+            </div>
 
             <div className="fl">
                 <div className="chs">
@@ -436,23 +580,39 @@ export default function GrowProductsPage() {
                 </button>
             </div>
 
+            {items.length > 0 && (
+                <ProductFilters cats={catOptions} subs={subOptions} gps={gpOptions} value={fl} onChange={changeFilters} onClear={clearFilters} />
+            )}
+
+            {selMode && (
+                <div className="seltb">
+                    <button type="button" className="selall" role="checkbox" aria-checked={allPicked} disabled={!filtered.length} onClick={toggleAll}>
+                        <i className="selbox"><Ic n="check" /></i>
+                        Select all {filtered.length} in this view
+                    </button>
+                    <span>{sel.size} selected</span>
+                </div>
+            )}
+
             {loading && !items.length ? <ListSkeleton n={4} tall /> : (
                 <div className="grid c2">
                     {filtered.map((it) => (
                         <ProductCard key={it.id} it={it} includeGst={includeGst} nowMs={nowMs}
                             highlighted={highlighted.has(String(it.id))} togglingId={togglingId} savingPriceId={savingPriceId} refreshingId={refreshingId}
-                            onToggleActive={setActive} onShare={handleShare}
-                            onEditPrice={setPriceFor} onEditSection={(id, section) => setEdit({ id, section })}
-                            onRenew={handleRenew} onOpenImage={setLightbox} />
+                            selectMode={selMode} picked={sel.has(String(it.id))} {...cardHandlers} />
                     ))}
                     {!filtered.length && (
                         <Empty title={items.length === 0 ? "You have not listed anything yet" : "Nothing here"}
-                            text={items.length === 0 ? "List your first product to start selling." : "No listings match this filter."}>
+                            text={items.length === 0 ? "List your first product to start selling." : "No listings match these filters."}>
                             {items.length === 0 && (<><br /><button className="bt go" type="button" onClick={addProduct}><Ic n="plus" />Add product</button></>)}
+                            {items.length > 0 && (fl.cat || fl.sub || fl.gp) && (<><br /><button className="bt" type="button" onClick={clearFilters}>Clear category filters</button></>)}
                         </Empty>
                     )}
                 </div>
             )}
+
+            {showBar && <div className="bulk-spacer" aria-hidden="true" />}
+            {showBar && <BulkActionBar count={sel.size} onClear={() => setSel(new Set())} onAction={openBulk} />}
 
             {edit && editing && (
                 <Sheet bare wide onClose={() => setEdit(null)}>
@@ -464,6 +624,20 @@ export default function GrowProductsPage() {
                 <EditPriceSheet it={items.find((x) => x.id === priceFor.id) || priceFor} includeGst={includeGst} token={token}
                     onClose={() => setPriceFor(null)} onApply={(payload) => { const it = priceFor; setPriceFor(null); handleSavePrice(it, payload); }} />
             )}
+
+            {bulk?.kind === "price" && (
+                <BulkPriceSheet items={bulk.items} token={token} onClose={closeBulk} onApplied={(r) => applyBulk("price", r)} />
+            )}
+            {bulk?.kind === "mkt" && (
+                <BulkMarketingSheet items={bulk.items} token={token} onClose={closeBulk} onApplied={(r) => applyBulk("mkt", r)} />
+            )}
+            {bulk?.kind === "vis" && (
+                <BulkVisibilitySheet items={bulk.items} token={token} onClose={closeBulk} onApplied={(r) => applyBulk("vis", r)} />
+            )}
+            {bulk?.kind === "active" && (
+                <BulkActiveSheet items={bulk.items} token={token} onClose={closeBulk} onApplied={(r) => applyBulk("active", r)} />
+            )}
+
             {lightbox && createPortal(
                 <ImageLightbox images={lightbox.images} initialIndex={lightbox.index} alt={lightbox.alt} onClose={() => setLightbox(null)} />,
                 document.body

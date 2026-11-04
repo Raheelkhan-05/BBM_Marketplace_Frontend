@@ -210,3 +210,59 @@ export async function fetchPickerItems(token, { brand = "", none = false, q = ""
     if (none) p.set("none", "1"); else p.set("brand", brand);
     return authedJson(`/seller/catalog/picker/items?${p}`, token, { signal });
 }
+
+// APPEND to the bottom of src/utils/sellerListingApi.js
+// (authedJson and bulkUpdateMarketing are already defined in that file)
+
+const BULK_CHUNK = 100; // ids per request (server accepts up to 200); keeps URLs and payloads small
+
+// Sends a big selection as several requests and merges the results.
+// Stops at the first failed request and reports what had already been saved.
+async function bulkChunked(path, token, ids, extra) {
+    const updated = [], skipped = [];
+    let visibilityMode = null;
+    for (let i = 0; i < ids.length; i += BULK_CHUNK) {
+        let res = null;
+        try {
+            res = await authedJson(path, token, {
+                method: "PATCH",
+                body: JSON.stringify({ ...extra, submissionIds: ids.slice(i, i + BULK_CHUNK) }),
+            });
+        } catch { res = null; }
+        if (!res?.success) {
+            return { success: false, partial: updated.length > 0, updated, skipped, visibilityMode, message: res?.message || "Network error. Check your connection and try again." };
+        }
+        updated.push(...(res.updated || []));
+        skipped.push(...(res.skipped || []));
+        if (res.visibilityMode) visibilityMode = res.visibilityMode;
+    }
+    return { success: true, updated, skipped, visibilityMode };
+}
+
+// percent > 0 raises prices, percent < 0 lowers them
+export const bulkChangePrice = (token, ids, percent) =>
+    bulkChunked("/seller/catalog/bulk/price", token, ids, { percent });
+
+export const bulkSetActive = (token, ids, isActive) =>
+    bulkChunked("/seller/catalog/bulk/active", token, ids, { isActive });
+
+// payload: { action: "add", buyerIds, discountPercent?, makeRestricted? }
+//        | { action: "remove", buyerIds, clearPrice? }
+//        | { action: "set_mode", mode: "public" | "restricted" }
+export const bulkVisibility = (token, ids, payload) =>
+    bulkChunked("/seller/catalog/bulk/visibility", token, ids, payload);
+
+// Same chunking for the existing marketing endpoint.
+export async function bulkMarketingChunked(token, { ids, mode, services }) {
+    const updated = [], skipped = [];
+    for (let i = 0; i < ids.length; i += BULK_CHUNK) {
+        let res = null;
+        try { res = await bulkUpdateMarketing(token, { submissionIds: ids.slice(i, i + BULK_CHUNK), mode, services }); } catch { res = null; }
+        if (res?.items?.length) updated.push(...res.items);
+        if (!res?.success) {
+            return { success: false, partial: updated.length > 0, updated, skipped, message: res?.message || "Network error. Check your connection and try again." };
+        }
+        for (let k = 0; k < (Number(res.skipped) || 0); k++) skipped.push({ id: null, reason: "Listing not found." });
+    }
+    return { success: true, updated, skipped };
+}

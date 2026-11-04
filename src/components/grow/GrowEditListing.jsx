@@ -281,7 +281,7 @@ export default function GrowEditListing({ token, submissionId, focusSection, onC
                                     on={(b) => setF((x) => ({ ...x, priceBasis: b, basePrice: convertPrice(x.basePrice, x.priceBasis, b, pack, master) }))}
                                     o={[["per_unit", f.unit || "Unit"], ["per_pack", "Pack"], ...(f.hasOuterPack ? [["per_master_pack", "Master Pack"]] : [])]} />
                             </Field>
-                            <Field label="Price *" bad={bad("basePrice")} cap={pricing > 0 ? `Buyers pay about ₹${pricing.toLocaleString("en-IN")} per ${saleU} including GST.` : ""}>
+                            <Field label="Price *" bad={bad("basePrice")} cap={pricing > 0 ? `Buyers pay about ₹${pricing.toLocaleString("en-IN")} per ${saleU} with GST.` : ""}>
                                 <div className="gax-inp"><span className="pre">₹</span><input inputMode="decimal" value={f.basePrice} onChange={(e) => set("basePrice", num(e.target.value))} /></div>
                             </Field>
                             <Field label="Price includes GST? *" bad={bad("gstInclusive")}><YN v={f.gstInclusive} on={(v) => set("gstInclusive", v)} /></Field>

@@ -109,7 +109,7 @@ export function locationSummary(flat) {
         return n ? `${n} selected state${n === 1 ? "" : "s"}` : "Any location in India";
     }
     const ex = (c.excludedStates || []).length;
-    return ex ? `${c.name || "India"}, excluding ${ex} state${ex === 1 ? "" : "s"}` : "Any location in India";
+    return ex ? `${c.name || "India"}, without ${ex} state${ex === 1 ? "" : "s"}` : "Any location in India";
 }
 
 export function toPayload(f) {
