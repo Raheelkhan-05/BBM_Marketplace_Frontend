@@ -2267,7 +2267,7 @@
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: calc(98px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(9px + env(safe-area-inset-bottom, 0px));
     z-index: 60;
     width: min(calc(100% - 24px), 760px);
     display: flex;
@@ -2820,7 +2820,7 @@
 /* ---- Short landscape phones: keep the bar compact ---- */
 @media (max-height: 480px) and (orientation: landscape) {
     .gsl .bulkbar {
-        bottom: calc(76px + env(safe-area-inset-bottom, 0px))
+        bottom: calc(6px + env(safe-area-inset-bottom, 0px))
     }
 
     .gsl .bb {
