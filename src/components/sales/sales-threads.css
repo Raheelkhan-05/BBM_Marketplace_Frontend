@@ -2056,3 +2056,12 @@ textarea.st-in {
     flex-wrap: wrap;
     min-width: 0;
 }
+
+.st-row-city {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--muted, #6b7280);
+    margin-top: 1px;
+}

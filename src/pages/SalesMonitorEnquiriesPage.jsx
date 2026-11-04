@@ -75,7 +75,7 @@ export default function SalesMonitorEnquiriesPage() {
                 <div><h1>Enquiries</h1><p>Every enquiry your team is working on. Tap one to read the chat.</p></div>
             </div>
 
-            <MonitorFilters f={f} placeholder="Search company, product or GST number" />
+            <MonitorFilters f={f} placeholder="Search by company, product, city or GST number" />
 
             <div className="st-tabs" role="group" aria-label="Filter enquiries">
                 {TABS.map(([v, l, ck]) => (

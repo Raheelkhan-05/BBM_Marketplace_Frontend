@@ -5,7 +5,7 @@
 // Opens instantly from cache and refreshes quietly; hovering/touching a row warms up its thread.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
-import { Plus, Search, X, Receipt, Inbox, Loader2, Trophy, XCircle, Bell, PhoneCall } from "lucide-react";
+import { Plus, Search, X, Receipt, Inbox, Loader2, Trophy, XCircle, Bell, PhoneCall, MapPin } from "lucide-react";
 import { dateTime, listTime, qty } from "../components/sales/salesThreadFmt.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
@@ -42,6 +42,9 @@ const ThreadRow = memo(function ThreadRow({ t, onWarm, unread }) {
                         {unread?.unread > 0 && <span className={`sc-unread${unread.mentions ? " tag" : ""}`}>{unread.unread > 99 ? "99+" : unread.unread}</span>}
                         <time dateTime={t.lastActivityAt}>{listTime(t.lastActivityAt)}</time>
                     </span>
+                    {t.city && (
+                        <span className="st-row-city"><MapPin size={12} aria-hidden="true" />{t.city}</span>
+                    )}
                     <span className="st-row-2">
                         {hasProduct ? `${t.productName} · ${qty(t.quantity)} ${t.unit}` : <span className="st-noprod-t">No product yet</span>}
                     </span>
@@ -153,7 +156,7 @@ export default function SalesEnquiriesPage() {
                 : filter === "won" ? "No won enquiries yet"
                     : filter === "lost" ? "No lost enquiries"
                         : filter === "open" ? "No open enquiries" : "No enquiries yet";
-    const emptyText = q ? "Try a different company, product or GST number."
+    const emptyText = q ? "Try a different company, product, city or GST number."
         : filter === "reminder" ? "Open an enquiry, tap + and choose Set reminder. Reminders clear when you add an update."
             : filter === "cold" ? "Tap New enquiry, choose Cold call / other, and log the call. Add the product later when they ask for one."
                 : filter === "won" ? "Enquiries you mark as won will show up here."

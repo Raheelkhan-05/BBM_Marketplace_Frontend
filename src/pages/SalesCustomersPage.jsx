@@ -114,7 +114,7 @@ export default function SalesCustomersPage() {
 
             <div className="gk-search" style={{ marginTop: 14 }}>
                 <Search size={16} />
-                <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search by company, contact, mobile, email or GST number" aria-label="Search customers" />
+                <input value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search by company, contact, mobile, city, email or GST number" aria-label="Search customers" />
                 {qInput && <button type="button" className="gk-icbtn" style={{ width: 28, height: 28, border: 0 }} aria-label="Clear search" onClick={() => setQInput("")}><X size={14} /></button>}
             </div>
 
