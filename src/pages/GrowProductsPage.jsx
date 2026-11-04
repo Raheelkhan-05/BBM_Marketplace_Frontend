@@ -4,7 +4,7 @@
 //   - multi-select ("Select" mode, "Select all in this view"),
 //   - a bulk action bar: change prices by %, marketing & promotion, buyer visibility, pause / go live.
 // Rejected listings are never shown as live: they get a Rejected badge, the reason, and "Edit & resubmit".
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -43,6 +43,9 @@ let CACHE = { token: null, items: null };
 const FILTERS = [["all", "All"], ["low", "Needs restock"], ["exp", "Expired"], ["soon", "Ending soon"], ["rej", "Rejected"]];
 
 const isRejected = (it) => it.review_status === "rejected";
+
+const PAGE = 30; // cards drawn at first; more are added as the seller scrolls
+const NO_EXP = { expired: false, tracked: false, expiringSoon: false };
 
 // Category chain comes from the brand item (server flattens it onto each listing).
 // A placeholder name such as "Pending" counts as "not categorised yet".
@@ -306,20 +309,30 @@ export default function GrowProductsPage() {
         flash(items.filter(needsRestock).map((it) => it.id));
     }, [loading, items, flash]);
 
-    // A rejected listing is never live, expired, ending soon or in need of restocking.
-    const stats = useMemo(() => {
-        const exp = (it) => (isRejected(it) ? { expired: false, tracked: false, expiringSoon: false } : getListingExpiry(it, nowMs));
-        const active = items.filter((it) => !isRejected(it));
-        return {
-            total: items.length,
-            live: items.filter((it) => it.is_active !== false && it.review_status === "approved" && !exp(it).expired).length,
-            expired: items.filter((it) => exp(it).expired).length,
-            low: active.filter((it) => stockState(it.stock_quantity, it.moq) === "low").length,
-            out: active.filter((it) => stockState(it.stock_quantity, it.moq) === "out").length,
-            soon: items.filter((it) => { const e = exp(it); return !e.expired && e.tracked && e.expiringSoon; }).length,
-            rejected: items.filter(isRejected).length,
-        };
+    // ONE pass over the listings: expiry and stock state are worked out once, then reused by the
+    // counts and by every filter. A rejected listing is never live, expired, ending soon or in need of restocking.
+    const meta = useMemo(() => {
+        const m = new Map();
+        for (const it of items) {
+            const rej = isRejected(it);
+            const e = rej ? NO_EXP : getListingExpiry(it, nowMs);
+            m.set(it.id, { rej, expired: e.expired, soon: !e.expired && e.tracked && e.expiringSoon, st: rej ? null : stockState(it.stock_quantity, it.moq) });
+        }
+        return m;
     }, [items, nowMs]);
+
+    const stats = useMemo(() => {
+        const s = { total: items.length, live: 0, expired: 0, low: 0, out: 0, soon: 0, rejected: 0 };
+        for (const it of items) {
+            const m = meta.get(it.id);
+            if (m.rej) { s.rejected++; continue; }
+            if (m.expired) s.expired++;
+            else if (it.is_active !== false && it.review_status === "approved") s.live++;
+            if (m.soon) s.soon++;
+            if (m.st === "low") s.low++; else if (m.st === "out") s.out++;
+        }
+        return s;
+    }, [items, meta]);
 
     useEffect(() => { setBadge("prod", stats.expired + stats.rejected); }, [stats.expired, stats.rejected, setBadge]);
     useEffect(() => {
@@ -330,14 +343,14 @@ export default function GrowProductsPage() {
     const counts = { all: stats.total, low: stats.low + stats.out, exp: stats.expired, soon: stats.soon, rej: stats.rejected };
 
     // Status chip + search first. The category filters are built from (and then narrow) this list.
+    const dq = useDeferredValue(query); // typing stays instant; the list catches up a moment later
     const base = useMemo(() => {
         let list = items;
-        const expired = (it) => !isRejected(it) && getListingExpiry(it, nowMs).expired;
-        if (pf === "low") list = list.filter((it) => !isRejected(it) && ["low", "out"].includes(stockState(it.stock_quantity, it.moq)));
-        else if (pf === "exp") list = list.filter(expired);
-        else if (pf === "soon") list = list.filter((it) => { if (isRejected(it)) return false; const e = getListingExpiry(it, nowMs); return !e.expired && e.tracked && e.expiringSoon; });
-        else if (pf === "rej") list = list.filter(isRejected);
-        const term = query.trim().toLowerCase();
+        if (pf === "low") list = list.filter((it) => { const st = meta.get(it.id)?.st; return st === "low" || st === "out"; });
+        else if (pf === "exp") list = list.filter((it) => meta.get(it.id)?.expired);
+        else if (pf === "soon") list = list.filter((it) => meta.get(it.id)?.soon);
+        else if (pf === "rej") list = list.filter((it) => meta.get(it.id)?.rej);
+        const term = dq.trim().toLowerCase();
         if (term) {
             list = list.filter((it) => {
                 const n = (it.brand?.name || it.product_name || "").toLowerCase();
@@ -347,7 +360,7 @@ export default function GrowProductsPage() {
             });
         }
         return list;
-    }, [items, pf, query, nowMs]);
+    }, [items, pf, dq, meta]);
 
     const catMatch = useCallback((it) => (!fl.cat ? true : fl.cat === UNMAPPED ? catKey(it) === null : catKey(it) === fl.cat), [fl.cat]);
     const subMatch = useCallback((it) => (!fl.sub ? true : subKey(it) === fl.sub), [fl.sub]);
@@ -370,8 +383,8 @@ export default function GrowProductsPage() {
 
     const filtered = useMemo(() => base.filter((it) => catMatch(it) && subMatch(it) && gpMatch(it)), [base, catMatch, subMatch, gpMatch]);
 
-    const changeFilters = useCallback((patch) => setFl((f) => ({ ...f, ...patch })), []);
-    const clearFilters = useCallback(() => setFl({ cat: "", sub: "", gp: "" }), []);
+    const changeFilters = useCallback((patch) => startTransition(() => setFl((f) => ({ ...f, ...patch }))), []);
+    const clearFilters = useCallback(() => startTransition(() => setFl({ cat: "", sub: "", gp: "" })), []);
 
     // Selection only ever holds listings that are visible: changing a filter or the search drops the rest,
     // so a bulk action can never touch something the seller can't see.
@@ -384,10 +397,29 @@ export default function GrowProductsPage() {
             const next = new Set([...prev].filter((id) => visible.has(id)));
             return next.size === prev.size ? prev : next;
         });
-    }, [pf, query, fl]);
+    }, [pf, dq, fl]);
 
-    const selItems = useMemo(() => items.filter((it) => sel.has(String(it.id))), [items, sel]);
-    const allPicked = filtered.length > 0 && filtered.every((it) => sel.has(String(it.id)));
+    // Only a window of the list is drawn; more cards are added as the seller scrolls (or taps "Show more").
+    // This keeps scrolling, filtering and "Select all" fast however many listings there are.
+    const [limit, setLimit] = useState(PAGE);
+    useEffect(() => { setLimit(PAGE); }, [pf, dq, fl]);
+    useEffect(() => { // a highlighted card must be inside the drawn window so it can be scrolled to
+        if (!highlighted.size) return;
+        const i = filtered.findIndex((it) => highlighted.has(String(it.id)));
+        if (i >= 0) setLimit((l) => Math.max(l, i + PAGE));
+    }, [highlighted, filtered]);
+    const visible = useMemo(() => filtered.slice(0, limit), [filtered, limit]);
+    const remaining = filtered.length - visible.length;
+    const sentinelRef = useRef(null);
+    useEffect(() => {
+        const el = sentinelRef.current;
+        if (!el || !remaining || typeof IntersectionObserver === "undefined") return undefined;
+        const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) setLimit((l) => l + PAGE); }, { rootMargin: "1200px 0px" });
+        io.observe(el);
+        return () => io.disconnect();
+    }, [remaining, limit]);
+
+    const allPicked = useMemo(() => filtered.length > 0 && filtered.every((it) => sel.has(String(it.id))), [filtered, sel]);
 
     const toggleSel = useCallback((id) => setSel((prev) => {
         const next = new Set(prev);
@@ -476,7 +508,7 @@ export default function GrowProductsPage() {
     };
 
     /* ---------------- bulk actions ---------------- */
-    const openBulk = (kind) => setBulk({ kind, items: selItems });
+    const openBulk = (kind) => setBulk({ kind, items: items.filter((it) => sel.has(String(it.id))) });
     const closeBulk = () => setBulk(null);
 
     // Patches the screen from the server's answer at once, then reloads to confirm.
@@ -571,7 +603,7 @@ export default function GrowProductsPage() {
             <div className="fl">
                 <div className="chs">
                     {FILTERS.filter(([k]) => k !== "rej" || counts.rej > 0 || pf === "rej").map(([k, l]) => (
-                        <button key={k} type="button" aria-pressed={pf === k} onClick={() => setPf(k)}>{l}<em>{counts[k]}</em></button>
+                        <button key={k} type="button" aria-pressed={pf === k} onClick={() => startTransition(() => setPf(k))}>{l}<em>{counts[k]}</em></button>
                     ))}
                     <button type="button" aria-pressed={false} onClick={() => nav("/seller/marketing")}>Marketing</button>
                 </div>
@@ -595,8 +627,8 @@ export default function GrowProductsPage() {
             )}
 
             {loading && !items.length ? <ListSkeleton n={4} tall /> : (
-                <div className="grid c2">
-                    {filtered.map((it) => (
+                <div className={`grid c2${selMode ? " selecting" : ""}`}>
+                    {visible.map((it) => (
                         <ProductCard key={it.id} it={it} includeGst={includeGst} nowMs={nowMs}
                             highlighted={highlighted.has(String(it.id))} togglingId={togglingId} savingPriceId={savingPriceId} refreshingId={refreshingId}
                             selectMode={selMode} picked={sel.has(String(it.id))} {...cardHandlers} />
@@ -608,6 +640,12 @@ export default function GrowProductsPage() {
                             {items.length > 0 && (fl.cat || fl.sub || fl.gp) && (<><br /><button className="bt" type="button" onClick={clearFilters}>Clear category filters</button></>)}
                         </Empty>
                     )}
+                </div>
+            )}
+
+            {remaining > 0 && (
+                <div ref={sentinelRef} className="more">
+                    <button className="bt sm" type="button" onClick={() => setLimit((l) => l + PAGE)}>Show more · {remaining} left</button>
                 </div>
             )}
 

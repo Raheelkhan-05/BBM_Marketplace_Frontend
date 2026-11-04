@@ -2827,3 +2827,309 @@
         min-height: 38px
     }
 }
+
+/* ======================================================================
+   Custom dropdown (FilterSelect): trigger, floating menu, phone bottom sheet
+   ====================================================================== */
+.gsl .ddt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 0 12px 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--s);
+    color: var(--ink);
+    font: 700 .9rem var(--f);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .15s, background-color .15s, box-shadow .15s
+}
+
+.gsl .ddt:hover {
+    border-color: color-mix(in srgb, var(--ink) 30%, var(--line))
+}
+
+.gsl .ddt.on {
+    border-color: var(--ink);
+    background: color-mix(in srgb, var(--ink) 6%, var(--s))
+}
+
+.gsl .ddt[aria-expanded=true] {
+    border-color: var(--bl);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--bl) 18%, transparent)
+}
+
+.gsl .ddt:disabled {
+    opacity: .5;
+    cursor: not-allowed
+}
+
+.gsl .ddt:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--bl) 55%, transparent);
+    outline-offset: 2px
+}
+
+.gsl .ddv {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+
+.gsl .ddt .ic {
+    width: 16px;
+    height: 16px;
+    color: var(--mute);
+    transition: transform .22s cubic-bezier(.2, .8, .2, 1)
+}
+
+.gsl .ddt[aria-expanded=true] .ic {
+    transform: rotate(180deg)
+}
+
+/* backdrop: invisible on tablet / desktop, dimmed on phones */
+.gsl .ddb {
+    position: fixed;
+    inset: 0;
+    z-index: 84;
+    background: transparent;
+    touch-action: none
+}
+
+/* the menu */
+.gsl .ddp {
+    position: fixed;
+    z-index: 85;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--s);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: 0 18px 44px -14px rgba(8, 34, 43, .42), 0 2px 6px rgba(8, 34, 43, .08);
+    opacity: 0;
+    transform: translateY(-6px) scale(.98);
+    transition: opacity .16s ease, transform .2s cubic-bezier(.2, .8, .2, 1)
+}
+
+.gsl .ddp[data-up=true] {
+    transform: translateY(6px) scale(.98)
+}
+
+.gsl .ddp[data-state=open] {
+    opacity: 1;
+    transform: none
+}
+
+.gsl .ddp[data-state=closed] {
+    transition-duration: .12s;
+    pointer-events: none
+}
+
+.gsl .ddh {
+    display: none
+}
+
+.gsl .dds {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 8px 0;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--s2);
+    color: var(--mute)
+}
+
+.gsl .dds input {
+    flex: 1;
+    min-width: 0;
+    height: 40px;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: var(--ink);
+    font: 600 .92rem var(--f)
+}
+
+.gsl .ddl {
+    flex: 1;
+    min-height: 0;
+    margin: 0;
+    padding: 6px;
+    list-style: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    outline: 0
+}
+
+.gsl .ddo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 0 12px 0 10px;
+    border-radius: 12px;
+    font: 700 .92rem var(--f);
+    cursor: pointer;
+    transition: background-color .12s
+}
+
+.gsl .ddo[data-active=true] {
+    background: var(--s2)
+}
+
+.gsl .ddo[aria-selected=true] {
+    background: color-mix(in srgb, var(--ink) 8%, var(--s))
+}
+
+.gsl .ddk {
+    width: 16px;
+    height: 16px;
+    stroke-width: 3;
+    opacity: 0;
+    color: var(--ink)
+}
+
+.gsl .ddo[aria-selected=true] .ddk {
+    opacity: 1
+}
+
+.gsl .ddl1 {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+
+.gsl .ddo em {
+    flex: none;
+    min-width: 26px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--s2);
+    color: var(--mute);
+    font-style: normal;
+    font-size: .75rem;
+    font-weight: 800;
+    text-align: center
+}
+
+.gsl .ddo[data-active=true] em {
+    background: var(--s)
+}
+
+.gsl .ddn {
+    padding: 14px 12px;
+    color: var(--mute);
+    font-weight: 600;
+    font-size: .9rem
+}
+
+/* tablet row of filters: buttons keep a fixed width while the row scrolls */
+@media (max-width: 767px) {
+    .gsl .ddt {
+        flex: none;
+        width: 176px
+    }
+}
+
+/* phones: the menu becomes a bottom sheet */
+@media (max-width: 639px) {
+    .gsl .ddb {
+        background: rgba(8, 34, 43, .45);
+        opacity: 0;
+        transition: opacity .22s ease
+    }
+
+    .gsl .ddb[data-state=open] {
+        opacity: 1
+    }
+
+    .gsl .ddb[data-state=closed] {
+        pointer-events: none
+    }
+
+    .gsl .ddp {
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: 0;
+        width: auto;
+        max-height: 72dvh;
+        border-radius: 24px 24px 0 0;
+        border-bottom: 0;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        opacity: 1;
+        transform: translateY(100%);
+        transition: transform .28s cubic-bezier(.2, .8, .2, 1)
+    }
+
+    .gsl .ddp[data-state=open] {
+        transform: none
+    }
+
+    .gsl .ddp[data-state=closed] {
+        transition-duration: .2s
+    }
+
+    .gsl .ddh {
+        display: block;
+        flex: none;
+        padding: 8px 16px 0
+    }
+
+    .gsl .ddg {
+        display: block;
+        width: 44px;
+        height: 5px;
+        margin: 0 auto 10px;
+        border-radius: 5px;
+        background: var(--line)
+    }
+
+    .gsl .ddr {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font: 800 1.1rem var(--f)
+    }
+
+    .gsl .ddo {
+        min-height: 48px
+    }
+
+    .gsl .dds input {
+        font-size: 16px
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .gsl .ddp,
+    .gsl .ddb,
+    .gsl .ddt,
+    .gsl .ddt .ic,
+    .gsl .ddo {
+        transition: none
+    }
+}
+
+/* ======================================================================
+   Performance: off-screen cards cost almost nothing to lay out and paint.
+   (Not while selecting: the corner tick sits outside the card edge and
+   content-visibility would clip it.)
+   ====================================================================== */
+.gsl .grid:not(.selecting)>.card {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 380px
+}

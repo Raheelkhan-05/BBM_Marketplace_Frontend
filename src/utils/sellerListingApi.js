@@ -169,18 +169,27 @@ export async function searchGeoLocationsByType(q, type) {
     return res.json();
 }
 
-// Loads EVERY listing of the seller (the server returns at most 100 per page).
-// Page 1 is reported at once through onFirstPage so the screen fills quickly; the rest load in parallel.
-export async function fetchAllMySubmissions(token, { onFirstPage } = {}) {
+// REPLACE the existing fetchAllMySubmissions in src/utils/sellerListingApi.js with this block
+// (keep authedJson as it is). The old paginated loader stays as the fallback.
+
+const inflightAll = new Map(); // token -> promise: callers that ask at the same moment share one request
+
+// One request for everything (server cached + ETag, so a repeat visit is a tiny 304).
+// Falls back to the old paginated loader if the server doesn't have /submissions/all yet.
+async function loadAllListings(token) {
+    try {
+        const res = await authedJson("/seller/catalog/submissions/all", token);
+        if (res?.success) return { success: true, items: res.items || [] };
+    } catch { /* route missing or network hiccup: use the paged loader */ }
+    return loadAllListingsPaged(token);
+}
+
+async function loadAllListingsPaged(token) {
     const PAGE_SIZE = 100, MAX_PAGES = 30;
     const url = (p) => `/seller/catalog/submissions?page=${p}&pageSize=${PAGE_SIZE}`;
-
     const first = await authedJson(url(1), token);
     if (!first?.success) return { success: false, message: first?.message || "Couldn't load listings." };
-
     const items = [...(first.items || [])];
-    onFirstPage?.(items.slice());
-
     const totalPages = Math.min(first.pagination?.totalPages || 1, MAX_PAGES);
     if (totalPages > 1) {
         const rest = await Promise.all(Array.from({ length: totalPages - 1 }, (_, i) => authedJson(url(i + 2), token)));
@@ -189,9 +198,18 @@ export async function fetchAllMySubmissions(token, { onFirstPage } = {}) {
             items.push(...(r.items || []));
         }
     }
-    // a listing created while we were loading can shift pages: never show the same one twice
     const seen = new Set();
     return { success: true, items: items.filter((it) => (seen.has(it.id) ? false : seen.add(it.id))) };
+}
+
+export function fetchAllMySubmissions(token, { onFirstPage } = {}) {
+    let run = inflightAll.get(token);
+    if (!run) {
+        run = loadAllListings(token).finally(() => inflightAll.delete(token));
+        inflightAll.set(token, run);
+    }
+    // onFirstPage and the final result carry the SAME array, so the page doesn't render twice.
+    return run.then((res) => { if (res?.success) onFirstPage?.(res.items); return res; });
 }
 
 export async function bulkUpdateMarketing(token, { submissionIds, mode, services }) {

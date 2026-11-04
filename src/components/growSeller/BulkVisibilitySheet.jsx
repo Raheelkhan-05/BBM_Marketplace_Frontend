@@ -2,7 +2,7 @@
 //   Add buyers      -> allow-list them on every selected listing (optionally with a discount for them)
 //   Remove buyers   -> take them off every selected listing (optionally clear their custom price)
 //   Public / Restricted -> switch the visibility mode of all selected listings
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "./ui.jsx";
 import Ic from "./Ic.jsx";
 import { BulkResult } from "./BulkResult.jsx";
@@ -27,6 +27,7 @@ export default function BulkVisibilitySheet({ items, token, onClose, onApplied }
     const [busy, setBusy] = useState(false);
     const [err, setErr] = useState("");
     const [result, setResult] = useState(null);
+    const seen = useRef(new Map());   // search term -> results, so typing back and forth never re-asks the server
 
     const publicCount = useMemo(() => items.filter((it) => it.visibility_mode !== "restricted").length, [items]);
     const restrictedCount = items.length - publicCount;
@@ -34,13 +35,17 @@ export default function BulkVisibilitySheet({ items, token, onClose, onApplied }
     useEffect(() => {
         const term = q.trim();
         if (tab === "mode" || term.length < 2) { setHits([]); setSearching(false); return undefined; }
+        const cached = seen.current.get(term.toLowerCase());
+        if (cached) { setHits(cached); setSearching(false); return undefined; }
         setSearching(true);
         let live = true;
         const t = setTimeout(async () => {
             let res = null;
             try { res = await searchEligibleBuyers(token, term); } catch { res = null; }
             if (!live) return;
-            setHits(res?.success ? (res.buyers || []) : []);
+            const found = res?.success ? (res.buyers || []) : [];
+            if (res?.success) seen.current.set(term.toLowerCase(), found);
+            setHits(found);
             setSearching(false);
         }, 300);
         return () => { live = false; clearTimeout(t); };
