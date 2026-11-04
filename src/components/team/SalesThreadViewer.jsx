@@ -153,8 +153,14 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
         if (state !== "ready" || !inChat) return undefined;
         const fire = () => { if (document.visibilityState === "visible") markChatRead(token, id); };
         const t = setTimeout(fire, 400);
+        const beat = setInterval(fire, 20000);     // "I'm still here": being present always counts as reading
         document.addEventListener("visibilitychange", fire);
-        return () => { clearTimeout(t); document.removeEventListener("visibilitychange", fire); };
+        window.addEventListener("focus", fire);
+        return () => {
+            clearTimeout(t); clearInterval(beat);
+            document.removeEventListener("visibilitychange", fire);
+            window.removeEventListener("focus", fire);
+        };
     }, [state, inChat, entries.length, token, id]);
 
     useLayoutEffect(() => {

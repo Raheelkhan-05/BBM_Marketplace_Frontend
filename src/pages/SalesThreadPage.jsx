@@ -595,10 +595,19 @@ export default function SalesThreadPage() {
     const tagPeople = useMemo(() => people.list.filter((p) => p.userId !== thread?.salespersonId), [people.list, thread?.salespersonId]);
 
     // Reading the chat (tab visible) clears unread badges and stops the 1-hour WhatsApp reminder.
+    // Reading = the chat is open and visible. Confirmed again every 20s so being present always counts as reading.
     useEffect(() => {
         if (!isReady || !token) return undefined;
-        const t = setTimeout(() => { if (document.visibilityState === "visible") markChatRead(token, threadId); }, 500);
-        return () => clearTimeout(t);
+        const fire = () => { if (document.visibilityState === "visible") markChatRead(token, threadId); };
+        const t = setTimeout(fire, 400);
+        const beat = setInterval(fire, 20000);
+        document.addEventListener("visibilitychange", fire);
+        window.addEventListener("focus", fire);
+        return () => {
+            clearTimeout(t); clearInterval(beat);
+            document.removeEventListener("visibilitychange", fire);
+            window.removeEventListener("focus", fire);
+        };
     }, [isReady, token, threadId, entries.length]);
 
     // keep the cache warm for next time (never cache unsent local entries)
