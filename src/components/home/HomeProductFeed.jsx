@@ -39,121 +39,88 @@
 //   row instead of scanning the (wallet-filtered) sellers list — see
 //   catalog_browse in fix_wallet_hidden_sellers.sql.
 //
-// FASTEST DELIVERY / MIN MOQ SORTING (this revision):
-// - The three seller-sort tabs — "Min MOQ", "Best price", "Fastest
-//   delivery" — used to all be sorted CLIENT-SIDE, only over whichever
-//   ~30 sellers happened to already be loaded. That meant the seller
-//   shown as "fastest" (or lowest-MOQ) could silently change once more
-//   sellers loaded in — wrong, and confusing for buyers.
-// - FIXED: "Min MOQ" and "Fastest delivery" are now sorted SERVER-SIDE,
-//   across the FULL set of matching sellers for that product, by
-//   catalog_brand_item_sellers (see that SQL function's own comments).
-//   The page we fetch here is therefore already correctly ordered, and
-//   stays correctly ordered no matter how many more sellers get paged in
-//   later — nothing needs to be, or should be, re-sorted in the browser
-//   for these two tabs anymore.
-// - "Best price" is UNCHANGED (still sorted client-side, over the loaded
-//   page only) — it depends on quantity-discount/price-slab math that's
-//   meaningfully more work to move into SQL safely, and was out of scope
-//   for this fix. This is a known, currently-accepted limitation, not an
-//   oversight — flagged here on purpose so it doesn't get "fixed" twice.
+// FASTEST DELIVERY / MIN MOQ SORTING:
+// - "Min MOQ" and "Fastest delivery" are sorted SERVER-SIDE, across the
+//   FULL set of matching sellers for that product, by
+//   catalog_brand_item_sellers. The page we fetch here is therefore already
+//   correctly ordered; nothing is re-sorted in the browser for these two tabs.
+// - "Best price" is still sorted client-side, over the loaded page only
+//   (known, accepted limitation — slab/discount math is not in SQL).
 // - The "Fastest delivery" tab only appears once we know the buyer's
-//   destination city/state (their saved default address) — otherwise the
-//   backend has nothing to compute a delivery estimate against.
+//   destination city/state.
 // - Refetching sellers ONLY happens when the buyer switches tabs, or when
 //   their address becomes known after a dropdown was already open — never
-//   silently in the background — so nothing reshuffles under someone
-//   while they're reading the list. (Exception: realtime updates, below.)
+//   silently in the background (exception: realtime updates).
 //
 // MOBILE FULL-WIDTH LAYOUT:
-// - The feed's outer wrapper used to always render as a "card":
-//   `rounded-2xl border bg-white`, regardless of viewport. On phones that
-//   reads as a boxed-in product list with visible margins on both sides.
-// - FIXED: on mobile the wrapper now drops the rounded corners and side
-//   border and bleeds edge-to-edge (`-mx-3` cancels a parent's assumed
-//   `px-3` horizontal padding — adjust this if the parent uses a
-//   different padding value), keeping only a top/bottom hairline
-//   (`border-y`). The rounded "card" look (`sm:rounded-2xl sm:border`)
-//   only kicks back in at the `sm:` breakpoint and up, where there's
-//   room for it. Nothing about the row/column logic itself changed.
+// - On mobile the feed wrapper bleeds edge-to-edge (`-mx-3` cancels a
+//   parent's assumed `px-3`), no rounded card. The card look returns at `sm:`.
 //
 // SWIPE TO BUY:
-// - On screens below the `md` breakpoint (< 768px), each seller row in the
-//   dropdown is split into two columns: seller info on the left, price
-//   block + a compact "Swipe to buy" slider on the right (the slider
-//   spans the full width of that right column). The old "Buy now" button
-//   only renders from `md` up.
-// - Because the slider is the purchase gesture on mobile, tapping the
-//   seller row itself no longer starts a purchase there (it would defeat
-//   the point of swiping). On md+ the whole row is still clickable.
+// - Below `md`, each seller row in the dropdown is split in two columns:
+//   seller info on the left, price block + a compact "Swipe to buy" slider
+//   on the right. "Buy now" only renders from `md` up.
 // - The slider is marked `data-swipe-buy` so useLenisPreventToggle's
-//   capture-phase touch listeners leave its horizontal drag alone (same
-//   idea as `data-price-editor`).
-// - The dropdown closes as soon as a purchase starts (handleBuySeller →
-//   closeDropdown), which unmounts the slider — so it never needs a
-//   manual reset after confirming.
+//   capture-phase touch listeners leave its horizontal drag alone.
+// - The dropdown closes as soon as a purchase starts (handleBuySeller).
 //
-// SELLER ROW PRICE LABELS + REALTIME RELIABILITY (this revision):
-// - SellerPriceBlock / OwnListingPriceCell now label prices exactly like
-//   the product header's PriceBreakdown ("/Pc", "/10 Pc", "/50 Pc"; the
-//   pack row is skipped when a pack is 1 unit). computeEffectivePricing
-//   returns packQty/masterQty for this.
-// - Realtime fixes:
-//   1) The header-price-from-sellerState effect only trusts the OPEN
-//      product's FULLY loaded list. Before, it ran over every cached
-//      product (including stale closed ones) and over partial pages, and
-//      could overwrite a correct header price with an old/wrong one.
-//   2) refreshLowest probes LOWEST_PROBE_SIZE sellers (not 1) so an
-//      out-of-stock cheapest seller can't make the header look sold out,
-//      and drops stale out-of-order responses with a sequence guard.
-//   3) After an in-place socket patch, the open dropdown silently
-//      reconciles with the server shortly after (patches may not carry
-//      slabs/discounts).
-//   4) The out-of-order timestamp map is cleared on reconnect so a server
-//      restart (timestamps resetting) can't make us drop every event.
+// SELLER ROW PRICE LABELS + REALTIME RELIABILITY:
+// - SellerPriceBlock / OwnListingPriceCell label prices exactly like the
+//   product header's PriceBreakdown ("/Pc", "/10 Pc", "/50 Pc").
+// - Realtime: header price only trusts the OPEN product's FULLY loaded list;
+//   refreshLowest probes LOWEST_PROBE_SIZE sellers with a sequence guard;
+//   the open dropdown silently reconciles after an in-place socket patch;
+//   the out-of-order timestamp map is cleared on reconnect.
 //
-// LOGIN RETURN URL (this revision):
-// - When a logged-out visitor opens a shared store link such as
-//   /home/?shop=shiv-shakti-auto-center and taps something that needs
-//   login, confirmLogin now sends them to /login with
-//   `state: { from: "<pathname><search>" }` — the FULL current URL,
-//   including the ?shop= query string. AuthPage reads that and returns
-//   them to exactly this page after login/onboarding, instead of a bare
-//   /home.
+// LOGIN RETURN URL:
+// - confirmLogin sends logged-out visitors to /login with
+//   `state: { from: "<pathname><search>" }` so AuthPage returns them here.
 //
-// PROMOTION FLOW (this revision):
-// - The own-listing price modal no longer has the old commission slider.
-//   Its "Promotion X% · Manage →" row opens PromotionPlanModal, a PICKER
-//   only (existing services pre-ticked). Done returns here and stages the
-//   selection ("Promotion 5% → 7%"). The modal's single slide-to-confirm
-//   then saves price and/or promotion together — there is no second
-//   confirm step. Nothing is saved before the slide. Saved changes patch
-//   the seller row in place and the open dropdown silently re-syncs.
+// PROMOTION FLOW:
+// - The own-listing price modal opens PromotionPlanModal (a PICKER only).
+//   Done stages the selection; the modal's single slide-to-confirm saves
+//   price and/or promotion together.
 //
-// PINNED-FIRST FEED + STICKY TOOLBAR (this revision):
-// - The Quick Buy tile and its "Following only" view are gone. Pinned
-//   (followed) products are now ALWAYS listed first. That ordering is done
-//   SERVER-SIDE (catalog_browse_feed for the feed, products-merged for
-//   search) so it stays correct across pages — see
-//   pinned_first_catalog_browse_feed.sql. Pinning/unpinning does NOT move
-//   rows under the user's finger; the new order shows on the next
-//   load / search / category change.
-// - The `toolbar` prop (Category strip + search bar, rendered by HomePage)
-//   and this component's own Deliver-to / GST row form ONE sticky block
-//   right under the quick actions, so all four stay visible while the page
-//   scrolls. Requirements for sticky to work: no ancestor may have
-//   overflow-x:hidden (HomePage uses overflow-x-clip), and the block's `top`
-//   is offset by the site header's height when that header is
-//   fixed/sticky (useHeaderStickyOffset).
-// - The GST toggle shows its label first and the switch on the right.
+// PINNED-FIRST FEED + STICKY TOOLBAR:
+// - Pinned (followed) products are ALWAYS listed first (server-side).
+// - The `toolbar` prop + this component's Deliver-to / GST row form ONE
+//   sticky block. No ancestor may have overflow-x:hidden.
 //
-// ACTION COLOURS (this revision):
-// - The GST toggle, "Swipe to buy" / "Buy now" and "Sell this product" used
-//   to be solid black. They now use the Grow palette: green for the GST
-//   switch (ON state), traffic-orange for every purchase action (swipe knob,
-//   Buy now buttons) and blue for "Sell this product". Colour tokens live
-//   in the `C` object below (buy / buyDeep / sell / sellDeep / green /
-//   greenInk) so they can be tuned in one place.
+// ACTION COLOURS:
+// - GST switch = green, purchase actions = orange, "Sell this product" = blue.
+//   Tokens live in the `C` object below.
+//
+// SELLER (SHOP) VIEW — THIS REVISION:
+// - Opening a seller by URL (/seller/<slug> or ?shop=) now renders the SAME
+//   rows as normal Home. Tapping a row opens the SAME dropdown, but it holds
+//   ONLY that seller's offer (fetched via getOffer / fetchBrandItemSellerOffer),
+//   and the seller's name / city are hidden (`shopMode`) since the
+//   whole page is already that seller's. The row header drops the "from"
+//   label (it's one seller's exact price, not a minimum).
+// - The old ShopOfferStrip / handleShopBuy / handleShareProduct flow is gone.
+//   "Share shop" at the top is unchanged.
+//
+// GROUP BANNERS — THIS REVISION:
+// - Group rows without a price are no longer hidden by the "no visible
+//   seller" filter (they never have a price of their own).
+// - Banners are now also available in seller view.
+// - A group is only pulled out of the grid if a banner block actually shows
+//   it, so it can never disappear from both places.
+// - The first banner block shows after the first section even if that
+//   section isn't full (with 3 columns and PAGE_SIZE=12 it never filled).
+//
+// SELLER VIEW, ROUND 2:
+// - In a seller's store the dropdown shows ShopOfferPanel: MOQ / Delivery /
+//   Freight grid + that seller's price + a single "Buy now" button on ALL
+//   screens (no swipe slider), and NO "Sell this product". The owner sees
+//   Share + Edit listing instead of Buy now.
+// - Variants view (?group=) now starts with GroupBannerGallery: banners of any
+//   mix of 16:9 / 4:3 / 1:1 / 3:4 packed into justified rows, responsive.
+//
+// SKELETONS — THIS REVISION:
+// - RowSkeleton now mirrors the real row (96px image, 3 columns). Added
+//   BannerBlockSkeleton (while the banner plan loads) and SellerRowSkeleton
+//   (inside the dropdown while sellers load).
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 import { useNavigate, useLocation, Link, useSearchParams, useParams } from "react-router-dom";
@@ -161,7 +128,7 @@ import Seo from "../Seo.jsx";
 import FeedQuickActions from "./FeedQuickActions.jsx";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion";
-import { ChevronDown, Layers, ArrowLeft, Package, Info, Store, Share2, Pointer, ChevronsUp, X, FileText, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Clock, Ban } from "lucide-react";
+import { ChevronDown, Layers, ArrowLeft, Package, Info, Store, Share2, Pointer, ChevronsUp, X, FileText, ChevronRight, ShieldCheck, LayoutGrid, Loader2, Pencil, Truck, ArrowDown, ArrowUp, Lock, Zap, MapPin, Pin, Ban, Clock } from "lucide-react";
 import useFollowedItems from "../../hooks/useFollowedItems";
 import { fetchBrandItemsFeed, fetchBrandItemSellers, observePriceTrends, fetchProductSearchMerged, updateSellerProductSubmission, fetchBrandItemSellerOffer, fetchOrderConstraints, fetchShopInfo } from "../../utils/api";
 import { useBuyerAddress } from "../../context/BuyerAddressContext.jsx";
@@ -222,7 +189,6 @@ const RECONCILE_DELAY_MS = 800;
 const DEBOUNCE_MS = 250;
 // See "DUPLICATE-FETCH GUARD" note above.
 const DUPLICATE_GUARD_MS = 300;
-// Set to false to silence realtime debug logs.
 
 // How long the feed (items + scroll position) is remembered while a variants view is open.
 const SNAPSHOT_TTL_MS = 5 * 60 * 1000;
@@ -241,8 +207,8 @@ function writeFlag(k) { try { localStorage.setItem(k, "1"); } catch { /* private
 // For "never show again", store "1" instead of dayStamp().
 const HINT_KEY = "bbm_tap_hint_day_v1";
 const dayStamp = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
-// function readHintDismissedToday() { try { return localStorage.getItem(HINT_KEY) === dayStamp(); } catch { return false; } }
-function readHintDismissedToday() { try { return localStorage.getItem("HINT_KEY") === dayStamp(); } catch { return false; } }
+// NOTE: this used to read the literal string "HINT_KEY" (a typo), so the hint never stayed dismissed.
+function readHintDismissedToday() { try { return localStorage.getItem(HINT_KEY) === dayStamp(); } catch { return false; } }
 function writeHintDismissedToday() { try { localStorage.setItem(HINT_KEY, dayStamp()); } catch { /* private mode */ } }
 
 const DEBUG_RT = false;
@@ -316,9 +282,6 @@ const SELLER_SORT_OPTIONS = [
 ];
 
 // Maps our UI sort tab to the `sort` value the backend RPC understands.
-// 'best_price' has no direct backend equivalent (it needs slab/discount
-// math) — it fetches sorted by raw price as a reasonable base ordering,
-// then gets refined further client-side (see sortedItems below).
 function sortModeToApiSort(sortMode) {
     if (sortMode === "min_moq") return "moq_asc";
     if (sortMode === "fastest_delivery") return "fastest_delivery";
@@ -326,10 +289,7 @@ function sortModeToApiSort(sortMode) {
 }
 
 // One grid cell whose text content animates in/out — used as a direct
-// grid child, so it never disturbs the surrounding grid's columns or
-// baseline alignment (previously wrapped in an extra flex span, which
-// is what broke the layout).
-
+// grid child, so it never disturbs the surrounding grid's columns.
 function AnimatedPriceValue({ value, direction, className, style }) {
     return (
         <span className="relative inline-block overflow-hidden align-bottom" style={{ height: "1.15em" }}>
@@ -519,17 +479,6 @@ async function shareShopLink({ shopSlug, shopName }) {
 
 // Compact trigger shown inline in the seller row — shows price breakdown
 // AND the current commission %. Clicking either opens OwnListingPriceModal.
-//
-// VISUAL REDESIGN: replaced blue dotted-underline "fake link" text (which
-// read as a broken hyperlink, not an editable control) with a contained
-// card-like surface — a light bordered chip with its own background,
-// subtle hover/press feedback, and a small pencil icon as the ONE clear
-// "this is editable" cue. Price stays in high-contrast ink (it's the
-// primary information), while the edit affordance is secondary and quiet
-// — this mirrors how editable price/quantity fields read in most
-// checkout/marketplace UIs (e.g. Amazon's own "Change" chips): the data
-// is bold, the action to change it is a small, separate, low-emphasis tag.
-//
 // Price labels follow the same rules as the product header's PriceBreakdown
 // ("/Pc", "/10 Pc", "/50 Pc"; pack row skipped when a pack is 1 unit).
 function OwnListingPriceCell({ seller, includeGst, submitting, token, onApply }) {
@@ -624,7 +573,6 @@ function OwnListingPriceCell({ seller, includeGst, submitting, token, onApply })
     );
 }
 
-// Add near the other pure helpers (computePriceBreakdown, etc.):
 function threeTierFromSaleUnit(perSaleUnit, packSize, masterPackSize, hasOuter) {
     const d = deriveDisplayPrices(perSaleUnit, packSize, masterPackSize);
     return { unit: d.perBaseUnit, pack: d.perPack, master: hasOuter ? d.perMasterPack : null };
@@ -655,8 +603,8 @@ function SellerSortToggle({ value, onChange, options = SELLER_SORT_OPTIONS }) {
 
 // Tracks how many columns are active at the current breakpoint, matching
 // the sm/lg breakpoints used elsewhere (1 col mobile, 2 col tablet, 3 col
-// desktop). Needed because manual column-bucketing (below) can't respond
-// to Tailwind breakpoints on its own — it has to know the count in JS.
+// desktop). Needed because manual column-bucketing can't respond to
+// Tailwind breakpoints on its own — it has to know the count in JS.
 function useResponsiveColumnCount() {
     const getCount = () => {
         if (typeof window === "undefined") return 1;
@@ -675,8 +623,7 @@ function useResponsiveColumnCount() {
 
 // How far down the sticky toolbar must stick so it doesn't slide UNDER the
 // site header. If the page's <header> is position:fixed/sticky we stick right
-// below it (its live height); otherwise the offset is 0. Re-measured on
-// resize and whenever the header changes size.
+// below it (its live height); otherwise the offset is 0.
 function useHeaderStickyOffset() {
     const [offset, setOffset] = useState(0);
     useLayoutEffect(() => {
@@ -699,9 +646,8 @@ function useHeaderStickyOffset() {
     return offset;
 }
 
-// Distributes items round-robin (item 0 → col 1, item 1 → col 2, item 2 →
-// col 3, item 3 → col 1, ...) so reading order goes left-to-right across
-// a row before wrapping — matches how a normal grid reads — while each
+// Distributes items round-robin (item 0 → col 1, item 1 → col 2, ...) so
+// reading order goes left-to-right across a row before wrapping, while each
 // column still renders as its own independent stack, so opening a
 // dropdown never reflows sibling columns.
 function bucketItemsByColumn(items, numCols) {
@@ -743,10 +689,7 @@ function FastestBadge() {
 }
 
 // Seller-row price block. Uses the SAME labelling rules as the product
-// header's PriceBreakdown: with a unit, every price is labelled by how many
-// base units it covers ("/Pc", "/10 Pc", "/50 Pc"); without one it falls
-// back to Pack / M Pack. A pack of exactly 1 unit would repeat the unit row,
-// so that row is skipped.
+// header's PriceBreakdown.
 function SellerPriceBlock({ pricing, unit }) {
     if (!pricing) return null;
     const { discountPercent, hasMasterPack, unit: u, pack, masterPack, packQty, masterQty } = pricing;
@@ -792,13 +735,8 @@ function SellerPriceBlock({ pricing, unit }) {
 }
 
 // Merges a new page of results into the existing list, dropping any
-// item whose id is already present. Needed because offset-based
-// pagination can hand back an id that's already on screen — most
-// commonly when a debounced search re-query (reset to page 0) races
-// with an in-flight infinite-scroll append (page 2 of the PREVIOUS
-// query), or when the underlying filtered set shifts between two
-// fetches. React requires unique keys regardless of why a dup shows
-// up, so this is the actual fix rather than a workaround.
+// item whose id is already present (offset pagination can hand back an id
+// that's already on screen; React requires unique keys).
 function mergeUnique(prev, incoming) {
     const incomingById = new Map(incoming.map((it) => [it.id, it]));
     const seen = new Set();
@@ -816,7 +754,6 @@ function mergeUnique(prev, incoming) {
 }
 
 // Whether this listing's price is priced per Pack or per Master Pack.
-// masterPackSize >= 1 means a master pack applies; otherwise it's per Pack.
 function priceUnitLabel(masterPackSize) {
     return Number(masterPackSize) >= 1 ? "master pack" : "pack";
 }
@@ -864,61 +801,23 @@ function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
                 }
             }}
             aria-label="Login to view price"
-            className="
-                group
-                flex
-                min-w-[112px]
-                flex-col
-                items-end
-                gap-1.5
-                cursor-pointer
-                select-none
-            "
+            className="group flex min-w-[112px] flex-col items-end gap-1.5 cursor-pointer select-none"
         >
             {/* Pricing area */}
-            <div
-                className="
-                    rounded-md
-                    px-2
-                    py-1.5
-                    transition-all
-                    duration-150
-                    group-hover:bg-black/[0.018]
-                "
-            >
+            <div className="rounded-md px-2 py-1.5 transition-all duration-150 group-hover:bg-black/[0.018]">
                 <div className="flex flex-col gap-[4px]">
                     {rows.map((r) => (
                         <div
                             key={r.label}
-                            className="
-                                grid
-                                items-baseline
-                                gap-x-1
-                                leading-none
-                            "
-                            style={{
-                                gridTemplateColumns:
-                                    "10px minmax(42px, auto) 38px",
-                            }}
+                            className="grid items-baseline gap-x-1 leading-none"
+                            style={{ gridTemplateColumns: "10px minmax(42px, auto) 38px" }}
                         >
                             {/* Currency */}
-                            <span
-                                className={`${valueClass} font-extrabold`}
-                                style={{ color: C.ink }}
-                            >
-                                ₹
-                            </span>
+                            <span className={`${valueClass} font-extrabold`} style={{ color: C.ink }}>₹</span>
 
                             {/* Protected amount */}
                             <span
-                                className={`
-                                    ${valueClass}
-                                    min-w-0
-                                    text-right
-                                    whitespace-nowrap
-                                    font-extrabold
-                                    tabular-nums
-                                `}
+                                className={`${valueClass} min-w-0 text-right whitespace-nowrap font-extrabold tabular-nums`}
                                 style={{
                                     color: C.ink,
                                     filter: "blur(4.5px)",
@@ -931,15 +830,7 @@ function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
                             </span>
 
                             {/* Unit */}
-                            <span
-                                className="
-                                    text-[9px]
-                                    font-semibold
-                                    tracking-[0.01em]
-                                    whitespace-nowrap
-                                "
-                                style={{ color: C.muted }}
-                            >
+                            <span className="text-[9px] font-semibold tracking-[0.01em] whitespace-nowrap" style={{ color: C.muted }}>
                                 /{r.label}
                             </span>
                         </div>
@@ -949,44 +840,16 @@ function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
 
             {/* Login CTA */}
             <span
-                className="
-                    inline-flex
-                    items-center
-                    gap-1.5
-                    rounded-md
-                    px-2.5
-                    py-[4px]
-                    text-[9.5px]
-                    font-extrabold
-                    leading-none
-                    tracking-wide
-                    whitespace-nowrap
-                    transition-all
-                    duration-150
-                    group-hover:-translate-y-[1px]
-                "
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-[4px] text-[9.5px] font-extrabold leading-none tracking-wide whitespace-nowrap transition-all duration-150 group-hover:-translate-y-[1px]"
                 style={{
                     color: "#000000",
                     background: `#0000000D`,
                     border: `1px solid #00000028`,
                 }}
             >
-                <span
-                    className="
-                        flex
-                        h-3.5
-                        w-3.5
-                        items-center
-                        justify-center
-                        rounded-full
-                    "
-                >
-                    <Lock
-                        className="h-2.5 w-2.5"
-                        strokeWidth={2.6}
-                    />
+                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full">
+                    <Lock className="h-2.5 w-2.5" strokeWidth={2.6} />
                 </span>
-
                 Login to view
             </span>
         </div>
@@ -995,9 +858,6 @@ function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
 
 // Compact, reusable price-breakdown block — shows whichever of
 // unit/pack/master-pack prices are available, smallest to largest.
-// `align` controls whether it's left- or right-aligned (rows want
-// right-aligned in the price column; seller dropdown rows want the
-// same but slightly denser).
 function PriceBreakdown({ breakdown, unit, size = "row" }) {
     if (!breakdown) return null;
     const { unitPrice, packPrice, masterPackPrice, hasMasterPack, packQty, masterQty } = breakdown;
@@ -1006,8 +866,7 @@ function PriceBreakdown({ breakdown, unit, size = "row" }) {
 
     // With a unit: label every price by how many base units it covers
     // ("/pc", "/10 pc", "/50 pc"). Without one, fall back to Pack / M Pack.
-    // A pack of exactly 1 unit would just repeat the unit row ("/pc" and
-    // "/1 pc" at the same price), so that row is skipped in that case.
+    // A pack of exactly 1 unit would just repeat the unit row, so skip it.
     const packDuplicatesUnit = !!unit && Number(packQty) === 1;
 
     const rows = [
@@ -1071,11 +930,8 @@ function BrandBadge({ name, image }) {
 }
 
 // Whether a given seller row (from the sellers dropdown) belongs to the
-// signed-in user — used only to label/disable a row "(You)" within the
-// loaded sellers list. NOT used to decide whether the "Sell this product"
-// CTA shows — see item.has_own_listing for that (SellerDropdown below),
-// since this list is wallet-filtered and can omit the signed-in seller's
-// own row entirely.
+// signed-in user — used only to label/disable a row "(You)". NOT used to
+// decide whether the "Sell this product" CTA shows — see item.has_own_listing.
 function isOwnSellerRow(sellerRow, currentUserId) {
     if (sellerRow?.is_own === true) return true;
     if (!currentUserId) return false;
@@ -1084,9 +940,7 @@ function isOwnSellerRow(sellerRow, currentUserId) {
 }
 
 // Stable sort: items with an actual seller (lowest_price present) float
-// to the top; order within each group (has-sellers / no-sellers) is
-// left untouched, since Array.prototype.sort in modern JS engines is
-// stable and we're only comparing a boolean, never index math.
+// to the top; order within each group is left untouched.
 function sortBySellerAvailability(list) {
     return [...list].sort((a, b) => {
         const aHas = a.lowest_price != null ? 0 : 1;
@@ -1100,26 +954,21 @@ function ProductImage({ src, alt, onOpen, priority = false }) {
     if (!src || failed) return <Package className="h-4.5 w-4.5" style={{ color: C.muted }} />;
     return (
         <img
-            // Displayed at 64px (h-16 w-16) — 128px covers retina without
-            // shipping a multi-megabyte original for a thumbnail.
             src={resizedImageUrl(src, { width: 256 })}
             alt={alt}
             referrerPolicy="no-referrer"
             loading={priority ? "eager" : "lazy"}
             decoding="async"
             onError={() => setFailed(true)}
-            // onClick={(e) => { e.stopPropagation(); onOpen(src); }}
             onClick={(e) => { e.stopPropagation(); onOpen(); }}
             className="h-full w-full object-cover cursor-zoom-in"
         />
     );
 }
 
-// GST toggle — replaces the old static "X products" label at the top of
-// the feed. Purely a local UI switch; all price math it drives is
-// recomputed client-side (useMemo), so flipping it is instant.
+// GST toggle. Purely a local UI switch; all price math it drives is
+// recomputed client-side, so flipping it is instant.
 // Layout: label FIRST, switch on the right.
-// Colours: ON = green track + dark-green label, OFF = soft grey track + grey label.
 function GstToggle({ includeGst, onChange }) {
     return (
         <button
@@ -1130,8 +979,6 @@ function GstToggle({ includeGst, onChange }) {
             onClick={() => onChange(!includeGst)}
             className="group inline-flex h-7 items-center gap-2 rounded-full transition-all duration-200 cursor-pointer"
         >
-            {/* Label: one line. Fixed min-width so the switch never shifts
-                between "With GST" and "Without GST". */}
             <span
                 className="min-w-[66px] whitespace-nowrap text-right text-[11px] font-bold leading-none tracking-wide"
                 style={{ color: includeGst ? C.greenInk : "#7B858C" }}
@@ -1139,7 +986,6 @@ function GstToggle({ includeGst, onChange }) {
                 {includeGst ? "With GST" : "Without GST"}
             </span>
 
-            {/* Switch (h-4 w-8, knob h-3 w-3, travel 16px) */}
             <span
                 className="relative flex h-4 w-8 shrink-0 items-center rounded-full p-0.5 transition-all duration-200"
                 style={{ backgroundColor: includeGst ? C.green : "#D9DEE2" }}
@@ -1153,7 +999,7 @@ function GstToggle({ includeGst, onChange }) {
     );
 }
 
-// Labeled per-row pill. Words + icon + filled/outlined state = unmistakably a toggle.
+// Per-row pin toggle.
 function FollowButton({ following, onToggle }) {
     return (
         <motion.button
@@ -1209,7 +1055,7 @@ function FollowButton({ following, onToggle }) {
                 <Pin
                     className="h-4 w-4"
                     strokeWidth={2.4}
-                    style={{ color: following ? "#FED813 " : C.muted }}
+                    style={{ color: following ? "#FED813" : C.muted }}
                     fill={following ? "#FED813" : "none"}
                 />
             </motion.span>
@@ -1219,14 +1065,11 @@ function FollowButton({ following, onToggle }) {
 
 // A category/subcategory literally named "Pending" is a placeholder bucket
 // for not-yet-classified items — never meant to be shown to a shopper.
-// Blank it out here rather than displaying it, same treatment as
-// CategoryStrip's isHiddenCategory.
 function isHiddenLabel(name) {
     return typeof name === "string" && name.trim().toLowerCase() === "pending";
 }
 
 // All images for a product, main image first, de-duplicated.
-// Adjust the field names to whatever your feed row actually returns.
 function getProductImages(item) {
     const raw = [
         item.image,
@@ -1246,128 +1089,6 @@ function isFeedRowOutOfStock(item) {
         && item.lowest_price_available_stock != null
         && item.lowest_price_moq != null
         && Number(item.lowest_price_available_stock) < Number(item.lowest_price_moq);
-}
-
-// MOQ + delivery + freight, shown on the row header in shop mode.
-// Aligned spec strip + Buy button, shown under each row in shop mode.
-// Aligned spec strip + buy action, shown under each row in shop mode.
-// Mobile: "Swipe to buy" slider (same as the seller dropdown). md+: "Buy now" button.
-function ShopOfferStrip({ offer, masterPackSize, outOfStock, opening, onBuy, breakdown, isOwner = false, onShare }) {
-    const [slideKey, setSlideKey] = useState(0);
-    if (!offer) return null;
-
-    const moq = Number(offer.moq);
-    const isMaster = Number(masterPackSize) >= 1;
-    const moqValue = isMaster
-        ? `${fmtQty(moq)} M Pack`
-        : `${fmtQty(moq)} Pack${moq === 1 ? "" : "s"}`;
-    const days = offer.total_delivery_days;
-
-    const cells = [
-        offer.moq != null
-            ? { key: "moq", label: "MOQ", Icon: Package, value: moqValue }
-            : null,
-        days != null
-            ? { key: "eta", label: "Delivery", Icon: Clock, value: `~${days} ${Number(days) === 1 ? "day" : "days"}` }
-            : null,
-        { key: "freight", label: "Freight", Icon: Truck, value: offer.freight_included ? "Included" : "Extra", accent: !!offer.freight_included },
-    ].filter(Boolean);
-
-    const handleSlideConfirm = () => {
-        Promise.resolve(onBuy()).finally(() => setSlideKey((k) => k + 1));
-    };
-
-    const specBlock = (
-        <div
-            className="grid min-w-0 overflow-hidden rounded-xl border"
-            style={{
-                gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
-                borderColor: C.hair,
-                background: "#FCFBF9",
-            }}
-        >
-            {cells.map(({ key, label, Icon, value, accent }, i) => (
-                <div
-                    key={key}
-                    className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-2 py-2 text-center tracking-wide"
-                    style={i > 0 ? { borderLeft: `1px solid ${C.hairSoft}` } : undefined}
-                >
-                    <span className="flex items-center gap-1 text-[8.5px] font-bold uppercase leading-none tracking-wider" style={{ color: C.muted }}>
-                        <Icon className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} />
-                        {label}
-                    </span>
-                    <span
-                        className="w-full truncate text-[12px] font-extrabold leading-tight tracking-wide"
-                        style={{ color: accent ? "#006F83" : C.ink }}
-                    >
-                        {value}
-                    </span>
-                </div>
-            ))}
-        </div>
-    );
-
-    const ShareBtn = ({ className = "" }) => (
-        <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onShare?.(); }}
-            aria-label="Share product"
-            className={`inline-flex items-center justify-center gap-1.5 rounded-full border bg-white text-[11.5px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.97] ${className}`}
-            style={{ borderColor: C.hair, color: C.ink }}
-        >
-            <Share2 className="h-3.5 w-3.5" strokeWidth={2.3} /> Share
-        </button>
-    );
-
-    return (
-        <div className="px-3 pb-3 sm:px-4">
-            {/* ── MOBILE: specs row, then [breakdown text | slider on the right] ── */}
-            <div className="flex flex-col gap-2 md:hidden">
-                {specBlock}
-
-                <div className="flex items-center gap-2">
-                    <div
-                        className="min-w-0 flex-1 text-[11px] font-semibold leading-tight"
-                        style={{ color: C.muted }}
-                    >
-                        {breakdown}
-                    </div>
-
-                    <div className="w-[48%] max-w-[190px] shrink-0">
-                        {isOwner ? (
-                            <ShareBtn className="h-10 w-full" />
-                        ) : !outOfStock ? (
-                            <div data-swipe-buy="" className="w-full" onClick={(e) => e.stopPropagation()}>
-                                <SlideToConfirm compact label="Swipe to buy" busyLabel="Opening…" doneLabel="Opening…"
-                                    resetKey={`${slideKey}`} onConfirm={handleSlideConfirm} />
-                            </div>
-                        ) : (
-                            <div className="flex h-10 w-full items-center justify-center rounded-full text-[11px] font-extrabold tracking-wide"
-                                style={{ background: "#f1f1f1", color: C.muted }}>OUT OF STOCK</div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* ── md and up: specs fill the row, smaller Buy now on the right ── */}
-            <div className="hidden items-center gap-2.5 md:flex">
-                <div className="min-w-0 flex-1">{specBlock}</div>
-
-                {isOwner ? (
-                    <ShareBtn className="h-9 w-28 shrink-0" />
-                ) : !outOfStock ? (
-                    <button type="button" onClick={(e) => { e.stopPropagation(); onBuy(); }}
-                        className="flex h-9 w-28 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-[#F4511E] text-[12px] font-extrabold tracking-wide text-white shadow-[0_6px_14px_-8px_rgba(244,81,30,0.8)] transition hover:bg-[#D83F0E] active:scale-95">
-                        {opening && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                        Buy now
-                    </button>
-                ) : (
-                    <div className="flex h-9 w-28 shrink-0 items-center justify-center rounded-lg text-[11px] font-extrabold tracking-wide"
-                        style={{ background: "#f1f1f1", color: C.muted }}>OUT OF STOCK</div>
-                )}
-            </div>
-        </div>
-    );
 }
 
 // Product name with the info icon INLINE at the very end. If the name is too
@@ -1426,9 +1147,6 @@ function ProductNameWithInfo({ name, onInfo }) {
 }
 
 // Looping "finger taps" icon: rises in, presses down (squash) and sends out ONE ripple.
-// Ripple: a ring closes in from 60% -> 20% (fading in 0 -> 1) as the finger lands,
-// then on the click it bursts out to 110% and vanishes almost instantly.
-
 function TapHand({ light = false, size = 26 }) {
     const reduce = useReducedMotion();
     const color = light ? "#fff" : C.brand;
@@ -1474,9 +1192,7 @@ function TapHand({ light = false, size = 26 }) {
                             background: `rgba(${rgb},0.16)`,
                         }}
                         animate={{
-                            // 60% -> 20% while the finger comes down, then burst out to 110%
                             scale: [0.6, 0.2, 1.1, 0.6],
-                            // fades in 0 -> 1 on approach, then drops to 0 fast after the click
                             opacity: [0, 1, 0.7, 0, 0],
                         }}
                         transition={{
@@ -1540,8 +1256,6 @@ function HintRing() {
     );
 }
 
-// Horizontal centre of the TapHand icon inside the strip:
-// pl-2.5 (10px) + chevrons (18px) + gap-2 (8px) + half of the hand box (~16px).
 function TapHintStrip({ onClick }) {
     const reduce = useReducedMotion();
     return (
@@ -1583,7 +1297,9 @@ function TapHintStrip({ onClick }) {
     );
 }
 
-function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow, shopMode = false, isOpening = false, onPrefetch, showTapHint = false, isOwnShop = false, onShareProduct }) {
+// `hideFrom`: seller (shop) view — the price is that one seller's exact
+// price, not a "from" minimum, so the label is dropped.
+function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeGst, animateEntrance, isLoggedIn, onRequireLogin, isFollowed, onToggleFollow, hideFrom = false, onPrefetch, showTapHint = false }) {
     const subLabel = [item.brand_name, item.model_no].filter(Boolean).join(" · ");
     const categoryLabel = isHiddenLabel(item.category_name) ? null : item.category_name;
     const subcategoryLabel = isHiddenLabel(item.subcategory_name) ? null : item.subcategory_name;
@@ -1598,12 +1314,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
 
     const isOutOfStock = isFeedRowOutOfStock(item);
 
-    // In a store view on phones, the slider is the only way to buy (same as the seller list).
-    const guardedToggle = () => {
-        if (isOwnShop) return;
-        if (shopMode && typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) return;
-        onToggle();
-    };
+    const guardedToggle = () => { onToggle(); };
 
     const breakdown = useMemo(() => {
         if (item.lowest_price == null) return null;
@@ -1644,12 +1355,11 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             className={`relative w-full ${showTapHint ? "rounded-2xl" : ""}`}
             style={{
                 background: isOpen ? C.hairSoft : "transparent",
-                opacity: isOutOfStock ? 0.5 : isOpening ? 0.7 : 1,
+                opacity: isOutOfStock ? 0.5 : 1,
             }}
         >
             <AnimatePresence>{showTapHint && <HintRing key="hint-ring" />}</AnimatePresence>
-            <div className={`grid w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 sm:px-4 ${shopMode ? "pb-2.5" : "pb-3 min-h-[7.5rem]"}`}
-            >
+            <div className="grid w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 pb-3 min-h-[7.5rem] sm:px-4">
                 {/* COL 1 — IMAGE */}
                 <div className="flex h-full items-center justify-center">
                     <span
@@ -1685,18 +1395,12 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                         {categoryLabel ? `${categoryLabel} · ` : ""}
                         {subcategoryLabel}
                     </p>
-                    {!shopMode && <p
+                    <p
                         className="mt-1 text-[10px] sm:text-[11px] md:text-[11.5px] font-semibold leading-tight tracking-wide min-h-[1.2em]"
                         style={{ color: C.secondary }}
                     >
                         {packaging && !priceVerifying ? packaging : "\u00A0"}
-                    </p>}
-                    {shopMode && <p
-                        className="mt-1 text-[11px] sm:text-[12px] md:text-[12.5px] font-semibold leading-tight tracking-wide min-h-[1.2em]"
-                        style={{ color: C.secondary }}
-                    >
-                        {packaging && !priceVerifying ? packaging : "\u00A0"}
-                    </p>}
+                    </p>
                 </div>
 
                 {/* COL 3 — FOLLOW + PRICE */}
@@ -1705,11 +1409,10 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     tabIndex={0}
                     onClick={guardedToggle}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); guardedToggle(); } }}
-                    aria-label={shopMode ? "Buy from this store" : isOpen ? "Collapse sellers" : "Expand sellers"}
+                    aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
                     className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right cursor-pointer"
                 >
                     <div className="flex items-center gap-1">
-                        {/* {isLoggedIn && !isOutOfStock && <PriceTrendBadge trend={item.price_trend} />} */}
                         <FollowButton following={isFollowed} onToggle={onToggleFollow} />
                     </div>
                     {isOutOfStock ? (
@@ -1724,10 +1427,10 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                         </div>
                     ) : (
                         <>
-                            {((isLoggedIn && item.price_trend) || (breakdown && !shopMode)) && (
+                            {((isLoggedIn && item.price_trend) || (breakdown && !hideFrom)) && (
                                 <div className="flex items-center gap-1.5">
                                     {isLoggedIn && <PriceTrendBadge trend={item.price_trend} />}
-                                    {breakdown && !shopMode && (
+                                    {breakdown && !hideFrom && (
                                         <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
                                     )}
                                 </div>
@@ -1737,18 +1440,6 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     )}
                 </div>
             </div>
-
-            {shopMode && (
-                <ShopOfferStrip
-                    offer={item.shop_offer}
-                    masterPackSize={item.lowest_price_master_pack_size}
-                    outOfStock={isOutOfStock}
-                    opening={isOpening}
-                    onBuy={onToggle}
-                    isOwner={isOwnShop}
-                    onShare={onShareProduct}
-                />
-            )}
 
             <AnimatePresence>
                 {showTapHint && <TapHintStrip key="hint-strip" onClick={guardedToggle} />}
@@ -1781,8 +1472,6 @@ function computePriceBreakdown({ price, packSize, masterPackSize, gstPercent, in
 
 // Single source of truth for "what does this seller actually charge at qty X",
 // used by BOTH tabs so there's never a second, diverging implementation.
-// Also returns packQty/masterQty (base units per pack / master pack) so the
-// seller row can label prices exactly like the product header does.
 function computeEffectivePricing(seller, saleQty, includeGst) {
     const gst = Number(seller.gst_percent) || 0;
     const pricePerSaleUnit = includeGst ? Number(seller.price) : Number(seller.price) / (1 + gst / 100);
@@ -1820,8 +1509,7 @@ function isSellerOutOfStock(s) {
 
 // "Best price" tab only: search every real breakpoint (MOQ + every
 // slab/discount minQty at or above it) and surface whichever gives the
-// lowest actual price. This is the piece deliberately NOT moved into SQL
-// in this revision — see the file header note on why.
+// lowest actual price.
 function candidateSaleQuantities(seller) {
     const moq = moqInSaleUnits(seller);
     const quantities = new Set([moq]);
@@ -1859,7 +1547,7 @@ function LoginPromptModal({ open, message, onConfirm, onCancel }) {
             >
                 <div
                     className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full"
-                    style={{ background: `${C.primary} 14` }}
+                    style={{ background: `${C.primary}14` }}
                 >
                     <Lock className="h-5 w-5" style={{ color: C.primary }} strokeWidth={2.5} />
                 </div>
@@ -1917,15 +1605,13 @@ function useLenisPreventToggle() {
         else e.stopPropagation();
     }, [isAtBlockingEdge, forwardToLenis]);
 
-    // components/home/HomeProductFeed.jsx — inside useLenisPreventToggle
     useEffect(() => {
         const el = ref.current;
         if (!el) return;
 
         // Anything inside a price editor or the swipe-to-buy slider handles
         // its own drag/scroll — the list's own capture-phase listener must
-        // never intercept those events, since capture fires before those
-        // controls' own handlers ever get a chance to run.
+        // never intercept those events.
         const isInsideOwnGesture = (e) => !!e.target?.closest?.("[data-price-editor],[data-swipe-buy]");
 
         const onTouchStart = (e) => {
@@ -1957,8 +1643,7 @@ const SLIDE_KNOB_COMPACT = 32;
 const SLIDE_PAD = 4;
 
 // Slide-to-confirm. Used for "Swipe to buy" and for the own-listing
-// "Slide to confirm changes". Knob + progress fill use the buy colour (orange);
-// the track stays a soft neutral so the white chevron on the knob reads clearly.
+// "Slide to confirm changes".
 function SlideToConfirm({
     label, onConfirm, busy, resetKey, disabled = false,
     compact = false, busyLabel = "Updating…", doneLabel = "Updated",
@@ -2107,8 +1792,6 @@ function TrendGlyph({ down, className }) {
 }
 
 // Green dot = cheaper than the last price you saw, red dot = more expensive.
-// No chip/border: just a rippling dot and the percentage.
-
 // Optical alignment: digits sit a touch below the line box's geometric middle,
 // so the dot is nudged down by this many whole pixels. Try 0, 1 or 2.
 const DOT_NUDGE_Y = 1;
@@ -2124,8 +1807,6 @@ function PriceTrendBadge({ trend }) {
     const color = down ? "#059669" : "#B3261E";
     const label = `Price ${down ? "dropped" : "rose"} ${pctLabel} since you last saw it`;
 
-    // Dot and ripple live in the SAME grid cell and are centred by the grid itself,
-    // so they always share one exact centre (no manual left/top offsets).
     const dotStyle = { gridArea: "1 / 1", width: 6, height: 6, borderRadius: "9999px", background: color, placeSelf: "center" };
 
     return (
@@ -2282,17 +1963,403 @@ function useSellerDeliverability(sellers, address, enabled) {
     return { check, version };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SKELETONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Mirrors the real ProductRow layout (96px image, 3 columns) so the page
+// doesn't jump when real rows replace it.
+function RowSkeleton() {
+    const bar = (cls) => <div className={`animate-pulse rounded-full ${cls}`} style={{ background: C.hairSoft }} />;
+    return (
+        <div className="grid min-h-[7.5rem] w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 sm:px-4">
+            <div className="flex items-center justify-center">
+                <div className="h-24 w-24 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
+            </div>
+            <div className="min-w-0 space-y-2">
+                {bar("h-3 w-4/5")}
+                {bar("h-2.5 w-3/5")}
+                {bar("h-2 w-2/5")}
+                {bar("h-2.5 w-1/2")}
+            </div>
+            <div className="flex flex-col items-end gap-1.5">
+                {bar("h-4 w-4")}
+                {bar("h-3 w-14")}
+                {bar("h-3 w-16")}
+                {bar("h-3 w-12")}
+            </div>
+        </div>
+    );
+}
+
+// Shown while the banner plan is loading.
+function BannerBlockSkeleton() {
+    return (
+        <div className="px-2.5 py-3 sm:px-3">
+            <div className="aspect-[16/9] w-full animate-pulse rounded-2xl" style={{ background: C.hairSoft }} />
+        </div>
+    );
+}
+
+// Shown inside the seller dropdown while sellers load.
+function SellerRowSkeleton() {
+    const bar = (cls) => <div className={`animate-pulse rounded-full ${cls}`} style={{ background: C.hairSoft }} />;
+    return (
+        <div className="flex items-start gap-3 py-3">
+            <div className="min-w-0 flex-1 space-y-1.5">
+                {bar("h-2.5 w-3/5")}
+                {bar("h-2 w-2/5")}
+                {bar("h-4 w-24")}
+            </div>
+            <div className="flex w-[9.5rem] shrink-0 flex-col items-end gap-1.5">
+                {bar("h-3 w-16")}
+                {bar("h-3 w-12")}
+                <div className="h-8 w-full animate-pulse rounded-full" style={{ background: C.hairSoft }} />
+            </div>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SELLER (SHOP) VIEW — the dropdown content when a single seller's store is
+// open. Same look as the old store-view strip: a MOQ / Delivery / Freight spec
+// grid, then the seller's price and ONE "Buy now" button on every screen size
+// (no swipe slider here). No seller name (the page is already that seller),
+// no "Sell this product".
+// ─────────────────────────────────────────────────────────────────────────────
+function ShopOfferPanel({ seller, outOfStock, notDeliverable, buyerAddress, isOwn, onBuy, onShare, onEdit }) {
+    const moq = Number(seller.moq);
+    const isMaster = priceUnitLabel(seller.units_per_master_pack) === "master pack";
+    const moqValue = isMaster
+        ? `${fmtQty(moq)} M Pack`
+        : `${fmtQty(moq)} Pack${moq === 1 ? "" : "s"}`;
+    const days = seller.total_delivery_days;
+
+    const cells = [
+        seller.moq != null ? { key: "moq", label: "MOQ", Icon: Package, value: moqValue } : null,
+        days != null
+            ? { key: "eta", label: "Delivery", Icon: Clock, value: `~${days} ${Number(days) === 1 ? "day" : "days"}` }
+            : null,
+        { key: "freight", label: "Freight", Icon: Truck, value: seller.freight_included ? "Included" : "Extra", accent: !!seller.freight_included },
+    ].filter(Boolean);
+
+    let action;
+    if (isOwn) {
+        action = (
+            <div className="flex shrink-0 items-stretch gap-1.5">
+                <button
+                    type="button"
+                    aria-label="Share"
+                    onClick={(e) => { e.stopPropagation(); onShare?.(); }}
+                    className="flex w-11 items-center justify-center rounded-lg border bg-white transition-colors hover:bg-black/[0.03] active:scale-[0.97]"
+                    style={{ borderColor: C.hair, color: C.ink }}
+                >
+                    <Share2 className="h-4 w-4" strokeWidth={2.3} />
+                </button>
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
+                    className="flex items-center justify-center gap-1 rounded-lg px-3 text-[12px] font-bold tracking-wide text-white active:scale-[0.97]"
+                    style={{ background: C.primary }}
+                >
+                    <Pencil className="h-3.5 w-3.5" strokeWidth={2.3} /> Edit
+                </button>
+            </div>
+        );
+    } else if (outOfStock) {
+        action = (
+            <div className="flex w-24 shrink-0 items-center justify-center rounded-lg px-1 text-center text-[10.5px] font-extrabold leading-tight tracking-wide"
+                style={{ background: "#f1f1f1", color: C.muted }}>OUT OF STOCK</div>
+        );
+    } else if (notDeliverable) {
+        action = (
+            <div className="flex w-24 shrink-0 items-center justify-center gap-1 rounded-lg px-1 text-center text-[10px] font-extrabold leading-tight tracking-wide"
+                style={{ background: "#FDECEC", color: "#B3261E" }}>
+                <Ban className="h-3 w-3 shrink-0" strokeWidth={2.8} /> NOT DELIVERABLE
+            </div>
+        );
+    } else {
+        action = (
+            <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onBuy(); }}
+                className="flex w-24 shrink-0 items-center justify-center rounded-lg bg-[#F4511E] text-[13px] font-extrabold tracking-wide text-white shadow-[0_6px_14px_-8px_rgba(244,81,30,0.8)] transition hover:bg-[#D83F0E] active:scale-95"
+            >
+                Buy now
+            </button>
+        );
+    }
+
+    return (
+        <div className="py-2.5">
+            <div className="flex items-stretch gap-2">
+                <div
+                    className="grid min-w-0 flex-1 overflow-hidden rounded-xl border"
+                    style={{
+                        gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`,
+                        borderColor: C.hair,
+                        background: "#fff",
+                    }}
+                >
+                    {cells.map(({ key, label, Icon, value, accent }, i) => (
+                        <div
+                            key={key}
+                            className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-1.5 py-2 text-center"
+                            style={i > 0 ? { borderLeft: `1px solid ${C.hairSoft}` } : undefined}
+                        >
+                            <span className="flex items-center gap-1 text-[8.5px] font-bold uppercase leading-none tracking-wider" style={{ color: C.muted }}>
+                                <Icon className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} />
+                                {label}
+                            </span>
+                            <span
+                                className="w-full truncate text-[11.5px] font-extrabold leading-tight"
+                                style={{ color: accent ? "#006F83" : C.ink }}
+                            >
+                                {value}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+                {action}
+            </div>
+            {!isOwn && !outOfStock && notDeliverable && (
+                <p className="mt-1.5 text-right text-[10.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
+                    Doesn't ship to {buyerAddress?.city}{buyerAddress?.state ? `, ${buyerAddress.state}` : ""}
+                </p>
+            )}
+        </div>
+    );
+}
+
+function ShopPanelSkeleton() {
+    return (
+        <div className="flex items-stretch gap-2 py-2.5">
+            <div className="h-[3rem] min-w-0 flex-1 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
+            <div className="w-24 shrink-0 animate-pulse rounded-lg" style={{ background: C.hairSoft }} />
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GROUP BANNER GALLERY — shown at the top of a variants view (?group=).
+//
+// A group can carry banners in several shapes (16:9, 4:3, 1:1, 3:4). Each image
+// is measured, snapped to the nearest of those four ratios, and packed into
+// "justified" rows: inside a row every image gets a width proportional to its
+// ratio, so all images in that row share the SAME height and the row fills the
+// width exactly — no gaps, no stretching. How many images fit per row depends
+// on the screen (1 / 2 / 3 columns), so phones get big, tappable banners and
+// desktops get a tidy mosaic. Tap an image to zoom it.
+// ─────────────────────────────────────────────────────────────────────────────
+const BANNER_RATIOS = [16 / 9, 4 / 3, 1, 3 / 4];
+const ROW_TARGETS = [1.75, 2.7, 3.4]; // sum of ratios per row, for 1 / 2 / 3 columns
+
+function snapBannerRatio(r) {
+    if (!(r > 0)) return 16 / 9;
+    let best = BANNER_RATIOS[0];
+    let bestD = Infinity;
+    for (const s of BANNER_RATIOS) {
+        const d = Math.abs(Math.log(r / s));
+        if (d < bestD) { bestD = d; best = s; }
+    }
+    return best;
+}
+
+const IMG_URL_RE = /\.(jpe?g|png|webp|avif|gif|svg)(\?|#|$)/i;
+const IMG_PATH_RE = /\/(storage|images?|uploads?|media)\//i;
+const IMG_KEY_RE = /(image|img|banner|photo|picture|media|cover|hero|poster)/i;
+const SKIP_KEY_RE = /(preview|thumb|logo|icon|avatar|link|href|slug|brand)/i;
+
+function isImageUrl(v) {
+    if (typeof v !== "string" || v.length < 5) return false;
+    if (v.startsWith("data:image/")) return true;
+    if (!(/^(https?:)?\/\//i.test(v) || v.startsWith("/"))) return false;
+    return IMG_URL_RE.test(v) || IMG_PATH_RE.test(v);
+}
+
+// "16:9" / "16x9" / "image_4_3" / 1.33 -> number
+function parseRatioHint(v) {
+    if (typeof v === "number") return v > 0 ? v : null;
+    if (typeof v !== "string") return null;
+    const m = v.match(/(\d+(?:\.\d+)?)\s*[:/x_-]\s*(\d+(?:\.\d+)?)/i);
+    return m && Number(m[2]) > 0 ? Number(m[1]) / Number(m[2]) : null;
+}
+
+// Collects banner image URLs (+ a ratio hint when the data states one) from
+// whatever shape the banner object has: single fields (image_16x9…), arrays of
+// URLs, arrays of { url, aspect_ratio | width/height }, or { "16:9": url }.
+// The real ratio is still measured from the pixels, so a missing hint is fine.
+function extractBannerImages(source) {
+    const out = [];
+    const seen = new Set();
+    const push = (url, ratio) => {
+        if (!isImageUrl(url) || seen.has(url)) return;
+        seen.add(url);
+        out.push({ url, ratio: ratio || null });
+    };
+    const fromObj = (o) => {
+        const url = o.url || o.image_url || o.imageUrl || o.src || o.image || o.path;
+        const w = Number(o.width), h = Number(o.height);
+        const r = parseRatioHint(o.aspect_ratio ?? o.aspectRatio ?? o.ratio ?? o.aspect) || (w > 0 && h > 0 ? w / h : null);
+        if (typeof url === "string") push(url, r);
+    };
+    const walk = (val, key, depth) => {
+        if (depth > 2 || val == null) return;
+        const keyOk = IMG_KEY_RE.test(key) && !SKIP_KEY_RE.test(key);
+        if (typeof val === "string") { if (keyOk) push(val, parseRatioHint(key)); return; }
+        if (Array.isArray(val)) {
+            if (!keyOk) return;
+            val.forEach((v) => {
+                if (typeof v === "string") push(v, null);
+                else if (v && typeof v === "object") fromObj(v);
+            });
+            return;
+        }
+        if (typeof val === "object") {
+            if (SKIP_KEY_RE.test(key)) return;
+            if (IMG_KEY_RE.test(key)) fromObj(val);
+            for (const [k, v] of Object.entries(val)) {
+                walk(v, IMG_KEY_RE.test(key) && !IMG_KEY_RE.test(k) ? `${key}_${k}` : k, depth + 1);
+            }
+        }
+    };
+    if (source && typeof source === "object") {
+        for (const [k, v] of Object.entries(source)) walk(v, k, 0);
+    }
+    return out;
+}
+
+// Greedy "justified rows". A short last row is folded into the row before it
+// when it's tiny, otherwise it keeps a proportional width (centred).
+function packBannerRows(list, target) {
+    const rows = [];
+    let cur = [];
+    let sum = 0;
+    for (const it of list) {
+        cur.push(it);
+        sum += it.ratio;
+        if (sum >= target) { rows.push({ items: cur, sum }); cur = []; sum = 0; }
+    }
+    if (cur.length) {
+        if (rows.length && sum < target * 0.5) {
+            const last = rows[rows.length - 1];
+            last.items.push(...cur);
+            last.sum += sum;
+        } else {
+            rows.push({ items: cur, sum });
+        }
+    }
+    return rows;
+}
+
+function BannerGallerySkeleton() {
+    return (
+        <div className="aspect-[16/9] w-full animate-pulse" style={{ background: C.hairSoft, borderBottom: `3px solid ${C.brand}` }} />
+    );
+}
+
+function GroupBannerGallery({ images, loading, columnCount, onOpen }) {
+    const [ratios, setRatios] = useState({});     // url -> measured ratio, 0 = failed to load
+    const [timedOut, setTimedOut] = useState(false);
+
+    const urlsKey = images.map((i) => i.url).join("|");
+
+    // Measure every image that didn't come with a ratio, BEFORE laying out,
+    // so the gallery doesn't reshuffle when images finish loading.
+    useEffect(() => {
+        let alive = true;
+        setTimedOut(false);
+        const unresolved = images.filter((i) => !i.ratio && ratios[i.url] === undefined);
+        unresolved.forEach(({ url }) => {
+            const im = new Image();
+            im.onload = () => { if (alive) setRatios((p) => ({ ...p, [url]: im.naturalWidth / (im.naturalHeight || 1) || 16 / 9 })); };
+            im.onerror = () => { if (alive) setRatios((p) => ({ ...p, [url]: 0 })); };
+            im.src = resizedImageUrl(url, { width: 320 });
+        });
+        const t = unresolved.length ? setTimeout(() => alive && setTimedOut(true), 3000) : null;
+        return () => { alive = false; clearTimeout(t); };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [urlsKey]);
+
+    if (!images.length) return loading ? <BannerGallerySkeleton /> : null;
+
+    const pending = images.some((i) => !i.ratio && ratios[i.url] === undefined);
+    if (pending && !timedOut) return <BannerGallerySkeleton />;
+
+    const tiles = images
+        .filter((i) => ratios[i.url] !== 0)
+        .map((i) => ({ url: i.url, ratio: snapBannerRatio(i.ratio || ratios[i.url] || 16 / 9) }));
+    if (!tiles.length) return null;
+
+    const allUrls = tiles.map((t) => t.url);
+    const target = ROW_TARGETS[Math.min(Math.max(columnCount, 1), 3) - 1];
+    const rows = tiles.length === 1 ? [] : packBannerRows(tiles, target);
+
+    const Tile = ({ t, sizes, priority, style }) => (
+        <div
+            className="relative min-w-0 overflow-hidden"
+            style={{ background: C.imgBg, aspectRatio: t.ratio, ...style }}
+        >
+            <img
+                src={resizedImageUrl(t.url, { width: 960 })}
+                srcSet={`${resizedImageUrl(t.url, { width: 480 })} 480w, ${resizedImageUrl(t.url, { width: 960 })} 960w, ${resizedImageUrl(t.url, { width: 1600 })} 1600w`}
+                sizes={sizes}
+                alt=""
+                referrerPolicy="no-referrer"
+                loading={priority ? "eager" : "lazy"}
+                decoding="async"
+                draggable={false}
+                className="h-full w-full select-none object-cover"
+            />
+        </div>
+    );
+
+    return (
+        <section
+            aria-label="Banner"
+            className="overflow-hidden"
+            style={{ borderBottom: `3px solid ${C.brand}` }}
+        >
+            {tiles.length === 1 ? (
+                <div className="mx-auto" style={{ width: "100%", maxWidth: `min(100%, calc(${tiles[0].ratio} * 55vh))` }}>
+                    <Tile t={tiles[0]} priority sizes="(min-width: 1280px) 1280px, 100vw" style={{ width: "100%" }} />
+                </div>
+            ) : (
+                <div className="flex flex-col gap-[2px]">
+                    {rows.map((row, ri) => {
+                        const widthPct = Math.min(1, row.sum / target) * 100;
+                        return (
+                            <div key={ri} className="mx-auto flex w-full gap-[2px]" style={{ maxWidth: `${widthPct}%` }}>
+                                {row.items.map((t) => (
+                                    <Tile
+                                        key={t.url}
+                                        t={t}
+                                        priority={ri === 0}
+                                        sizes={`(min-width: 1280px) ${Math.round((1280 * t.ratio) / row.sum)}px, ${Math.round((100 * t.ratio) / row.sum)}vw`}
+                                        style={{ flex: `${t.ratio} 1 0%` }}
+                                    />
+                                ))}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </section>
+    );
+}
+
 // Inline seller accordion. `state` is { loading, items, error, total,
 // hasMore } for this item's fetch — items already arrive from the
-// backend correctly ordered for whichever `sortMode` was requested (see
-// loadSellersFor in the parent). `buyerAddress` drives whether the
-// "Fastest delivery" tab is even shown, and is what total_delivery_days
-// on each seller row was computed against — and which sellers are shown
-// as "Not deliverable" (no buy action at all).
+// backend correctly ordered for whichever `sortMode` was requested.
+//
+// `shopMode`: seller (shop) view — the whole page is one seller, so the
+// dropdown renders ShopOfferPanel (no seller name, no "Sell this product", Buy
+// now button only). `isOwnShop`: that seller is the signed-in user.
 function SellerDropdown({
     item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange,
     currentUserId, onRequireLogin, isLoggedIn, buyerAddress, navigate,
     token, onOwnListingPriceApplied, onOwnListingPatched, onOwnListingSaved, onEditOwnListing,
+    shopMode = false, isOwnShop = false, onShareProduct,
 }) {
     const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
 
@@ -2398,25 +2465,43 @@ function SellerDropdown({
                 >
                     {showSkeleton ? (
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft }}>
-                            <div className="flex items-center justify-between gap-3 py-3">
-                                <div className="min-w-0 flex-1 space-y-1.5">
-                                    <div className="h-2.5 w-32 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                    <div className="h-2 w-24 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                </div>
-                                <div className="shrink-0 space-y-1.5 text-right">
-                                    <div className="ml-auto h-2.5 w-12 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                    <div className="ml-auto h-2 w-8 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                                </div>
-                            </div>
+                            {shopMode
+                                ? <ShopPanelSkeleton />
+                                : <><SellerRowSkeleton /><SellerRowSkeleton /></>}
                         </div>
                     ) : error ? (
                         <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>{error}</p>
                     ) : sortedItems.length === 0 ? (
-                        <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>No sellers listing this yet.</p>
+                        <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>
+                            {shopMode ? "This seller isn't listing this product." : "No sellers listing this yet."}
+                        </p>
+                    ) : shopMode ? (
+                        <div style={{ opacity: isRefreshing ? 0.7 : 1, transition: "opacity 0.15s ease" }}>
+                            {sortedItems.map((s) => {
+                                const outOfStock = isSellerOutOfStock(s);
+                                const isOwn = isOwnSellerRow(s, currentUserId) || isOwnShop;
+                                const notDeliverable = !isOwn && !outOfStock && isLoggedIn ? checkDeliverable(s) : null;
+                                const pricing = computeEffectivePricing(s, moqInSaleUnits(s), includeGst);
+                                return (
+                                    <ShopOfferPanel
+                                        key={s.submission_id}
+                                        seller={s}
+                                        pricing={pricing}
+                                        outOfStock={outOfStock}
+                                        notDeliverable={notDeliverable}
+                                        buyerAddress={buyerAddress}
+                                        isOwn={isOwn}
+                                        onBuy={() => onBuySeller(s)}
+                                        onShare={() => onShareProduct?.(s)}
+                                        onEdit={() => onEditOwnListing(s.submission_id)}
+                                    />
+                                );
+                            })}
+                        </div>
                     ) : (
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft, opacity: isRefreshing ? 0.7 : 1, transition: "opacity 0.15s ease" }}>
                             {sortedItems.map((s) => {
-                                const pricing = sellerPricingForMode(s, sortMode, includeGst);
+                                const pricing = computeEffectivePricing(s, moqInSaleUnits(s), includeGst);
                                 const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) < moqInSaleUnits(s);
                                 const isOwn = isOwnSellerRow(s, currentUserId);
                                 // Seller doesn't ship to the buyer's selected address -> no buy action at all.
@@ -2547,7 +2632,7 @@ function SellerDropdown({
                     )}
                 </div>
 
-                {!showSkeleton && !alreadySelling && (
+                {!showSkeleton && !alreadySelling && !shopMode && (
                     <button
                         onClick={onSell}
                         className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-[#1E78D6] bg-[#1E78D6] px-3 py-2 text-[12.5px] font-bold tracking-wide text-white shadow-[0_8px_16px_-10px_rgba(30,120,214,0.9)] transition-colors duration-150 hover:border-[#1666B8] hover:bg-[#1666B8] active:scale-[0.99]"
@@ -2745,19 +2830,6 @@ function GroupViewStrip({ name, count, onBack }) {
     );
 }
 
-function RowSkeleton() {
-    return (
-        <div className="flex items-center gap-3 border-b px-3 py-3 sm:px-4" style={{ borderColor: C.hairSoft }}>
-            <div className="h-16 w-16 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
-            <div className="flex-1 space-y-2">
-                <div className="h-3 w-2/5 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-                <div className="h-2.5 w-1/4 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-            </div>
-            <div className="h-3.5 w-14 shrink-0 animate-pulse rounded-full" style={{ background: C.hairSoft }} />
-        </div>
-    );
-}
-
 // `q` is optional — pages that don't pass it (or pass "") get the exact
 // same unfiltered behavior as before. Passing it wires up live search.
 // `toolbar` is optional too: HomePage passes the Category strip + search bar,
@@ -2840,8 +2912,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         () => items.find((it) => it.row_type !== "group" && !isFeedRowOutOfStock(it))?.id ?? null,
         [items]
     );
-    // Browse mode only: store views buy via the slider, so "tap a product" doesn't apply there.
-    const showHint = !hintDismissed && !shopSlug && !loading && items.length > 0;
+    // Works in seller view too now: rows open the same dropdown there.
+    const showHint = !hintDismissed && !loading && items.length > 0;
 
     // Dismiss only when a sellers dropdown actually opens (not on pin / info / image taps).
     useEffect(() => {
@@ -2901,7 +2973,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const offerCacheRef = useRef(new Map());
     const shopRefreshTimerRef = useRef(null);
     const shopRefreshSeqRef = useRef(0);
-    const [openingItemId, setOpeningItemId] = useState(null);
 
     useEffect(() => { offerCacheRef.current.clear(); }, [shopSlug, token]);
     useEffect(() => () => clearTimeout(shopRefreshTimerRef.current), []);
@@ -2914,7 +2985,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     }, []);
 
     // Offer for one product from the shop being viewed. Prefetched on hover/touch,
-    // short-lived so a stale price is never used for long.
+    // short-lived so a stale price is never used for long. In seller view this is
+    // also what fills the dropdown (see loadSellersFor).
     const getOffer = useCallback((itemId) => {
         const slug = shopSlugRef.current;
         const key = `${slug}::${itemId}`;
@@ -3008,10 +3080,11 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const rowRefs = useRef({});
     const highlightTimeoutRef = useRef(null);
 
-    // Fetches sellers for one product, sorted SERVER-SIDE (across the
-    // full seller pool for that product) using whatever tab is currently
-    // active — see the "FASTEST DELIVERY / MIN MOQ SORTING" note at the
-    // top of this file for why this moved off the client.
+    // Fetches sellers for one product.
+    //  • Normal view: sorted SERVER-SIDE (across the full seller pool) by the
+    //    active tab — see the "FASTEST DELIVERY / MIN MOQ SORTING" header note.
+    //  • Seller (shop) view: the list is just THAT seller's offer for this
+    //    product, so we fetch the single offer instead of the sellers list.
     const loadSellersFor = useCallback((itemId, { silent = false } = {}) => {
         sellerAbortRef.current?.abort();
         const controller = new AbortController();
@@ -3024,6 +3097,28 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 ? { ...(prev[itemId] || {}), isRefreshing: true }
                 : { loading: true, items: [], error: null },
         }));
+
+        if (shopSlug) {
+            if (silent) offerCacheRef.current.delete(`${shopSlug}::${itemId}`); // force fresh after edits / realtime
+            getOffer(itemId).then((res) => {
+                if (controller.signal.aborted) return;
+                if (res?.success && res.offer) {
+                    setSellerState((prev) => ({
+                        ...prev,
+                        [itemId]: { loading: false, isRefreshing: false, items: [res.offer], error: null, total: 1, hasMore: false },
+                    }));
+                } else {
+                    setSellerState((prev) => ({
+                        ...prev,
+                        [itemId]: {
+                            loading: false, isRefreshing: false, items: [],
+                            error: res?.code === "LISTING_GONE" ? "No longer available." : "Couldn't load this seller's offer.",
+                        },
+                    }));
+                }
+            });
+            return;
+        }
 
         const apiSort = sortModeToApiSort(sellerSortMode);
 
@@ -3063,7 +3158,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                     [itemId]: { loading: false, isRefreshing: false, items: [], error: "Couldn't load sellers." },
                 }));
             });
-    }, [token, sellerSortMode, buyerAddress]);
+    }, [token, sellerSortMode, buyerAddress, shopSlug, getOffer]);
 
     const closeDropdown = useCallback(() => {
         sellerAbortRef.current?.abort();
@@ -3075,10 +3170,10 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             closeDropdown();
             return;
         }
-        track("seller_list_opened", { source: "home_feed", product_id: String(item.id) });
+        track("seller_list_opened", { source: shopSlug ? "store_view" : "home_feed", product_id: String(item.id) });
         setOpenItemId(item.id);
         loadSellersFor(item.id);
-    }, [openItemId, closeDropdown, loadSellersFor]);
+    }, [openItemId, closeDropdown, loadSellersFor, shopSlug]);
 
 
     // ── REAL-TIME PRICE UPDATES ─────────────────────────────────────────
@@ -3124,8 +3219,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // Product header = lowest price the SERVER says this buyer can see.
     // We probe a handful of sellers (not just 1): the raw-cheapest seller
     // may be out of stock, and computeListingLowestFromSellers needs at
-    // least one in-stock candidate to prefer. Server-side means
-    // visibility/wallet rules hold.
+    // least one in-stock candidate to prefer.
     const refreshLowest = useCallback((itemId) => {
         if (shopSlugRef.current) { refreshShopFeed(); return; }
         const target = itemsRef.current.find((it) => String(it.id) === String(itemId));
@@ -3230,10 +3324,11 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // Keep the product header price in step with the OPEN dropdown's list.
     // Only trusts a FULLY loaded list of the open product: closed products'
     // cached lists can be stale, and a partial page (hasMore) may not
-    // contain the true cheapest seller — both used to overwrite a correct
-    // header price. refreshLowest covers those cases from the server.
+    // contain the true cheapest seller. refreshLowest covers those cases.
+    // Skipped in seller view: there the dropdown holds one seller's offer and
+    // the row price already comes from that seller's feed (refreshShopFeed).
     useEffect(() => {
-        if (!openItemId) return;
+        if (!openItemId || shopSlug) return;
         const entry = sellerState[openItemId];
         if (!entry?.items?.length || entry.hasMore || entry.loading || entry.isRefreshing) return;
         const best = computeListingLowestFromSellers(entry.items);
@@ -3257,7 +3352,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             });
             return changed ? next : prev;
         });
-    }, [sellerState, openItemId]);
+    }, [sellerState, openItemId, shopSlug]);
 
     const trendFlushTimerRef = useRef(null);
     useEffect(() => {
@@ -3359,10 +3454,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         await Promise.all([worker(), worker(), worker(), worker()]);
     }, [token]);
 
-    // Single runQuery — the primary feed fetch, with tiered fallback
-    // (subcategory, then category) when a live search comes up empty.
-    // Pinned products come back FIRST from the server in both paths
-    // (catalog_browse_feed / products-merged), so nothing is re-ordered here.
+    // Single runQuery — the primary feed fetch.
+    // Pinned products come back FIRST from the server, so nothing is re-ordered here.
     const runQuery = useCallback((offset, { append }) => {
         abortRef.current?.abort();
         const controller = new AbortController();
@@ -3371,7 +3464,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         (append ? setLoadingMore : setLoading)(true);
 
         const trimmed = q.trim();
-        const useFeedRpc = !!shopSlug || selectedBrands.length > 0;
         const addr = buyerAddressRef.current;
         const request = fetchBrandItemsFeed({
             categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset,
@@ -3484,8 +3576,11 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // Hide products with no visible seller for THIS user. Rows still being
     // verified (search) and the row whose dropdown is open are kept, so
     // nothing vanishes under the user's finger.
+    // Group rows are ALWAYS kept: they never carry a price of their own, so the
+    // price test below used to wrongly hide them (and their banners with them).
     const visibleItems = items.filter(
         (it) =>
+            it.row_type === "group" ||
             it.lowest_price != null ||
             it._priceVerified === false ||
             String(it.id) === String(openItemId)
@@ -3583,8 +3678,9 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // Only shows TransportPreferenceModal the first time this buyer deals
     // with this seller. The decision (or explicit "no preference") is
     // looked up from the DB, per buyer-seller pair — not per device.
+    // Works for both views: in seller view `seller` is that seller's offer.
     const handleBuySeller = (item, seller) => {
-        track("buy_now_clicked", { source: "seller_list", logged_in: !!effectiveLoggedIn, product_id: String(item.id) });
+        track("buy_now_clicked", { source: shopSlug ? "store_view" : "seller_list", logged_in: !!effectiveLoggedIn, product_id: String(item.id) });
         if (!effectiveLoggedIn) { requireLogin(); return; }
         if (!token) { requireLogin("You need to login to place an order with this seller."); return; }
         closeDropdown();
@@ -3602,48 +3698,14 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         });
     };
 
-    const handleShopBuy = async (item) => {
-        track("buy_now_clicked", { source: "store_view", logged_in: !!effectiveLoggedIn, product_id: String(item.id) });
-        if (!effectiveLoggedIn) { requireLogin(); return; }
-        if (!token) { requireLogin("You need to login to place an order with this seller."); return; }
-        if (isFeedRowOutOfStock(item)) { showToast({ message: "Out of stock" }, 2000); return; }
-        if (openingItemId) return;
-
-        const slug = shopSlugRef.current;
-        if (currentUserId && String(slug) === String(currentUserId)) {
-            showToast({ message: "This is your own listing" }, 2200);
-            return;
-        }
-
-        setOpeningItemId(item.id);
-        const res = await getOffer(item.id);
-        setOpeningItemId(null);
-        if (shopSlugRef.current !== slug) return; // user left the shop while loading
-
-        if (!res?.success || !res.offer) {
-            if (res?.code === "LISTING_GONE") {
-                setItems((prev) => prev.filter((it) => String(it.id) !== String(item.id)));
-                showToast({ message: "No longer available" }, 2500);
-            } else {
-                showToast({ message: "Couldn't open. Try again" }, 2200);
-            }
-            return;
-        }
-        setBuyState({ item, seller: res.offer });
-    };
-
     const handleShareShop = async () => {
         const r = await shareShopLink({ shopSlug, shopName: myShopName });
         if (r === "copied") showToast({ message: "Shop link copied" }, 2000);
         else if (r === "failed") showToast({ message: "Couldn't share. Try again" }, 2200);
     };
 
-    const handleShareProduct = async (item) => {
-        let submissionId = item.shop_offer?.submission_id;
-        if (!submissionId) {
-            const res = await getOffer(item.id);
-            submissionId = res?.offer?.submission_id;
-        }
+    const handleShareProduct = async (item, seller) => {
+        const submissionId = seller?.submission_id;
         if (!submissionId) { showToast({ message: "Couldn't share this product" }, 2200); return; }
         const result = await shareProductLink({
             submissionId,
@@ -3703,35 +3765,40 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const columnCount = useResponsiveColumnCount();
 
     // ── Admin-curated group banners ──────────────────────────────────────────
-    // Not shown inside a single seller's store. In the plain Home view, banner groups
-    // move out of the grid into ONE carousel (admin-ordered). In filtered views
-    // (search / category / brand) they show as a 16:9 banner card in their column.
-    const bannersEnabled = !shopSlug;
-    const { banners: groupBanners, plan: bannerPlan } = useHomeBannerPlan(bannersEnabled);
+    // Available in every view now (including a single seller's store). In the
+    // plain Home view, banner groups move out of the grid into mixed banner
+    // blocks (admin-ordered). Search / brand / variants views keep the simple
+    // 16:9 banner card in their column.
+    // `loading` is optional: if the hook doesn't return it, it's just undefined.
+    const { banners: groupBanners, plan: bannerPlan, loading: bannersLoading } = useHomeBannerPlan(true);
     const bannerById = useMemo(
         () => new Map(groupBanners.map((b) => [String(b.group_id), b])),
         [groupBanners]
     );
     const groupKeyOf = (it) => String(it.group_id || it.generic_product_id || it.id);
 
-    // Mixed banner layouts show on the Home "All" tab AND inside a category.
-    // Search / brand / variants views keep the simple 16:9 banner card.
-    const showBannerBlocks =
-        bannersEnabled && groupBanners.length > 0 && !!bannerPlan?.blocks?.length &&
-        !q.trim() && !brandName && !groupId;
+    // Banners of the group being viewed. The admin banner wins; the group's own
+    // payload is only a fallback.
+    const groupBannerImages = useMemo(() => {
+        if (!groupId) return [];
+        const fromBanner = extractBannerImages(bannerById.get(String(groupId)));
+        return fromBanner.length ? fromBanner : extractBannerImages(groupInfo);
+    }, [groupId, bannerById, groupInfo]);
 
-    const columnSource = showBannerBlocks
-        ? displayItems.filter((it) => !(it.row_type === "group" && bannerById.has(groupKeyOf(it))))
-        : displayItems;
+    // Mixed banner layouts show on the Home "All" tab, inside a category and in seller view.
+    // Search / brand / variants views keep the simple 16:9 banner card.
+    const plainView = !q.trim() && !brandName && !groupId;
+    const showBannerBlocks = groupBanners.length > 0 && !!bannerPlan?.blocks?.length && plainView;
     const openBanner = (b) =>
         openGroup({ group_id: b.group_id, name: b.name, variant_count: b.variant_count });
 
     const blocksPlan = (() => {
         if (!showBannerBlocks) return [];
-        if (!category?.id) return bannerPlan.blocks; // "All" tab: today's plan as built by the server
+        if (!category?.id && !shopSlug) return bannerPlan.blocks; // plain Home: server plan as built
 
-        // Category view: keep only banners whose group is in this category's feed (daily order preserved),
-        // then re-pack them into the same mix of layouts so it never looks like a plain list.
+        // Category or seller view: keep only banners whose group is actually in this feed
+        // (daily order preserved), then re-pack them into the same mix of layouts so it
+        // never looks like a plain list.
         const inFeed = new Set(
             displayItems
                 .filter((it) => it.row_type === "group" && bannerById.has(groupKeyOf(it)))
@@ -3744,20 +3811,28 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         for (let i = 0, n = 0; i < ids.length; n++) {
             const t = pattern[n % pattern.length];
             const take = ids.slice(i, i + size[t]);
-            out.push({ key: `cat:${category.id}:${n}`, template: t, groups: take });
+            out.push({ key: `feed:${category?.id || shopSlug}:${n}`, template: t, groups: take });
             i += take.length;
         }
         return out;
     })();
 
-    // Split the feed into sections; a banner block follows each FULL section.
+    // Only pull a group out of the grid if a banner block really shows it —
+    // otherwise it would disappear from both places.
+    const placedIds = new Set(blocksPlan.flatMap((b) => b.groups).map(String));
+    const columnSource = showBannerBlocks
+        ? displayItems.filter((it) => !(it.row_type === "group" && placedIds.has(groupKeyOf(it))))
+        : displayItems;
+
+    // Split the feed into sections; a banner block follows each FULL section
+    // (and always the first one, even when it isn't full yet).
     // Once the feed is exhausted, every block not placed yet is appended so no banner is unreachable.
     const sectionSize = columnCount * SECTION_ROWS;
     const sections = [];
     for (let start = 0, bi = 0; start < columnSource.length; start += sectionSize, bi++) {
         const slice = columnSource.slice(start, start + sectionSize);
         const full = slice.length === sectionSize;
-        sections.push({ items: slice, block: (full || !hasMore) ? (blocksPlan[bi] || null) : null });
+        sections.push({ items: slice, block: (full || !hasMore || bi === 0) ? (blocksPlan[bi] || null) : null });
     }
     if (!hasMore && !loading) {
         for (let bi = sections.length; bi < blocksPlan.length; bi++) sections.push({ items: [], block: blocksPlan[bi] });
@@ -3866,14 +3941,22 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
             {/* MOBILE FULL-WIDTH LAYOUT: on phones this wrapper bleeds edge-to-edge
                 (-mx-3 cancels a parent's assumed px-3 padding; tweak to match your
-                actual page padding) with only a top/bottom hairline (border-y) —
-                no rounded corners, no side border, so it never reads as a "card".
-                The rounded/bordered "card" look returns from sm: and up. */}
+                actual page padding) — no rounded corners, so it never reads as a "card".
+                The rounded look returns from sm: and up. */}
             <div
-                // className="-mx-3 bg-white sm:mx-0 sm:rounded-2xl sm:border"
                 className="-mx-3 bg-white sm:mx-0 sm:rounded-2xl"
                 ref={listWrapRef}
             >
+                {/* While the banner plan loads, hold its place so banners don't pop in and shove the list down. */}
+                {groupId && (
+                    <GroupBannerGallery
+                        images={groupBannerImages}
+                        loading={!!bannersLoading || loading}
+                        columnCount={columnCount}
+                        onOpen={setLightboxImages}
+                    />
+                )}
+                {bannersLoading && plainView && !showFullSkeleton && <BannerBlockSkeleton />}
 
                 {showFullSkeleton
                     ? (
@@ -3908,7 +3991,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                     {section.items.length > 0 && (
                                         <div className="flex divide-x pt-3" style={{ borderColor: C.hair }}>
                                             {bucketItemsByColumn(section.items, columnCount).map((colItems, colIdx) => (
-                                                // <div key={colIdx} className="min-w-0 flex-1 sm:divide-y" style={{ borderColor: C.hairSoft }}>
                                                 <div key={colIdx} className="min-w-0 flex-1" style={{ borderColor: C.hairSoft }}>
                                                     {colItems.map((item) => {
                                                         const isGroup = item.row_type === "group";
@@ -3947,23 +4029,20 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                                                             item={item}
                                                                             idx={i}
                                                                             isOpen={isOpen}
-                                                                            // onToggle={() => toggleDropdown(item)}
                                                                             onInfo={() => setInfoItemId(item.id)}
                                                                             onImageOpen={setLightboxImages}
                                                                             isFollowed={pinnedNow(item)}
                                                                             onToggleFollow={() => handleToggleFollow(item)}
                                                                             includeGst={includeGst}
                                                                             isLoggedIn={isLoggedIn}
-                                                                            isOwnShop={myShopActive}
-                                                                            onShareProduct={() => handleShareProduct(item)}
-                                                                            // onToggle={() => (shopSlug ? handleShopBuy(item) : toggleDropdown(item))}
+                                                                            // Same dropdown in normal and seller view; in seller
+                                                                            // view it loads only that seller's offer.
                                                                             onToggle={() => {
                                                                                 dismissHint(); // tapping any record ends the hint for today
-                                                                                return shopSlug ? handleShopBuy(item) : toggleDropdown(item);
+                                                                                return toggleDropdown(item);
                                                                             }}
+                                                                            hideFrom={!!shopSlug}
                                                                             showTapHint={showHint && item.id === firstHintId}
-                                                                            shopMode={!!shopSlug}
-                                                                            isOpening={openingItemId === item.id}
                                                                             onPrefetch={shopSlug ? () => { if (isLoggedIn && token) getOffer(item.id); } : undefined}
                                                                             onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
                                                                             animateEntrance={newlyAppearedIds.has(item.id)}
@@ -3999,6 +4078,9 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                                                                     buyerAddress={buyerAddress}
                                                                                     navigate={navigate}
                                                                                     token={token}
+                                                                                    shopMode={!!shopSlug}
+                                                                                    isOwnShop={myShopActive}
+                                                                                    onShareProduct={(seller) => handleShareProduct(item, seller)}
                                                                                     onOwnListingPriceApplied={(submissionId, newPrice) => patchOwnListing(item.id, submissionId, { price: newPrice })}
                                                                                     onOwnListingPatched={(submissionId, patch) => patchOwnListing(item.id, submissionId, patch)}
                                                                                     onOwnListingSaved={(message) => {
@@ -4036,7 +4118,6 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                         {loadingMore && (
                             <div className="flex divide-x border-t" style={{ borderColor: C.hair }}>
                                 {Array.from({ length: columnCount }).map((_, colIdx) => (
-                                    // <div key={colIdx} className="min-w-0 flex-1 divide-y" style={{ borderColor: C.hairSoft }}>
                                     <div key={colIdx} className="min-w-0 flex-1" style={{ borderColor: C.hairSoft }}>
                                         {Array.from({ length: Math.ceil(PAGE_SIZE / columnCount) }).map((_, i) => (
                                             <RowSkeleton key={i} />
