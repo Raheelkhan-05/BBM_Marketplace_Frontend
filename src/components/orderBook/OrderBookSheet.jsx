@@ -11,7 +11,7 @@
 // price that customer has on BBM (if any) and the last price given to them. The same hints sit under the price field of
 // every added product, and they refresh when the customer changes.
 // PRICE: entered per unit (Kg, Pcs ...), per pack or per master pack, including or excluding GST. The number the salesperson
-// types is NEVER rewritten: changing "Price per" or "Includes / Excludes GST" only changes how that number is read, and every
+// types is NEVER rewritten: changing "Price per" or "Includes / without GST" only changes how that number is read, and every
 // other figure (per pack, per unit, line total) is recalculated from it. It is converted here to the price per pack / master
 // pack with GST included, which is what the server stores.
 // CUSTOM PRICES: like a quotation, the catalog prices become the customer's price on BBM, found by GST number. If the customer
@@ -612,8 +612,8 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                     </div>
                                 </div>
                                 <div className="st-seg" role="group" aria-label="GST">
-                                    <button type="button" aria-pressed={l.incl} onClick={() => switchIncl(l, true)}>Includes GST</button>
-                                    <button type="button" aria-pressed={!l.incl} onClick={() => switchIncl(l, false)}>Excludes GST</button>
+                                    <button type="button" aria-pressed={l.incl} onClick={() => switchIncl(l, true)}>with GST</button>
+                                    <button type="button" aria-pressed={!l.incl} onClick={() => switchIncl(l, false)}>without GST</button>
                                 </div>
                                 {!l.incl && l.gstKnown && <p className="st-hint">GST {qty(num(l.gstPct))}% is added on top of this price.</p>}
                                 {!l.incl && !l.gstKnown && (

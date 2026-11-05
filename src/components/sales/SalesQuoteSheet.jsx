@@ -4,7 +4,7 @@
 // packs and the price is per pack / master pack. Every line shows what one pack contains and the total in the listing's unit.
 // Prices are tied to the customer's GST number and pre-filled next time (saved prices are per listing unit; they are
 // converted to the pack / master pack price shown here).
-// The price the salesperson types is NEVER rewritten: changing "Price per" or "Includes / Excludes GST" only changes how
+// The price the salesperson types is NEVER rewritten: changing "Price per" or "Includes / without GST" only changes how
 // that number is read, and every other figure (per pack, per unit, totals) is recalculated from it.
 // The product tagged on the enquiry (if any) is pre-selected. The customer is added to the customer list on send.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -345,8 +345,8 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent, onThre
                                         </div>
                                     </div>
                                     <div className="st-seg" role="group" aria-label="GST">
-                                        <button type="button" aria-pressed={l.gstIncl} onClick={() => switchGst(l, true)}>Includes GST</button>
-                                        <button type="button" aria-pressed={!l.gstIncl} onClick={() => switchGst(l, false)}>Excludes GST</button>
+                                        <button type="button" aria-pressed={l.gstIncl} onClick={() => switchGst(l, true)}>with GST</button>
+                                        <button type="button" aria-pressed={!l.gstIncl} onClick={() => switchGst(l, false)}>without GST</button>
                                     </div>
                                     {!l.gstIncl && <p className="st-hint">GST {l.p.gstPercent}% is added on top of this price.</p>}
                                     {perUnitIncl > 0 && (
