@@ -1,0 +1,42 @@
+/* Red unread dot on the Sales section tabs. */
+.gs-nav .gn-tab {
+    position: relative;
+}
+
+.gs-nav .gn-dot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #d2462b;
+    border: 2px solid #fff;
+    box-sizing: content-box;
+    pointer-events: none;
+    animation: gn-dot-pop .25s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+/* on the collapsed bar the dot sits next to the "All sections" label */
+.gs-nav .gn-cbtn {
+    position: relative;
+}
+
+.gs-nav .gn-cbtn .gn-dot {
+    top: 6px;
+    right: auto;
+    left: 30px;
+}
+
+@keyframes gn-dot-pop {
+    from {
+        transform: scale(.4);
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .gs-nav .gn-dot {
+        animation: none;
+    }
+}

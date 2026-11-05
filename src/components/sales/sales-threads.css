@@ -2065,3 +2065,87 @@ textarea.st-in {
     color: var(--muted, #6b7280);
     margin-top: 1px;
 }
+
+/* ---------- unread ---------- */
+.st-row {
+    position: relative;
+}
+
+/* slim accent bar on unread rows + stronger text */
+.st-row.unread {
+    box-shadow: inset 3px 0 0 var(--st-bad);
+    padding-left: 12px;
+    background: color-mix(in srgb, var(--st-bad) 4%, transparent);
+}
+
+.st-row.unread:hover,
+.st-row.unread:active {
+    background: color-mix(in srgb, var(--st-bad) 8%, var(--st-s2));
+}
+
+.st-row.unread .st-row-1 b {
+    font-weight: 900;
+}
+
+.st-row.unread .st-row-1 time {
+    color: var(--st-bad);
+    font-weight: 800;
+}
+
+.st-row.unread .st-row-4 {
+    color: var(--st-ink);
+    font-weight: 700;
+}
+
+/* title · badges · time: the time stays at the far right, the badges sit right after the title */
+.st-row-1 time {
+    margin-left: auto;
+}
+
+.st-unread-g {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.st-unread {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    font-size: .68rem;
+    font-weight: 900;
+    line-height: 1;
+    color: #fff;
+    background: var(--st-bad);
+}
+
+.st-unread.tag {
+    min-width: 20px;
+    padding: 0;
+    background: var(--st-pri);
+}
+
+/* Unread tab */
+.st-tab.unread.has {
+    border-color: color-mix(in srgb, var(--st-bad) 55%, var(--st-line));
+}
+
+.st-tab.unread.has .n {
+    background: var(--st-bad);
+    color: #fff;
+}
+
+.st-tab.unread[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--st-bad) 10%, var(--st-s));
+    border-color: var(--st-bad);
+    color: var(--st-bad);
+}
+
+.st-tab.unread[aria-pressed="true"] .n {
+    background: var(--st-bad);
+    color: #fff;
+}

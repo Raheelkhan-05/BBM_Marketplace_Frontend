@@ -3,10 +3,15 @@
 // styled by grow-modules.css so the two areas look identical.
 // Scroll down -> collapses into one compact bar ("All sections"), tap to open the grid as a dropdown.
 // Scroll up   -> expands back. The nav's layout height never changes, so the page never jumps.
+// Unread: the RFQs tile shows a red dot while any of my enquiries has messages I haven't read
+// (the collapsed bar shows it too when I'm on another page, so it is never hidden).
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { LayoutGrid, Users, TrendingUp, Send, BookOpen, ChevronDown } from "lucide-react";
+import { useAuth } from "../../context/AuthContext.jsx";
+import useSalesUnread from "../../hooks/useSalesUnread.js";
 import "../growSeller/grow-modules.css";
+import "./sales-tabs-dot.css";
 
 export const SALES_TABS = [
     { key: "dashboard", to: "/sales/dashboard", label: "Dashboard", Icon: LayoutGrid, a: "var(--bl, #1E78D6)", ai: "var(--bt, #0F63B5)", match: ["/sales/dashboard"] },
@@ -27,6 +32,8 @@ const DELTA = 6;         // ignore scroll jitter smaller than this
 
 export default function SalesTabs() {
     const { pathname } = useLocation();
+    const { token } = useAuth();
+    const unread = useSalesUnread(token, !!token);
 
     const rootRef = useRef(null);
     const tilesRef = useRef(null);
@@ -39,6 +46,8 @@ export default function SalesTabs() {
     const current = SALES_TABS.find((t) => isActive(t, pathname)) || null;
     const shown = current || NEUTRAL;
     const dropdown = compact && open;
+    const rfqDot = unread.threads > 0;
+    const compactDot = rfqDot && current?.key !== "enquiries";
 
     // Stick directly under the sibling header (.gs-hd in the sales shell, .hd elsewhere).
     useEffect(() => {
@@ -123,11 +132,13 @@ export default function SalesTabs() {
                                 style={tabStyle(shown)}
                                 aria-expanded={dropdown}
                                 aria-controls="gn-tiles"
+                                aria-label={compactDot ? `${shown.label}, all sections. You have unread RFQ messages` : undefined}
                                 onClick={() => setOpen((o) => !o)}
                             >
                                 <span className="gn-cico"><CurIcon aria-hidden="true" /></span>
                                 <b>{shown.label}</b>
                                 <span className="gn-chv">All sections <ChevronDown aria-hidden="true" /></span>
+                                {compactDot && <span className="gn-dot" aria-hidden="true" />}
                             </button>
                         </div>
                     </div>
@@ -139,6 +150,7 @@ export default function SalesTabs() {
                         <div ref={tilesRef} id="gn-tiles" className="gn-tiles">
                             {SALES_TABS.map((t) => {
                                 const active = current === t;
+                                const dot = t.key === "enquiries" && rfqDot;
                                 return (
                                     <Link
                                         key={t.key}
@@ -146,11 +158,13 @@ export default function SalesTabs() {
                                         className="gn-tab"
                                         style={tabStyle(t)}
                                         aria-current={active ? "page" : undefined}
+                                        aria-label={dot ? `${t.label}, unread messages` : undefined}
                                         draggable={false}
                                         onClick={() => setOpen(false)}
                                     >
                                         <span className="gn-ico2"><t.Icon aria-hidden="true" /></span>
                                         <span className="gn-lb">{t.label}</span>
+                                        {dot && <span className="gn-dot" aria-hidden="true" />}
                                     </Link>
                                 );
                             })}

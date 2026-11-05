@@ -24,6 +24,9 @@ async function call(path, { token, method = "GET", body, signal, params } = {}) 
 // status: "" | "open" | "won" | "lost" | "reminder" | "cold"
 export const fetchThreads = (token, { q, status, limit, offset, signal } = {}) => call("", { token, signal, params: { q, status, limit, offset } });
 
+// { threads, unread, mentions } across all my enquiries (drives the red dot on the RFQs tab)
+export const fetchUnreadSummary = (token, { signal } = {}) => call("/unread-count", { token, signal });
+
 // Enquiry:   { kind: "enquiry", customer..., productSubmissionId? | productName, quantity, unit, ... }
 // Cold call: { kind: "cold_call", customer..., note }
 export const createThread = (token, payload) => call("", { token, method: "POST", body: payload });

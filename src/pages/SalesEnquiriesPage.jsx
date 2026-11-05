@@ -2,18 +2,20 @@
 // The salesperson's own enquiry threads, newest activity first (like a chat list):
 // customer company, product, when the enquiry was posted (the same customer can ask for the same product again),
 // and the outcome (open / won / lost). Cold calls (call logs with no product yet) are tagged and have their own tab.
+// Unread: when an admin or teammate writes in an enquiry, that row gets a count badge and the Unread tab lists it.
+// Read state is per person (the server tracks it per participant), so nobody else's reading affects yours.
 // Opens instantly from cache and refreshes quietly; hovering/touching a row warms up its thread.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 import { Plus, Search, X, Receipt, Inbox, Loader2, Trophy, XCircle, Bell, PhoneCall, MapPin } from "lucide-react";
 import { dateTime, listTime, qty } from "../components/sales/salesThreadFmt.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useSocket } from "../context/SocketContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import useRfqLive from "../hooks/useRfqLive.js";
 import { fetchThreads } from "../utils/salesThreadApi.js";
 import { cacheGet, cacheSet, nsOf, prefetchThread } from "../utils/salesThreadCache.js";
 import SalesNewEnquirySheet from "../components/sales/SalesNewEnquirySheet.jsx";
-import useChatUnread from "../hooks/useChatUnread.js";
 import "../components/sales/sales-threads.css";
 import "../components/sales/sales-threads.cold.css";
 import "../components/sales/sales-chat.css";
@@ -21,25 +23,34 @@ import "../components/sales/sales-chat.css";
 const PAGE = 15;
 const MAX_PAGE = 100; // server cap
 const mergeUnique = (prev, inc) => { const s = new Set(prev.map((i) => i.id)); return [...prev, ...inc.filter((i) => !s.has(i.id))]; };
-const TABS = [["all", "All"], ["open", "Open"], ["reminder", "Reminders"], ["cold", "Cold calls"], ["won", "Won"], ["lost", "Lost"]];
-const EMPTY_COUNTS = { all: 0, open: 0, reminder: 0, cold: 0, won: 0, lost: 0 };
+const TABS = [["all", "All"], ["unread", "Unread"], ["open", "Open"], ["reminder", "Reminders"], ["cold", "Cold calls"], ["won", "Won"], ["lost", "Lost"]];
+const EMPTY_COUNTS = { all: 0, unread: 0, open: 0, reminder: 0, cold: 0, won: 0, lost: 0 };
+const CHAT_EVENTS = ["salesChat:message", "salesChat:read", "salesChat:participants", "connect"];
 
 const kindOf = (t) => (t.status !== "closed" ? "open" : t.outcome === "won" ? "won" : t.outcome === "lost" ? "lost" : "closed");
 
-const ThreadRow = memo(function ThreadRow({ t, onWarm, unread }) {
+const ThreadRow = memo(function ThreadRow({ t, onWarm }) {
     const kind = kindOf(t);
     const warm = () => onWarm(t.id);
     const due = !!t.reminderAt && new Date(t.reminderAt).getTime() <= Date.now();
     const hasProduct = t.hasProduct !== false;       // older cached rows have no flag: they always had a product
     const cold = t.kind === "cold_call";
+    const unread = t.unread > 0 ? t.unread : 0;
+    const mentions = unread > 0 ? t.mentions || 0 : 0;
 
     return (
         <li>
-            <Link to={`/sales/enquiries/${t.id}`} className={`st-row${kind === "open" ? "" : " closed"}`} onPointerEnter={warm} onFocus={warm}>
+            <Link to={`/sales/enquiries/${t.id}`} className={`st-row${kind === "open" ? "" : " closed"}${unread ? " unread" : ""}`}
+                onPointerEnter={warm} onFocus={warm}>
                 <span className="st-row-m">
                     <span className="st-row-1">
                         <b>{t.displayName}</b>
-                        {unread?.unread > 0 && <span className={`sc-unread${unread.mentions ? " tag" : ""}`}>{unread.unread > 99 ? "99+" : unread.unread}</span>}
+                        {unread > 0 && (
+                            <span className="st-unread-g">
+                                {mentions > 0 && <span className="st-unread tag" title="You were tagged" aria-label="You were tagged">@</span>}
+                                <span className="st-unread" aria-label={`${unread} unread message${unread === 1 ? "" : "s"}`}>{unread > 99 ? "99+" : unread}</span>
+                            </span>
+                        )}
                         <time dateTime={t.lastActivityAt}>{listTime(t.lastActivityAt)}</time>
                     </span>
                     {t.city && (
@@ -77,10 +88,9 @@ const ThreadRow = memo(function ThreadRow({ t, onWarm, unread }) {
 export default function SalesEnquiriesPage() {
     const { token } = useAuth();
     const { say } = useOutletContext();
+    const { socket } = useSocket() || {};
     const nav = useNavigate();
     const [sp, setSp] = useSearchParams();
-
-    const chat = useChatUnread(token, !!token);
 
     const [qInput, setQInput] = useState("");
     const [q, setQ] = useState("");
@@ -143,6 +153,15 @@ export default function SalesEnquiriesPage() {
     useEffect(() => { if (!token) return undefined; load(0, false); return () => abortRef.current?.abort(); }, [load, token]);
     useRfqLive(() => loadRef.current(0, false, true), { enabled: !!token }); // socket, focus and a light poll
 
+    // A chat message, a read (also from another tab/device) or a change of people: refresh quietly, merged into one call.
+    useEffect(() => {
+        if (!socket || !token) return undefined;
+        let t;
+        const fire = () => { clearTimeout(t); t = setTimeout(() => loadRef.current(0, false, true), 400); };
+        CHAT_EVENTS.forEach((e) => socket.on(e, fire));
+        return () => { clearTimeout(t); CHAT_EVENTS.forEach((e) => socket.off(e, fire)); };
+    }, [socket, token]);
+
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && load(items.length, true),
         { lookahead: 600, disabled: loading || loadingMore || !hasMore },
@@ -151,23 +170,25 @@ export default function SalesEnquiriesPage() {
     const warm = useCallback((id) => prefetchThread(token, id), [token]);
 
     const emptyTitle = q ? "No enquiries match your search"
-        : filter === "reminder" ? "No reminders set"
-            : filter === "cold" ? "No cold calls logged"
-                : filter === "won" ? "No won enquiries yet"
-                    : filter === "lost" ? "No lost enquiries"
-                        : filter === "open" ? "No open enquiries" : "No enquiries yet";
+        : filter === "unread" ? "You're all caught up"
+            : filter === "reminder" ? "No reminders set"
+                : filter === "cold" ? "No cold calls logged"
+                    : filter === "won" ? "No won enquiries yet"
+                        : filter === "lost" ? "No lost enquiries"
+                            : filter === "open" ? "No open enquiries" : "No enquiries yet";
     const emptyText = q ? "Try a different company, product, city or GST number."
-        : filter === "reminder" ? "Open an enquiry, tap + and choose Set reminder. Reminders clear when you add an update."
-            : filter === "cold" ? "Tap New enquiry, choose Cold call / other, and log the call. Add the product later when they ask for one."
-                : filter === "won" ? "Enquiries you mark as won will show up here."
-                    : filter === "lost" ? "Enquiries you mark as lost will show up here."
-                        : filter === "open" ? "Everything is closed. Start a new enquiry when a customer asks for a price."
-                            : "When a customer asks for a price, start an enquiry. Spoke to someone who isn't ready yet? Log it as a cold call.";
+        : filter === "unread" ? "When an admin or teammate writes in one of your enquiries, it will show up here until you open it."
+            : filter === "reminder" ? "Open an enquiry, tap + and choose Set reminder. Reminders clear when you add an update."
+                : filter === "cold" ? "Tap New enquiry, choose Cold call / other, and log the call. Add the product later when they ask for one."
+                    : filter === "won" ? "Enquiries you mark as won will show up here."
+                        : filter === "lost" ? "Enquiries you mark as lost will show up here."
+                            : filter === "open" ? "Everything is closed. Start a new enquiry when a customer asks for a price."
+                                : "When a customer asks for a price, start an enquiry. Spoke to someone who isn't ready yet? Log it as a cold call.";
 
     return (
         <div className="gd st-listpage">
             <div className="gk-ph" style={{ marginTop: 22 }}>
-                <div><h1>RFQs</h1><p>Price requests and calls you take from customers. Only you can see them.</p></div>
+                <div><h1>RFQs</h1><p>Price requests and calls you take from customers. Only you and the people added to a chat can see them.</p></div>
                 <button type="button" className="st-btn pri" onClick={() => setCreating(true)}><Plus size={16} />New enquiry</button>
             </div>
 
@@ -178,11 +199,14 @@ export default function SalesEnquiriesPage() {
             </label>
 
             <div className="st-tabs" role="group" aria-label="Filter enquiries">
-                {TABS.map(([v, l]) => (
-                    <button key={v} type="button" className={`st-tab ${v}`} aria-pressed={filter === v} onClick={() => setFilter(v)}>
-                        {l}<span className="n">{counts[v] ?? 0}</span>
-                    </button>
-                ))}
+                {TABS.map(([v, l]) => {
+                    const n = counts[v] ?? 0;
+                    return (
+                        <button key={v} type="button" className={`st-tab ${v}${v === "unread" && n > 0 ? " has" : ""}`} aria-pressed={filter === v} onClick={() => setFilter(v)}>
+                            {l}<span className="n">{n}</span>
+                        </button>
+                    );
+                })}
             </div>
 
             {!loading && !error && <p className="gd-note">{total} enquir{total === 1 ? "y" : "ies"}</p>}
@@ -191,7 +215,7 @@ export default function SalesEnquiriesPage() {
                 <div className="st-list">{[0, 1, 2, 3].map((i) => <div key={i} className="st-sk tall" />)}</div>
             ) : items.length > 0 ? (
                 <ul className={`st-list${loading ? " busy" : ""}`}>
-                    {items.map((t) => <ThreadRow key={t.id} t={t} onWarm={warm} unread={chat.byThread[t.id]} />)}
+                    {items.map((t) => <ThreadRow key={t.id} t={t} onWarm={warm} />)}
                 </ul>
             ) : !loading && !error && (
                 <div className="st-empty-card" style={{ marginTop: 10 }}>
