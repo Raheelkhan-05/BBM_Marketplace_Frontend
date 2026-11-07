@@ -23,7 +23,8 @@ import { fmtNum } from "../utils/rfqUtils.js";
 import "../components/growSeller/grow-modules.css";
 
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? "morning" : h < 17 ? "afternoon" : "evening"; };
-const toTitle = (s = "") => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+// Null-safe: a default param only covers `undefined`, so coerce null/other values with `?? ""`.
+const toTitle = (s) => String(s ?? "").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 const ORDER_LABEL = {
@@ -156,7 +157,7 @@ function Thumb({ src, name }) {
     useEffect(() => { setBroken(false); }, [src]);
     return (
         <span className="gd-th">
-            {src && !broken ? <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} /> : (name || "?").trim()[0]?.toUpperCase()}
+            {src && !broken ? <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} /> : String(name ?? "?").trim()[0]?.toUpperCase() || "?"}
         </span>
     );
 }
@@ -444,13 +445,14 @@ export default function SaveDashboardPage() {
                             <div className="gk-empty" style={{ padding: 24 }}><Send size={24} /><b>Your price list is empty</b>Add a product you buy and suppliers will price it.
                                 <button type="button" className="gk-btn go" onClick={() => nav("/buy/rfq?new=1")}><Send size={16} />Post an RFQ</button></div>
                         ) : rfq.items.slice(0, 4).map((it) => {
-                            const units = Math.round(it.quantity * it.packSize * 1e6) / 1e6;
+                            const units = Math.round((Number(it.quantity) || 0) * (Number(it.packSize) || 1) * 1e6) / 1e6;
                             const count = Number(it.quotesCount ?? it.quoteCount ?? it.quotes?.length) || 0;
+                            const name = toTitle(it.productName) || "Untitled product";
                             return (
                                 <button key={it.id} type="button" className="gd-row" onClick={() => nav("/buy/rfq")}>
                                     <Thumb src={it.images?.[0]} name={it.productName} />
                                     <span className="t">
-                                        <b>{toTitle(it.productName)}</b>
+                                        <b>{name}</b>
                                         <small>{fmtNum(units)} {it.unit}</small>
                                     </span>
                                     <span className="r">

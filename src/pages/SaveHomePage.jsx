@@ -44,7 +44,8 @@ const mergeUnique = (prev, incoming) => {
 const CACHE = new Map();
 
 const EASE = [0.16, 1, 0.3, 1];
-const toTitle = (str = "") => str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+// Null-safe: a default param only covers `undefined`, so coerce null/other values with `?? ""`.
+const toTitle = (str) => String(str ?? "").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 const inr = (n) => (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 // A price per single unit can be small (e.g. ₹2.4691), so up to 4 decimals are kept, at least 2 are shown.
 const inrUnit = (n) => "₹" + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
@@ -56,6 +57,9 @@ const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString("en-IN", { da
 //   item.quotesCount -> number of live quotes
 const quotesOf = (item) => (Array.isArray(item.quotes) ? item.quotes : []);
 const quoteCountOf = (item) => Number(item.quotesCount ?? item.quoteCount ?? quotesOf(item).length) || 0;
+
+// The buyer's quantity in the individual unit. Missing / null values no longer produce NaN (packSize defaults to 1).
+const totalUnitsOf = (item) => Math.round((Number(item.quantity) || 0) * (Number(item.packSize) || 1) * 1e6) / 1e6;
 
 // The quote's price per INDIVIDUAL unit (incl. GST). The quote's own `price` is per pack, so it is not used here.
 // Uses a per-unit field when the API sends one; otherwise the quote's total for the buyer's quantity divided by that
@@ -132,7 +136,7 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
     const count = quoteCountOf(item);
 
     const canClose = ["pending_review", "approved"].includes(item.status);
-    const totalUnits = Math.round(item.quantity * item.packSize * 1e6) / 1e6; // the buyer's quantity in the individual unit
+    const totalUnits = totalUnitsOf(item); // the buyer's quantity in the individual unit
 
     let message = null;
     if (item.status === "pending_review") message = ["Waiting for review", "Suppliers can send quotes once our team approves this item."];
@@ -190,21 +194,22 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
 }
 
 function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onClose, onZoom }) {
-    const total = Math.round(item.quantity * item.packSize * 1e6) / 1e6; // one quantity, in the individual unit
+    const total = totalUnitsOf(item); // one quantity, in the individual unit
     const isSales = item.source === "sales";
     const count = isSales ? (item.salesQuotes || []).length : quoteCountOf(item);
     const statusLabel = isSales && item.status === "approved" ? "Open" : (STATUS_LABEL[item.status] || item.status);
     const images = (item.images || []).filter(Boolean);
     const hasImage = images.length > 0;
+    const name = toTitle(item.productName) || "Untitled product";
     const toggleKey = (e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
     };
 
     // The thumbnail sits inside the row's toggle (also a role="button"), so it stops the click from toggling the row.
-    const zoom = (e) => { e.stopPropagation(); onZoom(images, 0, toTitle(item.productName)); };
+    const zoom = (e) => { e.stopPropagation(); onZoom(images, 0, name); };
     const zoomKey = (e) => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onZoom(images, 0, toTitle(item.productName)); }
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onZoom(images, 0, name); }
     };
 
     return (
@@ -213,14 +218,14 @@ function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onCl
                 <div
                     className="sh-th"
                     {...(hasImage ? {
-                        role: "button", tabIndex: 0, "aria-label": `View image of ${item.productName}`,
+                        role: "button", tabIndex: 0, "aria-label": `View image of ${name}`,
                         onClick: zoom, onKeyDown: zoomKey, style: { cursor: "zoom-in" },
                     } : {})}
                 >
-                    {hasImage ? <img src={images[0]} alt="" loading="lazy" /> : (item.productName || "?").trim()[0]?.toUpperCase()}
+                    {hasImage ? <img src={images[0]} alt="" loading="lazy" /> : String(item.productName ?? "?").trim()[0]?.toUpperCase() || "?"}
                 </div>
                 <div className="sh-in">
-                    <p className="sh-rn">{toTitle(item.productName)}</p>
+                    <p className="sh-rn">{name}</p>
                     <p className="sh-rq">{fmtNum(total)} {item.unit}</p>
                     {isSales && <p className="sh-rq" style={{ opacity: .75 }}>For {item.customerName || item.customerGstin || "customer"}{item.salespersonName ? ` · by ${item.salespersonName}` : ""}</p>}
                     <div className="sh-rqt">
@@ -229,7 +234,7 @@ function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onCl
                     </div>
                 </div>
                 <div className="sh-rt">
-                    <button type="button" className="sh-ic" aria-label={`Details of ${item.productName}`} onClick={(e) => { e.stopPropagation(); onInfo(); }}>
+                    <button type="button" className="sh-ic" aria-label={`Details of ${name}`} onClick={(e) => { e.stopPropagation(); onInfo(); }}>
                         <Info size={18} />
                     </button>
                     <ChevronDown className="sh-chv" size={18} aria-hidden="true" style={{ color: "var(--mute)" }} />
@@ -369,7 +374,7 @@ function SaveHomePageInner() {
     };
 
     const handleClose = async (item) => {
-        if (!window.confirm(`Remove "${item.productName}" from your price list? Suppliers will no longer see it.`)) return;
+        if (!window.confirm(`Remove "${item.productName || "this item"}" from your price list? Suppliers will no longer see it.`)) return;
         const res = await closeRfq(token, item.id);
         if (!res.success) return say(res.message || "Couldn't close this item.");
         say("Removed from your price list.");
