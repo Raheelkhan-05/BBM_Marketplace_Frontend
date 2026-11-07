@@ -3,7 +3,7 @@
 //   onExisting(item) -> locked wizard for an item already on GROW
 //   onNew(identity)  -> full wizard for a brand-new product, name + brand already filled
 //
-// "Add a new brand" / "Add a new product" is ALWAYS visible (yellow button right under the search box), so a
+// "Add a new brand" / "Add a new product" is ALWAYS visible (yellow button at the END of the list), so a
 // seller with only a few items listed never has to search first to discover it. When something is typed and
 // not found, the button carries that name ("Add “Godrej”") and skips the extra typing step.
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -135,7 +135,7 @@ function SearchBox({ value, onChange, placeholder, label }) {
 // The always-visible yellow call to action (styled by .gp-row.gp-new in grow-picker.css).
 function AddRow({ title, sub, onClick }) {
     return (
-        <button type="button" className="gp-row gp-new" onClick={onClick}>
+        <button type="button" className="gp-row gp-new" style={{ marginTop: 16 }} onClick={onClick}>
             <span className="gp-ic">{ico(PLUS)}</span>
             <span className="t"><b>{title}</b><small>{sub}</small></span>
             <i className="gp-cv" />
@@ -189,10 +189,6 @@ function BrandStage({ token, say, onPick, onExit }) {
 
             <SearchBox value={P.input} onChange={P.setInput} placeholder="Search brands…" label="Search brands" />
 
-            {canAddNamed
-                ? <AddRow title={`Add “${typed}”`} sub="New brand · not found on GROW yet" onClick={openAdd} />
-                : <AddRow title="Add a new brand" sub="Can't find your brand in the list? Add it here" onClick={openAdd} />}
-
             <button type="button" className="gp-row" onClick={() => onPick({ none: true, name: "", image: "" })}>
                 <span className="gp-ic">{ico("M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10")}</span>
                 <span className="t"><b>Not a branded product</b><small>Loose, generic or unbranded items</small></span>
@@ -230,6 +226,10 @@ function BrandStage({ token, say, onPick, onExit }) {
                 <div className="gp-empty"><p>Couldn't load more brands.</p><button type="button" className="sbtn sm" onClick={P.retryMore}>Try again</button></div>
             )}
             {P.hasMore && !P.loading && !P.err && <div ref={P.sentinel} style={{ height: 4 }} />}
+
+            {canAddNamed
+                ? <AddRow title={`Add “${typed}”`} sub="New brand · not found on GROW yet" onClick={openAdd} />
+                : <AddRow title="Add a new brand" sub="Can't find your brand in the list? Add it here" onClick={openAdd} />}
         </section>
     );
 }
@@ -351,10 +351,6 @@ function ProductStage({ token, say, brand, onBack, onExisting, onNew }) {
             <SearchBox value={P.input} onChange={P.setInput} label={fresh ? "Product name" : "Search products"}
                 placeholder={fresh ? "Product name" : `Search ${none ? "unbranded" : brand.name} products…`} />
 
-            {canCreate
-                ? <AddRow title={`Add “${name}”`} sub={`New product · ${none ? "no brand" : `under ${brand.name}`}`} onClick={openAdd} />
-                : <AddRow title="Add a new product" sub={fresh ? "Enter the product name to continue" : "Can't find your product in the list? Add it here"} onClick={openAdd} />}
-
             {skeleton ? (
                 <div aria-busy="true">{Array.from({ length: 5 }).map((_, i) => <div className="gp-row" key={i}><span className="gp-th gp-sk" /><span className="t"><span className="gp-sk gp-skl wide" /></span></div>)}</div>
             ) : P.err && !P.rows.length ? (
@@ -382,6 +378,10 @@ function ProductStage({ token, say, brand, onBack, onExisting, onNew }) {
                 <div className="gp-empty"><p>Couldn't load more products.</p><button type="button" className="sbtn sm" onClick={P.retryMore}>Try again</button></div>
             )}
             {P.hasMore && !P.loading && !P.err && <div ref={P.sentinel} style={{ height: 4 }} />}
+
+            {canCreate
+                ? <AddRow title={`Add “${name}”`} sub={`New product · ${none ? "no brand" : `under ${brand.name}`}`} onClick={openAdd} />
+                : <AddRow title="Add a new product" sub={fresh ? "Enter the product name to continue" : "Can't find your product in the list? Add it here"} onClick={openAdd} />}
         </section>
     );
 }
