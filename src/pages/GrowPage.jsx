@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { MENU_ROUTES } from "../components/menuItems.js";
 import { goTo } from "../components/grow/scrollTo.js";
+import useSellerReady from "../components/grow/useSellerReady.js";
 import Seo from "../components/Seo.jsx";
 import { track } from "../lib/analytics.js";
 
@@ -248,6 +249,10 @@ export default function GrowPage() {
         setOpenId((cur) => (cur === uid ? null : uid));
     };
 
+    // Already-onboarded sellers don't need "Start selling": the hero tile points to their dashboard instead.
+    // (Same tile, same layout, so the hero doesn't shift.)
+    const { ready: isSeller } = useSellerReady();
+
     return (
         <>
             <Seo
@@ -267,13 +272,23 @@ export default function GrowPage() {
                                 <span className="tx"><b>Brands</b><small>Already on BBM Marketplace</small></span>
                                 <span className="ch" aria-hidden="true">›</span>
                             </a>
-                            <Link className="t2 b" to={"/sell?start=1"} onClick={() => track("seller_cta_clicked", { placement: "hero_tile" })}>
-                                <span className="ic">
-                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9M9 20v-6h6v6" /></svg>
-                                </span>
-                                <span className="tx"><b>Sellers</b><small>Start selling</small></span>
-                                <span className="ch" aria-hidden="true">›</span>
-                            </Link>
+                            {isSeller ? (
+                                <Link className="t2 b" to="/sell/dashboard" onClick={() => track("seller_cta_clicked", { placement: "hero_tile_dashboard" })}>
+                                    <span className="ic">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9M9 20v-6h6v6" /></svg>
+                                    </span>
+                                    <span className="tx"><b>Sellers</b><small>Go to your dashboard</small></span>
+                                    <span className="ch" aria-hidden="true">›</span>
+                                </Link>
+                            ) : (
+                                <Link className="t2 b" to={"/sell?start=1"} onClick={() => track("seller_cta_clicked", { placement: "hero_tile" })}>
+                                    <span className="ic">
+                                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9l1-5h14l1 5M4 9v11h16V9M4 9a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0A2.7 2.7 0 0 0 20 9M9 20v-6h6v6" /></svg>
+                                    </span>
+                                    <span className="tx"><b>Sellers</b><small>Start selling</small></span>
+                                    <span className="ch" aria-hidden="true">›</span>
+                                </Link>
+                            )}
                         </div>
 
                         <h1>Sell B2B with <em>confidence</em>.</h1>

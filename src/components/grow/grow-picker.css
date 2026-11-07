@@ -112,14 +112,24 @@
     background: none
 }
 
+/* Add new brand / product: always visible, yellow #FFD60A, bold black text */
 .gs .gp-row.gp-new {
-    border: 1.5px dashed #F2B8A5;
-    background: #FFF8F5
+    border: 1.5px solid #FFD60A;
+    background: #FFD60A;
+    color: #000;
+    box-shadow: 0 8px 18px -12px rgba(138, 101, 0, .75);
+    transition: background .15s, box-shadow .15s, transform .15s
 }
 
 .gs .gp-row.gp-new:hover:not(:disabled) {
-    border-color: #F4511E;
-    background: #FFF1EB
+    border-color: #FFDE33;
+    background: #FFDE33;
+    box-shadow: 0 10px 22px -12px rgba(138, 101, 0, .85)
+}
+
+.gs .gp-row.gp-new:focus-visible {
+    outline: 3px solid #000;
+    outline-offset: 2px
 }
 
 .gs .gp-row.gp-new b {
@@ -128,10 +138,25 @@
     overflow-wrap: anywhere;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
+    color: #000;
+    font-weight: 800
 }
 
 .gs .gp-row.gp-new small {
-    margin-top: 2px
+    margin-top: 2px;
+    color: #000;
+    opacity: .8;
+    font-weight: 600
+}
+
+.gs .gp-row.gp-new .gp-ic {
+    background: rgba(0, 0, 0, .1);
+    color: #000
+}
+
+.gs .gp-row.gp-new .gp-cv {
+    border-right-color: #000;
+    border-bottom-color: #000
 }
 
 .gs .gp-row .t,
@@ -412,6 +437,7 @@
 
     .gs .gp-b,
     .gs .gp-row,
+    .gs .gp-row.gp-new,
     .gs .gp-dim {
         transition: none
     }

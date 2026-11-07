@@ -2,6 +2,10 @@
 //   brand: null (choose a brand) | { name, image, none?, isNew? } (choose a product under it)
 //   onExisting(item) -> locked wizard for an item already on GROW
 //   onNew(identity)  -> full wizard for a brand-new product, name + brand already filled
+//
+// "Add a new brand" / "Add a new product" is ALWAYS visible (yellow button right under the search box), so a
+// seller with only a few items listed never has to search first to discover it. When something is typed and
+// not found, the button carries that name ("Add “Godrej”") and skips the extra typing step.
 import { useCallback, useEffect, useRef, useState } from "react";
 import useInfiniteScrollSentinel from "../../hooks/useInfiniteScrollSentinel";
 import { resizedImageUrl } from "../../utils/imageUrl";
@@ -22,6 +26,7 @@ const freshSeed = () => (brandSeed && Date.now() - brandSeed.ts < SEED_TTL ? bra
 
 const SEARCH = <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>;
 const ico = (d) => <svg viewBox="0 0 24 24" aria-hidden="true"><path d={d} /></svg>;
+const PLUS = "M12 5v14M5 12h14";
 
 /* ---------- search + paging hook ---------- */
 function usePaged(fetchPage, { skip = false, seed = null, keyOf, onPage } = {}) {
@@ -127,6 +132,17 @@ function SearchBox({ value, onChange, placeholder, label }) {
     );
 }
 
+// The always-visible yellow call to action (styled by .gp-row.gp-new in grow-picker.css).
+function AddRow({ title, sub, onClick }) {
+    return (
+        <button type="button" className="gp-row gp-new" onClick={onClick}>
+            <span className="gp-ic">{ico(PLUS)}</span>
+            <span className="t"><b>{title}</b><small>{sub}</small></span>
+            <i className="gp-cv" />
+        </button>
+    );
+}
+
 const packLine = (it) => {
     const ps = Number(it.packSize), mp = Number(it.masterPackSize);
     if (!it.unit || !(ps > 0)) return "Packaging not set yet";
@@ -145,6 +161,7 @@ export default function GrowProductPicker({ token, say, brand, setBrand, onExit,
 function BrandStage({ token, say, onPick, onExit }) {
     const seed = useRef(freshSeed()).current;
     const [adding, setAdding] = useState(false);
+    const [addName, setAddName] = useState("");
     const P = usePaged(async (term, offset, signal) => {
         const r = await fetchPickerBrands(token, { q: term, limit: BRAND_PAGE, offset, signal });
         if (!r?.success) throw new Error("bad response");
@@ -153,11 +170,15 @@ function BrandStage({ token, say, onPick, onExit }) {
 
     useEffect(() => { toTop(); }, [adding]);
 
+    const typed = clean(P.input);
     const exact = P.rows.some((b) => norm(b.brand_name) === norm(P.q));
-    const canAdd = P.q.length >= 2 && P.settled && !P.loading && !P.err && !exact;
+    // Something was typed and it is definitely not in the list: the button can carry that name.
+    const canAddNamed = P.q.length >= 2 && P.settled && !P.loading && !P.err && !exact;
     const skeleton = P.loading && !P.rows.length;
 
-    if (adding) return <AddBrand token={token} say={say} initial={clean(P.input)} onBack={() => setAdding(false)} onPick={onPick} />;
+    const openAdd = () => { setAddName(canAddNamed ? typed : ""); setAdding(true); };
+
+    if (adding) return <AddBrand token={token} say={say} initial={addName} onBack={() => setAdding(false)} onPick={onPick} />;
 
     return (
         <section className="scr on gp">
@@ -168,19 +189,15 @@ function BrandStage({ token, say, onPick, onExit }) {
 
             <SearchBox value={P.input} onChange={P.setInput} placeholder="Search brands…" label="Search brands" />
 
+            {canAddNamed
+                ? <AddRow title={`Add “${typed}”`} sub="New brand · not found on GROW yet" onClick={openAdd} />
+                : <AddRow title="Add a new brand" sub="Can't find your brand in the list? Add it here" onClick={openAdd} />}
+
             <button type="button" className="gp-row" onClick={() => onPick({ none: true, name: "", image: "" })}>
                 <span className="gp-ic">{ico("M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10")}</span>
                 <span className="t"><b>Not a branded product</b><small>Loose, generic or unbranded items</small></span>
                 <i className="gp-cv" />
             </button>
-
-            {canAdd && (
-                <button type="button" className="gp-row gp-new" onClick={() => setAdding(true)}>
-                    <span className="gp-ic or">{ico("M12 5v14M5 12h14")}</span>
-                    <span className="t"><b>Add “{clean(P.input)}”</b><small>New brand · not found on GROW yet</small></span>
-                    <i className="gp-cv" />
-                </button>
-            )}
 
             {skeleton ? (
                 <div className="gp-grid" aria-busy="true">
@@ -259,7 +276,8 @@ function AddBrand({ token, say, initial, onBack, onPick }) {
             <div className="gp-panel">
                 <div className="f">
                     <label>Brand name *</label>
-                    <div className="inp"><input value={name} maxLength={80} autoFocus onChange={(e) => setName(e.target.value)} placeholder="e.g. Godrej" /></div>
+                    <div className="inp"><input value={name} maxLength={80} autoFocus onChange={(e) => setName(e.target.value)} placeholder="e.g. Godrej"
+                        onKeyDown={(e) => { if (e.key === "Enter" && !busy && !up && clean(name).length >= 2) go(); }} /></div>
                 </div>
                 <div className="f" style={{ marginBottom: 0 }}>
                     <label>Brand logo (optional)</label>
@@ -281,13 +299,15 @@ function AddBrand({ token, say, initial, onBack, onPick }) {
 /* ============================== PRODUCT STAGE ============================== */
 function ProductStage({ token, say, brand, onBack, onExisting, onNew }) {
     const none = !!brand.none, fresh = !!brand.isNew;
+    const [adding, setAdding] = useState(false);
+    const [addName, setAddName] = useState("");
     const P = usePaged(async (term, offset, signal) => {
         const r = await fetchPickerItems(token, { brand: brand.name, none, q: term, limit: ITEM_PAGE, offset, signal });
         if (!r?.success) throw new Error("bad response");
         return { rows: r.items || [], hasMore: !!r.hasMore };
     }, { skip: fresh, keyOf: itemKey });
 
-    useEffect(() => { toTop(); }, []);
+    useEffect(() => { toTop(); }, [adding]);
 
     const name = clean(P.input);
     const exact = P.rows.some((i) => norm(i.name) === norm(name));
@@ -295,20 +315,32 @@ function ProductStage({ token, say, brand, onBack, onExisting, onNew }) {
     const skeleton = !fresh && P.loading && !P.rows.length;
     const brandLabel = none ? "No brand" : brand.name;
 
-    const create = () => onNew({
-        productName: name,
+    const identityFor = (productName) => ({
+        productName,
         brandName: none ? "" : brand.name,
         brandImage: none ? "" : (brand.image || ""),
         brandNotApplicable: none,
         brandIsNew: fresh,
     });
+    const create = () => onNew(identityFor(name));
+    // A typed, not-yet-existing name goes straight to the wizard; otherwise ask for the name first.
+    const openAdd = () => {
+        if (canCreate) return create();
+        setAddName("");
+        setAdding(true);
+    };
+
+    if (adding) {
+        return <AddProduct token={token} say={say} brand={brand} fresh={fresh} initial={addName}
+            onBack={() => setAdding(false)} onExisting={onExisting} onNew={(n) => onNew(identityFor(n))} />;
+    }
 
     return (
         <section className="scr on gp">
             <div className="gp-top"><button type="button" className="lnk" onClick={onBack}>Back</button></div>
             <p className="kick">Add product · Step 2 of 2</p>
             <h2>What are you selling?</h2>
-            <p className="sub">{fresh ? "Type the product name to add it under this new brand." : "Choose a product already on GROW, or type its name to add a new one."}</p>
+            <p className="sub">{fresh ? "Type the product name to add it under this new brand." : "Choose a product already on GROW, or add a new one."}</p>
 
             <div className="gp-sel">
                 <span className="gp-logo sm"><Logo src={none ? "" : brand.image} name={none ? "NB" : brand.name} /></span>
@@ -319,13 +351,9 @@ function ProductStage({ token, say, brand, onBack, onExisting, onNew }) {
             <SearchBox value={P.input} onChange={P.setInput} label={fresh ? "Product name" : "Search products"}
                 placeholder={fresh ? "Product name" : `Search ${none ? "unbranded" : brand.name} products…`} />
 
-            {canCreate && (
-                <button type="button" className="gp-row gp-new" onClick={create}>
-                    <span className="gp-ic or">{ico("M12 5v14M5 12h14")}</span>
-                    <span className="t"><b>Add “{name}”</b><small>New product · {none ? "no brand" : `under ${brand.name}`}</small></span>
-                    <i className="gp-cv" />
-                </button>
-            )}
+            {canCreate
+                ? <AddRow title={`Add “${name}”`} sub={`New product · ${none ? "no brand" : `under ${brand.name}`}`} onClick={openAdd} />
+                : <AddRow title="Add a new product" sub={fresh ? "Enter the product name to continue" : "Can't find your product in the list? Add it here"} onClick={openAdd} />}
 
             {skeleton ? (
                 <div aria-busy="true">{Array.from({ length: 5 }).map((_, i) => <div className="gp-row" key={i}><span className="gp-th gp-sk" /><span className="t"><span className="gp-sk gp-skl wide" /></span></div>)}</div>
@@ -334,7 +362,6 @@ function ProductStage({ token, say, brand, onBack, onExisting, onNew }) {
             ) : !P.rows.length ? (
                 <div className="gp-empty">
                     <p>{fresh ? "New brand: nothing to choose from yet." : P.q ? `No product matches “${P.q}”.` : `No products under ${brandLabel} yet.`}</p>
-                    {!canCreate && <p>Type the product name above to add it.</p>}
                 </div>
             ) : (
                 <div className={P.loading ? "gp-dim" : ""}>
@@ -355,6 +382,52 @@ function ProductStage({ token, say, brand, onBack, onExisting, onNew }) {
                 <div className="gp-empty"><p>Couldn't load more products.</p><button type="button" className="sbtn sm" onClick={P.retryMore}>Try again</button></div>
             )}
             {P.hasMore && !P.loading && !P.err && <div ref={P.sentinel} style={{ height: 4 }} />}
+        </section>
+    );
+}
+
+// New product: just the name. If that product already exists under the brand, the existing one is used instead
+// (or the seller is told they already list it), so no duplicates are created.
+function AddProduct({ token, say, brand, fresh, initial, onBack, onExisting, onNew }) {
+    const none = !!brand.none;
+    const [name, setName] = useState(initial);
+    const [busy, setBusy] = useState(false);
+
+    const go = async () => {
+        const n = clean(name);
+        if (n.length < 2) return say("Enter the product name.");
+        setBusy(true);
+        try {
+            if (!fresh) { // a brand-new brand has no products to clash with
+                const r = await fetchPickerItems(token, { brand: brand.name, none, q: n, limit: 10, offset: 0 });
+                if (!r?.success) return say("Couldn't check this product. Please try again.");
+                const hit = (r.items || []).find((i) => norm(i.name) === norm(n));
+                if (hit) {
+                    if (hit.listed) return say("You already list this product.");
+                    say("This product already exists, so we selected it for you.");
+                    return onExisting(hit);
+                }
+            }
+            onNew(n);
+        } finally { setBusy(false); }
+    };
+
+    return (
+        <section className="scr on gp">
+            <div className="gp-top"><button type="button" className="lnk" onClick={onBack}>Back</button></div>
+            <p className="kick">Add product · Step 2 of 2</p>
+            <h2>Add a new product</h2>
+            <p className="sub">{none ? "This will be added as an unbranded product." : `This will be added under ${brand.name}.`} Please check the spelling. Buyers see this name.</p>
+            <div className="gp-panel">
+                <div className="f" style={{ marginBottom: 0 }}>
+                    <label>Product name *</label>
+                    <div className="inp"><input value={name} maxLength={120} autoFocus onChange={(e) => setName(e.target.value)} placeholder="e.g. Premium Stainless Steel Hinges"
+                        onKeyDown={(e) => { if (e.key === "Enter" && !busy && clean(name).length >= 2) go(); }} /></div>
+                </div>
+            </div>
+            <div className="gp-acts">
+                <button type="button" className="sbtn" disabled={busy || clean(name).length < 2} onClick={go}>{busy ? "Checking…" : "Continue"}</button>
+            </div>
         </section>
     );
 }
