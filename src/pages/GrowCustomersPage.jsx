@@ -40,7 +40,7 @@ const initialFilter = () => {
 // ── credit block on a customer card ─────────────────────────────────────────
 function CreditBlock({ c, busy, on }) {
     if (!c.userId) {
-        return <p className="cr-note tracking-wide" style={{ marginTop: 12 }}>Credit and custom pricing become available once they join BBM.</p>;
+        return <p className="cr-note tracking-wide" style={{ marginTop: 12 }}>Credit becomes available once they join BBM. You can already set custom prices.</p>;
     }
     const cr = c.credit || { status: "none", limit: 0, used: 0 };
     const pct = cr.limit > 0 ? Math.min(100, Math.round((cr.used / cr.limit) * 100)) : 0;
@@ -165,7 +165,7 @@ function CustomerCard({ c, hl, busy, on, canAssign }) {
             <div className="rf">
                 <div className="tm"><Ic n="clock" /><span><b>Added {day(c.addedAt)}</b></span></div>
                 <div className="rowa">
-                    {c.userId && (
+                    {(c.userId || c.gstin) && (
                         <button type="button" className="bt sm" onClick={() => on.pricing(c)}><Tag size={15} />Custom pricing</button>
                     )}
                     {!active && (<>
@@ -503,6 +503,7 @@ export default function GrowCustomersPage() {
                 token={token}
                 say={say}
                 buyerId={pricingFor?.userId}
+                gstin={pricingFor?.gstin}
                 buyerLabel={toTitleCase(pricingFor?.name || "") || "this customer"}
                 onClose={() => setPricingFor(null)}
             />

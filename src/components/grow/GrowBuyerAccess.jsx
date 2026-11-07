@@ -1,21 +1,21 @@
 // src/components/grow/GrowBuyerAccess.jsx
 // Buyer visibility + per-buyer custom pricing in the GROW look.
 //  - GrowBuyerAccessDraft : create flow (no submission yet). All state lives in `value` ({ mode, buyers }),
-//                           sent as `buyerAccessDraft` exactly like the old SellerListingForm did.
-//  - GrowBuyerAccessLive  : edit flow. Uses the existing per-listing APIs, same as the old BuyerAccessPricing.
-// Both share the same price editor and the same shared/customPricing.js math as the old UI,
-// so a price set here resolves to the same stored number.
-// BuyerPriceEditor / Seg / Field / emptyDraft are exported so GrowCustomerPricing (per-buyer, many products,
-// opened from the Customers page) uses the exact same editor and math.
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+//                           sent as `buyerAccessDraft`. Buyers added by GST number carry buyerId "gst:<GSTIN>".
+//  - GrowBuyerAccessLive  : edit flow. Buyers on BBM use the existing per-listing APIs; buyers who haven't
+//                           joined yet (added by GST number) use /seller/gst-access and apply when they join.
+// BuyerPriceEditor / Seg / Field / emptyDraft are exported so GrowCustomerPricing uses the same editor and math.
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
     searchEligibleBuyers, fetchListingAccess, setListingVisibilityMode, addListingVisibilityBuyer,
     removeListingVisibilityBuyer, saveCustomPricingForBuyer, deleteCustomPricingForBuyer,
 } from "../../utils/sellerListingApi.js";
+import { fetchListingPending, addPendingBuyer, removePendingBuyer } from "../../utils/gstAccessApi.js";
 import {
     derivePriceBreakdown, percentFromCustomPrice, priceFromLevel, violatesMinUnitPrice,
     MIN_UNIT_PRICE, LEVEL_LABEL, LEVEL_FIELD, levelsFor,
 } from "../../../shared/customPricing.js";
+import GstBuyerAdd from "./GstBuyerAdd.jsx";
 import "./grow-access.css";
 
 /* ---------------- tiny shared bits (also used by GrowEditListing) ---------------- */
@@ -37,6 +37,8 @@ const round2 = (n) => (n == null ? n : Math.round(n * 100) / 100);
 const initials = (name) => (name || "?").trim().split(" ").slice(0, 2).map((p) => p[0]?.toUpperCase()).join("");
 const byName = (a, b) => (a.shopName || a.name || "").localeCompare(b.shopName || b.name || "");
 const MODES = [["public", "Everyone can see it"], ["restricted", "Selected buyers only"]];
+const isGstId = (id) => String(id).startsWith("gst:");
+const gstOf = (id) => String(id).slice(4);
 
 export const emptyDraft = () => ({
     mode: "amount", gstMode: "incl", amounts: { unit: "", pack: "", master_pack: "" },
@@ -165,7 +167,7 @@ export function BuyerPriceEditor({ product, draft, setDraft }) {
     );
 }
 
-/* ---------------- search ---------------- */
+/* ---------------- search (buyers on BBM) ---------------- */
 function BuyerSearch({ token, submissionId = null, exclude, placeholder, onPick }) {
     const [q, setQ] = useState("");
     const [res, setRes] = useState([]);
@@ -197,7 +199,7 @@ function BuyerSearch({ token, submissionId = null, exclude, placeholder, onPick 
             {open && (
                 <div className="gax-pop"><div className="gax-list">
                     {busy ? <p className="gax-msg">Searching…</p>
-                        : !res.length ? <p className="gax-msg">No matching buyers.</p>
+                        : !res.length ? <p className="gax-msg">No matching buyers. Not on BBM yet? Add them by GST number below.</p>
                             : res.map((b) => (
                                 <button key={b.buyer_id} type="button" className="gax-opt" onClick={() => { setQ(""); setOpen(false); onPick(b); }}>
                                     <span className="gax-av" style={{ width: 34, height: 34, borderRadius: 10 }}>{initials(b.shop_name || b.name)}</span>
@@ -216,13 +218,19 @@ function BuyerCard({ buyer, product, mode, open, onToggle, draft, setDraft, onCl
     const name = buyer.shopName || buyer.name || "Buyer";
     const pct = buyer.override ? percentFromCustomPrice(product.defaultPrice, buyer.effectivePrice) : null;
     const showRemove = mode === "restricted" || !buyer.override;
+    const sub = buyer.pendingGst ? `GSTIN ${buyer.gstin}` : (buyer.phone || buyer.email || "—");
     return (
         <div className={`gax-card${open ? " open" : ""}`}>
             <button type="button" className="gax-ch" aria-expanded={open} onClick={onToggle}>
                 <span className="gax-av">{initials(name)}</span>
                 <span className="t">
-                    <b>{name}{unsaved && <span className="gax-pill">Unsaved</span>}{stale && <span className="gax-pill red">Re-check price</span>}</b>
-                    <small>{buyer.phone || buyer.email || "—"}</small>
+                    <b>
+                        {name}
+                        {buyer.pendingGst && <span className="gax-pill">Not on BBM yet</span>}
+                        {unsaved && <span className="gax-pill">Unsaved</span>}
+                        {stale && <span className="gax-pill red">Re-check price</span>}
+                    </b>
+                    <small>{sub}</small>
                     {buyer.override && (
                         <small className={`pr${pct < 0 ? " up" : ""}`}>
                             ₹{inr(buyer.effectiveBreakdown?.perPack)}/pack · {pct >= 0 ? `${Math.round(pct)}% off` : `${Math.abs(Math.round(pct))}% up`}
@@ -234,6 +242,7 @@ function BuyerCard({ buyer, product, mode, open, onToggle, draft, setDraft, onCl
             {open && (
                 <div className="gax-cb">
                     {stale && <p className="gax-sum warn">The listing price changed after this price was set. Re-enter it to be sure it is right.</p>}
+                    {buyer.pendingGst && <p className="gax-sum info">This business isn't on BBM yet. What you set here is saved against its GST number and applies automatically when it joins.</p>}
                     <BuyerPriceEditor product={product} draft={draft} setDraft={setDraft} />
                     {(buyer.override || showRemove) && (
                         <div className="gax-acts">
@@ -252,7 +261,7 @@ function BuyerCard({ buyer, product, mode, open, onToggle, draft, setDraft, onCl
 }
 
 const Intro = () => (
-    <p className="gax-sum info tracking-wide">Choose who can see this listing and give specific buyers their own price. Everyone else pays the listing price.</p>
+    <p className="gax-sum info tracking-wide">Choose who can see this listing and give specific buyers their own price. Everyone else pays the listing price. Buyers who haven't joined BBM yet can be added by GST number.</p>
 );
 const SlabNote = () => (
     <p className="gax-sum warn">A custom price switches off quantity discounts for that buyer. They pay exactly this price, however much they order.</p>
@@ -294,6 +303,23 @@ export function GrowBuyerAccessDraft({ token, product, value, onChange, quickBuy
         if (mode === "public") openBuyer(nb);
     };
 
+    // a business found by GST number: on BBM -> same as a search hit; not on BBM -> kept as "gst:<GSTIN>"
+    const pickGst = (r) => {
+        if (r.state === "registered" && r.companyId) {
+            pick({ buyer_id: r.companyId, name: r.name, phone: null, email: null, shop_name: r.name });
+            return;
+        }
+        const id = `gst:${r.gstin}`;
+        const exist = buyers.find((b) => b.buyerId === id);
+        if (exist) { openBuyer(exist); return; }
+        const nb = {
+            buyerId: id, gstin: r.gstin, pendingGst: true, name: r.name, shopName: r.name, phone: null, email: null, override: null,
+            ...(mode === "public" ? { pendingPricing: true } : {}),
+        };
+        set({ buyers: [...buyers, nb].sort(byName) });
+        if (mode === "public") openBuyer(nb);
+    };
+
     const update = (id, updater) => {
         const next = updater(drafts[id] || emptyDraft());
         setDrafts((d) => ({ ...d, [id]: next }));
@@ -331,6 +357,7 @@ export function GrowBuyerAccessDraft({ token, product, value, onChange, quickBuy
 
             <BuyerSearch token={token} exclude={buyers.map((b) => String(b.buyerId))}
                 placeholder={mode === "restricted" ? "Search buyers to give access" : "Search a buyer to set a custom price"} onPick={pick} />
+            <Field label="Or add a business by GST number"><GstBuyerAdd token={token} onAdd={pickGst} /></Field>
 
             {list.some((b) => b.override) && <SlabNote />}
 
@@ -356,10 +383,20 @@ export function GrowBuyerAccessDraft({ token, product, value, onChange, quickBuy
     );
 }
 
-/* ---------------- LIVE (edit flow, existing APIs) ---------------- */
+/* ---------------- LIVE (edit flow) ---------------- */
+// A buyer waiting for BBM, shaped like a registered buyer so BuyerCard / draftFromOverride work unchanged.
+const asBuyer = (p, sub) => ({
+    buyerId: `gst:${p.gstin}`, gstin: p.gstin, pendingGst: true, name: p.name, shopName: p.name, phone: null, email: null,
+    hasVisibilityGrant: !!p.hasVisibilityGrant, pendingPricing: !!p.pendingPricing,
+    override: p.override ? { overrideType: "fixed", fixedPrice: p.override.effectivePrice } : null,
+    effectivePrice: p.override?.effectivePrice ?? sub.defaultPrice,
+    effectiveBreakdown: p.override?.effectiveBreakdown ?? sub.defaultBreakdown,
+});
+
 export const GrowBuyerAccessLive = forwardRef(function GrowBuyerAccessLive({ token, submissionId }, ref) {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
+    const [pending, setPending] = useState([]);   // buyers not on BBM yet (raw, from /gst-access)
     const [error, setError] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
     const [removingId, setRemovingId] = useState(null);
@@ -368,12 +405,22 @@ export const GrowBuyerAccessLive = forwardRef(function GrowBuyerAccessLive({ tok
 
     const load = useCallback((opts = {}) => {
         if (!opts.silent) setLoading(true);
-        fetchListingAccess(token, submissionId).then((res) => {
+        Promise.all([fetchListingAccess(token, submissionId), fetchListingPending(token, submissionId)]).then(([res, pen]) => {
             if (res?.success) { setData(res); setError(null); } else setError(res?.message || "Couldn't load buyer access.");
+            if (pen?.success) {
+                // keep "price not saved yet" cards the seller is still working on
+                setPending((prev) => {
+                    const server = pen.buyers || [];
+                    const keep = prev.filter((p) => p.pendingPricing && !server.some((s) => s.gstin === p.gstin));
+                    return [...server, ...keep];
+                });
+            }
             if (!opts.silent) setLoading(false);
         });
     }, [token, submissionId]);
     useEffect(() => { load(); /* eslint-disable-next-line */ }, [submissionId]);
+
+    const pendingBuyers = useMemo(() => (data ? pending.map((p) => asBuyer(p, data.submission)) : []), [pending, data]);
 
     const openBuyer = (b) => {
         setDrafts((d) => ({ ...d, [b.buyerId]: d[b.buyerId] || (b.override ? draftFromOverride(b, data.submission) : emptyDraft()) }));
@@ -381,11 +428,20 @@ export const GrowBuyerAccessLive = forwardRef(function GrowBuyerAccessLive({ tok
     };
     const toggle = (b) => (openId === b.buyerId ? setOpenId(null) : openBuyer(b));
     const setDraftFor = (id, updater) => setDrafts((p) => ({ ...p, [id]: updater(p[id] || emptyDraft()) }));
+    const dropDraft = (id) => setDrafts((d) => { const n = { ...d }; delete n[id]; return n; });
 
     const changeMode = (m) => {
         const prev = data;
         setData((d) => ({ ...d, submission: { ...d.submission, visibilityMode: m } }));
-        setListingVisibilityMode(token, submissionId, m).then((res) => { if (res?.success) load({ silent: true }); else setData(prev); });
+        setListingVisibilityMode(token, submissionId, m).then(async (res) => {
+            if (!res?.success) { setData(prev); return; }
+            if (m === "restricted") {
+                // like registered buyers: someone who already has a price keeps access
+                const need = pending.filter((p) => p.override && !p.hasVisibilityGrant);
+                await Promise.all(need.map((p) => addPendingBuyer(token, submissionId, { gstin: p.gstin, grantVisibility: true })));
+            }
+            load({ silent: true });
+        });
     };
 
     const synth = (c, grant) => ({
@@ -410,13 +466,47 @@ export const GrowBuyerAccessLive = forwardRef(function GrowBuyerAccessLive({ tok
         }
     };
 
+    // a business found by GST number
+    const pickGst = async (r) => {
+        if (r.state === "registered" && r.companyId) {
+            pick({ buyer_id: r.companyId, name: r.name, phone: null, email: null, shop_name: r.name });
+            return;
+        }
+        const id = `gst:${r.gstin}`;
+        const exist = pendingBuyers.find((b) => b.buyerId === id);
+        if (exist) { openBuyer(exist); return; }
+        if (data.submission.visibilityMode === "restricted") {
+            const prev = pending;
+            setPending((p) => [...p, { gstin: r.gstin, name: r.name, hasVisibilityGrant: true, override: null }]);
+            const res = await addPendingBuyer(token, submissionId, { gstin: r.gstin, grantVisibility: true });
+            if (res?.success) load({ silent: true });
+            else { setPending(prev); setError(res?.message || "Couldn't add this buyer. Please try again."); }
+        } else {
+            const nb = { gstin: r.gstin, name: r.name, hasVisibilityGrant: false, override: null, pendingPricing: true };
+            setPending((p) => [...p, nb]);
+            openBuyer(asBuyer(nb, data.submission));
+        }
+    };
+
     const removeAccess = (id) => {
+        if (isGstId(id)) {
+            const prev = pending;
+            setRemovingId(id);
+            setPending((p) => p.filter((x) => `gst:${x.gstin}` !== id));
+            setOpenId((x) => (x === id ? null : x)); dropDraft(id);
+            removePendingBuyer(token, submissionId, gstOf(id), "all").then((res) => {
+                setRemovingId(null);
+                if (res?.success) load({ silent: true });
+                else { setPending(prev); setError(res?.message || "Couldn't remove this buyer's access. Please try again."); }
+            });
+            return;
+        }
         const prev = data;
         const had = !!data.buyers.find((b) => b.buyerId === id)?.override;
         setRemovingId(id);
         setData((d) => ({ ...d, buyers: d.buyers.filter((b) => b.buyerId !== id) }));
         setOpenId((x) => (x === id ? null : x));
-        setDrafts((d) => { const n = { ...d }; delete n[id]; return n; });
+        dropDraft(id);
         const calls = [removeListingVisibilityBuyer(token, submissionId, id)];
         if (had) calls.push(deleteCustomPricingForBuyer(token, id, submissionId));
         Promise.all(calls).then((rs) => {
@@ -427,6 +517,19 @@ export const GrowBuyerAccessLive = forwardRef(function GrowBuyerAccessLive({ tok
     };
 
     const clearPrice = (id) => {
+        if (isGstId(id)) {
+            const prev = pending;
+            setDeletingId(id);
+            setPending((p) => p
+                .map((x) => (`gst:${x.gstin}` === id ? { ...x, override: null } : x))
+                .filter((x) => `gst:${x.gstin}` !== id || x.hasVisibilityGrant));
+            dropDraft(id);
+            removePendingBuyer(token, submissionId, gstOf(id), "price").then((res) => {
+                setDeletingId(null);
+                if (res?.success) load({ silent: true }); else { setPending(prev); setError(res?.message || "Couldn't remove the custom price."); }
+            });
+            return;
+        }
         const prev = data;
         setDeletingId(id);
         setData((d) => ({
@@ -435,38 +538,46 @@ export const GrowBuyerAccessLive = forwardRef(function GrowBuyerAccessLive({ tok
                 .map((b) => (b.buyerId === id ? { ...b, override: null, effectivePrice: d.submission.defaultPrice, effectiveBreakdown: d.submission.defaultBreakdown } : b))
                 .filter((b) => b.buyerId !== id || b.hasVisibilityGrant),
         }));
-        setDrafts((d) => { const n = { ...d }; delete n[id]; return n; });
+        dropDraft(id);
         deleteCustomPricingForBuyer(token, id, submissionId).then((res) => {
             setDeletingId(null);
             if (res?.success) load({ silent: true }); else setData(prev);
         });
     };
 
+    // a card that was never saved: just forget it
     const discard = (id) => {
-        setData((d) => ({ ...d, buyers: d.buyers.filter((b) => b.buyerId !== id) }));
+        if (isGstId(id)) setPending((p) => p.filter((x) => `gst:${x.gstin}` !== id));
+        else setData((d) => ({ ...d, buyers: d.buyers.filter((b) => b.buyerId !== id) }));
         setOpenId((x) => (x === id ? null : x));
-        setDrafts((d) => { const n = { ...d }; delete n[id]; return n; });
+        dropDraft(id);
     };
 
     // Called by the sheet's Save button. Only pushes buyers whose draft price differs from what is stored.
     const flushPendingChanges = useCallback(async () => {
+        const all = [...(data?.buyers || []), ...pendingBuyers];
         const ids = Object.keys(drafts).filter((id) => {
             const d = drafts[id];
             if (!d?.canonicalPrice) return false;
-            const b = data?.buyers.find((x) => String(x.buyerId) === String(id));
+            const b = all.find((x) => String(x.buyerId) === String(id));
             return !b || b.effectivePrice !== d.canonicalPrice;
         });
         if (!ids.length) return { success: true };
         let allOk = true;
         for (const id of ids) {
             const d = drafts[id];
+            if (isGstId(id)) {
+                const res = await addPendingBuyer(token, submissionId, { gstin: gstOf(id), grantVisibility: false, price: { canonicalPrice: d.canonicalPrice } });
+                if (!res?.success) { allOk = false; setError(res?.message || "Couldn't save one or more buyer prices."); }
+                continue;
+            }
             const isIncrease = Number(d.canonicalPrice) > Number(data.submission.defaultPrice);
             const asFixed = d.mode === "amount" || isIncrease;
             const item = {
                 submissionId, overrideType: asFixed ? "fixed" : "percent",
                 value: asFixed ? d.canonicalPrice : Number(d.percentValue), inputMode: asFixed ? "fixed_price" : "percent",
             };
-            const res = await saveCustomPricingForBuyer(token, data.buyers.find((x) => String(x.buyerId) === String(id))?.buyerId ?? id, [item]);
+            const res = await saveCustomPricingForBuyer(token, all.find((x) => String(x.buyerId) === String(id))?.buyerId ?? id, [item]);
             if (res?.rejected?.length || (!res?.success && !res?.saved)) {
                 allOk = false;
                 setError(res?.rejected?.length
@@ -477,15 +588,16 @@ export const GrowBuyerAccessLive = forwardRef(function GrowBuyerAccessLive({ tok
         setOpenId(null);
         load({ silent: true });
         return { success: allOk };
-    }, [drafts, data, submissionId, token, load]);
+    }, [drafts, data, pendingBuyers, submissionId, token, load]);
     useImperativeHandle(ref, () => ({ flushPendingChanges }), [flushPendingChanges]);
 
     if (loading) return <div className="gax gax-load"><div className="gax-skel" /><div className="gax-skel" /></div>;
     if (error && !data) return <div className="gax"><p className="gax-sum err">{error}</p></div>;
 
     const mode = data.submission.visibilityMode;
-    const granted = data.buyers.filter((b) => b.hasVisibilityGrant);
-    const list = mode === "restricted" ? data.buyers : data.buyers.filter((b) => b.override || b.pendingPricing);
+    const everyone = [...data.buyers, ...pendingBuyers].sort(byName);
+    const granted = everyone.filter((b) => b.hasVisibilityGrant);
+    const list = mode === "restricted" ? everyone : everyone.filter((b) => b.override || b.pendingPricing);
 
     return (
         <div className="gax gax-stack">
@@ -497,8 +609,9 @@ export const GrowBuyerAccessLive = forwardRef(function GrowBuyerAccessLive({ tok
                 <p className="gax-sum err">No buyers added yet. This listing is invisible to everyone until you add at least one.</p>
             )}
 
-            <BuyerSearch token={token} submissionId={submissionId} exclude={data.buyers.map((b) => String(b.buyerId))}
+            <BuyerSearch token={token} submissionId={submissionId} exclude={everyone.map((b) => String(b.buyerId))}
                 placeholder={mode === "restricted" ? "Search buyers to give access" : "Search a buyer to set a custom price"} onPick={pick} />
+            <Field label="Or add a business by GST number"><GstBuyerAdd token={token} submissionId={submissionId} onAdd={pickGst} /></Field>
 
             {!list.length ? (
                 <p className="gax-empty">{mode === "restricted" ? "Add a buyer above to give access." : "No custom prices set for any buyer yet."}</p>

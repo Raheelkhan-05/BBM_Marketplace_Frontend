@@ -1,0 +1,117 @@
+.gst-add {
+    display: grid;
+    gap: 8px;
+}
+
+.gst-inp input {
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    font-variant-numeric: tabular-nums;
+}
+
+.gst-n {
+    font-size: .75rem;
+    opacity: .6;
+}
+
+.gst-st {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: .85rem;
+    opacity: .75;
+}
+
+.gst-spin {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    animation: gst-rot .7s linear infinite;
+}
+
+@keyframes gst-rot {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.gst-link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    color: inherit;
+    cursor: pointer;
+}
+
+.gst-prev {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(127, 127, 127, .28);
+    background: rgba(127, 127, 127, .06);
+}
+
+.gst-av {
+    flex: none;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    display: grid;
+    place-items: center;
+    font-weight: 800;
+    background: rgba(37, 99, 235, .14);
+    color: #1d4ed8;
+}
+
+.gst-t {
+    flex: 1;
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.gst-t b {
+    overflow-wrap: anywhere;
+}
+
+.gst-t small {
+    opacity: .72;
+    line-height: 1.35;
+}
+
+.gst-chip {
+    justify-self: start;
+    margin-top: 2px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.gst-chip.ok {
+    background: rgba(22, 163, 74, .15);
+    color: #15803d;
+}
+
+.gst-chip.warn {
+    background: rgba(217, 119, 6, .16);
+    color: #b45309;
+}
+
+@media (max-width: 480px) {
+    .gst-prev {
+        flex-wrap: wrap;
+    }
+
+    .gst-prev .gax-btn {
+        width: 100%;
+    }
+}

@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { fetchCustomPricing, saveCustomPricing, bulkClearCustomPricing } from "../../utils/api.js";
+import { fetchGstPricing, saveGstPricing, bulkClearGstPricing } from "../../utils/gstAccessApi.js";
 import { derivePriceBreakdown, percentFromCustomPrice, violatesMinUnitPrice, MIN_UNIT_PRICE } from "../../../shared/customPricing.js";
 import { Seg, BuyerPriceEditor, emptyDraft } from "./GrowBuyerAccess.jsx";
 import "./grow-access.css";
@@ -33,7 +34,7 @@ const isInvalid = (row, d) => d?.canonicalPrice != null
 // a draft only counts as a change when it differs from what is stored
 const isDirty = (row, d) => d?.canonicalPrice != null && (!row.override || d.canonicalPrice !== row.effectivePrice);
 
-export default function GrowCustomerPricing({ open, onClose, token, buyerId, buyerLabel = "this customer", say }) {
+export default function GrowCustomerPricing({ open, onClose, token, buyerId, gstin, buyerLabel = "this customer", say }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -50,15 +51,15 @@ export default function GrowCustomerPricing({ open, onClose, token, buyerId, buy
     const [warning, setWarning] = useState(null);
 
     const load = useCallback(async (silent = false) => {
-        if (!buyerId) return;
+        if (!buyerId && !gstin) return;
         if (!silent) { setLoading(true); setError(null); }
         try {
-            const res = await fetchCustomPricing(token, buyerId);
+            const res = buyerId ? await fetchCustomPricing(token, buyerId) : await fetchGstPricing(token, gstin);
             if (res?.success) { setRows(res.items || []); setError(null); }
             else setError(res?.message || "Couldn't load the products.");
         } catch { setError("Network problem. Please try again."); }
         if (!silent) setLoading(false);
-    }, [token, buyerId]);
+    }, [token, buyerId, gstin]);
 
     // fresh state every time the sheet opens
     useEffect(() => {
@@ -141,7 +142,7 @@ export default function GrowCustomerPricing({ open, onClose, token, buyerId, buy
     const clearPrices = async (ids, okMsg) => {
         setClearing(true);
         let res;
-        try { res = await bulkClearCustomPricing(token, buyerId, ids); } catch { res = { success: false }; }
+        try { res = buyerId ? await bulkClearCustomPricing(token, buyerId, ids) : await bulkClearGstPricing(token, gstin, ids); } catch { res = { success: false }; }
         setClearing(false);
         if (res?.success === false) say?.(res.message || "Couldn't remove the custom prices. Please try again.");
         else say?.(okMsg);
@@ -177,7 +178,7 @@ export default function GrowCustomerPricing({ open, onClose, token, buyerId, buy
         });
         setSaving(true);
         let res;
-        try { res = await saveCustomPricing(token, buyerId, items); } catch { res = { success: false, message: "Network problem. Please try again." }; }
+        try { res = buyerId ? await saveCustomPricing(token, buyerId, items) : await saveGstPricing(token, gstin, items); } catch { res = { success: false, message: "Network problem. Please try again." }; }
         setSaving(false);
         if (res?.rejected?.length) {
             setWarning(`${res.rejected.length} product${res.rejected.length === 1 ? "" : "s"} couldn't be saved. The price would go below ₹${MIN_UNIT_PRICE} per unit.`);
@@ -219,7 +220,7 @@ export default function GrowCustomerPricing({ open, onClose, token, buyerId, buy
                         <div className="gax-stack">
                             <p className="gax-sum info">Set prices just for {buyerLabel}. Every other buyer keeps the listing price. {customCount} of {rows.length} product{rows.length === 1 ? "" : "s"} custom priced.</p>
                             <p className="gax-sum warn">A custom price switches off quantity discounts for this buyer on that product. They pay exactly this price, however much they order.</p>
-
+                            {!buyerId && <p className="gax-sum info">{buyerLabel} isn't on BBM yet. These prices are saved against their GST number and apply automatically the moment they join.</p>}
                             <div className="gax-search">
                                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
                                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search products" aria-label="Search products" autoComplete="off" />
