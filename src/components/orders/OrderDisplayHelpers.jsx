@@ -502,7 +502,7 @@ export function ChatWithBuyerButton({ order, className = "mt-2" }) {
             // like ConversationList.startChat does.
             const res = await getOrCreateDirectConversation(token, id);
             if (res?.success && res.conversationId) {
-                navigate(`/chat/${res.conversationId}`);
+                navigate(`/sell/chat/${res.conversationId}`);
             } else {
                 window.alert(res?.message || "Couldn't open a chat with this buyer.");
             }
