@@ -51,6 +51,21 @@ const inr = (n) => (Number(n) || 0).toLocaleString("en-IN", { maximumFractionDig
 const inrUnit = (n) => "₹" + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const shortDate = (iso) => (iso ? new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "");
 
+// "7 Nov, 3:42 pm" - the exact moment the enquiry was posted.
+const postedAt = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
+};
+
+// Old sales enquiries were saved with a placeholder instead of a real name. Never show those as a person.
+const GENERIC_NAME = /^(salesperson|sales person|team member)$/i;
+const realName = (n) => {
+    const v = String(n ?? "").trim();
+    return v && !GENERIC_NAME.test(v) ? v : "";
+};
+
 // Quotes for one enquiry, as sent by the API (rfq.controller attaches them to the buyer's own rows):
 //   item.quotes      -> [{ id, sellerName, city, state, productName, brandName, price (per pack), total, moq,
 //                          deliveryDays, freightIncluded, validUntil }]  (cheapest first)
@@ -137,6 +152,7 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
 
     const canClose = ["pending_review", "approved"].includes(item.status);
     const totalUnits = totalUnitsOf(item); // the buyer's quantity in the individual unit
+    const salesperson = realName(item.salespersonName) || "Your salesperson";
 
     let message = null;
     if (item.status === "pending_review") message = ["Waiting for review", "Suppliers can send quotes once our team approves this item."];
@@ -156,7 +172,7 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
             className="sh-dd"
         >
             <div className="sh-ddi">
-                <div className="sh-ddh"><span>Quotes from suppliers</span><span>{timeAgo(item.publishedAt || item.createdAt)}</span></div>
+                <div className="sh-ddh"><span>Quotes from suppliers</span><span>{timeAgo(item.createdAt || item.publishedAt)}</span></div>
 
                 {item.status === "rejected" && item.reviewNote && <p className="sh-rej">{item.reviewNote}</p>}
 
@@ -164,12 +180,12 @@ function QuotesDropdown({ item, onInfo, onOpenPage, onShare, onEdit, onClose }) 
                 {isSales ? (
                     <div className="sh-qts">
                         {(item.salesQuotes || []).length === 0 && (
-                            <div className="sh-ddm"><b>No quotations sent yet</b>{item.salespersonName || "Your salesperson"} manages this enquiry in the Sales workspace.</div>
+                            <div className="sh-ddm"><b>No quotations sent yet</b>{salesperson} manages this enquiry in the Sales workspace.</div>
                         )}
                         {(item.salesQuotes || []).map((q) => (
                             <div className="sh-qt" key={q.id}>
                                 <div><b>Quotation · {q.itemsCount} item{q.itemsCount === 1 ? "" : "s"}</b>
-                                    <small>{timeAgo(q.createdAt)}{q.channels?.length ? ` · via ${q.channels.join(", ")}` : ""}</small></div>
+                                    <small>{postedAt(q.createdAt)}{q.channels?.length ? ` · via ${q.channels.join(", ")}` : ""}</small></div>
                                 <div className="sh-qp"><b>{inrFmt(q.total)}</b><small>incl. GST</small></div>
                             </div>
                         ))}
@@ -200,7 +216,9 @@ function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onCl
     const statusLabel = isSales && item.status === "approved" ? "Open" : (STATUS_LABEL[item.status] || item.status);
     const images = (item.images || []).filter(Boolean);
     const hasImage = images.length > 0;
-    const name = toTitle(item.productName) || "Untitled product";
+    const name = toTitle(item.productName) || (isSales ? "Sales enquiry" : "Untitled product");
+    const by = isSales ? realName(item.salespersonName) : "";
+    const posted = postedAt(item.createdAt);
     const toggleKey = (e) => {
         if (e.target !== e.currentTarget) return;
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); }
@@ -222,12 +240,13 @@ function Row({ item, isOpen, onToggle, onInfo, onOpenPage, onShare, onEdit, onCl
                         onClick: zoom, onKeyDown: zoomKey, style: { cursor: "zoom-in" },
                     } : {})}
                 >
-                    {hasImage ? <img src={images[0]} alt="" loading="lazy" /> : String(item.productName ?? "?").trim()[0]?.toUpperCase() || "?"}
+                    {hasImage ? <img src={images[0]} alt="" loading="lazy" /> : String(item.productName ?? name).trim()[0]?.toUpperCase() || "?"}
                 </div>
                 <div className="sh-in">
                     <p className="sh-rn">{name}</p>
-                    <p className="sh-rq">{fmtNum(total)} {item.unit}</p>
-                    {isSales && <p className="sh-rq" style={{ opacity: .75 }}>For {item.customerName || item.customerGstin || "customer"}{item.salespersonName ? ` · by ${item.salespersonName}` : ""}</p>}
+                    {total > 0 && <p className="sh-rq">{fmtNum(total)} {item.unit}</p>}
+                    {isSales && <p className="sh-rq" style={{ opacity: .75 }}>For {item.customerName || item.customerGstin || "customer"}{by ? ` · by ${by}` : ""}</p>}
+                    {posted && <p className="sh-rq" style={{ opacity: .75 }}>Posted {timeAgo(item.createdAt)} · {posted}</p>}
                     <div className="sh-rqt">
                         <span>{isSales ? "Quotations sent" : "Quotes received"}<b className={count > 0 ? "has" : ""}>{count}</b></span>
                         <span className={`sh-st ${item.status}`}><i />{statusLabel}</span>
