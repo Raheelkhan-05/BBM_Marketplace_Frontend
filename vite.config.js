@@ -10,7 +10,7 @@ export default defineConfig({
       includeAssets: ["favicon.ico", "apple-touch-icon.png"],
       workbox: {
         // Never answer these navigations with index.html.
-        navigateFallbackDenylist: [/^\/ingest/, /^\/sitemap\.xml$/],
+        navigateFallbackDenylist: [/^\/ingest/, /^\/sitemap\.xml$/, /^\/pay-launch\.html$/],
       },
       manifest: {
         name: "BBM Marketplace",

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="origin" />
+    <meta name="robots" content="noindex" />
+    <title>Opening secure payment…</title>
+    <style>
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: grid;
+            place-items: center;
+            font: 600 16px system-ui, sans-serif;
+            color: #08222B;
+            background: #fff;
+            text-align: center;
+            padding: 24px;
+        }
+    </style>
+</head>
+
+<body>
+    <p id="msg">Opening secure payment…</p>
+    <script>
+        (function () {
+            // Only ever forward to the payment gateway's own domain (never an open redirect).
+            var ALLOWED = ["jiopay.co.in"];
+            function allowed(host) {
+                return ALLOWED.some(function (a) { return host === a || host.slice(-(a.length + 1)) === "." + a; });
+            }
+            try {
+                var target = new URL(new URLSearchParams(location.search).get("u") || "");
+                if (target.protocol !== "https:" || !allowed(target.hostname)) throw new Error("blocked");
+                // Lets the return page know this payment started from the Android app.
+                try { sessionStorage.setItem("bbm_app_payment", "1"); } catch (e) { }
+                document.getElementById("msg").textContent = location.href;
+                location.replace(target.toString());
+            } catch (e) {
+                document.getElementById("msg").textContent =
+                    "This payment link isn't valid. Please go back to the app and try again.";
+            }
+        })();
+    </script>
+</body>
+
+</html>

@@ -347,39 +347,6 @@ function CartPageInner() {
         .filter(Boolean);
     const anyGroupBlocked = blockedSelected.length > 0;
 
-    // Poll pending proposals for approval / rejection.
-    useEffect(() => {
-        const city = selectedAddress?.city;
-        const state = selectedAddress?.state;
-        if (!city || !state) return;
-
-        Object.entries(pendingTransportProposals).forEach(async ([sellerId, proposal]) => {
-            if (!proposal?.routeOptionId) return;
-            const res = await fetchBuyerTransportPreference(sellerId, state, city, token, proposal.routeOptionId);
-            if (!res?.success) return;
-
-            if (res.checkedProposalStatus === "approved") {
-                const resolved = {
-                    routeOptionId: proposal.routeOptionId, mode: proposal.mode, fields: proposal.fields,
-                    summary: proposal.summary, destCity: city, destState: state,
-                };
-                setTransportPreferences((prev) => ({ ...prev, [sellerId]: resolved }));
-                setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
-                reportApproved(proposal.routeOptionId, resolved);
-            } else if (res.checkedProposalStatus === "rejected") {
-                setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
-                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
-                setTransportRemovedNotices((prev) => ({
-                    ...prev,
-                    [sellerId]: `Your proposed transport option (${proposal.summary}) wasn't accepted by this seller.` +
-                        (res.rejectedReason ? ` Reason: ${res.rejectedReason}` : ""),
-                }));
-                reportRejected(proposal.routeOptionId, res.rejectedReason || null);
-            }
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [clockTick, selectedAddress?.city, selectedAddress?.state, token]);
-
     useEffect(() => () => { Object.values(pendingWrites.current).forEach(clearTimeout); }, []);
 
     const handleQty = (submissionId, quantity, moq) => {

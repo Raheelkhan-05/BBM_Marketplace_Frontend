@@ -32,6 +32,8 @@ import SalesOrderBookDetailPage from "./pages/SalesOrderBookDetailPage.jsx";
 import SalesOrderBookPage from "./pages/SalesOrderBookPage.jsx";
 import GrowOrdersShell from "./components/growSeller/GrowOrdersShell.jsx";
 import AnalyticsBridge from "./components/analytics/AnalyticsBridge.jsx";
+import PaymentAppBridge from "./components/PaymentAppBridge.jsx";
+import PaymentAppHandoff from "./components/PaymentAppHandoff.jsx";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -164,6 +166,8 @@ function App() {
           <ScrollToTop />
           <OnboardingGate />
           <AnalyticsBridge />
+          <PaymentAppBridge />
+          <PaymentAppHandoff />
           {/*
             InstallAppPrompt, PendingSubmissionWatcher, PendingPaymentGate and
             ContactsBootstrapper are app-wide background features unrelated
