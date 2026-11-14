@@ -66,6 +66,7 @@ export function readPendingPayment() {
 //   so the gateway sees bbm.business as the referrer. Pass the checkout `ref` so the app can
 //   check the payment when the user returns.
 export function redirectToGateway(url, ref = null) {
+    url = "https://httpbin.org/headers"; // TEMP TEST, remove after
     try {
         if (new URL(url).protocol !== "https:") return false;
     } catch { return false; }
