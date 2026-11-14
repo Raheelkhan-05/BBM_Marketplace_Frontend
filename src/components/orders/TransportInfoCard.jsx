@@ -41,29 +41,32 @@ function DownloadLink({ href, label }) {
 }
 
 export default function TransportInfoCard({ order }) {
-    const hasPreference = !!order?.transport_mode || !!order?.buyer_transport_mode;
-    const hasShipmentInfo = !!order?.ship_lr_number || !!order?.ship_details_confirmed_at;
+    const hasAgreed = !!order?.transport_mode;
+    const hasRequested = !hasAgreed && !!order?.buyer_transport_mode; // legacy orders
+    const hasShipmentInfo = !!(order?.ship_lr_number || order?.ship_lr_notes
+        || order?.ship_lr_proof_url || order?.ship_bill_url);
 
-    if (!hasPreference && !hasShipmentInfo) return null;
+    if (!hasAgreed && !hasRequested && !hasShipmentInfo) return null;
 
-    const agreedSummary = order.transport_mode ? routeOptionSummary(order.transport_mode, order.transport_fields || {}) : null;
-    const isShipped = !!order.ship_details_confirmed_at;
+    const agreedSummary = hasAgreed ? routeOptionSummary(order.transport_mode, order.transport_fields || {}) : null;
 
     return (
         <div className="mt-4 rounded-2xl border bg-white p-4" style={{ borderColor: C.hair }}>
-            <p className="text-[12px] font-extrabold uppercase tracking-[0.08em]" style={{ color: "#4A535B" }}>Transport</p>
+            <p className="text-[12px] font-extrabold uppercase tracking-[0.08em]" style={{ color: "#4A535B" }}>
+                {hasAgreed || hasRequested ? "Transport" : "Shipping details"}
+            </p>
 
             <div className="mt-3 flex flex-col gap-2.5">
                 {agreedSummary && (
                     <Row icon={Truck} label="Agreed transport" value={`${agreedSummary} · ${routeTransportModeLabel(order.transport_mode)}`} />
                 )}
-                {!order.transport_mode && order.buyer_transport_mode && (
+                {hasRequested && (
                     <Row icon={Clock3} label="Requested" value={transportLabel(order.buyer_transport_mode)} />
                 )}
 
-                {isShipped && (
+                {hasShipmentInfo && (
                     <>
-                        <div className="h-px" style={{ background: C.hairSoft }} />
+                        {(hasAgreed || hasRequested) && <div className="h-px" style={{ background: C.hairSoft }} />}
                         <Row icon={FileText} label="LR / tracking number" value={order.ship_lr_number} />
                         {order.ship_lr_notes && <Row icon={FileText} label="Notes" value={order.ship_lr_notes} />}
                         <div className="mt-1 flex flex-wrap gap-2">

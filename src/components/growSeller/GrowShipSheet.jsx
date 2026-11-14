@@ -54,8 +54,8 @@ export default function GrowShipSheet({ open, order, onClose, onConfirm }) {
     if (!open) return null;
 
     const transport = order?.transport_mode
-        ? routeOptionSummary(order.transport_mode, order.transport_fields || {})
-        : "No Preference Set";
+        ? `${routeOptionSummary(order.transport_mode, order.transport_fields || {})} · ${routeTransportModeLabel(order.transport_mode)}`
+        : null;
 
     const submit = async () => {
         setBusy(true);
@@ -79,13 +79,15 @@ export default function GrowShipSheet({ open, order, onClose, onConfirm }) {
                 <span>Adding the LR details and the bill is optional, but it is recommended. They help the buyer track the delivery and make it easier to sort out any issue with the order.</span>
             </div>
 
-            <div className="sx-tr">
-                <Ic n="truck" />
-                <div>
-                    <small>Agreed transport</small>
-                    <b>{transport}{order?.transport_mode ? ` · ${routeTransportModeLabel(order.transport_mode)}` : ""}</b>
+            {transport && (
+                <div className="sx-tr">
+                    <Ic n="truck" />
+                    <div>
+                        <small>Agreed transport</small>
+                        <b>{transport}</b>
+                    </div>
                 </div>
-            </div>
+            )}
 
             <div className="f">
                 <label htmlFor="sx-lr">LR / tracking number (optional)</label>

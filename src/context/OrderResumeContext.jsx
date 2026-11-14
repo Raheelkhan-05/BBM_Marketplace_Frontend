@@ -32,11 +32,8 @@ export function OrderResumeProvider({ children }) {
     const isActive = useCallback((key) => activeKeysRef.current.has(key), []);
 
     useEffect(() => {
-        const intents = getAllPendingIntents();
-        const approved = intents.find((i) => i.status === "approved" && !activeKeysRef.current.has(i.proposalRouteOptionId));
-        const rejected = intents.find((i) => i.status === "rejected" && !activeKeysRef.current.has(i.proposalRouteOptionId));
-        if (approved) setResumableIntent(approved);
-        if (rejected) setRejectedIntent(rejected);
+        // Transport proposals no longer exist. Discard any leftovers from before.
+        getAllPendingIntents().forEach((i) => clearIntent(i.proposalRouteOptionId));
     }, []);
 
     const reportApproved = useCallback((proposalRouteOptionId, resolved) => {

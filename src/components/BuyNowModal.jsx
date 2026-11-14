@@ -58,12 +58,12 @@ import { startOrderPayment, redirectToGateway } from "../utils/paymentsApi.js";
 import { C, EASE, Label, ChipToggleGroup } from "./seller/listingForm/FormPrimitives.jsx";
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, hasOuterPack, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
-import TransportPreferenceModal from "./transport/TransportPreferenceModal.jsx";
+
 import { shareProductLink } from "../utils/share.js";
-import { routeTransportModeLabel, getRouteTransportFields } from "../../shared/routeTransportFields.js";
-import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
+
+
 import { resizedImageUrl } from "../utils/imageUrl";
-import { useOrderResume } from "../context/OrderResumeContext.jsx";
+
 import { useSocket } from "../context/SocketContext.jsx";
 import { track, safeCode } from "../lib/analytics.js";
 
@@ -338,23 +338,6 @@ function Pill({ icon: Icon, tone = "neutral", children }) {
     );
 }
 
-function TransportFields({ mode, fields }) {
-    const rows = getRouteTransportFields(mode)
-        .map((f) => ({ f, val: fields?.[f.key] }))
-        .filter((x) => x.val);
-    if (!rows.length) return null;
-    return (
-        <div className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
-            {rows.map(({ f, val }) => (
-                <div key={f.key} className="flex items-baseline gap-1.5">
-                    <span className="shrink-0 text-[11px] font-semibold tracking-wide" style={{ color: C.muted }}>{f.label.replace(/\s*\(if any\)\s*/i, "")}:</span>
-                    <span className="truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.ink }}>{val}</span>
-                </div>
-            ))}
-        </div>
-    );
-}
-
 /* ============================================================
    Main component
    ============================================================ */
@@ -363,7 +346,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const { token, profile } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
-    const { reportApproved, reportRejected, registerActive, unregisterActive } = useOrderResume();
     const { socket } = useSocket();
     const { addresses, selectedAddress, loading: addressLoading, selectAddress } = useBuyerAddress();
 
@@ -416,16 +398,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const userPickedBasis = useRef(false);
     const belowMoq = !isSample && Number(quantity) < minQuantity;
 
-    const [transportPreference, setTransportPreference] = useState(seller?.transportPreference ?? null);
-    const [pendingTransportProposal, setPendingTransportProposal] = useState(seller?.transportPendingProposal ?? null);
-    const transportPrefRef = useRef(transportPreference);
-    transportPrefRef.current = transportPreference;
-
-    useEffect(() => {
-        setTransportPreference(seller?.transportPreference ?? null);
-        setPendingTransportProposal(seller?.transportPendingProposal ?? null);
-    }, [seller?.transportPreference, seller?.transportPendingProposal]);
-
     useEffect(() => { if (!userPickedBasis.current) setBasis(defaultBasis); }, [defaultBasis]);
     useEffect(() => {
         if (basis === "per_master_pack" && !(Number(seller?.masterPackSize) >= 1)) setBasis("per_pack");
@@ -455,9 +427,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const [toast, setToast] = useState(null);
     const [lightboxSrc, setLightboxSrc] = useState(null);
     const quoteTimer = useRef(null);
-    const [showTransportModal, setShowTransportModal] = useState(false);
-    const autoPlaceRef = useRef(false);
-    const [transportRemovedNotice, setTransportRemovedNotice] = useState(null);
     const isFirstQuoteRef = useRef(true);
     const requestIdRef = useRef(0);
     const pendingQuoteRef = useRef(Promise.resolve());
@@ -655,16 +624,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     }, []);
 
     useEffect(() => {
-        const pref = transportPrefRef.current;
-        if (!pref?.destCity || !pref?.destState) return;
-        if (!effectiveCity || !effectiveState) return;
-        const sameRoute =
-            pref.destCity.trim().toLowerCase() === effectiveCity.trim().toLowerCase() &&
-            pref.destState.trim().toLowerCase() === effectiveState.trim().toLowerCase();
-        if (!sameRoute) setTransportPreference(null);
-    }, [effectiveCity, effectiveState]);
-
-    useEffect(() => {
         let cancelled = false;
         (async () => {
             const res = await fetchCheckoutStatus(token);
@@ -757,58 +716,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
     ]);
 
-    // ---- Transport preference for this route (one merged check per route) ----
-    const lastCheckedRouteRef = useRef(null);
-    useEffect(() => {
-        if (!effectiveCity || !effectiveState || !seller?.sellerId) return;
-        const routeKey = `${effectiveState.trim().toLowerCase()}::${effectiveCity.trim().toLowerCase()}`;
-        if (lastCheckedRouteRef.current === routeKey) return;
-        lastCheckedRouteRef.current = routeKey;
-
-        let cancelled = false;
-        (async () => {
-            const res = await fetchBuyerTransportPreference(seller.sellerId, effectiveState, effectiveCity, token);
-            if (cancelled) return;
-
-            const cur = transportPrefRef.current;
-            const sameAsCurrent =
-                cur?.destCity?.trim().toLowerCase() === effectiveCity.trim().toLowerCase() &&
-                cur?.destState?.trim().toLowerCase() === effectiveState.trim().toLowerCase();
-
-            const pendingProposal = res?.pendingProposal
-                ? { ...res.pendingProposal, destCity: effectiveCity, destState: effectiveState }
-                : null;
-            setPendingTransportProposal(pendingProposal);
-
-            if (res?.rejectedNotice) {
-                setTransportPreference(null);
-                setTransportRemovedNotice(
-                    `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by the seller.` +
-                    (res.rejectedNotice.reason ? ` Reason: ${res.rejectedNotice.reason}` : "")
-                );
-                if (res.rejectedNotice.routeOptionId) reportRejected(res.rejectedNotice.routeOptionId, res.rejectedNotice.reason || null);
-                return;
-            }
-            if (res?.invalidated) {
-                setTransportPreference(null);
-                setTransportRemovedNotice("The seller no longer offers your previously selected transport option.");
-                return;
-            }
-            if (sameAsCurrent) return;
-            if (res?.success && res.decided) {
-                setTransportPreference(res.preference ? { ...res.preference, destCity: effectiveCity, destState: effectiveState } : null);
-                setTransportRemovedNotice(null);
-            } else {
-                setTransportPreference(null);
-            }
-        })();
-
-        return () => {
-            cancelled = true;
-            if (lastCheckedRouteRef.current === routeKey) lastCheckedRouteRef.current = null;
-        };
-    }, [effectiveCity, effectiveState, seller?.sellerId, token]); // eslint-disable-line react-hooks/exhaustive-deps
-
     // ---- Start the JioPay payment for an order that is awaiting payment ----
     const beginPayment = async (orderId, orderNumber) => {
         setError(null);
@@ -836,7 +743,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     };
 
     // ---- Place order ----
-    const handleSubmit = async (override = {}) => {
+    const handleSubmit = async () => {
         setError(null);
         if (!selectedAddressId) return setError("Please add a delivery address first.");
         if (!locationStatus.serviceable) return setError(locationStatus.message);
@@ -851,8 +758,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         }
         if (!(Number(quantity) > 0)) return setError("Please enter a valid quantity.");
 
-        const routeOptionId = override.routeOptionId ?? transportPreference?.routeOptionId;
-        if (!routeOptionId) return setError("Please select a transport preference.");
         track("checkout_started", {
             flow: "buy_now", order_type: orderMode, item_count: 1, seller_count: 1,
             cart_value: Math.round(Number(quote?.subtotal) || 0),
@@ -881,7 +786,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
             orderType: effectiveOrderType,
             shippingAddressId: selectedAddressId,
             notes: notes.trim() || undefined,
-            transportRouteOptionId: routeOptionId,
         });
         if (!res?.success) {
             track("checkout_failed", { flow: "buy_now", stage: "create_order", code: safeCode(res?.code) });
@@ -963,16 +867,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         setNotes(ri.notes || "");
         restoreAddressIdRef.current = ri.addressId || null;
 
-        if (ri.resolvedMode) {
-            setTransportPreference({
-                routeOptionId: ri.resolvedRouteOptionId,
-                mode: ri.resolvedMode,
-                fields: ri.resolvedFields,
-                destCity: ri.destCity,
-                destState: ri.destState,
-            });
-            setPendingTransportProposal(null);
-        }
         navigate(location.pathname + location.search, { replace: true, state: {} });
     }, [location.state, seller?.offerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -990,82 +884,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
             action: () => navigate("/account", { state: { from: location.pathname + location.search } }),
         },
     }[access?.reason] || { title: "Can't place an order right now", body: "Please try again in a moment.", cta: "Close", action: onClose };
-
-    useEffect(() => {
-        if (!pendingTransportProposal?.routeOptionId || !seller?.sellerId || !effectiveCity || !effectiveState) return;
-        let cancelled = false;
-        (async () => {
-            const res = await fetchBuyerTransportPreference(
-                seller.sellerId, effectiveState, effectiveCity, token, pendingTransportProposal.routeOptionId
-            );
-            if (cancelled || !res?.success) return;
-            if (res.checkedProposalStatus === "approved") {
-                const resolved = {
-                    routeOptionId: pendingTransportProposal.routeOptionId,
-                    mode: pendingTransportProposal.mode,
-                    fields: pendingTransportProposal.fields,
-                    summary: pendingTransportProposal.summary,
-                    destCity: effectiveCity, destState: effectiveState,
-                };
-                setTransportPreference(resolved);
-                setPendingTransportProposal(null);
-                setTransportRemovedNotice(null);
-                reportApproved(pendingTransportProposal.routeOptionId, resolved);
-            } else if (res.checkedProposalStatus === "rejected") {
-                setPendingTransportProposal(null);
-                setTransportPreference(null);
-                setTransportRemovedNotice(
-                    `Your proposed transport option (${pendingTransportProposal.summary}) wasn't accepted by the seller.` +
-                    (res.rejectedReason ? ` Reason: ${res.rejectedReason}` : "")
-                );
-                reportRejected(pendingTransportProposal.routeOptionId, res.rejectedReason || null);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [clockTick, pendingTransportProposal?.routeOptionId, seller?.sellerId, effectiveCity, effectiveState, token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    useEffect(() => {
-        if (!socket) return;
-        const onNotif = async (payload) => {
-            const routeOptionId = payload?.routeOptionId;
-            if (!routeOptionId) return;
-            if (!pendingTransportProposal || pendingTransportProposal.routeOptionId !== routeOptionId) return;
-
-            if (payload.type === "transport_proposal_approved") {
-                const res = await fetchBuyerTransportPreference(seller.sellerId, effectiveState, effectiveCity, token, routeOptionId);
-                if (res?.checkedProposalStatus === "approved" && res?.preference) {
-                    const resolved = {
-                        routeOptionId: pendingTransportProposal.routeOptionId,
-                        mode: pendingTransportProposal.mode,
-                        fields: pendingTransportProposal.fields,
-                        summary: pendingTransportProposal.summary,
-                        destCity: effectiveCity, destState: effectiveState,
-                    };
-                    setTransportPreference(resolved);
-                    setPendingTransportProposal(null);
-                    setTransportRemovedNotice(null);
-                    reportApproved(routeOptionId, resolved);
-                }
-            } else if (payload.type === "transport_proposal_rejected") {
-                setPendingTransportProposal(null);
-                setTransportPreference(null);
-                setTransportRemovedNotice(
-                    `Your proposed transport option (${pendingTransportProposal.summary}) wasn't accepted by the seller.` +
-                    (payload.reason ? ` Reason: ${payload.reason}` : "")
-                );
-                reportRejected(routeOptionId, payload.reason || null);
-            }
-        };
-        socket.on("notification:new", onNotif);
-        return () => socket.off("notification:new", onNotif);
-    }, [socket, pendingTransportProposal, seller?.sellerId, effectiveCity, effectiveState, token]); // eslint-disable-line react-hooks/exhaustive-deps
-
-    useEffect(() => {
-        const key = pendingTransportProposal?.routeOptionId || resumeIntentProp?.proposalRouteOptionId || null;
-        if (!key) return;
-        registerActive(key);
-        return () => unregisterActive(key);
-    }, [pendingTransportProposal?.routeOptionId, resumeIntentProp?.proposalRouteOptionId, registerActive, unregisterActive]);
 
     useEffect(() => {
         if (!toast) return;
@@ -1139,17 +957,9 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const sellerLabel = shopNameOf(seller);
 
     /* ---------------- primary CTA ---------------- */
-    const needsTransport = !transportPreference;
-    const waitingApproval = needsTransport && !!pendingTransportProposal;
     const verb = isSample ? "Request sample" : isCredit ? "Buy on credit" : "Buy now";
-    const ctaLabel = !selectedAddressId
-        ? "Add delivery address"
-        : waitingApproval
-            ? "Waiting for seller approval"
-            : needsTransport
-                ? `Select transport & ${verb === "Buy now" ? "Buy now" : verb.toLowerCase()}`
-                : verb;
-    const ctaDisabled = submitting || addressLoading || blockedByConstraints || waitingApproval || priceLoading
+    const ctaLabel = !selectedAddressId ? "Add delivery address" : verb;
+    const ctaDisabled = submitting || addressLoading || blockedByConstraints || priceLoading
         || (!isSample && (belowMoq || outOfStock || exceedsStock)) || crossesCreditLimit;
     const ctaBackground = isSample
         ? "linear-gradient(135deg, #006F83 0%, #047084 100%)"
@@ -1160,12 +970,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const handlePrimary = () => {
         setError(null);
         if (!selectedAddressId) { addressBookRef.current?.openChange(); return; }
-        if (!transportPreference) {
-            if (pendingTransportProposal) return;
-            autoPlaceRef.current = true;
-            setShowTransportModal(true);
-            return;
-        }
         handleSubmit();
     };
 
@@ -1523,39 +1327,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
                                     {blockedByConstraints && <Notice tone="danger">{locationStatus.message}</Notice>}
 
-                                    <div className="flex flex-col gap-2 rounded-xl border px-3.5 py-3" style={{ borderColor: C.hairSoft }}>
-                                        <div className="flex items-center justify-between gap-2">
-                                            <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider" style={{ color: C.muted }}>
-                                                <Truck className="h-3.5 w-3.5" /> Preferred transport
-                                            </p>
-                                            <button type="button" onClick={() => { autoPlaceRef.current = false; setShowTransportModal(true); }}
-                                                disabled={!selectedAddressId}
-                                                className="shrink-0 text-[12px] font-bold tracking-wide disabled:opacity-40" style={{ color: C.secondary }}>
-                                                {transportPreference || pendingTransportProposal ? "Change" : "Select"}
-                                            </button>
-                                        </div>
-
-                                        {transportPreference ? (
-                                            <div className="flex flex-col gap-1.5">
-                                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{routeTransportModeLabel(transportPreference.mode)}</p>
-                                                <TransportFields mode={transportPreference.mode} fields={transportPreference.fields} />
-                                            </div>
-                                        ) : pendingTransportProposal ? (
-                                            <div className="flex flex-col gap-1.5">
-                                                <p className="text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>{routeTransportModeLabel(pendingTransportProposal.mode)}</p>
-                                                <TransportFields mode={pendingTransportProposal.mode} fields={pendingTransportProposal.fields} />
-                                                <Notice tone="warn">
-                                                    Waiting for {shopNameOf(seller)}'s approval. You can place the order once it's approved, or pick a different, already-approved option.
-                                                </Notice>
-                                            </div>
-                                        ) : (
-                                            <p className="text-[12px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                Not selected yet — we'll ask when you tap "{verb}".
-                                            </p>
-                                        )}
-                                        {transportRemovedNotice && <Notice tone="warn">{transportRemovedNotice}</Notice>}
-                                    </div>
-
                                     {!blockedByConstraints && quote && (
                                         <div className="flex flex-col gap-2 rounded-xl bg-[#FCFBF9] p-3.5">
                                             <div className="flex items-center gap-2.5">
@@ -1778,44 +1549,6 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                     </>
                 )}
             </motion.div>
-
-            {showTransportModal && (
-                <TransportPreferenceModal
-                    open
-                    seller={seller}
-                    destCity={effectiveCity}
-                    destState={effectiveState}
-                    destAddressId={selectedAddressId}
-                    removedNotice={transportRemovedNotice}
-                    onClose={() => { autoPlaceRef.current = false; setShowTransportModal(false); setTransportRemovedNotice(null); }}
-                    onAddressChange={() => { /* address now lives in BuyerAddressContext */ }}
-                    onResolved={(result) => {
-                        track("transport_resolved", { flow: "buy_now", pending: !!result?.pending });
-                        setShowTransportModal(false);
-                        setTransportRemovedNotice(null);
-                        if (result?.pending) {
-                            autoPlaceRef.current = false;
-                            setTransportPreference(null);
-                            setPendingTransportProposal(result);
-                            return;
-                        }
-                        setTransportPreference(result);
-                        setPendingTransportProposal(null);
-                        if (autoPlaceRef.current && result?.routeOptionId) {
-                            autoPlaceRef.current = false;
-                            handleSubmit({ routeOptionId: result.routeOptionId });
-                        }
-                    }}
-                    onIntentSource="buynow"
-                    onCaptureIntent={() => ({
-                        offerId: seller.offerId,
-                        productId: product?.id,
-                        productName: product?.name,
-                        quantity, basis, orderMode,
-                        notes, addressId: selectedAddressId,
-                    })}
-                />
-            )}
 
             {/* Image lightbox: portalled above everything (never clipped by the dialog's transform),
                 and its clicks never bubble to the overlay (which would close Buy Now). */}

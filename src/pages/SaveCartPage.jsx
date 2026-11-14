@@ -14,23 +14,18 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { Trash2, Loader2, ShoppingCart, MapPin, Minus, Plus, Clock, Truck, AlertCircle, X, ArrowRight, Compass } from "lucide-react";
+import { Trash2, Loader2, ShoppingCart, MapPin, Minus, Plus, Clock, AlertCircle, X, ArrowRight, Compass } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
 import { startGroupPayment, redirectToGateway } from "../utils/paymentsApi.js";
 import { fetchOrderConstraints } from "../utils/api.js";
-import { fetchBuyerTransportPreference } from "../utils/api.transport.js";
 import { track, safeCode } from "../lib/analytics.js";
-import { useOrderResume } from "../context/OrderResumeContext.jsx";
-import { useSocket } from "../context/SocketContext.jsx";
 import AddressBook from "../components/shipping/AddressBook.jsx";
-import TransportPreferenceModal from "../components/transport/TransportPreferenceModal.jsx";
 import { BuyerAddressProvider, useBuyerAddress } from "../context/BuyerAddressContext.jsx";
 import { useCart } from "../context/CartContext.jsx";
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, saleUnitLabel, round2 } from "../shared/packUnits.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
 import posthog from "../lib/posthog.js";
-import { routeTransportModeLabel } from "../../shared/routeTransportFields.js";
 import "../components/save/save-cart.css";
 
 const EXPLORE_ROUTE = "/home";
@@ -74,30 +69,8 @@ function stockInfoFor(item) {
     };
 }
 
-function sellerObjFor(group) {
-    const first = group.items[0];
-    const city = first.seller_dispatch_city || "";
-    const state = first.seller_dispatch_state || "";
-    return {
-        sellerId: group.seller.seller_id,
-        display_name: group.seller.seller_name,
-        dispatchOrigin: city && state ? `${city}, ${state}` : city || state || "",
-        dispatchState: state,
-        transportOptions: first.seller_transport_options || [],
-    };
-}
-
 const getLenis = () => (typeof window !== "undefined" ? window.lenis || window.__lenis || null : null);
 const stopEvent = (e) => e.stopPropagation();
-
-// The Save routes may not be mounted under <OrderResumeProvider> (the old app layout was).
-// useOrderResume throws without it, so fall back to stable no-ops: this page still tracks
-// transport approvals itself (socket + polling); only the cross-page "resume" banner is skipped.
-const NOOP = () => { };
-const NOOP_RESUME = { registerActive: NOOP, unregisterActive: NOOP, reportApproved: NOOP, reportRejected: NOOP };
-function useOrderResumeSafe() {
-    try { return useOrderResume() || NOOP_RESUME; } catch { return NOOP_RESUME; }
-}
 
 /* ---------------- small UI pieces ---------------- */
 function Notice({ tone = "warn", icon: Icon = AlertCircle, title, children }) {
@@ -239,9 +212,7 @@ function CartItemDetailModal({ item, onClose }) {
 /* ---------------- page ---------------- */
 function CartPageInner() {
     const navigate = useNavigate();
-    const { socket } = useSocket();
     const { token } = useAuth();
-    const { registerActive, unregisterActive, reportApproved, reportRejected } = useOrderResumeSafe();
     const { selectedAddress } = useBuyerAddress();
     const addressBookRef = useRef(null);
     const selectedAddressId = selectedAddress?.id || null;
@@ -376,104 +347,6 @@ function CartPageInner() {
         .filter(Boolean);
     const anyGroupBlocked = blockedSelected.length > 0;
 
-    // ---- Per-seller transport preference (keyed by sellerId) ----
-    const [transportPreferences, setTransportPreferences] = useState({});
-    const [pendingTransportProposals, setPendingTransportProposals] = useState({});
-    const [transportRemovedNotices, setTransportRemovedNotices] = useState({});
-    const [activeTransportSellerId, setActiveTransportSellerId] = useState(null);
-    const lastCheckedRouteBySellerRef = useRef({});
-    // true while "Select transport & pay" is walking the buyer through missing sellers
-    const checkoutAfterTransportRef = useRef(false);
-
-    // Instant reflect of approval/rejection notifications for proposals this page tracks.
-    useEffect(() => {
-        if (!socket) return;
-        const onNotif = async (payload) => {
-            const routeOptionId = payload?.routeOptionId;
-            if (!routeOptionId) return;
-            const sellerId = Object.entries(pendingTransportProposals).find(([, p]) => p?.routeOptionId === routeOptionId)?.[0];
-            if (!sellerId) return;
-            const proposal = pendingTransportProposals[sellerId];
-
-            if (payload.type === "transport_proposal_approved") {
-                const res = await fetchBuyerTransportPreference(sellerId, selectedAddress?.state, selectedAddress?.city, token, routeOptionId);
-                if (res?.checkedProposalStatus === "approved" && res?.preference) {
-                    setTransportPreferences((prev) => ({ ...prev, [sellerId]: res.preference }));
-                    setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
-                    reportApproved(routeOptionId, res.preference);
-                }
-            } else if (payload.type === "transport_proposal_rejected") {
-                setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: null }));
-                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
-                setTransportRemovedNotices((prev) => ({
-                    ...prev,
-                    [sellerId]: `Your proposed transport option (${proposal.summary}) wasn't accepted by this seller.` + (payload.reason ? ` Reason: ${payload.reason}` : ""),
-                }));
-                reportRejected(routeOptionId, payload.reason || null);
-            }
-        };
-        socket.on("notification:new", onNotif);
-        return () => socket.off("notification:new", onNotif);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [socket, pendingTransportProposals, selectedAddress?.state, selectedAddress?.city, token]);
-
-    useEffect(() => {
-        const keys = Object.values(pendingTransportProposals).filter((p) => p?.routeOptionId).map((p) => p.routeOptionId);
-        keys.forEach(registerActive);
-        return () => keys.forEach(unregisterActive);
-    }, [pendingTransportProposals, registerActive, unregisterActive]);
-
-    // Look up each seller's preference as soon as the address (from context) is known.
-    useEffect(() => {
-        const city = selectedAddress?.city;
-        const state = selectedAddress?.state;
-        if (!city || !state || !sellerIds.length) return;
-        const routeKey = `${state.trim().toLowerCase()}::${city.trim().toLowerCase()}`;
-
-        sellerIds.forEach(async (sellerId) => {
-            if (lastCheckedRouteBySellerRef.current[sellerId] === routeKey) return;
-            lastCheckedRouteBySellerRef.current[sellerId] = routeKey;
-
-            const res = await fetchBuyerTransportPreference(sellerId, state, city, token);
-            const pendingProposal = res?.pendingProposal ? { ...res.pendingProposal, destCity: city, destState: state } : null;
-            setPendingTransportProposals((prev) => ({ ...prev, [sellerId]: pendingProposal }));
-
-            if (res?.rejectedNotice) {
-                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
-                setTransportRemovedNotices((prev) => ({
-                    ...prev,
-                    [sellerId]: `Your proposed transport option (${res.rejectedNotice.summary}) wasn't accepted by this seller.` +
-                        (res.rejectedNotice.reason ? ` Reason: ${res.rejectedNotice.reason}` : ""),
-                }));
-                if (res.rejectedNotice.routeOptionId) reportRejected(res.rejectedNotice.routeOptionId, res.rejectedNotice.reason || null);
-                return;
-            }
-
-            if (res?.success && res.decided) {
-                setTransportPreferences((prev) => ({ ...prev, [sellerId]: res.preference ? { ...res.preference, destCity: city, destState: state } : null }));
-                setTransportRemovedNotices((prev) => ({ ...prev, [sellerId]: null }));
-            } else {
-                setTransportPreferences((prev) => ({ ...prev, [sellerId]: null }));
-                setTransportRemovedNotices((prev) => ({
-                    ...prev,
-                    [sellerId]: res?.invalidated ? "The seller no longer offers your previously selected transport option." : null,
-                }));
-            }
-        });
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedAddress?.city, selectedAddress?.state, token, sellerIds.join(",")]);
-
-    // Address changed -> routes changed -> forget per-seller checks so they re-run.
-    const prevRouteRef = useRef(null);
-    useEffect(() => {
-        const key = selectedAddress ? `${selectedAddress.state}::${selectedAddress.city}` : null;
-        if (prevRouteRef.current && key && prevRouteRef.current !== key) {
-            setTransportPreferences({});
-            setPendingTransportProposals({});
-        }
-        prevRouteRef.current = key;
-    }, [selectedAddress?.city, selectedAddress?.state]); // eslint-disable-line react-hooks/exhaustive-deps
-
     // Poll pending proposals for approval / rejection.
     useEffect(() => {
         const city = selectedAddress?.city;
@@ -565,9 +438,8 @@ function CartPageInner() {
 
     // prefsOverride lets the "Select transport & pay" flow check out right after the
     // last seller is chosen, before React has committed that state.
-    const handleCheckout = async (prefsOverride) => {
+    const handleCheckout = async () => {
         setError(null);
-        const prefs = prefsOverride || transportPreferences;
 
         if (noSelection) { setError("Select at least one item to check out."); return; }
         if (hasStockBlock) {
@@ -579,16 +451,12 @@ function CartPageInner() {
             setError(blockedSelected[0]?.status.message || "One or more selected items aren't deliverable to your address.");
             return;
         }
-        const missingSellerId = selectedSellerIds.find((id) => !prefs[id]);
-        if (missingSellerId) {
-            const sellerName = grouped[missingSellerId]?.seller?.seller_name || "one of your sellers";
-            setError(pendingTransportProposals[missingSellerId]
-                ? `Waiting for ${sellerName} to approve your transport option before you can check out.`
-                : `Please set a transport preference for ${sellerName} before checking out.`);
-            return;
-        }
 
-        const checkoutProps = { flow: "cart", code: safeCode(res?.code), code: safeCode(pay?.code), item_count: selectedCount, seller_count: selectedSellerIds.length, cart_value: Math.round(grandTotal) };
+        const selectedSellerCount = new Set(selectedItems.map((i) => i.seller_id)).size;
+        const checkoutProps = {
+            flow: "cart", item_count: selectedCount,
+            seller_count: selectedSellerCount, cart_value: Math.round(grandTotal),
+        };
         track("checkout_started", checkoutProps);
 
         setChecking(true);
@@ -596,28 +464,20 @@ function CartPageInner() {
         try {
             await flushPendingWrites();
 
-            const selectedSellerSet = new Set(selectedSellerIds.map(String));
-            const transportPreferencesPayload = Object.entries(prefs)
-                .filter(([sellerId, pref]) => pref?.routeOptionId && selectedSellerSet.has(String(sellerId)))
-                .map(([sellerId, pref]) => ({ sellerId, routeOptionId: pref.routeOptionId }));
-
             const res = await checkoutCart(token, {
                 shippingAddressId: selectedAddressId,
-                transportPreferences: transportPreferencesPayload,
                 submissionIds: selectedItems.map((it) => it.submission_id),
             });
             if (!res?.success) {
-                track("checkout_failed", { stage: "create_order", code: res?.code || null });
+                track("checkout_failed", { stage: "create_order", code: safeCode(res?.code) });
                 setError(res?.message || "Couldn't place the order.");
-                if (res?.code === "CART_CHANGED") load(); // cart moved under us: refresh it
+                if (res?.code === "CART_CHANGED") load();
                 return;
             }
 
-            // The order group exists (awaiting payment). Send the buyer to JioPay for the selected items.
-            // If this step fails, tapping the button again retries.
             const pay = await startGroupPayment(token, res.orderGroupId);
             if (!pay?.success) {
-                track("checkout_failed", { stage: "start_payment", code: pay?.code || null });
+                track("checkout_failed", { stage: "start_payment", code: safeCode(pay?.code) });
                 setError(pay?.message || "Couldn't start the payment. Tap the button again to retry.");
                 return;
             }
@@ -625,56 +485,20 @@ function CartPageInner() {
             navigating = redirectToGateway(pay.redirectUrl);
             if (!navigating) setError("Couldn't open the payment page. Tap the button again to retry.");
         } finally {
-            // While the browser navigates to the gateway keep the spinner up.
             if (!navigating) setChecking(false);
         }
     };
 
-    const handleTransportResolved = (sellerId, result) => {
-        const isPending = !!result?.pending;
-        const nextPrefs = { ...transportPreferences, [sellerId]: isPending ? null : (result || null) };
-        const nextPending = { ...pendingTransportProposals, [sellerId]: isPending ? result : null };
-
-        setTransportPreferences(nextPrefs);
-        setPendingTransportProposals(nextPending);
-        setTransportRemovedNotices((prev) => ({ ...prev, [sellerId]: null }));
-
-        if (checkoutAfterTransportRef.current) {
-            if (!result || isPending) {
-                checkoutAfterTransportRef.current = false;
-                setActiveTransportSellerId(null);
-                return;
-            }
-            const nextNeeds = selectedSellerIds.filter((id) => !nextPrefs[id] && !nextPending[id]);
-            if (nextNeeds.length) { setActiveTransportSellerId(nextNeeds[0]); return; }
-            checkoutAfterTransportRef.current = false;
-            setActiveTransportSellerId(null);
-            if (selectedSellerIds.every((id) => nextPrefs[id])) handleCheckout(nextPrefs);
-            return;
-        }
-        setActiveTransportSellerId(null);
-    };
-
     /* ---- primary CTA (only sellers with selected items need transport) ---- */
-    const missingIds = selectedSellerIds.filter((id) => !transportPreferences[id]);
-    const needSelectIds = missingIds.filter((id) => !pendingTransportProposals[id]);
-    const waitingIds = missingIds.filter((id) => pendingTransportProposals[id]);
     const ctaLabel = noSelection ? "Select items to continue"
         : !selectedAddressId ? "Add delivery address"
-            : needSelectIds.length ? "Select transport & pay"
-                : waitingIds.length ? "Waiting for seller approval"
-                    : "Proceed to pay";
-    const ctaDisabled = checking || noSelection || hasStockBlock || anyGroupBlocked || (!needSelectIds.length && waitingIds.length > 0);
+            : "Proceed to pay";
+    const ctaDisabled = checking || noSelection || hasStockBlock || anyGroupBlocked;
 
     const handlePrimary = () => {
         setError(null);
         if (noSelection) return;
         if (!selectedAddressId) { addressBookRef.current?.openChange(); return; }
-        if (needSelectIds.length) {
-            checkoutAfterTransportRef.current = true;
-            setActiveTransportSellerId(needSelectIds[0]);
-            return;
-        }
         handleCheckout();
     };
 
@@ -723,9 +547,6 @@ function CartPageInner() {
 
                     {Object.entries(grouped).map(([sellerId, g]) => {
                         const groupStatus = groupConstraintStatus[sellerId];
-                        const pref = transportPreferences[sellerId];
-                        const pendingProposal = pendingTransportProposals[sellerId];
-                        const removedNotice = transportRemovedNotices[sellerId];
                         const groupIds = g.items.map((it) => it.submission_id);
                         const groupSelected = g.items.filter((it) => !deselected.has(it.submission_id));
                         const sellerSelCount = groupSelected.length;
@@ -820,29 +641,7 @@ function CartPageInner() {
                                     </Notice>
                                 )}
 
-                                {/* Per-seller transport */}
-                                <div className="sh-trn">
-                                    <div className="sh-trh">
-                                        <p className="sh-lbl" style={{ margin: 0 }}><Truck size={14} />Preferred transport</p>
-                                        <button type="button" className="sh-lnk" disabled={!selectedAddressId || checking}
-                                            onClick={() => { checkoutAfterTransportRef.current = false; setActiveTransportSellerId(sellerId); }}>
-                                            {pref || pendingProposal ? "Change" : "Select"}
-                                        </button>
-                                    </div>
-                                    {pref ? (
-                                        <b className="sh-trv">{routeTransportModeLabel(pref.mode)}</b>
-                                    ) : pendingProposal ? (
-                                        <>
-                                            <b className="sh-trv">{routeTransportModeLabel(pendingProposal.mode)}</b>
-                                            <p className="sh-trw">Awaiting the seller's approval. You can check out with this seller once it's approved.</p>
-                                        </>
-                                    ) : sellerSelCount > 0 ? (
-                                        <p className="sh-cap" style={{ margin: 0 }}>Not selected yet. We'll ask when you tap "Select transport &amp; pay".</p>
-                                    ) : (
-                                        <p className="sh-cap" style={{ margin: 0 }}>Not needed. None of this seller's items are selected for checkout.</p>
-                                    )}
-                                    {removedNotice && <Notice tone="warn">{removedNotice}</Notice>}
-                                </div>
+
                             </section>
                         );
                     })}
@@ -868,20 +667,6 @@ function CartPageInner() {
                         </div>
                     </div>
                 </>
-            )}
-
-            {activeTransportSellerId && grouped[activeTransportSellerId] && (
-                <TransportPreferenceModal
-                    open
-                    seller={sellerObjFor(grouped[activeTransportSellerId])}
-                    destAddressId={selectedAddressId}
-                    removedNotice={transportRemovedNotices[activeTransportSellerId]}
-                    onIntentSource="cart"
-                    onCaptureIntent={() => ({ cartSellerId: activeTransportSellerId })}
-                    onClose={() => { checkoutAfterTransportRef.current = false; setActiveTransportSellerId(null); }}
-                    onAddressChange={() => { /* address lives in BuyerAddressContext */ }}
-                    onResolved={(result) => handleTransportResolved(activeTransportSellerId, result)}
-                />
             )}
 
             {viewingItem && <CartItemDetailModal item={viewingItem} onClose={() => setViewingItem(null)} />}
