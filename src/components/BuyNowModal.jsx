@@ -1015,10 +1015,10 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                 style={{ background: "linear-gradient(135deg, #d2462b 0%, #c71f11 100%)" }}>
                                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay now"}
                             </button>
-                            <button onClick={handleEditOrder} disabled={submitting}
+                            {/* <button onClick={handleEditOrder} disabled={submitting}
                                 className="w-full rounded-xl border py-3 text-[13.5px] font-bold disabled:opacity-60" style={{ borderColor: C.hair, color: C.ink }}>
                                 Edit order
-                            </button>
+                            </button> */}
                             <button onClick={onClose} disabled={submitting}
                                 className="w-full py-2 text-[12.5px] font-bold disabled:opacity-60" style={{ color: C.muted }}>
                                 Pay later from My orders
