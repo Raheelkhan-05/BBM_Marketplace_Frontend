@@ -3,7 +3,7 @@
   "appName": "BBM Marketplace",
   "webDir": "dist",
   "server": {
-    "url": "https://bbm.business",
+    "url": "https://www.bbm.business",
     "allowNavigation": [
       "bbm.business",
       "www.bbm.business"

@@ -27,7 +27,7 @@
     <script>
         (function () {
             // Only ever forward to the payment gateway's own domain (never an open redirect).
-            var ALLOWED = ["jiopay.co.in", "httpbin.org"];
+            var ALLOWED = ["jiopay.co.in"];
             function allowed(host) {
                 return ALLOWED.some(function (a) { return host === a || host.slice(-(a.length + 1)) === "." + a; });
             }
