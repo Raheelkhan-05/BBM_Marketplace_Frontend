@@ -20,7 +20,8 @@ import {
 import { useAuth } from "../context/AuthContext.jsx";
 import useRfqLive from "../hooks/useRfqLive.js";
 import { useGstLookup } from "../hooks/useSalesSheet.js";
-import { fetchThread, updateThread, setThreadStatus, setThreadReminder, addThreadEntry, uploadThreadFile, resendThreadQuote } from "../utils/salesThreadApi.js";
+import useTouchDevice, { isSendKey, sendHint } from "../hooks/useEnterToSend.js";
+import { fetchThread, updateThread, setThreadStatus, setThreadReminder, uploadThreadFile, resendThreadQuote } from "../utils/salesThreadApi.js";
 import { cacheGet, cacheSet, threadKey, FIRST_PAGE, OLDER_PAGE } from "../utils/salesThreadCache.js";
 import SalesQuoteSheet from "../components/sales/SalesQuoteSheet.jsx";
 import useChatSocket from "../hooks/useChatSocket.js";
@@ -29,7 +30,7 @@ import { fetchChatParticipants, markChatRead, uploadChatFile } from "../utils/sa
 import { postThreadEntry } from "../utils/salesExtrasApi.js";
 import { VoicePlayer, VoiceRecordingBar, SendOrMic, useVoiceRecorder } from "../components/team/chat/VoiceNote.jsx";
 import { ReplyBar, ReplyHover, ReplyQuote, SwipeRow, snippetOf } from "../components/team/chat/ReplyBits.jsx";
-import { OtherBubble, Attachment as ChatAttachment, BodyText, TypingLine, ParticipantStack, MentionList, colorFor } from "../components/team/chat/ChatBits.jsx";
+import { OtherBubble, Attachment as ChatAttachment, BodyText, TypingLine, ParticipantStack, MentionList } from "../components/team/chat/ChatBits.jsx";
 import ParticipantsSheet from "../components/team/chat/ParticipantsSheet.jsx";
 import SalesAddProductSheet from "../components/sales/SalesAddProductSheet.jsx";
 import {
@@ -396,6 +397,7 @@ function Composer({ token, threadId, say, onSend, onVoice, onQuote, onOutcome, o
     const wrapRef = useRef(null);
     const mn = useMentions({ people, text, setText, taRef });
     const rec = useVoiceRecorder({ onDone: onVoice, onError: say });
+    const touch = useTouchDevice();
 
     useEffect(() => { if (replyTo) taRef.current?.focus(); }, [replyTo?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -450,7 +452,7 @@ function Composer({ token, threadId, say, onSend, onVoice, onQuote, onOutcome, o
     const onKey = (e) => {
         if (mn.onKeyDown(e)) return;
         if (e.key === "Escape" && replyTo) { onClearReply(); return; }
-        if (e.key !== "Enter" || e.shiftKey || e.nativeEvent?.isComposing) return;
+        if (!isSendKey(e, touch)) return;
         e.preventDefault();
         send();
     };
@@ -496,7 +498,7 @@ function Composer({ token, threadId, say, onSend, onVoice, onQuote, onOutcome, o
                         </div>
                     </div>
                     <textarea ref={taRef} className="st-ta" rows={1} value={text} maxLength={4000} aria-label="Write an update"
-                        placeholder="Write an update…" enterKeyHint="send"
+                        placeholder="Write an update…" enterKeyHint={touch ? "enter" : "send"}
                         onChange={(e) => { setText(e.target.value); mn.detect(e.target.value, e.target.selectionStart); onTyping?.(!!e.target.value.trim()); }}
                         onSelect={(e) => mn.detect(e.target.value, e.target.selectionStart)}
                         onBlur={() => onTyping?.(false)}
@@ -505,7 +507,7 @@ function Composer({ token, threadId, say, onSend, onVoice, onQuote, onOutcome, o
                     <SendOrMic canSend={canSend} hasContent={hasContent} rec={rec} onSend={send} label="Save update" />
                 </div>
             )}
-            <small className="st-bar-h">Enter to send · Shift+Enter for a new line · @ to tag a teammate</small>
+            <small className="st-bar-h">{sendHint(touch)}</small>
         </div>
     );
 }
@@ -940,7 +942,7 @@ export default function SalesThreadPage() {
                     </div>
                 )}
                 <Timeline entries={entries} busyKey={busyKey} onRetry={retry} onResend={onResend} onDiscard={onDiscard}
-                    ownerId={thread.salespersonId} who={who} tagNames={tagNames} />
+                    onReply={onReply} ownerId={thread.salespersonId} who={who} tagNames={tagNames} />
             </div>
 
             {/* Sticky dock: the "Latest" button lives inside it, so it always sits just above the composer, whatever its height. */}
