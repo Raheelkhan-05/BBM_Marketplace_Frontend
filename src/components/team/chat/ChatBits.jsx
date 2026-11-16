@@ -3,8 +3,10 @@
 import { Fragment } from "react";
 import { Download, FileText, UserPlus } from "lucide-react";
 import { fileSize } from "../../sales/salesThreadFmt.js";
+import { VoicePlayer } from "./VoiceNote.jsx";
 import "../../sales/sales-threads.css";
 import "../../sales/sales-chat.css";
+import "../../sales/sales-chat.extras.css";
 
 const PALETTE = ["#0d6c79", "#7a3eb1", "#b45309", "#114072", "#12794a", "#c23a0b", "#8a3b6e", "#4d6b00"];
 export const colorFor = (id = "") => { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PALETTE[h % PALETTE.length]; };
@@ -31,6 +33,8 @@ export function BodyText({ body, names = [], meName = "" }) {
 }
 
 export function Attachment({ a }) {
+    if ((a.type || "").startsWith("audio/")) return <VoicePlayer src={a.url} duration={a.duration} />;
+
     if ((a.type || "").startsWith("image/") && a.url) {
         return <a className="st-img" href={a.url} target="_blank" rel="noreferrer" aria-label={`Open ${a.name}`}><img src={a.url} alt={a.name} loading="lazy" /></a>;
     }

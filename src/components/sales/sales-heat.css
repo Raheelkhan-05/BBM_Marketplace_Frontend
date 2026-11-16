@@ -1,0 +1,111 @@
+.sh-li {
+    display: flex;
+    flex-direction: column;
+    gap: 6px
+}
+
+.sh-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 4px 2px;
+    overflow-x: auto;
+    scrollbar-width: none
+}
+
+.sh-strip::-webkit-scrollbar,
+.sh-fl::-webkit-scrollbar {
+    display: none
+}
+
+.sh-lbl {
+    flex: none;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #5B6672
+}
+
+.sh-pill,
+.sh-chip {
+    --hc: #141B22;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: none;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(20, 27, 34, .12);
+    background: #fff;
+    color: #5B6672;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .12s, color .12s, border-color .12s, transform .08s
+}
+
+.sh-pill:active,
+.sh-chip:active {
+    transform: scale(.95)
+}
+
+.sh-pill.on,
+.sh-chip.on {
+    background: var(--hc);
+    border-color: var(--hc);
+    color: #fff
+}
+
+.sh-pill:focus-visible,
+.sh-chip:focus-visible {
+    outline: 2px solid #0B7285;
+    outline-offset: 2px
+}
+
+.hot {
+    --hc: #d2462b
+}
+
+.warm {
+    --hc: #c77700
+}
+
+.cold {
+    --hc: #1f6fb2
+}
+
+.dead {
+    --hc: #5B6672
+}
+
+.sh-fl {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 8px 0 2px;
+    scrollbar-width: none
+}
+
+.sh-chip .n {
+    font-size: 11px;
+    opacity: .75;
+    font-variant-numeric: tabular-nums
+}
+
+.sh-badge {
+    --hc: #5B6672;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--hc) 14%, transparent);
+    color: var(--hc);
+    font-size: 11px;
+    font-weight: 700
+}

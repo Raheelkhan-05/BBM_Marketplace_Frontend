@@ -25,7 +25,10 @@ import { cacheGet, cacheSet, threadKey, FIRST_PAGE, OLDER_PAGE } from "../utils/
 import SalesQuoteSheet from "../components/sales/SalesQuoteSheet.jsx";
 import useChatSocket from "../hooks/useChatSocket.js";
 import useMentions from "../hooks/useMentions.js";
-import { fetchChatParticipants, markChatRead } from "../utils/salesChatApi.js";
+import { fetchChatParticipants, markChatRead, uploadChatFile } from "../utils/salesChatApi.js";
+import { postThreadEntry } from "../utils/salesExtrasApi.js";
+import { VoicePlayer, VoiceRecordingBar, SendOrMic, useVoiceRecorder } from "../components/team/chat/VoiceNote.jsx";
+import { ReplyBar, ReplyHover, ReplyQuote, SwipeRow, snippetOf } from "../components/team/chat/ReplyBits.jsx";
 import { OtherBubble, Attachment as ChatAttachment, BodyText, TypingLine, ParticipantStack, MentionList, colorFor } from "../components/team/chat/ChatBits.jsx";
 import ParticipantsSheet from "../components/team/chat/ParticipantsSheet.jsx";
 import SalesAddProductSheet from "../components/sales/SalesAddProductSheet.jsx";
@@ -94,6 +97,8 @@ function FileIcon({ name }) {
 }
 
 function Attachment({ a }) {
+    if ((a.type || "").startsWith("audio/")) return <VoicePlayer src={a.url} duration={a.duration} />;
+
     if ((a.type || "").startsWith("image/") && a.url) {
         return <a className="st-img" href={a.url} target="_blank" rel="noreferrer" aria-label={`Open ${a.name}`}><img src={a.url} alt={a.name} loading="lazy" /></a>;
     }
@@ -140,24 +145,32 @@ function QuoteCard({ e, busyKey, onRetry }) {
     );
 }
 
-const Entry = memo(function Entry({ e, busyKey, onRetry, onResend, onDiscard, ownerId, who, tagNames }) {
+const Entry = memo(function Entry({ e, busyKey, onRetry, onResend, onDiscard, onReply, ownerId, who, tagNames }) {
     if (e.kind === "system") return <div className="st-sys"><span>{e.body}</span><time>{clock(e.createdAt)}</time></div>;
-    // A message from someone else in the chat: left side, with their name.
+    const canReply = !e.local && !e.failed;
+    const row = (node) => <SwipeRow id={e.id} disabled={!canReply} onReply={() => onReply(e)}>{node}</SwipeRow>;
+    const quote = <ReplyQuote r={e.replyTo} who={who} meId={ownerId} />;
+    const hover = canReply ? <ReplyHover onClick={() => onReply(e)} /> : null;
+
     if (e.authorId && e.authorId !== ownerId) {
-        return (
+        return row(
             <OtherBubble name={who(e.authorId, e.authorName)} id={e.authorId} time={clock(e.createdAt)}>
+                {quote}
                 {e.body && <p className="st-body"><BodyText body={e.body} names={tagNames} meName={who(ownerId, "")} /></p>}
                 {e.attachments?.length > 0 && <div className="st-atts">{e.attachments.map((a) => <ChatAttachment key={a.path} a={a} />)}</div>}
-            </OtherBubble>
+                {hover}
+            </OtherBubble>,
         );
     }
-    return (
+    return row(
         <div className={`st-msg${e.clientKey ? " pop" : ""}`}>
             <div className={`st-bub${e.failed ? " failed" : ""}${e.kind === "quote" ? " quote" : ""}`}>
+                {quote}
                 {e.kind === "quote" ? <QuoteCard e={e} busyKey={busyKey} onRetry={onRetry} /> : e.body && <p className="st-body"><BodyText body={e.body} names={tagNames} /></p>}
                 {e.attachments?.length > 0 && (
                     <div className="st-atts">{e.attachments.map((a) => <Attachment key={a.path} a={a} />)}</div>
                 )}
+                {hover}
                 <time dateTime={e.createdAt}>{clock(e.createdAt)}</time>
                 {e.failed && (
                     <div className="st-fail" role="alert">
@@ -167,7 +180,7 @@ const Entry = memo(function Entry({ e, busyKey, onRetry, onResend, onDiscard, ow
                     </div>
                 )}
             </div>
-        </div>
+        </div>,
     );
 });
 
@@ -179,7 +192,7 @@ const Timeline = memo(function Timeline({ entries, busyKey, onRetry, onResend, o
     return rows.map(({ e, day, head }) => (
         <div key={e.clientKey || e.id}>
             {head && <div className="st-day"><span>{day}</span></div>}
-            <Entry e={e} busyKey={busyKey} onRetry={onRetry} onResend={onResend} onDiscard={onDiscard} ownerId={ownerId} who={who} tagNames={tagNames} />
+            <Entry e={e} busyKey={busyKey} onRetry={onRetry} onReply={onReply} onResend={onResend} onDiscard={onDiscard} ownerId={ownerId} who={who} tagNames={tagNames} />
         </div>
     ));
 });
@@ -374,7 +387,7 @@ function ReminderDialog({ current, open, busy, onCancel, onSave, onExited }) {
 
 // Owns its own state (text, files, menu), so keystrokes never re-render the thread above it.
 // Enter sends, Shift+Enter makes a new line. Sending is instant: the parent shows the entry and saves it in the background.
-function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, onAddProduct, hasReminder, hasProduct, people, onTyping }) {
+function Composer({ token, threadId, say, onSend, onVoice, onQuote, onOutcome, onRemind, onAddProduct, hasReminder, hasProduct, people, onTyping, replyTo, onClearReply, who, meId }) {
     const [text, setText] = useState("");
     const [files, setFiles] = useState([]);
     const [menu, setMenu] = useState(false);
@@ -382,8 +395,10 @@ function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, 
     const fileRef = useRef(null);
     const wrapRef = useRef(null);
     const mn = useMentions({ people, text, setText, taRef });
+    const rec = useVoiceRecorder({ onDone: onVoice, onError: say });
 
-    // Grow with the text up to ~5 lines, then scroll inside the box.
+    useEffect(() => { if (replyTo) taRef.current?.focus(); }, [replyTo?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const fit = useCallback(() => {
         const t = taRef.current; if (!t) return;
         t.style.height = "auto";
@@ -393,7 +408,6 @@ function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, 
     }, []);
     useLayoutEffect(() => { fit(); }, [text, fit]);
 
-    // Close the menu on outside tap / Escape.
     useEffect(() => {
         if (!menu) return undefined;
         const away = (e) => { if (!wrapRef.current?.contains(e.target)) setMenu(false); };
@@ -435,6 +449,7 @@ function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, 
     };
     const onKey = (e) => {
         if (mn.onKeyDown(e)) return;
+        if (e.key === "Escape" && replyTo) { onClearReply(); return; }
         if (e.key !== "Enter" || e.shiftKey || e.nativeEvent?.isComposing) return;
         e.preventDefault();
         send();
@@ -455,40 +470,41 @@ function Composer({ token, threadId, say, onSend, onQuote, onOutcome, onRemind, 
                 </div>
             )}
             <input ref={fileRef} type="file" multiple hidden accept={FILE_ACCEPT} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+            <ReplyBar r={replyTo} who={who} meId={meId} onClose={onClearReply} />
             <MentionList options={mn.options} idx={mn.idx} onPick={mn.pick} />
-            <div className={`st-bar${PLUS_ON_LEFT ? "" : " flip"}`}>
-                <div className="st-plusw" ref={wrapRef}>
-                    <button type="button" className="st-plus" aria-label="More actions" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
-                        <Plus size={20} />
-                    </button>
-                    <div className={`st-menu${menu ? " show" : ""}`} role="menu" aria-label="Enquiry actions" aria-hidden={!menu}>
-                        <button type="button" role="menuitem" onClick={run(() => fileRef.current?.click())}><Paperclip size={17} />Add files</button>
-                        {!hasProduct && (
-                            <button type="button" role="menuitem" className="hl" onClick={run(onAddProduct)}><PackagePlus size={17} />Add product</button>
-                        )}
-                        <button type="button" role="menuitem" aria-disabled={!hasProduct} className={hasProduct ? undefined : "dis"} onClick={run(onQuote)}>
-                            <Receipt size={17} />
-                            {hasProduct ? "Send quotation" : <span className="st-mi"><b>Send quotation</b><small>Add the product first</small></span>}
+            {rec.state === "recording" ? (
+                <VoiceRecordingBar secs={rec.secs} onCancel={rec.cancel} onSend={rec.stop} />
+            ) : (
+                <div className={`st-bar${PLUS_ON_LEFT ? "" : " flip"}`}>
+                    <div className="st-plusw" ref={wrapRef}>
+                        <button type="button" className="st-plus" aria-label="More actions" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
+                            <Plus size={20} />
                         </button>
-                        <button type="button" role="menuitem" onClick={run(onRemind)}><Bell size={17} />{hasReminder ? "Change reminder" : "Set reminder"}</button>
-                        <hr />
-                        <button type="button" role="menuitem" className="ok" onClick={run(() => onOutcome("won"))}><Trophy size={17} />Mark as won</button>
-                        <button type="button" role="menuitem" className="bad" onClick={run(() => onOutcome("lost"))}><XCircle size={17} />Mark as lost</button>
+                        <div className={`st-menu${menu ? " show" : ""}`} role="menu" aria-label="Enquiry actions" aria-hidden={!menu}>
+                            <button type="button" role="menuitem" onClick={run(() => fileRef.current?.click())}><Paperclip size={17} />Add files</button>
+                            {!hasProduct && (
+                                <button type="button" role="menuitem" className="hl" onClick={run(onAddProduct)}><PackagePlus size={17} />Add product</button>
+                            )}
+                            <button type="button" role="menuitem" aria-disabled={!hasProduct} className={hasProduct ? undefined : "dis"} onClick={run(onQuote)}>
+                                <Receipt size={17} />
+                                {hasProduct ? "Send quotation" : <span className="st-mi"><b>Send quotation</b><small>Add the product first</small></span>}
+                            </button>
+                            <button type="button" role="menuitem" onClick={run(onRemind)}><Bell size={17} />{hasReminder ? "Change reminder" : "Set reminder"}</button>
+                            <hr />
+                            <button type="button" role="menuitem" className="ok" onClick={run(() => onOutcome("won"))}><Trophy size={17} />Mark as won</button>
+                            <button type="button" role="menuitem" className="bad" onClick={run(() => onOutcome("lost"))}><XCircle size={17} />Mark as lost</button>
+                        </div>
                     </div>
-
+                    <textarea ref={taRef} className="st-ta" rows={1} value={text} maxLength={4000} aria-label="Write an update"
+                        placeholder="Write an update…" enterKeyHint="send"
+                        onChange={(e) => { setText(e.target.value); mn.detect(e.target.value, e.target.selectionStart); onTyping?.(!!e.target.value.trim()); }}
+                        onSelect={(e) => mn.detect(e.target.value, e.target.selectionStart)}
+                        onBlur={() => onTyping?.(false)}
+                        onKeyDown={onKey}
+                        onPaste={(e) => { if (e.clipboardData?.files?.length) { addFiles(e.clipboardData.files); } }} />
+                    <SendOrMic canSend={canSend} hasContent={hasContent} rec={rec} onSend={send} label="Save update" />
                 </div>
-                <textarea ref={taRef} className="st-ta" rows={1} value={text} maxLength={4000} aria-label="Write an update"
-                    placeholder="Write an update…"
-                    enterKeyHint="send"
-                    onChange={(e) => { setText(e.target.value); mn.detect(e.target.value, e.target.selectionStart); onTyping?.(!!e.target.value.trim()); }}
-                    onSelect={(e) => mn.detect(e.target.value, e.target.selectionStart)}
-                    onBlur={() => onTyping?.(false)}
-                    onKeyDown={onKey}
-                    onPaste={(e) => { if (e.clipboardData?.files?.length) { addFiles(e.clipboardData.files); } }} />
-                <button type="button" className="st-send" aria-label="Save update" disabled={!canSend} onClick={send}>
-                    <Send size={18} />
-                </button>
-            </div>
+            )}
             <small className="st-bar-h">Enter to send · Shift+Enter for a new line · @ to tag a teammate</small>
         </div>
     );
@@ -526,6 +542,10 @@ export default function SalesThreadPage() {
     const anchorRef = useRef(null);        // keeps the screen still when older entries are prepended
     const olderBusy = useRef(false);
     const queueRef = useRef(Promise.resolve());   // saves run one after another, so order is kept
+
+    const [replyTo, setReplyTo] = useState(null);
+    const replyRef = useRef(null); replyRef.current = replyTo;
+    const voiceRef = useRef(new Map());          // tmpId -> { file, duration, replyTo } for retrying failed voice notes
 
     // Older cached threads have no flag: they always had a product.
     const hasProduct = thread ? thread.hasProduct !== false : true;
@@ -698,7 +718,7 @@ export default function SalesThreadPage() {
     // Save one local entry in the background (queued, so several quick sends stay in order).
     const post = useCallback((tmpId, payload) => {
         queueRef.current = queueRef.current.then(async () => {
-            const res = await addThreadEntry(token, threadId, payload);
+            const res = await postThreadEntry(token, threadId, payload);
             if (idRef.current !== threadId) return;
             if (!res.success) {
                 setEntries((prev) => prev.map((e) => (e.id === tmpId ? { ...e, failed: true, error: res.message } : e)));
@@ -713,28 +733,71 @@ export default function SalesThreadPage() {
         }).catch(() => { /* never break the queue */ });
     }, [token, threadId]);
 
+    const postVoice = useCallback((tmpId) => {
+        queueRef.current = queueRef.current.then(async () => {
+            const v = voiceRef.current.get(tmpId); if (!v) return;
+            const fail = (message) => setEntries((prev) => prev.map((e) => (e.id === tmpId ? { ...e, failed: true, error: message } : e)));
+            const up = await uploadChatFile(token, threadId, v.file);
+            if (idRef.current !== threadId) return;
+            if (!up.success) return fail(up.message);
+            const res = await postThreadEntry(token, threadId, {
+                body: "", mentions: [], replyTo: v.replyTo || undefined,
+                attachments: [{ ...up.attachment, duration: v.duration }],
+            });
+            if (idRef.current !== threadId) return;
+            if (!res.success) return fail(res.message);
+            voiceRef.current.delete(tmpId);
+            setEntries((prev) => {
+                const rest = prev.filter((e) => e.id !== tmpId);
+                if (rest.some((e) => e.id === res.entry.id)) return rest;
+                return mergeEntries(rest, [{ ...res.entry, clientKey: tmpId }]);
+            });
+        }).catch(() => { /* never break the queue */ });
+    }, [token, threadId]);
+
     // Instant: show the entry now, save it behind the scenes.
     const onSend = useCallback(({ body, attachments, previews, mentions }) => {
         const now = new Date().toISOString();
         const id = `tmp-${now}-${Math.random().toString(36).slice(2, 8)}`;
+        const rp = replyRef.current;
         const tmp = {
-            id, clientKey: id, local: true, kind: "note", authorId: thread?.salespersonId, body, createdAt: now,
+            id, clientKey: id, local: true, kind: "note", authorId: thread?.salespersonId, body, createdAt: now, replyTo: rp,
             attachments: attachments.map((a) => ({ ...a, url: previews?.[a.path] || null })),
-            payload: { body, attachments, mentions },
+            payload: { body, attachments, mentions, replyTo: rp?.id || undefined },
         };
         stickRef.current = true;
         setEntries((prev) => mergeEntries(prev, [tmp]));
         setThread((t) => (t ? { ...t, lastActivityAt: now, reminderAt: null } : t));
+        setReplyTo(null);
         post(id, tmp.payload);
     }, [post, thread?.salespersonId]);
 
+    const sendVoice = useCallback(({ blob, type, duration }) => {
+        const now = new Date().toISOString();
+        const id = `tmp-${now}-${Math.random().toString(36).slice(2, 8)}`;
+        const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+        const file = new File([blob], `voice-${Date.now()}.${ext}`, { type });
+        const rp = replyRef.current;
+        voiceRef.current.set(id, { file, duration, replyTo: rp?.id || null });
+        const tmp = {
+            id, clientKey: id, local: true, kind: "note", authorId: thread?.salespersonId, body: "", createdAt: now, replyTo: rp,
+            attachments: [{ path: id, name: file.name, type, size: file.size, duration, url: URL.createObjectURL(blob) }],
+        };
+        stickRef.current = true;
+        setEntries((prev) => mergeEntries(prev, [tmp]));
+        setThread((t) => (t ? { ...t, lastActivityAt: now, reminderAt: null } : t));
+        setReplyTo(null);
+        postVoice(id);
+    }, [postVoice, thread?.salespersonId]);
+
     const onResend = useCallback((id) => {
-        const e = entriesRef.current.find((x) => x.id === id);
-        if (!e?.payload) return;
         setEntries((prev) => prev.map((x) => (x.id === id ? { ...x, failed: false, error: undefined } : x)));
-        post(id, e.payload);
-    }, [post]);
-    const onDiscard = useCallback((id) => setEntries((prev) => prev.filter((x) => x.id !== id)), []);
+        if (voiceRef.current.has(id)) return postVoice(id);
+        const e = entriesRef.current.find((x) => x.id === id);
+        if (e?.payload) post(id, e.payload);
+    }, [post, postVoice]);
+    const onDiscard = useCallback((id) => { voiceRef.current.delete(id); setEntries((prev) => prev.filter((x) => x.id !== id)); }, []);
+    const onReply = useCallback((e) => setReplyTo(snippetOf(e, thread?.salespersonId)), [thread?.salespersonId]);
 
     const retry = useCallback(async (quoteId, channel) => {
         setBusyKey(`${quoteId}:${channel}`);
@@ -898,9 +961,10 @@ export default function SalesThreadPage() {
                         </button>
                     </div>
                 ) : (
-                    <Composer key={threadId} token={token} threadId={threadId} say={say} onSend={onSend} onQuote={openQuote}
+                    <Composer key={threadId} token={token} threadId={threadId} say={say} onSend={onSend} onVoice={sendVoice} onQuote={openQuote}
                         onOutcome={askOutcome} onRemind={askRemind} onAddProduct={openAddProduct}
                         people={tagPeople} onTyping={chat.emitTyping}
+                        replyTo={replyTo} onClearReply={() => setReplyTo(null)} who={who} meId={thread.salespersonId}
                         hasReminder={!!thread.reminderAt} hasProduct={hasProduct} />
                 )}
             </div>

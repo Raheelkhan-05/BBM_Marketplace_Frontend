@@ -2,17 +2,22 @@
 // The enquiry group chat for admins and added team members (replaces the old read-only viewer).
 // Opens from Console > Sales (admin) or Console > Enquiries (member), or from a WhatsApp link.
 // Salesperson entries sit on the left with their name; my own messages on the right. Live over the socket,
-// optimistic sending, @ tagging, files, typing indicator, read tracking (drives unread badges + the 1-hour reminder).
+// optimistic sending, @ tagging, files, voice notes, swipe / button reply, typing indicator,
+// read tracking (drives unread badges + the 1-hour reminder).
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Loader2, Paperclip, Send, X, Receipt, Phone, Mail, Bell, Trophy, XCircle, PhoneCall, AlertCircle, BadgeCheck, FileText } from "lucide-react";
+import { ArrowLeft, Loader2, Paperclip, X, Receipt, Phone, Mail, Bell, Trophy, XCircle, PhoneCall, AlertCircle, BadgeCheck, FileText } from "lucide-react";
 import { fetchChatThread, postChatMessage, markChatRead, uploadChatFile } from "../../utils/salesChatApi.js";
 import { useSocket } from "../../context/SocketContext.jsx";
 import useChatSocket from "../../hooks/useChatSocket.js";
 import useMentions from "../../hooks/useMentions.js";
+import { VoiceRecordingBar, SendOrMic, useVoiceRecorder } from "./chat/VoiceNote.jsx";
+import { ReplyBar, ReplyHover, ReplyQuote, SwipeRow, snippetOf } from "./chat/ReplyBits.jsx";
+import { HeatBadge } from "../sales/salesHeat.jsx";
 import { ALLOWED_FILES, FILE_ACCEPT, MAX_FILE_BYTES, MAX_FILES, clock, dayLabel, dateTime, inr, qty } from "../sales/salesThreadFmt.js";
-import { Attachment, BodyText, OtherBubble, TypingLine, ParticipantStack, MentionList, colorFor } from "./chat/ChatBits.jsx";
+import { Attachment, BodyText, OtherBubble, TypingLine, ParticipantStack, MentionList } from "./chat/ChatBits.jsx";
 import ParticipantsSheet from "./chat/ParticipantsSheet.jsx";
+import "../sales/sales-heat.css";
 
 const Z_VIEWER = 10000;
 const CH = { whatsapp: "WhatsApp", email: "Email" };
@@ -53,19 +58,23 @@ function Quote({ q }) {
     );
 }
 
-const Entry = memo(function Entry({ e, meId, ownerId, who, names, meName, onResend, onDiscard }) {
+const Entry = memo(function Entry({ e, meId, ownerId, who, names, meName, onResend, onDiscard, onReply }) {
     if (e.kind === "system") return <div className="st-sys"><span>{e.body}</span><time>{clock(e.createdAt)}</time></div>;
     const author = e.authorId || ownerId;
     const mine = author === meId;
     const isQuote = e.kind === "quote" && e.quote;
+    const canReply = !e.local && !e.failed;
+    const row = (node) => <SwipeRow id={e.id} disabled={!canReply} onReply={() => onReply(e)}>{node}</SwipeRow>;
     const content = (
         <>
+            <ReplyQuote r={e.replyTo} who={who} meId={meId} />
             {isQuote ? <Quote q={e.quote} /> : e.body && <p className="st-body"><BodyText body={e.body} names={names} meName={meName} /></p>}
             {e.attachments?.length > 0 && <div className="st-atts">{e.attachments.map((a) => <Attachment key={a.path} a={a} />)}</div>}
+            {canReply && <ReplyHover onClick={() => onReply(e)} />}
         </>
     );
-    if (!mine) return <OtherBubble name={who(author, e.authorName)} id={author} time={clock(e.createdAt)} quote={isQuote}>{content}</OtherBubble>;
-    return (
+    if (!mine) return row(<OtherBubble name={who(author, e.authorName)} id={author} time={clock(e.createdAt)} quote={isQuote}>{content}</OtherBubble>);
+    return row(
         <div className={`st-msg${e.clientKey ? " pop" : ""}`}>
             <div className={`st-bub${e.failed ? " failed" : ""}${isQuote ? " quote" : ""}`}>
                 {content}
@@ -77,7 +86,7 @@ const Entry = memo(function Entry({ e, meId, ownerId, who, names, meName, onRese
                     </div>
                 )}
             </div>
-        </div>
+        </div>,
     );
 });
 
@@ -96,12 +105,14 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
     const [text, setText] = useState("");
     const [files, setFiles] = useState([]);
     const [note, setNote] = useState("");
+    const [replyTo, setReplyTo] = useState(null);
 
     const scrollRef = useRef(null), stickRef = useRef(true), anchorRef = useRef(null), firstRef = useRef(true);
     const entriesRef = useRef([]); entriesRef.current = entries;
     const sheetRef = useRef(false); sheetRef.current = sheet;
     const queueRef = useRef(Promise.resolve());
     const taRef = useRef(null), fileRef = useRef(null);
+    const voiceRef = useRef(new Map());      // tmpId -> { file, duration, replyTo } so a failed voice note can be retried
 
     const nearBottom = () => { const el = scrollRef.current; return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 140; };
 
@@ -120,7 +131,7 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
         setState("ready");
     }, [token, id]);
 
-    useEffect(() => { firstRef.current = true; setState("loading"); setEntries([]); load(); }, [load]);
+    useEffect(() => { firstRef.current = true; setState("loading"); setEntries([]); setReplyTo(null); load(); }, [load]);
 
     // live: messages arrive over the socket; status / quote lines by the salesperson arrive on the next light refresh
     const chat = useChatSocket(id, {
@@ -141,8 +152,9 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
         return () => clearInterval(t);
     }, [load]);
 
+    // Esc closes the chat, unless the sheet is open or Esc was just used to cancel a reply (that handler calls preventDefault).
     useEffect(() => {
-        const k = (e) => { if (e.key === "Escape" && !sheetRef.current) onClose(); };
+        const k = (e) => { if (e.key === "Escape" && !e.defaultPrevented && !sheetRef.current) onClose(); };
         document.addEventListener("keydown", k);
         return () => document.removeEventListener("keydown", k);
     }, [onClose]);
@@ -192,13 +204,6 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
     const mn = useMentions({ people: others, text, setText, taRef });
 
     /* ----- composer ----- */
-    useLayoutEffect(() => {
-        const t = taRef.current; if (!t) return;
-        t.style.height = "auto";
-        t.style.height = `${Math.min(t.scrollHeight, COMPOSER_MAX)}px`;
-        t.style.overflowY = t.scrollHeight > COMPOSER_MAX ? "auto" : "hidden";
-    }, [text, state]);
-
     const addFiles = (list) => {
         const picked = Array.from(list || []);
         const room = MAX_FILES - files.length;
@@ -215,7 +220,8 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
     };
     const uploading = files.some((f) => f.status === "uploading");
     const ready = files.filter((f) => f.status === "done");
-    const canSend = !uploading && (text.trim().length > 0 || ready.length > 0);
+    const hasContent = text.trim().length > 0 || ready.length > 0;
+    const canSend = !uploading && hasContent;
 
     // saves run one after another, so quick sends keep their order
     const post = useCallback((tmpId, payload) => {
@@ -229,38 +235,92 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
         }).catch(() => { /* never break the queue */ });
     }, [token, id]);
 
+    // voice note: upload the audio, then post it as a normal message
+    const postVoice = useCallback((tmpId) => {
+        queueRef.current = queueRef.current.then(async () => {
+            const v = voiceRef.current.get(tmpId); if (!v) return;
+            const fail = (message) => setEntries((prev) => prev.map((e) => (e.id === tmpId ? { ...e, failed: true, error: message } : e)));
+            const up = await uploadChatFile(token, id, v.file);
+            if (!up.success) return fail(up.message);
+            const r = await postChatMessage(token, id, {
+                body: "", mentions: [], replyTo: v.replyTo || undefined,
+                attachments: [{ ...up.attachment, duration: v.duration }],
+            });
+            if (!r.success) return fail(r.message);
+            voiceRef.current.delete(tmpId);
+            setEntries((prev) => {
+                const rest = prev.filter((e) => e.id !== tmpId);
+                return rest.some((e) => e.id === r.entry.id) ? rest : merge(rest, [{ ...r.entry, clientKey: tmpId }]);
+            });
+        }).catch(() => { /* never break the queue */ });
+    }, [token, id]);
+
     const send = () => {
         if (!canSend) return;
         const body = text.trim();
         const now = new Date().toISOString();
         const tmpId = `tmp-${now}-${Math.random().toString(36).slice(2, 8)}`;
-        const payload = { body, attachments: ready.map((f) => f.attachment), mentions: mn.collect(text) };
+        const rp = replyTo;
+        const payload = { body, attachments: ready.map((f) => f.attachment), mentions: mn.collect(text), replyTo: rp?.id || undefined };
         const tmp = {
-            id: tmpId, clientKey: tmpId, local: true, kind: "note", authorId: meId, authorName: meName, body, createdAt: now, payload,
+            id: tmpId, clientKey: tmpId, local: true, kind: "note", authorId: meId, authorName: meName, body, createdAt: now, payload, replyTo: rp,
             attachments: ready.map((f) => ({ ...f.attachment, url: f.preview || null })),
         };
         stickRef.current = true;
         setEntries((prev) => merge(prev, [tmp]));
         post(tmpId, payload);
+        setReplyTo(null);
         setText(""); setFiles([]); setNote(""); mn.reset(); chat.emitTyping(false);
         taRef.current?.focus();
     };
+
+    const sendVoice = useCallback(({ blob, type, duration }) => {
+        const now = new Date().toISOString();
+        const tmpId = `tmp-${now}-${Math.random().toString(36).slice(2, 8)}`;
+        const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
+        const file = new File([blob], `voice-${Date.now()}.${ext}`, { type });
+        const rp = replyTo;
+        voiceRef.current.set(tmpId, { file, duration, replyTo: rp?.id || null });
+        const tmp = {
+            id: tmpId, clientKey: tmpId, local: true, kind: "note", authorId: meId, authorName: meName, body: "", createdAt: now, replyTo: rp,
+            attachments: [{ path: tmpId, name: file.name, type, size: file.size, duration, url: URL.createObjectURL(blob) }],
+        };
+        stickRef.current = true;
+        setEntries((prev) => merge(prev, [tmp]));
+        setReplyTo(null);
+        postVoice(tmpId);
+    }, [postVoice, meId, meName, replyTo]);
+
+    const rec = useVoiceRecorder({ onDone: sendVoice, onError: setNote });
+
+    // keep the reply bar's field focused, and size the textarea (also again when it returns after a recording)
+    useEffect(() => { if (replyTo) taRef.current?.focus(); }, [replyTo?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    useLayoutEffect(() => {
+        const t = taRef.current; if (!t) return;
+        t.style.height = "auto";
+        t.style.height = `${Math.min(t.scrollHeight, COMPOSER_MAX)}px`;
+        t.style.overflowY = t.scrollHeight > COMPOSER_MAX ? "auto" : "hidden";
+    }, [text, state, rec.state]);
+
     const resend = useCallback((tid) => {
-        const e = entriesRef.current.find((x) => x.id === tid); if (!e?.payload) return;
         setEntries((prev) => prev.map((x) => (x.id === tid ? { ...x, failed: false, error: undefined } : x)));
-        post(tid, e.payload);
-    }, [post]);
-    const discard = useCallback((tid) => setEntries((prev) => prev.filter((x) => x.id !== tid)), []);
+        if (voiceRef.current.has(tid)) return postVoice(tid);
+        const e = entriesRef.current.find((x) => x.id === tid);
+        if (e?.payload) post(tid, e.payload);
+    }, [post, postVoice]);
+    const discard = useCallback((tid) => { voiceRef.current.delete(tid); setEntries((prev) => prev.filter((x) => x.id !== tid)); }, []);
+    const onReply = useCallback((e) => setReplyTo(snippetOf(e, thread?.salespersonId)), [thread?.salespersonId]);
 
     const onKey = (e) => {
         if (mn.onKeyDown(e)) return;
+        if (e.key === "Escape" && replyTo) { e.preventDefault(); setReplyTo(null); return; }   // cancel the reply, keep the chat open
         if (e.key !== "Enter" || e.shiftKey || e.nativeEvent?.isComposing) return;
         e.preventDefault(); send();
     };
     const onChange = (e) => {
         setText(e.target.value);
         mn.detect(e.target.value, e.target.selectionStart);
-        if (e.target.value.trim()) chat.emitTyping(true); else chat.emitTyping(false);
+        chat.emitTyping(!!e.target.value.trim());
     };
 
     const st = thread ? stateOf(thread) : null;
@@ -281,6 +341,7 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
                         <div className="sc-hd-n">
                             <h2>{thread?.displayName || "Enquiry"}</h2>
                             {st && <span className={`st-state ${st.k}`}>{st.l}</span>}
+                            {thread?.heat && <HeatBadge heat={thread.heat} />}
                             {cold && <span className="st-bd cold"><PhoneCall size={12} />Cold call</span>}
                         </div>
                         {thread && <p>{hasProduct ? `${thread.productName} · ${qty(thread.quantity)} ${thread.unit}` : "Cold call · no product yet"}</p>}
@@ -324,7 +385,8 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
                                 return (
                                     <div key={e.clientKey || e.id}>
                                         {head && <div className="st-day"><span>{d}</span></div>}
-                                        <Entry e={e} meId={meId} ownerId={thread.salespersonId} who={who} names={names} meName={meName} onResend={resend} onDiscard={discard} />
+                                        <Entry e={e} meId={meId} ownerId={thread.salespersonId} who={who} names={names} meName={meName}
+                                            onResend={resend} onDiscard={discard} onReply={onReply} />
                                     </div>
                                 );
                             })}
@@ -349,17 +411,22 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
                                     ))}</div>
                                 )}
                                 <input ref={fileRef} type="file" multiple hidden accept={FILE_ACCEPT} onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+                                <ReplyBar r={replyTo} who={who} meId={meId} onClose={() => setReplyTo(null)} />
                                 <div className="sc-cmp">
                                     <MentionList options={mn.options} idx={mn.idx} onPick={mn.pick} />
-                                    <div className="st-bar">
-                                        <button type="button" className="st-plus" aria-label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip size={18} /></button>
-                                        <textarea ref={taRef} className="st-ta" rows={1} value={text} maxLength={4000} aria-label="Write a message"
-                                            placeholder={others.length ? "Message the team… type @ to tag" : "Write a message…"} enterKeyHint="send"
-                                            onChange={onChange} onSelect={(e) => mn.detect(e.target.value, e.target.selectionStart)} onKeyDown={onKey}
-                                            onBlur={() => chat.emitTyping(false)}
-                                            onPaste={(e) => { if (e.clipboardData?.files?.length) addFiles(e.clipboardData.files); }} />
-                                        <button type="button" className="st-send" aria-label="Send message" disabled={!canSend} onClick={send}><Send size={18} /></button>
-                                    </div>
+                                    {rec.state === "recording" ? (
+                                        <VoiceRecordingBar secs={rec.secs} onCancel={rec.cancel} onSend={rec.stop} />
+                                    ) : (
+                                        <div className="st-bar">
+                                            <button type="button" className="st-plus" aria-label="Attach files" onClick={() => fileRef.current?.click()}><Paperclip size={18} /></button>
+                                            <textarea ref={taRef} className="st-ta" rows={1} value={text} maxLength={4000} aria-label="Write a message"
+                                                placeholder={others.length ? "Message the team… type @ to tag" : "Write a message…"} enterKeyHint="send"
+                                                onChange={onChange} onSelect={(e) => mn.detect(e.target.value, e.target.selectionStart)} onKeyDown={onKey}
+                                                onBlur={() => chat.emitTyping(false)}
+                                                onPaste={(e) => { if (e.clipboardData?.files?.length) addFiles(e.clipboardData.files); }} />
+                                            <SendOrMic canSend={canSend} hasContent={hasContent} rec={rec} onSend={send} />
+                                        </div>
+                                    )}
                                 </div>
                                 {note && <p className="st-err" role="alert">{note}</p>}
                                 <small className="st-bar-h">Enter to send · Shift+Enter for a new line · @ to tag someone</small>

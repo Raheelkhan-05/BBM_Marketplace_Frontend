@@ -1,9 +1,5 @@
-// src/pages/SalesEnquiriesPage.jsx
-// The salesperson's own enquiry threads, newest activity first (like a chat list):
-// customer company, product, when the enquiry was posted (the same customer can ask for the same product again),
-// and the outcome (open / won / lost). Cold calls (call logs with no product yet) are tagged and have their own tab.
-// Unread: when an admin or teammate writes in an enquiry, that row gets a count badge and the Unread tab lists it.
-// Read state is per person (the server tracks it per participant), so nobody else's reading affects yours.
+// The salesperson's own enquiry threads, newest activity first.
+// Lead heat (Hot / Warm / Cold / Dead) is set from each row and filterable in SQL on the server.
 // Opens instantly from cache and refreshes quietly; hovering/touching a row warms up its thread.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
@@ -13,12 +9,14 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import useRfqLive from "../hooks/useRfqLive.js";
-import { fetchThreads } from "../utils/salesThreadApi.js";
+import { fetchThreadList, setThreadHeat } from "../utils/salesExtrasApi.js";
 import { cacheGet, cacheSet, nsOf, prefetchThread } from "../utils/salesThreadCache.js";
+import { HEATS, HEAT_BY, EMPTY_HEAT, matchHeat } from "../components/sales/salesHeat.jsx";
 import SalesNewEnquirySheet from "../components/sales/SalesNewEnquirySheet.jsx";
 import "../components/sales/sales-threads.css";
 import "../components/sales/sales-threads.cold.css";
 import "../components/sales/sales-chat.css";
+import "../components/sales/sales-heat.css";
 
 const PAGE = 15;
 const MAX_PAGE = 100; // server cap
@@ -29,17 +27,31 @@ const CHAT_EVENTS = ["salesChat:message", "salesChat:read", "salesChat:participa
 
 const kindOf = (t) => (t.status !== "closed" ? "open" : t.outcome === "won" ? "won" : t.outcome === "lost" ? "lost" : "closed");
 
-const ThreadRow = memo(function ThreadRow({ t, onWarm }) {
+const HeatStrip = memo(function HeatStrip({ id, value, onPick }) {
+    return (
+        <div className="sh-strip" role="group" aria-label="Lead heat">
+            <span className="sh-lbl">Heat</span>
+            {HEATS.map(({ key, label, Icon }) => (
+                <button key={key} type="button" className={`sh-pill ${key}${value === key ? " on" : ""}`} aria-pressed={value === key}
+                    onClick={() => onPick(id, value === key ? null : key)}>
+                    <Icon size={14} aria-hidden="true" />{label}
+                </button>
+            ))}
+        </div>
+    );
+});
+
+const ThreadRow = memo(function ThreadRow({ t, onWarm, onHeat }) {
     const kind = kindOf(t);
     const warm = () => onWarm(t.id);
     const due = !!t.reminderAt && new Date(t.reminderAt).getTime() <= Date.now();
-    const hasProduct = t.hasProduct !== false;       // older cached rows have no flag: they always had a product
+    const hasProduct = t.hasProduct !== false;
     const cold = t.kind === "cold_call";
     const unread = t.unread > 0 ? t.unread : 0;
     const mentions = unread > 0 ? t.mentions || 0 : 0;
 
     return (
-        <li>
+        <li className="sh-li">
             <Link to={`/sales/enquiries/${t.id}`} className={`st-row${kind === "open" ? "" : " closed"}${unread ? " unread" : ""}`}
                 onPointerEnter={warm} onFocus={warm}>
                 <span className="st-row-m">
@@ -81,6 +93,7 @@ const ThreadRow = memo(function ThreadRow({ t, onWarm }) {
                     </span>
                 </span>
             </Link>
+            <HeatStrip id={t.id} value={t.heat || null} onPick={onHeat} />
         </li>
     );
 });
@@ -95,9 +108,11 @@ export default function SalesEnquiriesPage() {
     const [qInput, setQInput] = useState("");
     const [q, setQ] = useState("");
     const [filter, setFilter] = useState("all");
+    const [heat, setHeat] = useState("");            // "" | hot | warm | cold | dead | none
     const [items, setItems] = useState([]);
     const [total, setTotal] = useState(0);
     const [counts, setCounts] = useState(EMPTY_COUNTS);
+    const [heatCounts, setHeatCounts] = useState(EMPTY_HEAT);
     const [hasMore, setHasMore] = useState(false);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -107,23 +122,34 @@ export default function SalesEnquiriesPage() {
     const abortRef = useRef(null);
     const seqRef = useRef(0);
     const itemsRef = useRef([]); itemsRef.current = items;
+    const heatRef = useRef(heat); heatRef.current = heat;
+    const pendingRef = useRef(new Map());            // id -> heat still being saved: refreshes must not undo it
+    const reloadT = useRef(0);
 
     useEffect(() => { const t = setTimeout(() => setQ(qInput.trim()), 300); return () => clearTimeout(t); }, [qInput]);
     useEffect(() => { if (sp.get("new") === "1") { setCreating(true); setSp({}, { replace: true }); } }, [sp, setSp]);
+
+    // overlay not-yet-saved heat changes on whatever the server returns
+    const fix = (list) => {
+        const p = pendingRef.current;
+        if (!p.size) return list;
+        return list.map((i) => (p.has(i.id) ? { ...i, heat: p.get(i.id) } : i))
+            .filter((i) => !p.has(i.id) || matchHeat(i.heat, heatRef.current));
+    };
 
     const load = useCallback(async (offset, append, silent = false) => {
         abortRef.current?.abort();
         const ctl = new AbortController(); abortRef.current = ctl;
         const my = ++seqRef.current;
-        const key = `${nsOf(token)}|list|${q}|${filter}`;
+        const key = `${nsOf(token)}|list|${q}|${filter}|${heat}`;
 
-        // Show the cached copy immediately, then refresh it quietly.
         let have = itemsRef.current.length;
         if (!append && !silent) {
             const c = cacheGet(key);
             if (c) {
                 setItems(c.items); setTotal(c.total); setHasMore(c.hasMore);
                 if (c.counts) setCounts({ ...EMPTY_COUNTS, ...c.counts });
+                if (c.heatCounts) setHeatCounts({ ...EMPTY_HEAT, ...c.heatCounts });
                 setError(""); setLoading(false);
                 itemsRef.current = c.items; have = c.items.length; silent = true;
             }
@@ -131,29 +157,33 @@ export default function SalesEnquiriesPage() {
 
         if (append) setLoadingMore(true); else if (!silent) { setError(""); setLoading(true); }
         try {
-            // a silent refresh re-reads what is on screen, so scrolled pages don't collapse
             const limit = silent && !append ? Math.min(Math.max(PAGE, have), MAX_PAGE) : PAGE;
-            const res = await fetchThreads(token, { q, status: filter === "all" ? "" : filter, limit, offset, signal: ctl.signal });
+            const res = await fetchThreadList(token, { q, status: filter === "all" ? "" : filter, heat, limit, offset, signal: ctl.signal });
             if (my !== seqRef.current) return;
             if (!res.success) { if (!silent) { setError(res.message || "Couldn't load your enquiries."); setHasMore(false); } return; }
-            const next = append ? mergeUnique(itemsRef.current, res.items || []) : res.items || [];
+            const incoming = fix(res.items || []);
+            const next = append ? mergeUnique(itemsRef.current, incoming) : incoming;
             setItems(next);
             setTotal(res.total ?? 0); setHasMore(!!res.hasMore);
             if (res.counts) setCounts({ ...EMPTY_COUNTS, ...res.counts });
+            if (res.heatCounts) setHeatCounts({ ...EMPTY_HEAT, ...res.heatCounts });
             setError("");
-            cacheSet(key, { items: next, total: res.total ?? 0, hasMore: !!res.hasMore, counts: res.counts || cacheGet(key)?.counts || null });
+            const old = cacheGet(key);
+            cacheSet(key, {
+                items: next, total: res.total ?? 0, hasMore: !!res.hasMore,
+                counts: res.counts || old?.counts || null, heatCounts: res.heatCounts || old?.heatCounts || null,
+            });
         } catch (e) {
             if (e?.name !== "AbortError" && !silent && my === seqRef.current) setHasMore(false);
         } finally {
             if (my === seqRef.current) { setLoading(false); setLoadingMore(false); }
         }
-    }, [token, q, filter]);
+    }, [token, q, filter, heat]);
 
     const loadRef = useRef(load); loadRef.current = load;
     useEffect(() => { if (!token) return undefined; load(0, false); return () => abortRef.current?.abort(); }, [load, token]);
-    useRfqLive(() => loadRef.current(0, false, true), { enabled: !!token }); // socket, focus and a light poll
+    useRfqLive(() => loadRef.current(0, false, true), { enabled: !!token });
 
-    // A chat message, a read (also from another tab/device) or a change of people: refresh quietly, merged into one call.
     useEffect(() => {
         if (!socket || !token) return undefined;
         let t;
@@ -162,6 +192,8 @@ export default function SalesEnquiriesPage() {
         return () => { clearTimeout(t); CHAT_EVENTS.forEach((e) => socket.off(e, fire)); };
     }, [socket, token]);
 
+    useEffect(() => () => clearTimeout(reloadT.current), []);
+
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && load(items.length, true),
         { lookahead: 600, disabled: loading || loadingMore || !hasMore },
@@ -169,21 +201,49 @@ export default function SalesEnquiriesPage() {
 
     const warm = useCallback((id) => prefetchThread(token, id), [token]);
 
+    // Instant: the pill flips, the row leaves a heat-filtered list, counts move. The save runs behind it.
+    const changeHeat = useCallback(async (id, next) => {
+        const cur = itemsRef.current.find((i) => i.id === id);
+        if (!cur) return;
+        const prev = cur.heat || null;
+        if (prev === next) return;
+
+        pendingRef.current.set(id, next);
+        const gone = !matchHeat(next, heatRef.current);
+        setItems((list) => list.map((i) => (i.id === id ? { ...i, heat: next } : i)).filter((i) => matchHeat(i.heat, heatRef.current)));
+        if (gone) setTotal((n) => Math.max(0, n - 1));
+        setHeatCounts((c) => ({
+            ...c,
+            [prev || "none"]: Math.max(0, (c[prev || "none"] || 0) - 1),
+            [next || "none"]: (c[next || "none"] || 0) + 1,
+        }));
+
+        const res = await setThreadHeat(token, id, next);
+        if (pendingRef.current.get(id) === next) pendingRef.current.delete(id);
+        if (!res.success) say(res.message || "Couldn't update the heat. Please try again.");
+        // success or failure: one quiet refresh (coalesced) puts server truth on screen
+        clearTimeout(reloadT.current);
+        reloadT.current = setTimeout(() => { if (!pendingRef.current.size) loadRef.current(0, false, true); }, 500);
+    }, [token, say]);
+
+    const heatLabel = heat === "none" ? "unrated" : heat ? HEAT_BY[heat].label.toLowerCase() : "";
     const emptyTitle = q ? "No enquiries match your search"
-        : filter === "unread" ? "You're all caught up"
-            : filter === "reminder" ? "No reminders set"
-                : filter === "cold" ? "No cold calls logged"
-                    : filter === "won" ? "No won enquiries yet"
-                        : filter === "lost" ? "No lost enquiries"
-                            : filter === "open" ? "No open enquiries" : "No enquiries yet";
+        : heat ? `No ${heatLabel} enquiries`
+            : filter === "unread" ? "You're all caught up"
+                : filter === "reminder" ? "No reminders set"
+                    : filter === "cold" ? "No cold calls logged"
+                        : filter === "won" ? "No won enquiries yet"
+                            : filter === "lost" ? "No lost enquiries"
+                                : filter === "open" ? "No open enquiries" : "No enquiries yet";
     const emptyText = q ? "Try a different company, product, city or GST number."
-        : filter === "unread" ? "When an admin or teammate writes in one of your enquiries, it will show up here until you open it."
-            : filter === "reminder" ? "Open an enquiry, tap + and choose Set reminder. Reminders clear when you add an update."
-                : filter === "cold" ? "Tap New enquiry, choose Cold call / other, and log the call. Add the product later when they ask for one."
-                    : filter === "won" ? "Enquiries you mark as won will show up here."
-                        : filter === "lost" ? "Enquiries you mark as lost will show up here."
-                            : filter === "open" ? "Everything is closed. Start a new enquiry when a customer asks for a price."
-                                : "When a customer asks for a price, start an enquiry. Spoke to someone who isn't ready yet? Log it as a cold call.";
+        : heat ? "Change the heat on an enquiry from the list, or pick another filter."
+            : filter === "unread" ? "When an admin or teammate writes in one of your enquiries, it will show up here until you open it."
+                : filter === "reminder" ? "Open an enquiry, tap + and choose Set reminder. Reminders clear when you add an update."
+                    : filter === "cold" ? "Tap New enquiry, choose Cold call / other, and log the call. Add the product later when they ask for one."
+                        : filter === "won" ? "Enquiries you mark as won will show up here."
+                            : filter === "lost" ? "Enquiries you mark as lost will show up here."
+                                : filter === "open" ? "Everything is closed. Start a new enquiry when a customer asks for a price."
+                                    : "When a customer asks for a price, start an enquiry. Spoke to someone who isn't ready yet? Log it as a cold call.";
 
     return (
         <div className="gd st-listpage">
@@ -209,20 +269,32 @@ export default function SalesEnquiriesPage() {
                 })}
             </div>
 
+            <div className="sh-fl" role="group" aria-label="Filter by lead heat">
+                <button type="button" className={`sh-chip${!heat ? " on" : ""}`} aria-pressed={!heat} onClick={() => setHeat("")}>Any heat</button>
+                {HEATS.map(({ key, label, Icon }) => (
+                    <button key={key} type="button" className={`sh-chip ${key}${heat === key ? " on" : ""}`} aria-pressed={heat === key} onClick={() => setHeat(heat === key ? "" : key)}>
+                        <Icon size={14} aria-hidden="true" />{label}<span className="n">{heatCounts[key] ?? 0}</span>
+                    </button>
+                ))}
+                <button type="button" className={`sh-chip${heat === "none" ? " on" : ""}`} aria-pressed={heat === "none"} onClick={() => setHeat(heat === "none" ? "" : "none")}>
+                    Unrated<span className="n">{heatCounts.none ?? 0}</span>
+                </button>
+            </div>
+
             {!loading && !error && <p className="gd-note">{total} enquir{total === 1 ? "y" : "ies"}</p>}
 
             {loading && items.length === 0 ? (
                 <div className="st-list">{[0, 1, 2, 3].map((i) => <div key={i} className="st-sk tall" />)}</div>
             ) : items.length > 0 ? (
                 <ul className={`st-list${loading ? " busy" : ""}`}>
-                    {items.map((t) => <ThreadRow key={t.id} t={t} onWarm={warm} />)}
+                    {items.map((t) => <ThreadRow key={t.id} t={t} onWarm={warm} onHeat={changeHeat} />)}
                 </ul>
             ) : !loading && !error && (
                 <div className="st-empty-card" style={{ marginTop: 10 }}>
                     <Inbox size={22} />
                     <b>{emptyTitle}</b>
                     {emptyText}
-                    {!q && filter === "all" && <button type="button" className="st-btn pri" onClick={() => setCreating(true)}><Plus size={16} />New enquiry</button>}
+                    {!q && !heat && filter === "all" && <button type="button" className="st-btn pri" onClick={() => setCreating(true)}><Plus size={16} />New enquiry</button>}
                 </div>
             )}
 
