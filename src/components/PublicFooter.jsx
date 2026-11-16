@@ -20,7 +20,7 @@ const GROUPS = [
 
 const CSS = `
 .bbmf{
-  --f-bg:#06161C;--f-ink:#FFFFFF;--f-mute:rgba(255,255,255,.68);--f-line:rgba(255,255,255,.12);--f-go:#FFD60A;
+  --f-bg:#06161C;--f-ink:#FFFFFF;--f-mute:#D8420F;--f-line:#FFFFFF;--f-go:#FFFFFF;
   display:block;width:100%;margin:28px 0 0;background:var(--f-bg);color:var(--f-mute);
   font:500 .85rem/1.5 "Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;text-align:left;box-sizing:border-box;
 }
@@ -55,7 +55,7 @@ const CSS = `
 .bbmf-col ul{display:grid;gap:0}
 .bbmf-col a{display:inline-block;padding:2px 0}
 
-.bbmf-bot{margin-top:18px;border-top:1px solid var(--f-line);padding:10px 0 calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;gap:2px 20px;justify-content:space-between;font-size:.76rem;line-height:1.5;color:rgba(255,255,255,.55)}
+.bbmf-bot{margin-top:18px;border-top:1px solid var(--f-line);padding:10px 0 calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-wrap:wrap;gap:2px 20px;justify-content:space-between;font-size:.76rem;line-height:1.5;color:#D8420F}
 .bbmf-ids{display:flex;flex-wrap:wrap;gap:2px 14px}
 .bbmf-cookie{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:2px;transition:color .15s}
 .bbmf-cookie:hover{color:var(--f-go)}
