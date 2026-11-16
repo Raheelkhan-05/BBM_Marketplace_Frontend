@@ -316,8 +316,8 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent, onThre
 
                                     <div className="st-two">
                                         <div className="st-f">
-                                            <label htmlFor={`q-${id}`}>Quantity ({word}s)</label>
                                             <input id={`q-${id}`} className="st-in" inputMode="numeric" placeholder="e.g. 5" value={l.qty} onChange={(e) => patchLine(id, { qty: e.target.value.replace(/\D/g, "") })} />
+                                            <label htmlFor={`q-${id}`}>Quantity ({word}s)</label>
                                         </div>
                                         <div className="st-f">
                                             <label htmlFor={`u-${id}`}>Ordered in</label>
@@ -334,8 +334,8 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent, onThre
 
                                     <div className="st-two">
                                         <div className="st-f">
-                                            <label htmlFor={`p-${id}`}>Price (₹)</label>
                                             <input id={`p-${id}`} className="st-in" inputMode="decimal" value={l.price} onChange={(e) => patchLine(id, { price: e.target.value.replace(/[^\d.]/g, "") })} />
+                                            <label htmlFor={`p-${id}`}>Price (₹)</label>
                                         </div>
                                         <div className="st-f">
                                             <label htmlFor={`pu-${id}`}>Price per</label>

@@ -595,9 +595,9 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 {/* price: any unit, with or without GST. The typed number is never rewritten. */}
                                 <div className="st-two">
                                     <div className="st-f">
-                                        <label htmlFor={`p-${l.key}`}>Price (₹) *</label>
                                         <input id={`p-${l.key}`} className="st-in" inputMode="decimal" placeholder="e.g. 1250" value={l.price}
                                             onChange={(e) => patchLine(l.key, { price: e.target.value.replace(/[^\d.]/g, "") })} />
+                                        <label htmlFor={`p-${l.key}`}>Price (₹) *</label>
                                         {le.price && <p className="st-err">{le.price}</p>}
                                     </div>
                                     <div className="st-f">
