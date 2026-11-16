@@ -101,7 +101,7 @@ function GuestHeader() {
         <span className="flex-1" />
         <SmartLink
           to="/login"
-          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#FFD60A] bg-[#FFD60A] px-5 text-[13px] font-extrabold text-[#06161C] transition hover:brightness-105 active:scale-[.985]"
+          className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#0F63B5] bg-[#0F63B5] px-5 text-[13px] font-extrabold text-[#FFFFFF] transition hover:brightness-105 active:scale-[.985]"
         >
           Sign In <ArrowUpRight className="h-3.5 w-3.5" />
         </SmartLink>

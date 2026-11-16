@@ -21,11 +21,11 @@ const GROUPS = [
 const CSS = `
 
 .bbmf {
-  --f-bg: #24130F;
+  --f-bg: #D8420F;
   --f-ink: #FFFFFF;
-  --f-mute: rgba(255,255,255,.72);
+  --f-mute: rgba(255,255,255);
   --f-line: rgba(255,255,255,.14);
-  --f-go: #D8420F;
+  --f-go: #ffffffBB;
   --f-hover: #F06432;
 
   display: block;
@@ -33,7 +33,7 @@ const CSS = `
   margin: 28px 0 0;
   background: var(--f-bg);
   color: var(--f-mute);
-  font: 500 .85rem/1.5 "Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font: 600 .85rem/1.5 "Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
   text-align: left;
   box-sizing: border-box;
 }
@@ -74,7 +74,7 @@ const CSS = `
   width: 14px;
   height: 14px;
   margin-top: 4px;
-  color: var(--f-hover);
+  color: var(--f-ink);
 }
 
 .bbmf-links{display:grid;grid-template-columns:1fr 1fr;gap:16px}
