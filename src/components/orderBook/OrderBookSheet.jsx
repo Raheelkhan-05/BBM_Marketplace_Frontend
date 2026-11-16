@@ -559,12 +559,6 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
 
                                 <div className="st-two">
                                     <div className="st-f">
-                                        <label htmlFor={`q-${l.key}`}>{f ? `Quantity (${word}s) *` : "Quantity *"}</label>
-                                        <input id={`q-${l.key}`} className="st-in" inputMode={f ? "numeric" : "decimal"} placeholder="e.g. 5" value={l.quantity}
-                                            onChange={(e) => patchLine(l.key, { quantity: e.target.value.replace(f ? /\D/g : /[^\d.]/g, "") })} />
-                                        {le.quantity && <p className="st-err">{le.quantity}</p>}
-                                    </div>
-                                    <div className="st-f">
                                         {f ? (
                                             <>
                                                 <label htmlFor={`u-${l.key}`}>Ordered in *</label>
@@ -584,6 +578,12 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                             </>
                                         )}
                                     </div>
+                                    <div className="st-f">
+                                        <label htmlFor={`q-${l.key}`}>{f ? `Quantity (${word}s) *` : "Quantity *"}</label>
+                                        <input id={`q-${l.key}`} className="st-in" inputMode={f ? "numeric" : "decimal"} placeholder="e.g. 5" value={l.quantity}
+                                            onChange={(e) => patchLine(l.key, { quantity: e.target.value.replace(f ? /\D/g : /[^\d.]/g, "") })} />
+                                        {le.quantity && <p className="st-err">{le.quantity}</p>}
+                                    </div>
                                 </div>
                                 {f && (
                                     <p className="st-hint ob-conv">
@@ -595,12 +595,6 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                 {/* price: any unit, with or without GST. The typed number is never rewritten. */}
                                 <div className="st-two">
                                     <div className="st-f">
-                                        <input id={`p-${l.key}`} className="st-in" inputMode="decimal" placeholder="e.g. 1250" value={l.price}
-                                            onChange={(e) => patchLine(l.key, { price: e.target.value.replace(/[^\d.]/g, "") })} />
-                                        <label htmlFor={`p-${l.key}`}>Price (₹) *</label>
-                                        {le.price && <p className="st-err">{le.price}</p>}
-                                    </div>
-                                    <div className="st-f">
                                         <label htmlFor={`pu-${l.key}`}>Price per</label>
                                         {f ? (
                                             <select id={`pu-${l.key}`} className="st-in" value={l.pu} onChange={(e) => switchPu(l, e.target.value)}>
@@ -609,6 +603,12 @@ export default function OrderBookSheet({ token, onClose, onCreated }) {
                                         ) : (
                                             <select id={`pu-${l.key}`} className="st-in" value="unit" disabled><option value="unit">Per unit</option></select>
                                         )}
+                                    </div>
+                                    <div className="st-f">
+                                        <label htmlFor={`p-${l.key}`}>Price (₹) *</label>
+                                        <input id={`p-${l.key}`} className="st-in" inputMode="decimal" placeholder="e.g. 1250" value={l.price}
+                                            onChange={(e) => patchLine(l.key, { price: e.target.value.replace(/[^\d.]/g, "") })} />
+                                        {le.price && <p className="st-err">{le.price}</p>}
                                     </div>
                                 </div>
                                 <div className="st-seg" role="group" aria-label="GST">

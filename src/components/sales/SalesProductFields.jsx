@@ -221,12 +221,6 @@ export function ProductFields({ form, idPrefix = "pf" }) {
 
                     <div className="st-two" style={{ marginTop: pk ? 0 : 12 }}>
                         <div className="st-f">
-                            <input id={`${idPrefix}-qty`} className="st-in" inputMode={pk ? "numeric" : "decimal"} placeholder="e.g. 5" value={f.quantity}
-                                onChange={(e) => patchF({ quantity: e.target.value.replace(pk ? /\D/g : /[^\d.]/g, "") })} />
-                            <label htmlFor={`${idPrefix}-qty`}>{pk ? `Quantity (${word}s) *` : "Quantity *"}</label>
-                            {errors.quantity && <p className="st-err">{errors.quantity}</p>}
-                        </div>
-                        <div className="st-f">
                             {pk ? (
                                 <>
                                     <label htmlFor={`${idPrefix}-unit`}>Ordered in *</label>
@@ -245,6 +239,12 @@ export function ProductFields({ form, idPrefix = "pf" }) {
                                     {errors.unit && <p className="st-err">{errors.unit}</p>}
                                 </>
                             )}
+                        </div>
+                        <div className="st-f">
+                            <label htmlFor={`${idPrefix}-qty`}>{pk ? `Quantity (${word}s) *` : "Quantity *"}</label>
+                            <input id={`${idPrefix}-qty`} className="st-in" inputMode={pk ? "numeric" : "decimal"} placeholder="e.g. 5" value={f.quantity}
+                                onChange={(e) => patchF({ quantity: e.target.value.replace(pk ? /\D/g : /[^\d.]/g, "") })} />
+                            {errors.quantity && <p className="st-err">{errors.quantity}</p>}
                         </div>
                     </div>
                     {pk && (

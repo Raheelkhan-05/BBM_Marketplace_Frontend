@@ -316,15 +316,15 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent, onThre
 
                                     <div className="st-two">
                                         <div className="st-f">
-                                            <input id={`q-${id}`} className="st-in" inputMode="numeric" placeholder="e.g. 5" value={l.qty} onChange={(e) => patchLine(id, { qty: e.target.value.replace(/\D/g, "") })} />
-                                            <label htmlFor={`q-${id}`}>Quantity ({word}s)</label>
-                                        </div>
-                                        <div className="st-f">
                                             <label htmlFor={`u-${id}`}>Ordered in</label>
                                             <select id={`u-${id}`} className="st-in" value={l.basis} disabled={!l.f.per} onChange={(e) => switchBasis(l, e.target.value)}>
                                                 {l.f.per ? <option value="per_master_pack">Master packs</option> : null}
                                                 <option value="per_pack">Packs</option>
                                             </select>
+                                        </div>
+                                        <div className="st-f">
+                                            <label htmlFor={`q-${id}`}>Quantity ({word}s)</label>
+                                            <input id={`q-${id}`} className="st-in" inputMode="numeric" placeholder="e.g. 5" value={l.qty} onChange={(e) => patchLine(id, { qty: e.target.value.replace(/\D/g, "") })} />
                                         </div>
                                     </div>
                                     <p className="st-hint ob-conv">
@@ -334,14 +334,14 @@ export default function SalesQuoteSheet({ token, thread, onClose, onSent, onThre
 
                                     <div className="st-two">
                                         <div className="st-f">
-                                            <input id={`p-${id}`} className="st-in" inputMode="decimal" value={l.price} onChange={(e) => patchLine(id, { price: e.target.value.replace(/[^\d.]/g, "") })} />
-                                            <label htmlFor={`p-${id}`}>Price (₹)</label>
-                                        </div>
-                                        <div className="st-f">
                                             <label htmlFor={`pu-${id}`}>Price per</label>
                                             <select id={`pu-${id}`} className="st-in" value={l.pu} onChange={(e) => switchPu(l, e.target.value)}>
                                                 {puOpts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                                             </select>
+                                        </div>
+                                        <div className="st-f">
+                                            <label htmlFor={`p-${id}`}>Price (₹)</label>
+                                            <input id={`p-${id}`} className="st-in" inputMode="decimal" value={l.price} onChange={(e) => patchLine(id, { price: e.target.value.replace(/[^\d.]/g, "") })} />
                                         </div>
                                     </div>
                                     <div className="st-seg" role="group" aria-label="GST">
