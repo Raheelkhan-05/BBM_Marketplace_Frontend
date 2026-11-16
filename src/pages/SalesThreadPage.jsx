@@ -185,7 +185,7 @@ const Entry = memo(function Entry({ e, busyKey, onRetry, onResend, onDiscard, on
     );
 });
 
-const Timeline = memo(function Timeline({ entries, busyKey, onRetry, onResend, onDiscard, ownerId, who, tagNames }) {
+const Timeline = memo(function Timeline({ entries, busyKey, onRetry, onReply, onResend, onDiscard, ownerId, who, tagNames }) {
     const rows = useMemo(() => {
         let last = "";
         return entries.map((e) => { const day = dayLabel(e.createdAt); const head = day !== last; last = day; return { e, day, head }; });
