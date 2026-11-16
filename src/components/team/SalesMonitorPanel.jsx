@@ -9,8 +9,8 @@ import { ArrowLeft, Loader2, Paperclip, X, Receipt, Phone, Mail, Bell, Trophy, X
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSocket } from "../../context/SocketContext.jsx";
 import { fetchChatThread, postChatMessage, markChatRead, uploadChatFile } from "../../utils/salesChatApi.js";
-import useChatSocket from "../hooks/useChatSocket.js";
-import useMentions from "../hooks/useMentions.js";
+import useChatSocket from "../../hooks/useChatSocket.js";
+import useMentions from "../../hooks/useMentions.js";
 import { ALLOWED_FILES, FILE_ACCEPT, MAX_FILE_BYTES, MAX_FILES, clock, dayLabel, dateTime, inr, qty } from "../../components/sales/salesThreadFmt.js";
 import { Attachment, BodyText, OtherBubble, TypingLine, ParticipantStack, MentionList } from "../../components/team/chat/ChatBits.jsx";
 import { VoiceRecordingBar, SendOrMic, useVoiceRecorder } from "../../components/team/chat/VoiceNote.jsx";
