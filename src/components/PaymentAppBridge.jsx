@@ -52,8 +52,9 @@ export default function PaymentAppBridge() {
             checking = true;
             try {
                 const res = await fetchPaymentStatus(authToken, pending.ref);
-                const s = res?.attempt || res?.data || res; // response shape not confirmed
+                const s = res?.payment;
                 if (s?.final) goToReturn(`?ref=${encodeURIComponent(pending.ref)}`);
+
             } catch { /* ignore; the user can still use My orders */ } finally {
                 checking = false;
             }

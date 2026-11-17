@@ -26,22 +26,20 @@
     <p id="msg">Opening secure payment…</p>
     <script>
         (function () {
-            // Only ever forward to the payment gateway's own domain (never an open redirect).
-            var ALLOWED = ["jiopay.co.in"];
-            function allowed(host) {
-                return ALLOWED.some(function (a) { return host === a || host.slice(-(a.length + 1)) === "." + a; });
+            var ALLOWED = ["jiopay.co.in"]; // add the exact gateway host if yours differs
+            function allowed(h) {
+                return ALLOWED.some(function (a) { return h === a || h.slice(-(a.length + 1)) === "." + a; });
             }
-            try {
-                var target = new URL(new URLSearchParams(location.search).get("u") || "");
-                if (target.protocol !== "https:" || !allowed(target.hostname)) throw new Error("blocked");
-                // Lets the return page know this payment started from the Android app.
-                try { sessionStorage.setItem("bbm_app_payment", "1"); } catch (e) { }
-                document.getElementById("msg").textContent = location.href;
-                location.replace(target.toString());
-            } catch (e) {
-                document.getElementById("msg").textContent =
-                    "This payment link isn't valid. Please go back to the app and try again.";
+            var msg = document.getElementById("msg");
+            var target;
+            try { target = new URL(new URLSearchParams(location.search).get("u") || ""); }
+            catch (e) { msg.textContent = "This payment link isn't valid. Please go back to the app and try again."; return; }
+            if (target.protocol !== "https:" || !allowed(target.hostname)) {
+                msg.textContent = "Blocked payment host: " + target.hostname;
+                return;
             }
+            try { sessionStorage.setItem("bbm_app_payment", "1"); } catch (e) { }
+            location.replace(target.toString());
         })();
     </script>
 </body>

@@ -65,8 +65,11 @@ export function readPendingPayment() {
 //   Android app: opens the gateway in a Chrome Custom Tab via /pay-launch.html on our own domain,
 //   so the gateway sees bbm.business as the referrer. Pass the checkout `ref` so the app can
 //   check the payment when the user returns.
+// Public site origin. Inside the Capacitor app window.location.origin is https://localhost,
+// which an external Custom Tab cannot open.
+const PUBLIC_ORIGIN = (import.meta.env.VITE_PUBLIC_ORIGIN || "https://bbm.business").replace(/\/$/, "");
+
 export function redirectToGateway(url, ref = null) {
-    // url = "https://httpbin.org/headers"; // TEMP TEST, remove after
     try {
         if (new URL(url).protocol !== "https:") return false;
     } catch { return false; }
@@ -74,7 +77,7 @@ export function redirectToGateway(url, ref = null) {
 
     if (Capacitor.isNativePlatform() && Capacitor.isPluginAvailable("Browser")) {
         try { localStorage.setItem(PENDING_PAYMENT_KEY, JSON.stringify({ ref, ts: Date.now() })); } catch { /* ignore */ }
-        const launcher = `${window.location.origin}${LAUNCHER_PATH}?u=${encodeURIComponent(url)}`;
+        const launcher = `${PUBLIC_ORIGIN}${LAUNCHER_PATH}?u=${encodeURIComponent(url)}`;
         Browser.open({ url: launcher }).catch(() => {
             clearPendingPayment();
             window.location.assign(url);

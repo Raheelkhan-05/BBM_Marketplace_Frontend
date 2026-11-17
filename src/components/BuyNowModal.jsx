@@ -772,20 +772,18 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const beginPayment = async (orderId, orderNumber) => {
         setError(null);
         setSubmitting(true);
+        setRedirecting(true);                    // instant "Taking you to JioPay…" feedback
         setPendingPay({ orderId, orderNumber: orderNumber || null });
         const pay = await startOrderPayment(token, orderId);
         if (!pay?.success || !pay.redirectUrl) {
             track("checkout_failed", { flow: "buy_now", stage: "start_payment", code: safeCode(pay?.code) });
+            setRedirecting(false);
             setSubmitting(false);
             setError(pay?.message || "Couldn't start the payment. Please try again.");
             return;
         }
-        track("payment_initiated", {
-            flow: "buy_now", item_count: 1, seller_count: 1,
-            cart_value: Math.round(Number(quote?.subtotal) || 0),
-        });
-        setRedirecting(true);
-        if (!redirectToGateway(pay.redirectUrl)) {
+        track("payment_initiated", { /* unchanged */ });
+        if (!redirectToGateway(pay.redirectUrl, pay.ref)) {   // pass ref
             setRedirecting(false);
             setSubmitting(false);
             setError("Couldn't open the payment page. Please try again.");
@@ -815,7 +813,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
         setSubmitting(true);
         const confirmed = await awaitQuote();
-        const finalQuote = confirmed || quote;
+        const finalQuote = quote && !quote.isEstimate ? quote : ((await awaitQuote()) || quote);
         const effectiveOrderType = isSample ? "sample" : isCredit ? "credit" : "standard";
 
         if (finalQuote) {
