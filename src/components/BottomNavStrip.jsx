@@ -465,7 +465,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
     // A chat thread is open: /grow/chat/:id (hide the dock for an immersive view)
     const inChatThread = /^\/sell\/chat\/[^/]+/.test(pathname);
     const inSaveChatThread = /^\/buy\/chat\/[^/]+/.test(pathname);
-    const inSaveCart = /^\/buy\/cart+/.test(pathname);
+    const inSaveCart = /^\/(buy\/)?cart(\/|$)/.test(pathname);
 
     const consoleButton = (
         <DockItem

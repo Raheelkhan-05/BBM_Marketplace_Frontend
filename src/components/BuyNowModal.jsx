@@ -1,28 +1,18 @@
-// components/BuyNowModal.jsx — SINGLE-PAGE FLOW (redesign)
+// components/BuyNowModal.jsx — SINGLE-PAGE FLOW
 //
-// Visual redesign only: ALL business logic (quotes, MOQ, stock, credit, payment hand-off,
-// resume intent, socket refresh, analytics) is unchanged from the previous revision.
+// This revision:
+//  - BILL: uses the shared <PriceBill>. The stored/charged price is GST-INCLUSIVE, so
+//    Total payable = quote.subtotal; taxable value and GST are derived from it for display.
+//    (Previously GST was added on top of an already-inclusive price.)
+//  - QUANTITY: footer uses <QuantityControl> (typed quantity, snaps to MOQ / stock with a note).
+//  - ADD TO CART: stays on the page, shows a toast, updates the shared cart (badge) and turns the
+//    button into "View cart". If the item is already in the cart its quantity is SET, not added.
+//  - TYPOGRAPHY / IMAGES: larger uncropped product image, clearer size hierarchy.
+// All other business logic (quotes, MOQ, stock, credit, payment hand-off, resume intent,
+// socket refresh, analytics) is unchanged.
 //
-// Layout
-//   mobile  (<640px)  : full-width bottom sheet, single column, sticky thumb-zone footer
-//   tablet / desktop  : centred compact dialog (max 512px), still single column
-//
-// Typography
-//   - `tracking-wide` is set once on the dialog root so ALL text inherits wider letter-spacing
-//   - headings that were `tracking-tight` are now `tracking-wide`
-//   - uppercase labels keep their own (already wider) tracking
-//   - inputs/textarea set `tracking-wide` explicitly (form controls may not inherit it)
-//
-// Performance
-//   - presentational pieces are memoised (they re-render only when their props change)
-//   - open/close uses transform + opacity only (GPU friendly), 160-200ms, honours reduced-motion
-//   - backdrop blur only on >=sm screens (blur is expensive on low-end phones)
-//   - heavy sections (terms / product details) are native <details>, closed by default
-//
-// Font: add this once to index.html <head> (Plus Jakarta Sans is the design font; the UI
-// falls back gracefully to system-ui if it is not loaded):
-//   <link rel="preconnect" href="https://fonts.googleapis.com">
-//   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+// Layout: mobile = bottom sheet with sticky footer; sm+ = centred dialog (max 512px).
+// Font: Plus Jakarta Sans (falls back to system-ui). Add once to index.html <head>:
 //   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
 import { useEffect, useState, useRef, useMemo, useCallback, memo } from "react";
 import { createPortal } from "react-dom";
@@ -30,13 +20,16 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import AddressBook from "./shipping/AddressBook.jsx";
 import ImageLightbox from "./ImageLightbox.jsx";
+import PriceBill from "./PriceBill.jsx";
+import QuantityControl from "./QuantityControl.jsx";
 import { shopNameOf } from "../utils/shopName.js";
 import {
-    Loader2, Lock, CheckCircle2, X, Plus, MapPin, Minus, Layers, FileText, Calendar, Beaker,
-    Package, Truck, ReceiptText, CreditCard, Boxes, ShoppingCart, ChevronDown, AlertCircle,
+    Loader2, Lock, CheckCircle2, X, MapPin, Layers, FileText, Calendar, Beaker,
+    Package, Truck, ReceiptText, CreditCard, ShoppingCart, ChevronDown, AlertCircle,
     Share2, Info, Store, Maximize2, Clock, ArrowRight,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useCart } from "../context/CartContext.jsx";
 import { BuyerAddressProvider, useBuyerAddress } from "../context/BuyerAddressContext.jsx";
 import {
     fetchCheckoutStatus, fetchOrderQuote,
@@ -45,10 +38,11 @@ import {
     requestCreditIncrease as requestCreditIncreaseApi, fetchBrandItemDetail, fetchOrderConstraints,
     fetchOrderById,
 } from "../utils/api.js";
-import { addToCart } from "../utils/cartApi.js";
+import { addToCart, updateCartItem } from "../utils/cartApi.js";
 import { startOrderPayment, redirectToGateway } from "../utils/paymentsApi.js";
 import { ChipToggleGroup } from "./seller/listingForm/FormPrimitives.jsx";
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, saleUnitQtyToPacks, hasOuterPack, saleUnitLabel, round2 } from "../shared/packUnits.js";
+import { billFromAmounts } from "../utils/pricing.js";
 import { checkOrderWindow, checkLocationServiceable } from "../shared/orderConstraints.js";
 import { shareProductLink } from "../utils/share.js";
 import { resizedImageUrl } from "../utils/imageUrl";
@@ -56,7 +50,7 @@ import { useSocket } from "../context/SocketContext.jsx";
 import { track, safeCode } from "../lib/analytics.js";
 
 /* ============================================================
-   Design tokens (from the new design)
+   Design tokens
    ============================================================ */
 const T = {
     ink: "#0B2533", muted: "#4F616C", soft: "#7A8A94",
@@ -74,7 +68,7 @@ const CLOSE_MS = 160;
 const CARD_SHADOW = "0 6px 22px rgba(11,37,51,0.05)";
 
 /* ============================================================
-   Pure logic — unchanged
+   Pure logic
    ============================================================ */
 
 const BASIS_OPTIONS = [
@@ -139,6 +133,7 @@ function formatMoqForBasis(moqSaleUnits, seller) {
     return `${n} ${label}${n === 1 ? "" : "s"}`;
 }
 
+// Local (instant) estimate. NOTE: seller.price is GST-INCLUSIVE, so every amount here is inclusive.
 function computeLocalQuote(seller, quantity, basis, isSample) {
     const qty = Number(quantity);
     if (!seller || !(qty > 0)) return null;
@@ -246,10 +241,10 @@ const NOTICE_TONES = {
 const Notice = memo(function Notice({ tone = "warn", children }) {
     const t = NOTICE_TONES[tone] || NOTICE_TONES.warn;
     return (
-        <div role={tone === "danger" ? "alert" : undefined} className="flex items-start gap-2 rounded-xl border px-2.5 py-2"
+        <div role={tone === "danger" ? "alert" : undefined} className="flex items-start gap-2 rounded-xl border px-3 py-2.5"
             style={{ background: t.background, borderColor: t.borderColor }}>
             <AlertCircle className="mt-[1px] h-4 w-4 shrink-0" style={{ color: t.color }} />
-            <p className="text-[12px] font-bold leading-snug" style={{ color: t.color }}>{children}</p>
+            <p className="text-[12.5px] font-bold leading-snug" style={{ color: t.color }}>{children}</p>
         </div>
     );
 });
@@ -260,7 +255,7 @@ const SkeletonBar = memo(function SkeletonBar({ width = "70%" }) {
 
 const Row = memo(function Row({ label, value, tone, strong }) {
     return (
-        <div className="flex items-center justify-between gap-3 text-[12.5px] font-semibold" style={{ color: tone || T.muted }}>
+        <div className="flex items-center justify-between gap-3 text-[13px] font-semibold" style={{ color: tone || T.muted }}>
             <span className="min-w-0">{label}</span>
             <span className="shrink-0 tabular-nums" style={{ color: tone || T.ink, fontWeight: strong ? 800 : 700 }}>{value}</span>
         </div>
@@ -270,14 +265,14 @@ const Row = memo(function Row({ label, value, tone, strong }) {
 const Card = memo(function Card({ icon: Icon, tint, tintBg, title, right, children }) {
     return (
         <section className="rounded-2xl border bg-white p-3.5" style={{ borderColor: T.hair, boxShadow: CARD_SHADOW }}>
-            <div className="mb-2.5 flex items-center justify-between gap-2">
+            <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                     {Icon && (
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: tintBg || T.tealBg }}>
-                            <Icon className="h-[15px] w-[15px]" style={{ color: tint || T.teal }} />
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: tintBg || T.tealBg }}>
+                            <Icon className="h-4 w-4" style={{ color: tint || T.teal }} />
                         </span>
                     )}
-                    <h3 className="truncate text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: T.muted }}>{title}</h3>
+                    <h3 className="truncate text-[12px] font-extrabold uppercase tracking-[0.1em]" style={{ color: T.muted }}>{title}</h3>
                 </div>
                 {right}
             </div>
@@ -292,11 +287,11 @@ const Collapse = memo(function Collapse({ icon: Icon, tint, tintBg, title, child
             <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-2 px-3.5 [&::-webkit-details-marker]:hidden">
                 <span className="flex min-w-0 items-center gap-2.5">
                     {Icon && (
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ background: tintBg || T.purpleBg }}>
-                            <Icon className="h-[15px] w-[15px]" style={{ color: tint || T.purple }} />
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: tintBg || T.purpleBg }}>
+                            <Icon className="h-4 w-4" style={{ color: tint || T.purple }} />
                         </span>
                     )}
-                    <span className="truncate text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: T.muted }}>{title}</span>
+                    <span className="truncate text-[12px] font-extrabold uppercase tracking-[0.1em]" style={{ color: T.muted }}>{title}</span>
                 </span>
                 <ChevronDown className="h-5 w-5 shrink-0 transition-transform duration-150 group-open:rotate-180" style={{ color: T.ink }} />
             </summary>
@@ -308,7 +303,7 @@ const Collapse = memo(function Collapse({ icon: Icon, tint, tintBg, title, child
 const Fact = memo(function Fact({ label, value }) {
     if (value === null || value === undefined || value === "") return null;
     return (
-        <div className="flex items-baseline justify-between gap-3 border-b py-2 text-[12.5px] last:border-b-0" style={{ borderColor: T.hairSoft }}>
+        <div className="flex items-baseline justify-between gap-3 border-b py-2 text-[13px] last:border-b-0" style={{ borderColor: T.hairSoft }}>
             <span className="shrink-0 font-semibold" style={{ color: T.muted }}>{label}</span>
             <span className="text-right font-bold" style={{ color: T.ink }}>{String(value)}</span>
         </div>
@@ -316,7 +311,7 @@ const Fact = memo(function Fact({ label, value }) {
 });
 
 const SegTabs = memo(function SegTabs({ items, value, onPick, size = "lg" }) {
-    const h = size === "lg" ? "min-h-[38px] text-[13px]" : "min-h-[34px] text-[12px]";
+    const h = size === "lg" ? "min-h-[40px] text-[13.5px]" : "min-h-[36px] text-[12.5px]";
     return (
         <div className="grid gap-1.5 rounded-full p-1" style={{ background: T.tealTab, gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
             {items.map(({ v, t, icon: Icon, activeBg, activeColor }) => {
@@ -331,33 +326,6 @@ const SegTabs = memo(function SegTabs({ items, value, onPick, size = "lg" }) {
                     </button>
                 );
             })}
-        </div>
-    );
-});
-
-/** Pill stepper used in the sticky footer. */
-const FooterStepper = memo(function FooterStepper({ value, onChange, min = 1, max }) {
-    const atMax = max != null && Number(value) >= Number(max);
-    const atMin = Number(value) <= Number(min);
-    const btn = "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-transform duration-100 active:scale-95";
-    return (
-        <div className="flex h-[42px] items-center rounded-full border-[1.5px] p-[2px]" style={{ borderColor: T.field, background: T.panel }}>
-            <button type="button" aria-label="Decrease quantity" disabled={atMin}
-                onClick={() => onChange(Math.max(min, Number(value) - 1))} className={btn}
-                style={atMin ? { color: "#9DB0B8", cursor: "not-allowed" } : { background: "#fff", color: T.ink, boxShadow: "0 2px 8px rgba(11,37,51,0.15)" }}>
-                <Minus className="h-4 w-4" strokeWidth={2.6} />
-            </button>
-            <input type="text" inputMode="numeric" value={value} aria-label="Quantity"
-                onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
-                className="h-9 w-11 min-w-0 bg-transparent text-center text-[16px] font-extrabold tabular-nums tracking-wide focus:outline-none"
-                style={{ color: T.ink }} />
-            <button type="button" aria-label="Increase quantity" disabled={atMax}
-                onClick={() => onChange(Number(value) + 1)} className={btn}
-                style={atMax
-                    ? { background: "#9DB0B8", color: "#fff", cursor: "not-allowed" }
-                    : { background: T.teal, color: "#fff", boxShadow: "0 4px 10px rgba(14,124,134,0.35)" }}>
-                <Plus className="h-4 w-4" strokeWidth={2.6} />
-            </button>
         </div>
     );
 });
@@ -381,8 +349,8 @@ const DeliveryTimeline = memo(function DeliveryTimeline({ quote, seller, deliver
             {steps.map((s) => (
                 <li key={s.name} className="relative flex min-w-0 flex-col items-center gap-1.5 px-0.5">
                     <span className="h-5 w-5 rounded-full border-[3px] border-[#FFFBE6]" style={{ background: s.color }} />
-                    <span className="text-[11px] font-extrabold leading-tight" style={{ color: T.ink }}>{s.name}</span>
-                    <span className="text-[10px] font-semibold leading-tight" style={{ color: "#5C5226" }}>{s.sub}</span>
+                    <span className="text-[11.5px] font-extrabold leading-tight" style={{ color: T.ink }}>{s.name}</span>
+                    <span className="text-[10.5px] font-semibold leading-tight" style={{ color: "#5C5226" }}>{s.sub}</span>
                 </li>
             ))}
         </ol>
@@ -401,13 +369,18 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const { addresses, selectedAddress, loading: addressLoading, selectAddress } = useBuyerAddress();
     const reduceMotion = useReducedMotion();
 
+    // The shared cart. This modal can be opened from pages that may not sit under CartProvider, so a
+    // missing provider is tolerated (the cart API calls still work, only the live badge is skipped).
+    let cart = null;
+    try { cart = useCart(); } catch { cart = null; } // eslint-disable-line react-hooks/rules-of-hooks
+
     const [access, setAccess] = useState(() =>
         profile && (profile.email_verified || profile.phone_verified)
             ? { canCheckout: true, profile }
             : undefined
     );
 
-    // ---- Smooth close: play the exit animation, then tell the parent ----
+    // ---- Smooth close ----
     const [closing, setClosing] = useState(false);
     const closeTimerRef = useRef(null);
     const handleClose = useCallback(() => {
@@ -417,7 +390,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     }, [onClose, reduceMotion]);
     useEffect(() => () => clearTimeout(closeTimerRef.current), []);
 
-    // ---- Delivery address (shared context; already loaded on Home) ----
+    // ---- Delivery address (shared context) ----
     const addressBookRef = useRef(null);
     const selectedAddressId = selectedAddress?.id || null;
     const effectivePincode = selectedAddress?.pincode || "";
@@ -481,6 +454,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const [error, setError] = useState(null);
     const [done, setDone] = useState(null);
     const [toast, setToast] = useState(null);
+    const [addedToCart, setAddedToCart] = useState(false);
     const [lightboxSrc, setLightboxSrc] = useState(null);
     const quoteTimer = useRef(null);
     const isFirstQuoteRef = useRef(true);
@@ -488,6 +462,9 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const pendingQuoteRef = useRef(Promise.resolve());
     const [quoteFailed, setQuoteFailed] = useState(false);
     const standardBasisRef = useRef(defaultBasis);
+
+    // Changing the quantity / pack type after adding means the cart button should offer "Update" again.
+    useEffect(() => { setAddedToCart(false); }, [quantity, basis, isSample]);
 
     useEffect(() => {
         if (!isSample && basis !== "per_unit") standardBasisRef.current = basis;
@@ -521,7 +498,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         return () => window.removeEventListener("keydown", onKey);
     }, [handleClose, lightboxSrc, redirecting, submitting]);
 
-    // ---- Product details (image, specs, description…) — non-blocking ----
+    // ---- Product details (non-blocking) ----
     const [detail, setDetail] = useState(null);
     useEffect(() => {
         if (!product?.id) return;
@@ -567,8 +544,10 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
     const creditRemaining = creditStatus
         ? Math.max(Number(creditStatus.credit_limit || 0) - Number(creditStatus.credit_used || 0), 0)
         : 0;
-    // ---- GST: taxable value = quote.subtotal (after discounts, before GST) ----
-    // Reads the GST % from the quote first, then the seller listing, then the product record.
+
+    // ---- GST + bill ----
+    // The stored/charged price is GST-INCLUSIVE (quote.subtotal = what the buyer pays). Taxable value and
+    // GST are derived from it for display only, so the bill always adds up and never charges GST twice.
     const gstPercent = useMemo(() => {
         const v = pick(quote, "gstPercent", "gstRate", "gst_percent", "taxPercent", "taxRate")
             ?? pick(seller, "gstPercent", "gstRate", "gst_percent", "taxPercent", "taxRate")
@@ -576,10 +555,20 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         const n = Number(v);
         return Number.isFinite(n) && n > 0 ? n : 0;
     }, [quote, seller, detail]);
-    const taxableAmount = Number(quote?.subtotal) || 0;
-    const serverGst = quote ? pick(quote, "gstAmount", "taxAmount", "gst_amount") : null;
-    const gstAmount = !quote ? 0 : serverGst != null ? Number(serverGst) : round2(taxableAmount * gstPercent / 100);
-    const payableTotal = !quote ? 0 : quote.totalPayable != null ? Number(quote.totalPayable) : round2(taxableAmount + gstAmount);
+
+    const bill = useMemo(() => {
+        if (!quote) return null;
+        const total = Number(quote.subtotal) || 0;
+        if (isSample) return billFromAmounts({ grossIncl: total, totalIncl: total, gstPercent: 0 });
+        return billFromAmounts({
+            grossIncl: Number(quote.grossSubtotal) || total,
+            totalIncl: total,
+            gstPercent,
+            discountPercent: quote.discountPercent,
+        });
+    }, [quote, gstPercent, isSample]);
+    const payableTotal = bill ? bill.total : 0;
+
     const crossesCreditLimit = isCredit && canBuyOnCredit && !!quote && payableTotal > creditRemaining;
     const limitIncreasePending = !!creditStatus?.limit_increase_request_message_id;
     const limitIncreaseCooldownActive = !!creditStatus?.limit_increase_cooldown_until
@@ -886,6 +875,8 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         setPendingPay(null);
     };
 
+    // Stays on the page. An item already in the cart gets its quantity SET (never summed).
+    const cartPath = location.pathname.startsWith("/buy") ? "/buy/cart" : "/cart";
     const handleAddToCart = async () => {
         setError(null);
         if (quote && quote.meetsMoq === false) return setError(`Minimum order quantity is ${formatMoqForBasis(quote.moq, seller)}.`);
@@ -895,20 +886,35 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         const confirmed = await awaitQuote();
         const finalQuote = confirmed || quote;
         if (finalQuote && finalQuote.meetsMoq === false) return setError(`Minimum order quantity is ${formatMoqForBasis(finalQuote.moq, seller)}.`);
+
+        const qtyNum = Number(quantity);
+        const existing = cart?.getLine?.(seller.offerId) || null;
         setSubmitting(true);
-        const res = await addToCart(token, { submissionId: seller.offerId, quantity: Number(quantity), purchaseBasis: basis });
+        let res = null;
+        try {
+            res = existing
+                ? await updateCartItem(token, seller.offerId, { quantity: qtyNum, purchaseBasis: basis })
+                : await addToCart(token, { submissionId: seller.offerId, quantity: qtyNum, purchaseBasis: basis });
+        } catch { res = null; }
         setSubmitting(false);
         if (!res?.success) {
             track("add_to_cart_failed", { code: safeCode(res?.code) });
             return setError(res?.message || "Couldn't add to cart.");
         }
-        track("add_to_cart", {
+        track(existing ? "cart_quantity_updated" : "add_to_cart", {
+            source: "buy_modal",
             purchase_basis: basis,
-            quantity: Number(quantity),
+            quantity: qtyNum,
             cart_value: Math.round(Number(finalQuote?.subtotal) || 0),
         });
-        onClose();
-        navigate("/buy/cart");
+        cart?.setLine?.(seller.offerId, qtyNum, basis);
+        setAddedToCart(true);
+        setToast(existing ? "Cart updated" : "Added to cart");
+    };
+
+    const goToCart = () => {
+        onClose?.();
+        navigate(cartPath);
     };
 
     const resumeAppliedRef = useRef(false);
@@ -918,7 +924,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         if (ri.source !== "buynow" || ri.offerId !== seller?.offerId) return;
         resumeAppliedRef.current = true;
 
-        setQuantity(ri.quantity);
+        setQuantity(Number(ri.quantity) || computeMinQuantity(seller, ri.basis));
         userPickedBasis.current = true;
         setBasis(ri.basis);
         setOrderMode(ri.orderMode || "standard");
@@ -1039,7 +1045,8 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         ? { opacity: 0, y: 24, scale: 0.985 }
         : { opacity: 1, y: 0, scale: 1 };
 
-    const primaryBtnBase = "flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl px-4 text-[15px] font-extrabold tracking-wide text-white transition-[opacity,transform] duration-100 active:scale-[0.985] disabled:opacity-50";
+    const primaryBtnBase = "flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl px-4 text-[16px] font-extrabold tracking-wide text-white transition-[opacity,transform] duration-100 active:scale-[0.985] disabled:opacity-50";
+    const cartBlocked = submitting || belowMoq || outOfStock || exceedsStock || priceLoading;
 
     return (
         <motion.div
@@ -1061,8 +1068,8 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                 {redirecting ? (
                     <div className="flex flex-col items-center bg-white px-6 py-16 text-center">
                         <Loader2 className="h-9 w-9 animate-spin" style={{ color: T.teal }} />
-                        <h2 className="mt-4 text-[16px] font-extrabold tracking-wide">Taking you to JioPay…</h2>
-                        <p className="mt-1.5 max-w-xs text-[13px] font-medium leading-relaxed" style={{ color: T.muted }}>
+                        <h2 className="mt-4 text-[17px] font-extrabold tracking-wide">Taking you to JioPay…</h2>
+                        <p className="mt-1.5 max-w-xs text-[13.5px] font-medium leading-relaxed" style={{ color: T.muted }}>
                             Please don't close or refresh this page. You'll be brought back here once the payment is done.
                         </p>
                     </div>
@@ -1071,11 +1078,11 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                         <span className="flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg" style={{ background: CTA_RED }}>
                             <CreditCard className="h-7 w-7" />
                         </span>
-                        <h2 className="mt-4 text-[17px] font-extrabold tracking-wide">Payment pending</h2>
+                        <h2 className="mt-4 text-[18px] font-extrabold tracking-wide">Payment pending</h2>
                         {pendingPay.orderNumber && (
                             <p className="mt-1.5 rounded-full px-3 py-1 font-mono text-[12px] font-semibold" style={{ background: T.panel, color: T.teal }}>{pendingPay.orderNumber}</p>
                         )}
-                        <p className="mt-3 max-w-sm text-[13px] font-medium leading-relaxed" style={{ color: T.muted }}>
+                        <p className="mt-3 max-w-sm text-[13.5px] font-medium leading-relaxed" style={{ color: T.muted }}>
                             Your order is created but not paid yet. Pay now to confirm it.
                             If you already paid, give it a minute — you'll find it in your orders.
                         </p>
@@ -1086,12 +1093,8 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                 style={{ background: CTA_RED }}>
                                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay now"}
                             </button>
-                            {/* <button onClick={handleEditOrder} disabled={submitting}
-                                className="w-full rounded-xl border py-3 text-[13.5px] font-bold disabled:opacity-60" style={{ borderColor: T.hair, color: T.ink }}>
-                                Edit order
-                            </button> */}
                             <button onClick={handleClose} disabled={submitting}
-                                className="min-h-[44px] w-full text-[13px] font-bold disabled:opacity-60" style={{ color: T.muted }}>
+                                className="min-h-[44px] w-full text-[13.5px] font-bold disabled:opacity-60" style={{ color: T.muted }}>
                                 Pay later from My orders
                             </button>
                         </div>
@@ -1101,14 +1104,14 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                         <span className="flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg" style={{ background: "linear-gradient(135deg,#047084,#0B9FB8)" }}>
                             <CheckCircle2 className="h-8 w-8" />
                         </span>
-                        <h2 className="mt-4 text-[17px] font-extrabold tracking-wide">
+                        <h2 className="mt-4 text-[18px] font-extrabold tracking-wide">
                             {done.orderType === "sample" ? "Sample requested" : done.paymentMethod === "credit" ? "Order placed on credit" : "Order placed"}
                         </h2>
                         <p className="mt-1.5 rounded-full px-3 py-1 font-mono text-[12px] font-semibold" style={{ background: T.panel, color: T.teal }}>{done.orderNumber}</p>
-                        <p className="mt-3 max-w-sm text-[13px] font-medium leading-relaxed" style={{ color: T.muted }}>{done.message}</p>
+                        <p className="mt-3 max-w-sm text-[13.5px] font-medium leading-relaxed" style={{ color: T.muted }}>{done.message}</p>
 
                         {done.estimatedDeliveryDate && (
-                            <p className="mt-3 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-bold" style={{ background: T.tealBg, color: T.tealDk }}>
+                            <p className="mt-3 flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-bold" style={{ background: T.tealBg, color: T.tealDk }}>
                                 <Calendar className="h-3.5 w-3.5" /> Estimated delivery {deliveryDateLabel(done.estimatedDeliveryDate)}
                             </p>
                         )}
@@ -1129,47 +1132,47 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                         <span className="flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg" style={{ background: "linear-gradient(135deg,#047084,#0B9FB8)" }}>
                             <Lock className="h-6 w-6" />
                         </span>
-                        <h2 className="mt-4 text-[16px] font-extrabold tracking-wide">{gateContent.title}</h2>
-                        <p className="mt-2 max-w-xs text-[13px] font-medium leading-relaxed" style={{ color: T.muted }}>{gateContent.body}</p>
+                        <h2 className="mt-4 text-[17px] font-extrabold tracking-wide">{gateContent.title}</h2>
+                        <p className="mt-2 max-w-xs text-[13.5px] font-medium leading-relaxed" style={{ color: T.muted }}>{gateContent.body}</p>
                         <button onClick={gateContent.action} className="mt-6 h-12 rounded-2xl px-8 text-[14px] font-extrabold text-white shadow-md" style={{ background: CTA_RED }}>{gateContent.cta}</button>
                     </div>
                 ) : (
                     <>
                         {/* ============ HEADER — what am I buying ============ */}
-                        <header className="shrink-0 rounded-b-[22px] bg-white px-3.5 pb-3 pt-3.5 sm:px-5"
+                        <header className="shrink-0 rounded-b-[22px] bg-white px-3.5 pb-3.5 pt-3.5 sm:px-5"
                             style={{ boxShadow: "0 10px 30px rgba(14,124,134,0.10)" }}>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-start gap-3.5">
                                 <button type="button" disabled={!heroImage} onClick={() => heroImage && setLightboxSrc(heroImage)}
                                     aria-label="View product image"
-                                    className="relative flex h-[68px] w-[56px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border"
-                                    style={{ background: "linear-gradient(160deg, #F1EAFF 0%, #E4F4F5 100%)", borderColor: T.hairSoft, cursor: heroImage ? "zoom-in" : "default" }}>
+                                    className="relative flex h-[104px] w-[78px] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white"
+                                    style={{ cursor: heroImage ? "zoom-in" : "default" }}>
                                     {heroImage
-                                        ? <img src={resizedImageUrl(heroImage, { width: 256 })} alt="" referrerPolicy="no-referrer" decoding="async" className="h-full w-full object-contain p-1.5 mix-blend-multiply" />
-                                        : <Package className="h-6 w-6" style={{ color: T.muted }} />}
+                                        ? <img src={resizedImageUrl(heroImage, { width: 320 })} alt="" referrerPolicy="no-referrer" decoding="async" className="h-full w-full object-contain p-1.5 mix-blend-multiply" />
+                                        : <Package className="h-7 w-7" style={{ color: T.muted }} />}
                                     {heroImage && (
                                         <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white">
                                             <Maximize2 className="h-2.5 w-2.5" />
                                         </span>
                                     )}
                                 </button>
-                                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                    <p className="text-[10px] font-extrabold uppercase tracking-[0.12em]" style={{ color: T.teal }}>Place order</p>
-                                    <h2 className="line-clamp-2 text-[15px] font-extrabold leading-tight">{productName}</h2>
+                                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                    <p className="text-[10.5px] font-extrabold uppercase tracking-[0.12em]" style={{ color: T.teal }}>Place order</p>
+                                    <h2 className="line-clamp-2 text-[17px] font-extrabold leading-snug">{productName}</h2>
                                     {subLabel && (
-                                        <p className="flex items-center gap-1.5 truncate text-[11px] font-extrabold uppercase tracking-wider" style={{ color: T.purple }}>
+                                        <p className="flex items-center gap-1.5 truncate text-[11.5px] font-extrabold uppercase tracking-wider" style={{ color: T.purple }}>
                                             {brandImage && !brandNotApplicable && (
                                                 <img src={resizedImageUrl(brandImage, { width: 64 })} alt="" className="h-4 w-4 shrink-0 rounded object-cover" />
                                             )}
                                             <span className="truncate">{subLabel}</span>
                                         </p>
                                     )}
-                                    {categoryLabel && <p className="truncate text-[10.5px] font-semibold" style={{ color: T.soft }}>{categoryLabel}</p>}
-                                    <p className="flex min-w-0 items-center gap-1.5 text-[11px] font-semibold" style={{ color: T.muted }}>
+                                    {categoryLabel && <p className="truncate text-[11px] font-semibold" style={{ color: T.soft }}>{categoryLabel}</p>}
+                                    <p className="flex min-w-0 items-center gap-1.5 text-[12px] font-semibold" style={{ color: T.muted }}>
                                         <Store className="h-3.5 w-3.5 shrink-0" />
                                         <span className="truncate">Sold by {sellerLabel}{seller?.dispatchOrigin ? ` · ${seller.dispatchOrigin}` : ""}</span>
                                     </p>
                                 </div>
-                                <div className="flex shrink-0 flex-col gap-1.5 self-start">
+                                <div className="flex shrink-0 flex-col gap-1.5">
                                     <button onClick={handleClose} aria-label="Close"
                                         className="flex h-9 w-9 items-center justify-center rounded-full border transition-colors duration-100 hover:bg-[#E9F4F4] active:scale-95"
                                         style={{ borderColor: T.hair, background: "#F4FAFA" }}>
@@ -1197,7 +1200,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                         ]} />
                                 )}
                                 {isSample && (
-                                    <p className="-mt-1 px-1 text-[12.5px] font-semibold" style={{ color: T.muted }}>
+                                    <p className="-mt-1 px-1 text-[13px] font-semibold" style={{ color: T.muted }}>
                                         {seller.samplePrice ? `Sample price: ₹${inr(seller.samplePrice)}/${seller.unit}` : "This sample is free."}
                                     </p>
                                 )}
@@ -1213,12 +1216,11 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                     </div>
                                 )}
 
-                                {/* Two columns on desktop: [Quantity + Price] | [Delivery] */}
                                 <div className="flex flex-col gap-3">
                                     <div className="flex min-w-0 flex-col gap-3.5">
                                         {/* ============ QUANTITY ============ */}
                                         <Card icon={Package} title="Quantity" right={!isSample ? (
-                                            <span className="shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-extrabold"
+                                            <span className="shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11.5px] font-extrabold"
                                                 style={{ background: T.amberChip, borderColor: T.amberBd, color: T.amberChipTx }}>
                                                 MOQ {minQuantity} {moqUnitLabel}{minQuantity === 1 ? "" : "s"}
                                             </span>
@@ -1226,13 +1228,13 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                             {!isSample && hasPack && (
                                                 <div className={`grid gap-2.5 ${hasMaster ? "grid-cols-2" : "grid-cols-1"}`}>
                                                     <div className="flex min-w-0 flex-col gap-0 rounded-xl border px-3 py-2" style={{ background: T.panel, borderColor: T.hair }}>
-                                                        <span className="text-[10px] font-bold uppercase" style={{ color: T.muted }}>1 pack</span>
-                                                        <span className="truncate text-[14px] font-extrabold">{seller.packSize} {seller.unit}</span>
+                                                        <span className="text-[10.5px] font-bold uppercase" style={{ color: T.muted }}>1 pack</span>
+                                                        <span className="truncate text-[15px] font-extrabold">{seller.packSize} {seller.unit}</span>
                                                     </div>
                                                     {hasMaster && (
                                                         <div className="flex min-w-0 flex-col gap-0 rounded-xl border px-3 py-2" style={{ background: T.panel, borderColor: T.hair }}>
-                                                            <span className="text-[10px] font-bold uppercase" style={{ color: T.muted }}>1 master pack</span>
-                                                            <span className="truncate text-[14px] font-extrabold">{seller.masterPackSize} packs</span>
+                                                            <span className="text-[10.5px] font-bold uppercase" style={{ color: T.muted }}>1 master pack</span>
+                                                            <span className="truncate text-[15px] font-extrabold">{seller.masterPackSize} packs</span>
                                                         </div>
                                                     )}
                                                 </div>
@@ -1246,41 +1248,41 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                 {isSample ? (
                                                     <>
                                                         <div className="flex min-w-0 flex-col gap-0.5">
-                                                            <span className="text-[15px] font-extrabold tabular-nums">{quantity} {seller?.unit}</span>
+                                                            <span className="text-[16px] font-extrabold tabular-nums">{quantity} {seller?.unit}</span>
                                                             {hasPack && (
-                                                                <span className="text-[12px] font-semibold" style={{ color: "#D5F0F2" }}>
+                                                                <span className="text-[12.5px] font-semibold" style={{ color: "#D5F0F2" }}>
                                                                     ~{round2(Number(quantity) / Number(seller.packSize))} pack{round2(Number(quantity) / Number(seller.packSize)) === 1 ? "" : "s"}
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <span className="shrink-0 whitespace-nowrap rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-bold">Fixed by seller</span>
+                                                        <span className="shrink-0 whitespace-nowrap rounded-full bg-white/20 px-2.5 py-1 text-[11.5px] font-bold">Fixed by seller</span>
                                                     </>
                                                 ) : (
                                                     <>
                                                         <div className="flex min-w-0 flex-col gap-0.5">
-                                                            <span className="text-[15px] font-extrabold capitalize tabular-nums">{quantity || 0} {basisLabel}</span>
+                                                            <span className="text-[16px] font-extrabold capitalize tabular-nums">{quantity || 0} {basisLabel}</span>
                                                             {hasPack && (
-                                                                <span className="text-[12px] font-semibold" style={{ color: "#D5F0F2" }}>
+                                                                <span className="text-[12.5px] font-semibold" style={{ color: "#D5F0F2" }}>
                                                                     = {toBaseUnits(seller, Number(quantity) || 0, basis)} {seller?.unit}
                                                                     {hasMaster && basis === "per_master_pack" ? ` · ${(Number(quantity) || 0) * Number(seller.masterPackSize)} packs` : ""}
                                                                 </span>
                                                             )}
                                                         </div>
-                                                        <span className="shrink-0 whitespace-nowrap rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-bold">Adjust below ↓</span>
+                                                        <span className="shrink-0 whitespace-nowrap rounded-full bg-white/20 px-2.5 py-1 text-[11.5px] font-bold">Adjust below ↓</span>
                                                     </>
                                                 )}
                                             </div>
 
                                             {!isSample && !priceLoading && Array.isArray(seller?.priceSlabs) && seller.priceSlabs.length > 0 && (
                                                 <div className="flex flex-col gap-1.5">
-                                                    <span className="flex items-center gap-1.5 text-[12.5px] font-extrabold">
+                                                    <span className="flex items-center gap-1.5 text-[13px] font-extrabold">
                                                         <Layers className="h-3.5 w-3.5" style={{ color: T.teal }} /> Price slabs
                                                     </span>
                                                     <div className="flex flex-wrap gap-1.5">
                                                         {seller.priceSlabs.map((slab, i) => {
                                                             const active = quote?.appliedSlab && Number(quote.appliedSlab.minQty) === Number(slab.minQty);
                                                             return (
-                                                                <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
+                                                                <span key={i} className="rounded-full border px-2.5 py-1 text-[12px] font-bold"
                                                                     style={active ? { borderColor: T.teal, background: T.tealBg, color: T.tealDk } : { borderColor: T.hair, color: T.muted }}>
                                                                     {slab.minQty}{slab.maxQty ? `–${slab.maxQty}` : "+"} {moqUnitLabel.toLowerCase()}{Number(slab.maxQty || slab.minQty) === 1 ? "" : "s"}: ₹{inr(slab.price)}
                                                                 </span>
@@ -1292,7 +1294,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
                                             {!isSample && !priceLoading && Array.isArray(seller?.quantityDiscounts) && seller.quantityDiscounts.length > 0 && (
                                                 <div className="flex flex-col gap-1.5">
-                                                    <span className="flex items-center gap-1.5 text-[12.5px] font-extrabold">
+                                                    <span className="flex items-center gap-1.5 text-[13px] font-extrabold">
                                                         <Layers className="h-3.5 w-3.5" style={{ color: T.red }} /> Quantity discounts
                                                     </span>
                                                     <div className="flex flex-wrap gap-1.5">
@@ -1300,7 +1302,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                             const active = quote?.discountTier && Number(quote.discountTier.minQty) === Number(tier.minQty);
                                                             const tierUnitLabel = hasMaster ? "master pack" : "pack";
                                                             return (
-                                                                <span key={i} className="rounded-full border px-2.5 py-1 text-[11.5px] font-bold"
+                                                                <span key={i} className="rounded-full border px-2.5 py-1 text-[12px] font-bold"
                                                                     style={active ? { borderColor: T.red, background: "rgba(212,56,6,0.08)", color: T.red } : { borderColor: T.hair, color: T.muted }}>
                                                                     {tier.minQty}+ {tierUnitLabel}{Number(tier.minQty) === 1 ? "" : "s"}: {tier.discountPercent}% off
                                                                 </span>
@@ -1321,21 +1323,23 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                     <SkeletonBar width="80%" />
                                                     <SkeletonBar width="60%" />
                                                 </div>
-                                            ) : quote ? (
+                                            ) : quote && bill ? (
                                                 <>
+                                                    {/* Main rate: the one number the eye should land on */}
                                                     <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
                                                         <div className="flex flex-wrap items-baseline gap-x-1.5">
-                                                            <span className="text-[20px] font-extrabold tabular-nums leading-none">₹{inr(quote.basePriceApplied ?? quote.unitPrice)}</span>
-                                                            <span className="text-[12.5px] font-semibold" style={{ color: T.muted }}>/ {isSample ? seller?.unit : saleUnitLabel(seller?.masterPackSize)}</span>
+                                                            <span className="text-[26px] font-extrabold tabular-nums leading-none">₹{inr(quote.basePriceApplied ?? quote.unitPrice)}</span>
+                                                            <span className="text-[13px] font-semibold" style={{ color: T.muted }}>/ {isSample ? seller?.unit : saleUnitLabel(seller?.masterPackSize)}{!isSample && gstPercent > 0 ? " · incl. GST" : ""}</span>
                                                         </div>
                                                         {!isSample && hasPack && (
-                                                            <span className="whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-extrabold tabular-nums" style={{ background: T.tealBg, color: T.tealDk }}>
+                                                            <span className="whitespace-nowrap rounded-full px-2.5 py-1 text-[11.5px] font-extrabold tabular-nums" style={{ background: T.tealBg, color: T.tealDk }}>
                                                                 ≈ ₹{inr((quote.basePriceApplied ?? quote.unitPrice) / saleUnitQtyToBaseUnits(1, seller.packSize, seller.masterPackSize))} / {seller?.unit}
                                                             </span>
                                                         )}
                                                     </div>
                                                     <div className="h-px" style={{ background: T.hairSoft }} />
-                                                    {/* What is being bought (all before GST) */}
+
+                                                    {/* What is being bought */}
                                                     <div className="flex flex-col gap-2 rounded-xl border px-3 py-2.5" style={{ background: T.panel, borderColor: T.hair }}>
                                                         {isSample ? (
                                                             <Row label="Sample quantity" value={`${quote.baseUnitQuantity} ${seller?.unit}`} tone={T.ink} strong />
@@ -1354,25 +1358,26 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                             </>
                                                         )}
                                                     </div>
-                                                    <div className="flex flex-col gap-2">
-                                                        <Row label={isSample ? "Sample amount" : `Amount (${quote.saleUnitQuantity} × ₹${inr(quote.basePriceApplied ?? quote.unitPrice)})`}
-                                                            value={`₹${inr(quote.grossSubtotal)}`} strong />
-                                                        {!isSample && quote.discountAmount > 0 && (
-                                                            <Row label={`Discount (${quote.discountPercent}% off)`} value={`− ₹${inr(quote.discountAmount)}`} tone={T.tealDk} strong />
-                                                        )}
-                                                        <div className="h-px" style={{ background: T.hairSoft }} />
-                                                        <Row label="Subtotal (before GST)" value={`₹${inr(taxableAmount)}`} tone={T.ink} strong />
-                                                        {(gstPercent > 0 || gstAmount > 0) && (
-                                                            <Row label={gstPercent > 0 ? `GST (${gstPercent}%)` : "GST"} value={`+ ₹${inr(gstAmount)}`} strong />
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5" style={{ background: T.amberBg, borderColor: T.amberBd }}>
-                                                        <span className="text-[13px] font-extrabold">{isSample ? "Total payable (sample)" : "Total payable"}</span>
-                                                        <span className="text-[20px] font-extrabold tabular-nums leading-none">₹{inr(payableTotal)}</span>
-                                                    </div>
+
+                                                    {/* Bill */}
+                                                    {isSample ? (
+                                                        <div className="flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3" style={{ background: T.amberBg, borderColor: T.amberBd }}>
+                                                            <span className="text-[14px] font-extrabold">Total payable (sample)</span>
+                                                            <span className="text-[22px] font-extrabold tabular-nums leading-none">₹{inr(payableTotal)}</span>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <PriceBill bill={bill} qtyText={plural(quote.saleUnitQuantity, saleUnitLabel(seller?.masterPackSize))} />
+                                                            {gstPercent > 0 && (
+                                                                <p className="-mt-1 text-[11.5px] font-semibold" style={{ color: T.soft }}>
+                                                                    The seller's price already includes GST. Taxable value and GST are shown for your records.
+                                                                </p>
+                                                            )}
+                                                        </>
+                                                    )}
                                                 </>
                                             ) : (
-                                                <p className="text-[13px] font-medium" style={{ color: T.muted }}>Enter a quantity to see the total.</p>
+                                                <p className="text-[13.5px] font-medium" style={{ color: T.muted }}>Enter a quantity to see the total.</p>
                                             )}
 
                                             {/* Pay now / Pay on credit — only for buyers already approved for credit */}
@@ -1384,7 +1389,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                             { v: "credit", t: "Pay on credit", icon: CreditCard, activeBg: "#fff", activeColor: T.purple },
                                                         ]} />
                                                     {isCredit && (
-                                                        <p className="px-1 text-[12px] font-bold" style={{ color: T.muted }}>Credit available: ₹{inr(creditRemaining)}</p>
+                                                        <p className="px-1 text-[12.5px] font-bold" style={{ color: T.muted }}>Credit available: ₹{inr(creditRemaining)}</p>
                                                     )}
                                                     {crossesCreditLimit && (
                                                         limitIncreasePending ? (
@@ -1395,7 +1400,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                             <>
                                                                 <Notice tone="warn">This order is above your remaining credit limit.</Notice>
                                                                 <button type="button" onClick={handleRequestCreditIncrease} disabled={requestingIncrease}
-                                                                    className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-2xl border px-4 text-[13px] font-extrabold disabled:opacity-50"
+                                                                    className="flex min-h-[44px] w-full items-center justify-center gap-1.5 rounded-2xl border px-4 text-[13.5px] font-extrabold disabled:opacity-50"
                                                                     style={{ borderColor: "#6d28d940", color: T.purple, background: "#6d28d908" }}>
                                                                     <CreditCard className="h-3.5 w-3.5" /> {requestingIncrease ? "Requesting…" : "Ask for a higher credit limit"}
                                                                 </button>
@@ -1418,12 +1423,12 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                 <div className="flex flex-col gap-3 rounded-2xl border p-3"
                                                     style={{ background: "linear-gradient(135deg, #FFF6CC 0%, #FFFBE6 100%)", borderColor: T.amberBd }}>
                                                     <div className="flex items-center gap-3">
-                                                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ background: T.yellow }}>
+                                                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ background: T.yellow }}>
                                                             <Truck className="h-5 w-5" style={{ color: T.ink }} />
                                                         </span>
                                                         <div className="min-w-0">
-                                                            <p className="text-[11px] font-bold" style={{ color: "#6A5A1A" }}>Estimated delivery</p>
-                                                            <p className="text-[16px] font-extrabold leading-tight">
+                                                            <p className="text-[11.5px] font-bold" style={{ color: "#6A5A1A" }}>Estimated delivery</p>
+                                                            <p className="text-[18px] font-extrabold leading-tight">
                                                                 {quote.isEstimate || !quote.estimatedDeliveryDate ? <SkeletonBar width="90px" /> : deliveryDateLabel(quote.estimatedDeliveryDate)}
                                                             </p>
                                                         </div>
@@ -1435,9 +1440,9 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                             )}
 
                                             <div className="flex flex-col gap-2">
-                                                <label htmlFor="bbm-note" className="text-[11px] font-extrabold uppercase tracking-[0.1em]" style={{ color: T.muted }}>Note to seller (optional)</label>
+                                                <label htmlFor="bbm-note" className="text-[12px] font-extrabold uppercase tracking-[0.1em]" style={{ color: T.muted }}>Note to seller (optional)</label>
                                                 <textarea id="bbm-note" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Any special instructions…"
-                                                    className="w-full resize-none rounded-xl border-[1.5px] px-3 py-2 text-[13px] font-medium tracking-wide placeholder:text-[#7A8A94] focus:outline-none focus:ring-2"
+                                                    className="w-full resize-none rounded-xl border-[1.5px] px-3 py-2 text-[14px] font-medium tracking-wide placeholder:text-[#7A8A94] focus:outline-none focus:ring-2"
                                                     style={{ borderColor: T.field, background: "#FBFEFE", color: T.ink, ["--tw-ring-color"]: `${T.teal}33` }} />
                                             </div>
                                         </Card>
@@ -1470,8 +1475,8 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                     <div className="flex gap-2 overflow-x-auto pb-1">
                                                         {galleryImages.slice(0, 8).map((src, i) => (
                                                             <button key={i} type="button" onClick={() => setLightboxSrc(src)} aria-label={`View image ${i + 1}`}
-                                                                className="h-14 w-14 shrink-0 overflow-hidden rounded-xl" style={{ background: "#F4F5F6", cursor: "zoom-in" }}>
-                                                                <img src={resizedImageUrl(src, { width: 128 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                                                                className="h-20 w-[3.75rem] shrink-0 overflow-hidden rounded-xl bg-white" style={{ cursor: "zoom-in" }}>
+                                                                <img src={resizedImageUrl(src, { width: 160 })} alt="" loading="lazy" decoding="async" className="h-full w-full object-contain mix-blend-multiply" />
                                                             </button>
                                                         ))}
                                                     </div>
@@ -1485,22 +1490,22 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                                 )}
                                                 {description && (
                                                     <div>
-                                                        <p className="mb-1 text-[11.5px] font-extrabold uppercase tracking-wider" style={{ color: T.muted }}>Description</p>
-                                                        <p className="text-[13px] font-medium leading-relaxed" style={{ color: T.ink }}>{description}</p>
+                                                        <p className="mb-1 text-[12px] font-extrabold uppercase tracking-wider" style={{ color: T.muted }}>Description</p>
+                                                        <p className="text-[13.5px] font-medium leading-relaxed" style={{ color: T.ink }}>{description}</p>
                                                     </div>
                                                 )}
                                                 {manufacturingDetails && (
                                                     <div>
-                                                        <p className="mb-1 text-[11.5px] font-extrabold uppercase tracking-wider" style={{ color: T.muted }}>Manufacturing</p>
-                                                        <p className="text-[13px] font-medium leading-relaxed" style={{ color: T.ink }}>{manufacturingDetails}</p>
+                                                        <p className="mb-1 text-[12px] font-extrabold uppercase tracking-wider" style={{ color: T.muted }}>Manufacturing</p>
+                                                        <p className="text-[13.5px] font-medium leading-relaxed" style={{ color: T.ink }}>{manufacturingDetails}</p>
                                                     </div>
                                                 )}
                                                 {specifications.length > 0 && (
                                                     <div>
-                                                        <p className="mb-1 text-[11.5px] font-extrabold uppercase tracking-wider" style={{ color: T.muted }}>Specifications</p>
+                                                        <p className="mb-1 text-[12px] font-extrabold uppercase tracking-wider" style={{ color: T.muted }}>Specifications</p>
                                                         <div className="overflow-hidden rounded-2xl border" style={{ borderColor: T.hair }}>
                                                             {specifications.map((s, i) => (
-                                                                <div key={i} className="flex justify-between gap-3 px-3.5 py-2 text-[12.5px] font-semibold"
+                                                                <div key={i} className="flex justify-between gap-3 px-3.5 py-2 text-[13px] font-semibold"
                                                                     style={{ background: i % 2 === 0 ? "#fff" : T.panel, color: T.ink }}>
                                                                     <span style={{ color: T.muted }}>{s.key}</span>
                                                                     <span className="text-right">{s.value}</span>
@@ -1520,52 +1525,59 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                         <footer className="shrink-0 rounded-t-[22px] bg-white px-3.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-4"
                             style={{ boxShadow: "0 -12px 34px rgba(11,37,51,0.12)" }}>
                             <div className="mx-auto flex w-full flex-col gap-2.5">
-                                {/* MOQ warning: only shown when the typed quantity is below the seller's MOQ */}
+                                {/* MOQ warning: only when the quantity is below the seller's MOQ */}
                                 {hasMoqNote && belowMoq && (
                                     <div role="alert" className="flex items-start gap-2 rounded-xl border px-2.5 py-2"
                                         style={{ background: "#FDECEC", borderColor: "#F5C6C3", color: "#B3261E" }}>
                                         <AlertCircle className="mt-[1px] h-4 w-4 shrink-0" />
-                                        <p className="text-[11.5px] font-bold leading-snug">{moqNoteText}</p>
+                                        <p className="text-[12px] font-bold leading-snug">{moqNoteText}</p>
                                     </div>
                                 )}
 
                                 {/* Row 1: quantity + total */}
-                                <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-start justify-between gap-3">
                                     {isSample ? (
-                                        <p className="text-[14px] font-extrabold tabular-nums">
-                                            {quantity} {seller?.unit} <span className="text-[11px] font-semibold" style={{ color: T.muted }}>sample</span>
+                                        <p className="pt-2 text-[15px] font-extrabold tabular-nums">
+                                            {quantity} {seller?.unit} <span className="text-[11.5px] font-semibold" style={{ color: T.muted }}>sample</span>
                                         </p>
                                     ) : (
-                                        <FooterStepper value={quantity} onChange={setQuantity} min={minQuantity} max={maxQuantity} />
+                                        <QuantityControl
+                                            value={Number(quantity) || minQuantity}
+                                            min={minQuantity}
+                                            max={maxQuantity != null ? Number(maxQuantity) : null}
+                                            disabled={submitting || outOfStock}
+                                            onChange={setQuantity}
+                                            ariaLabel="Quantity"
+                                        />
                                     )}
                                     <div className="min-w-0 text-right">
-                                        <p className="text-[10px] font-extrabold uppercase tracking-[0.12em]" style={{ color: T.muted }}>Total</p>
-                                        <p className="text-[20px] font-extrabold leading-tight tabular-nums">
+                                        <p className="text-[10.5px] font-extrabold uppercase tracking-[0.12em]" style={{ color: T.muted }}>Total{!isSample && gstPercent > 0 ? " · incl. GST" : ""}</p>
+                                        <p className="text-[22px] font-extrabold leading-tight tabular-nums">
                                             {priceLoading ? <SkeletonBar width="90px" /> : quote ? `₹${inr(payableTotal)}` : "—"}
                                         </p>
                                     </div>
                                 </div>
 
-                                {/* Row 3: credit (not for samples) */}
+                                {/* Row 2: credit (not for samples) */}
                                 {!isSample && (
                                     <>
                                         {crossesCreditLimit && (
                                             <div className="flex flex-wrap items-center gap-x-2 gap-y-2 rounded-[14px] border px-3 py-2.5" style={{ background: T.amberBg, borderColor: T.amberBd }}>
-                                                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-bold leading-snug" style={{ color: T.amberTx }}>
+                                                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[12.5px] font-bold leading-snug" style={{ color: T.amberTx }}>
                                                     <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                                                     Above your remaining credit (₹{inr(creditRemaining)})
                                                 </span>
                                                 <button type="button" onClick={() => pickPayMode("standard")}
-                                                    className="h-9 rounded-full border bg-white px-3.5 text-[12px] font-extrabold" style={{ borderColor: T.hair, color: T.ink }}>
+                                                    className="h-9 rounded-full border bg-white px-3.5 text-[12.5px] font-extrabold" style={{ borderColor: T.hair, color: T.ink }}>
                                                     Pay now
                                                 </button>
                                                 {limitIncreasePending ? (
-                                                    <span className="text-[11.5px] font-bold" style={{ color: T.amberTx }}>Higher limit requested</span>
+                                                    <span className="text-[12px] font-bold" style={{ color: T.amberTx }}>Higher limit requested</span>
                                                 ) : limitIncreaseCooldownActive ? (
-                                                    <span className="text-[11.5px] font-bold" style={{ color: T.amberTx }}>Ask again after {fmtDate(creditStatus.limit_increase_cooldown_until)}</span>
+                                                    <span className="text-[12px] font-bold" style={{ color: T.amberTx }}>Ask again after {fmtDate(creditStatus.limit_increase_cooldown_until)}</span>
                                                 ) : (
                                                     <button type="button" onClick={handleRequestCreditIncrease} disabled={requestingIncrease}
-                                                        className="inline-flex h-9 items-center gap-1 rounded-full border px-3.5 text-[12px] font-extrabold disabled:opacity-50"
+                                                        className="inline-flex h-9 items-center gap-1 rounded-full border px-3.5 text-[12.5px] font-extrabold disabled:opacity-50"
                                                         style={{ borderColor: "#6d28d940", color: T.purple, background: "#6d28d908" }}>
                                                         {requestingIncrease ? <Loader2 className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3 w-3" />}
                                                         Higher limit
@@ -1576,10 +1588,10 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
                                         {canAskCredit && (
                                             <div className="flex items-center justify-between gap-2.5">
-                                                <span className="min-w-0 truncate text-[12.5px] font-bold" style={{ color: T.muted }}>Want to pay later?</span>
+                                                <span className="min-w-0 truncate text-[13px] font-bold" style={{ color: T.muted }}>Want to pay later?</span>
                                                 <button type="button" onClick={handleAskCredit} disabled={requestingCredit || submitting}
                                                     aria-label={`Ask ${sellerLabel} for credit`}
-                                                    className="inline-flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-full border-[1.5px] px-3.5 text-[12.5px] font-extrabold transition-transform duration-100 active:scale-95 disabled:opacity-50"
+                                                    className="inline-flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-full border-[1.5px] px-3.5 text-[13px] font-extrabold transition-transform duration-100 active:scale-95 disabled:opacity-50"
                                                     style={{ borderColor: T.teal, color: T.tealDk, background: "#E4F6F7" }}>
                                                     {requestingCredit ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
                                                     {requestingCredit ? "Sending…" : "Ask for credit"}
@@ -1587,32 +1599,40 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                             </div>
                                         )}
                                         {creditKind === "pending" && (
-                                            <p className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: T.amberTx }}>
+                                            <p className="flex items-center gap-1.5 text-[13px] font-bold" style={{ color: T.amberTx }}>
                                                 <Clock className="h-3.5 w-3.5 shrink-0" /> Credit request sent · waiting for {sellerLabel}
                                             </p>
                                         )}
                                         {creditKind === "cooldown" && (
-                                            <p className="flex items-center gap-1.5 text-[12.5px] font-bold" style={{ color: T.muted }}>
+                                            <p className="flex items-center gap-1.5 text-[13px] font-bold" style={{ color: T.muted }}>
                                                 <Info className="h-3.5 w-3.5 shrink-0" /> Credit declined · ask again after {fmtDate(creditStatus.cooldown_until)}
                                             </p>
                                         )}
                                         {creditAskError && (
-                                            <p role="alert" className="flex items-start gap-1.5 text-[12.5px] font-bold leading-snug" style={{ color: "#B3261E" }}>
+                                            <p role="alert" className="flex items-start gap-1.5 text-[13px] font-bold leading-snug" style={{ color: "#B3261E" }}>
                                                 <AlertCircle className="mt-[1px] h-3.5 w-3.5 shrink-0" /> <span>{creditAskError}</span>
                                             </p>
                                         )}
                                     </>
                                 )}
 
-                                {/* Row 4: actions */}
+                                {/* Row 3: actions */}
                                 <div className="flex items-center gap-2.5">
                                     {!isSample && (
-                                        <button type="button" onClick={handleAddToCart} aria-label="Add to cart" title="Add to cart"
-                                            disabled={submitting || belowMoq || outOfStock || exceedsStock || priceLoading}
-                                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-[opacity,transform] duration-100 active:scale-95 disabled:opacity-50"
-                                            style={{ background: T.yellow, color: T.ink, boxShadow: "0 5px 12px rgba(255,214,10,0.45)" }}>
-                                            <ShoppingCart className="h-5 w-5" strokeWidth={2.2} />
-                                        </button>
+                                        addedToCart ? (
+                                            <button type="button" onClick={goToCart}
+                                                className="flex h-12 shrink-0 items-center justify-center gap-1.5 rounded-2xl px-4 text-[14px] font-extrabold transition-transform duration-100 active:scale-95"
+                                                style={{ background: T.yellow, color: T.ink, boxShadow: "0 5px 12px rgba(255,214,10,0.45)" }}>
+                                                <ShoppingCart className="h-5 w-5" strokeWidth={2.2} /> View cart
+                                            </button>
+                                        ) : (
+                                            <button type="button" onClick={handleAddToCart} aria-label="Add to cart" title="Add to cart"
+                                                disabled={cartBlocked}
+                                                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-[opacity,transform] duration-100 active:scale-95 disabled:opacity-50"
+                                                style={{ background: T.yellow, color: T.ink, boxShadow: "0 5px 12px rgba(255,214,10,0.45)" }}>
+                                                {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <ShoppingCart className="h-5 w-5" strokeWidth={2.2} />}
+                                            </button>
+                                        )
                                     )}
                                     <button type="button" onClick={handlePrimary} disabled={ctaDisabled}
                                         className={primaryBtnBase} style={{ background: ctaBackground, boxShadow: ctaShadow }}>
@@ -1626,7 +1646,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
                         {toast && (
                             <div className="pointer-events-none absolute inset-x-0 top-4 z-10 flex justify-center px-4" role="status">
-                                <span className="rounded-full bg-black px-4 py-2 text-[12.5px] font-bold text-white shadow-lg">{toast}</span>
+                                <span className="rounded-full bg-black px-4 py-2 text-[13px] font-bold text-white shadow-lg">{toast}</span>
                             </div>
                         )}
                     </>

@@ -155,6 +155,8 @@ import GroupBannerBlock from "./GroupBannerBlock.jsx";
 import useHomeBannerPlan from "../../hooks/useHomeBannerPlan";
 import useGroupBanners from "../../hooks/useGroupBanners";
 import { track } from "../../lib/analytics.js";
+import HomeCartButton from "./HomeCartButton.jsx";
+import OfferActions from "./OfferActions.jsx";
 
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
@@ -861,12 +863,7 @@ function LockedPriceBlock({ seed, unit, size = "row", onClick }) {
 function PriceBreakdown({ breakdown, unit, size = "row" }) {
     if (!breakdown) return null;
     const { unitPrice, packPrice, masterPackPrice, hasMasterPack, packQty, masterQty } = breakdown;
-
     const short = shortUnit(unit);
-
-    // With a unit: label every price by how many base units it covers
-    // ("/pc", "/10 pc", "/50 pc"). Without one, fall back to Pack / M Pack.
-    // A pack of exactly 1 unit would just repeat the unit row, so skip it.
     const packDuplicatesUnit = !!unit && Number(packQty) === 1;
 
     const rows = [
@@ -878,25 +875,20 @@ function PriceBreakdown({ breakdown, unit, size = "row" }) {
             ? { label: unit ? `${fmtQty(masterQty)} ${short}` : "M Pack", value: masterPackPrice }
             : null,
     ].filter(Boolean);
-
     if (!rows.length) return null;
 
-    const isRow = size === "row";
-    const valueClass = isRow
-        ? "text-[12px] font-extrabold tabular-nums"
-        : "text-[11.5px] font-extrabold tabular-nums";
-    const labelClass = "text-[9px] font-semibold tracking-wide";
-
+    const [main, ...rest] = rows;
+    const mainSize = size === "row" ? "text-[17px]" : "text-[15px]";
     return (
-        <div className="grid items-baseline gap-x-1 gap-y-0.5" style={{ gridTemplateColumns: "auto auto" }}>
-            {rows.map((r) => (
-                <div key={r.label} className="contents">
-                    <span className={`${valueClass} text-right whitespace-nowrap`} style={{ color: C.ink }}>
-                        ₹{inr(r.value)}
-                    </span>
-                    <span className={`${labelClass} text-left whitespace-nowrap`} style={{ color: C.muted }}>
-                        /{r.label}
-                    </span>
+        <div className="flex flex-col items-end gap-0.5">
+            <div className="flex items-baseline gap-1">
+                <span className={`${mainSize} font-extrabold tabular-nums leading-tight whitespace-nowrap`} style={{ color: C.ink }}>₹{inr(main.value)}</span>
+                <span className="text-[10.5px] font-semibold tracking-wide whitespace-nowrap" style={{ color: C.muted }}>/{main.label}</span>
+            </div>
+            {rest.map((r) => (
+                <div key={r.label} className="flex items-baseline gap-1">
+                    <span className="text-[11.5px] font-bold tabular-nums whitespace-nowrap" style={{ color: "#3F525E" }}>₹{inr(r.value)}</span>
+                    <span className="text-[9.5px] font-semibold tracking-wide whitespace-nowrap" style={{ color: C.muted }}>/{r.label}</span>
                 </div>
             ))}
         </div>
@@ -951,17 +943,17 @@ function sortBySellerAvailability(list) {
 
 function ProductImage({ src, alt, onOpen, priority = false }) {
     const [failed, setFailed] = useState(false);
-    if (!src || failed) return <Package className="h-4.5 w-4.5" style={{ color: C.muted }} />;
+    if (!src || failed) return <Package className="h-5 w-5" style={{ color: C.muted }} />;
     return (
         <img
-            src={resizedImageUrl(src, { width: 256 })}
+            src={resizedImageUrl(src, { width: 384 })}
             alt={alt}
             referrerPolicy="no-referrer"
             loading={priority ? "eager" : "lazy"}
             decoding="async"
             onError={() => setFailed(true)}
             onClick={(e) => { e.stopPropagation(); onOpen(); }}
-            className="h-full w-full object-cover cursor-zoom-in"
+            className="block h-full w-full cursor-zoom-in bg-white object-contain"
         />
     );
 }
@@ -977,7 +969,7 @@ function GstToggle({ includeGst, onChange }) {
             aria-checked={includeGst}
             aria-label={`GST ${includeGst ? "included" : "excluded"}`}
             onClick={() => onChange(!includeGst)}
-            className="group inline-flex h-7 items-center gap-2 rounded-full transition-all duration-200 cursor-pointer"
+            className="group inline-flex h-0 pb-2 items-center gap-2 rounded-full transition-all duration-200 cursor-pointer"
         >
             <span
                 className="min-w-[66px] whitespace-nowrap text-right text-[11px] font-bold leading-none tracking-wide"
@@ -1130,7 +1122,7 @@ function ProductNameWithInfo({ name, onInfo }) {
     return (
         <p
             ref={pRef}
-            className="min-w-0 text-[14px] font-bold leading-tight tracking-wide"
+            className="min-w-0 text-[15px] font-extrabold leading-snug tracking-wide"
             style={{ color: C.ink, overflowWrap: "anywhere" }}
         >
             <span ref={textRef} />
@@ -1314,7 +1306,7 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
 
     const isOutOfStock = isFeedRowOutOfStock(item);
 
-    const guardedToggle = () => { onToggle(); };
+    const guardedToggle = () => { onToggle?.(); };
 
     const breakdown = useMemo(() => {
         if (item.lowest_price == null) return null;
@@ -1359,13 +1351,10 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             }}
         >
             <AnimatePresence>{showTapHint && <HintRing key="hint-ring" />}</AnimatePresence>
-            <div className="grid w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 pb-3 min-h-[7.5rem] sm:px-4">
+            <div className="grid w-full grid-cols-[5.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 pb-3 min-h-[9rem] sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:min-h-[10rem] sm:px-4">
                 {/* COL 1 — IMAGE */}
                 <div className="flex h-full items-center justify-center">
-                    <span
-                        className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl"
-                        style={{ borderColor: C.hair, background: C.imgBg }}
-                    >
+                    <span className="flex h-28 w-[5.25rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white sm:h-32 sm:w-24">
                         <ProductImage
                             src={item.image}
                             alt=""
@@ -1972,9 +1961,9 @@ function useSellerDeliverability(sellers, address, enabled) {
 function RowSkeleton() {
     const bar = (cls) => <div className={`animate-pulse rounded-full ${cls}`} style={{ background: C.hairSoft }} />;
     return (
-        <div className="grid min-h-[7.5rem] w-full grid-cols-[5rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 sm:px-4">
+        <div className="grid min-h-[9rem] w-full grid-cols-[5.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-3 sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:min-h-[10rem] sm:px-4">
             <div className="flex items-center justify-center">
-                <div className="h-24 w-24 shrink-0 animate-pulse rounded-xl" style={{ background: C.hairSoft }} />
+                <div className="h-28 w-[5.25rem] shrink-0 animate-pulse rounded-xl sm:h-32 sm:w-24" style={{ background: C.hairSoft }} />
             </div>
             <div className="min-w-0 space-y-2">
                 {bar("h-3 w-4/5")}
@@ -2138,6 +2127,106 @@ function ShopPanelSkeleton() {
             <div className="w-24 shrink-0 animate-pulse rounded-lg" style={{ background: C.hairSoft }} />
         </div>
     );
+}
+
+// Seller (shop) view: one seller's offer shown INLINE under its product row (no dropdown).
+function ShopOfferCard({ seller, includeGst, token, isLoggedIn, outOfStock, notDeliverable, buyerAddress, isOwn, onRequireLogin, onBuy, onShare, onEdit, onToast }) {
+    const moq = Number(seller.moq);
+    const isMaster = priceUnitLabel(seller.units_per_master_pack) === "master pack";
+    const moqValue = isMaster ? `${fmtQty(moq)} M Pack` : `${fmtQty(moq)} Pack${moq === 1 ? "" : "s"}`;
+    const days = seller.total_delivery_days;
+
+    const cells = [
+        seller.moq != null ? { key: "moq", label: "MOQ", Icon: Package, value: moqValue } : null,
+        days != null ? { key: "eta", label: "Delivery", Icon: Clock, value: `~${days} ${Number(days) === 1 ? "day" : "days"}` } : null,
+        { key: "freight", label: "Freight", Icon: Truck, value: seller.freight_included ? "Included" : "Extra", accent: !!seller.freight_included },
+    ].filter(Boolean);
+
+    return (
+        <div className="pt-1">
+            <div className="grid overflow-hidden rounded-xl border bg-white" style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))`, borderColor: C.hair }}>
+                {cells.map(({ key, label, Icon, value, accent }, i) => (
+                    <div key={key} className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-1.5 py-2 text-center"
+                        style={i > 0 ? { borderLeft: `1px solid ${C.hairSoft}` } : undefined}>
+                        <span className="flex items-center gap-1 text-[9.5px] font-bold uppercase leading-none tracking-wider" style={{ color: C.muted }}>
+                            <Icon className="h-2.5 w-2.5 shrink-0" strokeWidth={2.5} /> {label}
+                        </span>
+                        <span className="w-full truncate text-[12.5px] font-extrabold leading-tight" style={{ color: accent ? "#006F83" : C.ink }}>{value}</span>
+                    </div>
+                ))}
+            </div>
+
+            {isOwn ? (
+                <div className="mt-3 flex items-stretch gap-2">
+                    <button type="button" aria-label="Share" onClick={onShare}
+                        className="flex h-11 w-12 items-center justify-center rounded-xl border bg-white active:scale-[0.97]" style={{ borderColor: C.hair, color: C.ink }}>
+                        <Share2 className="h-4 w-4" strokeWidth={2.3} />
+                    </button>
+                    <button type="button" onClick={onEdit}
+                        className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl text-[13.5px] font-extrabold text-white active:scale-[0.98]" style={{ background: C.primary }}>
+                        <Pencil className="h-3.5 w-3.5" strokeWidth={2.3} /> Edit listing
+                    </button>
+                </div>
+            ) : outOfStock ? (
+                <div className="mt-3 flex h-11 items-center justify-center rounded-xl text-[12px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>OUT OF STOCK</div>
+            ) : notDeliverable ? (
+                <div className="mt-3 rounded-xl px-3 py-2.5 text-center" style={{ background: "#FDECEC", color: "#B3261E" }}>
+                    <p className="flex items-center justify-center gap-1 text-[12px] font-extrabold"><Ban className="h-3.5 w-3.5" strokeWidth={2.8} /> NOT DELIVERABLE</p>
+                    <p className="mt-0.5 text-[11.5px] font-semibold">Doesn't ship to {buyerAddress?.city}{buyerAddress?.state ? `, ${buyerAddress.state}` : ""}</p>
+                </div>
+            ) : (
+                <OfferActions variant="shop" seller={seller} includeGst={includeGst} token={token} isLoggedIn={isLoggedIn}
+                    onRequireLogin={onRequireLogin} onBuyNow={onBuy} onToast={onToast} />
+            )}
+        </div>
+    );
+}
+
+function ShopRowOffer({ item, version, getOffer, includeGst, token, isLoggedIn, isOwnShop, buyerAddress, onRequireLogin, onBuy, onShare, onEdit, onToast }) {
+    const ref = useRef(null);
+    const [visible, setVisible] = useState(false);
+    const [state, setState] = useState({ loading: true, offer: null, error: null });
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el || visible) return undefined;
+        if (typeof IntersectionObserver === "undefined") { setVisible(true); return undefined; }
+        const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setVisible(true); io.disconnect(); } }, { rootMargin: "500px 0px" });
+        io.observe(el);
+        return () => io.disconnect();
+    }, [visible]);
+
+    useEffect(() => {
+        if (!visible) return undefined;
+        let alive = true;
+        getOffer(item.id).then((res) => {
+            if (!alive) return;
+            if (res?.success && res.offer) setState({ loading: false, offer: res.offer, error: null });
+            else setState({ loading: false, offer: null, error: res?.code === "LISTING_GONE" ? "No longer available." : "Couldn't load this seller's offer." });
+        });
+        return () => { alive = false; };
+    }, [visible, item.id, version, getOffer]);
+
+    const offer = state.offer;
+    const { check } = useSellerDeliverability(offer ? [offer] : EMPTY, buyerAddress, isLoggedIn);
+
+    let body;
+    if (!visible || state.loading) body = <ShopPanelSkeleton />;
+    else if (state.error) body = <p className="py-3 text-center text-[12px] font-semibold" style={{ color: C.muted }}>{state.error}</p>;
+    else {
+        const out = isSellerOutOfStock(offer);
+        const own = isOwnShop || isOwnSellerRow(offer, null);
+        body = (
+            <ShopOfferCard
+                seller={offer} includeGst={includeGst} token={token} isLoggedIn={isLoggedIn}
+                outOfStock={out} notDeliverable={!own && !out && isLoggedIn ? check(offer) : null}
+                buyerAddress={buyerAddress} isOwn={own} onRequireLogin={onRequireLogin}
+                onBuy={(quantity, basis) => onBuy(offer, { quantity, basis })}
+                onShare={() => onShare(offer)} onEdit={() => onEdit(offer.submission_id)} onToast={onToast}
+            />
+        );
+    }
+    return <div ref={ref} className="px-3 pb-4 sm:px-4">{body}</div>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2359,7 +2448,7 @@ function SellerDropdown({
     item, state, onBuySeller, onSell, includeGst, sortMode, onSortModeChange,
     currentUserId, onRequireLogin, isLoggedIn, buyerAddress, navigate,
     token, onOwnListingPriceApplied, onOwnListingPatched, onOwnListingSaved, onEditOwnListing,
-    shopMode = false, isOwnShop = false, onShareProduct,
+    shopMode = false, isOwnShop = false, onShareProduct, onToast,
 }) {
     const { loading, isRefreshing, items = [], error, total = 0, hasMore } = state || {};
 
@@ -2408,8 +2497,6 @@ function SellerDropdown({
     const alreadySelling = item?.has_own_listing === true;
 
     const [savingOwnPriceId, setSavingOwnPriceId] = useState(null);
-
-    const [slideTick, setSlideTick] = useState(0);
 
     // Runs when the own-listing modal's slide-to-confirm completes. Saves the
     // price, the staged promotion plan, or both, then always re-syncs the row
@@ -2460,7 +2547,7 @@ function SellerDropdown({
                 <div
                     ref={listRef}
                     onWheel={handleWheel}
-                    className="max-h-64 overflow-y-auto overscroll-contain seller-scroll"
+                    className="max-h-[26rem] overflow-y-auto overscroll-contain seller-scroll"
                     style={{ scrollbarGutter: "stable" }}
                 >
                     {showSkeleton ? (
@@ -2502,123 +2589,83 @@ function SellerDropdown({
                         <div className="flex flex-col divide-y" style={{ borderColor: C.hairSoft, opacity: isRefreshing ? 0.7 : 1, transition: "opacity 0.15s ease" }}>
                             {sortedItems.map((s) => {
                                 const pricing = computeEffectivePricing(s, moqInSaleUnits(s), includeGst);
-                                const outOfStock = s.stock_type === "ready_stock" && Number(s.stock_quantity) < moqInSaleUnits(s);
+                                const outOfStock = isSellerOutOfStock(s);
                                 const isOwn = isOwnSellerRow(s, currentUserId);
-                                // Seller doesn't ship to the buyer's selected address -> no buy action at all.
                                 const notDeliverable = !isOwn && !outOfStock && isLoggedIn ? checkDeliverable(s) : null;
-                                const blocked = outOfStock || !!notDeliverable;
                                 const totalDeliveryDays = s.total_delivery_days;
                                 const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
 
                                 return (
                                     <Fragment key={s.submission_id}>
                                         {s.submission_id === firstOutOfStockId && (
-                                            <p className="pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>
-                                                Out of stock
-                                            </p>
+                                            <p className="pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Out of stock</p>
                                         )}
                                         <motion.div
-                                            key={s.submission_id}
                                             layout
                                             transition={{ layout: { duration: 0.35, ease: EASE } }}
-                                            role="button"
-                                            tabIndex={blocked ? -1 : 0}
-                                            onClick={() => !blocked && !isOwn && onBuySeller(s)}
-                                            onKeyDown={(e) => {
-                                                if ((e.key === "Enter" || e.key === " ") && !blocked && !isOwn) { e.preventDefault(); onBuySeller(s); }
-                                            }}
-                                            aria-disabled={blocked || isOwn}
-                                            className={`relative flex items-start gap-3 py-3 text-left transition-colors duration-150 bg-[#FCFBF9] max-md:cursor-default ${notDeliverable ? "cursor-not-allowed" : "hover:bg-black/[0.03] cursor-pointer"}`}
-                                            style={outOfStock
-                                                ? { opacity: 0.45, cursor: "not-allowed", pointerEvents: "none" }
-                                                : notDeliverable ? { opacity: 0.62 } : undefined}
+                                            className="bg-[#FCFBF9] py-4 text-left"
+                                            style={outOfStock ? { opacity: 0.5 } : notDeliverable ? { opacity: 0.75 } : undefined}
                                         >
-                                            {/* Mobile only: swallow row taps so the slider is the only way to buy */}
-                                            <div className="absolute inset-0 md:hidden" onClick={(e) => e.stopPropagation()} />
-                                            {/* LEFT COL — seller info */}
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate text-[13px] font-bold tracking-wide" style={{ color: C.ink }}>
-                                                    {s.display_name}{isOwn ? " (You)" : ""}
-                                                </p>
-                                                {(s.city || s.state) && (
-                                                    <p className="mt-0.5 flex items-center gap-1 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                                        <MapPin className="h-3 w-3 shrink-0" /> {[s.city, s.state].filter(Boolean).join(", ")}
+                                            <div className="flex items-start gap-3">
+                                                {/* seller info */}
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>
+                                                        {s.display_name}{isOwn ? " (You)" : ""}
                                                     </p>
-                                                )}
-                                                <p className="mt-0.5 truncate text-[10.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                    {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)} ` : priceUnitLabel(s.units_per_master_pack)}
-                                                    {!notDeliverable && totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
-                                                    {!notDeliverable && !s.is_custom_priced && pricing?.discountPercent > 0
-                                                        ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
-                                                        : ""}
-                                                </p>
-                                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                                    <FreightPill included={s.freight_included} />
-                                                    {isFastest && <FastestBadge />}
-                                                </div>
-                                                {isOwn && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); onEditOwnListing(s.submission_id); }}
-                                                        className="relative z-10 mt-2.5 rounded-lg px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white"
-                                                        style={{ background: C.primary }}
-                                                    >
-                                                        Edit listing
-                                                    </button>
-                                                )}
-                                            </div>
-
-                                            {/* RIGHT COL — price + buy action (or the reason there is none) */}
-                                            <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5 text-right">
-                                                {outOfStock ? (
-                                                    <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
-                                                        OUT OF STOCK
-                                                    </span>
-                                                ) : notDeliverable ? (
-                                                    <div className="relative z-10 flex max-w-[9.5rem] flex-col items-end gap-1">
-                                                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide"
-                                                            style={{ background: "#FDECEC", color: "#B3261E" }}>
-                                                            <Ban className="h-2.5 w-2.5" strokeWidth={2.8} /> NOT DELIVERABLE
-                                                        </span>
-                                                        <span className="text-[10.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
-                                                            Doesn't ship to {buyerAddress?.city}{buyerAddress?.state ? `, ${buyerAddress.state}` : ""}
-                                                        </span>
+                                                    {(s.city || s.state) && (
+                                                        <p className="mt-0.5 flex items-center gap-1 truncate text-[11.5px] font-medium tracking-wide" style={{ color: C.muted }}>
+                                                            <MapPin className="h-3 w-3 shrink-0" /> {[s.city, s.state].filter(Boolean).join(", ")}
+                                                        </p>
+                                                    )}
+                                                    <p className="mt-1 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
+                                                        {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
+                                                        {!notDeliverable && totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
+                                                        {!notDeliverable && !s.is_custom_priced && pricing?.discountPercent > 0
+                                                            ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
+                                                            : ""}
+                                                    </p>
+                                                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                                        <FreightPill included={s.freight_included} />
+                                                        {isFastest && <FastestBadge />}
                                                     </div>
-                                                ) : isOwn ? (
-                                                    <OwnListingPriceCell
-                                                        seller={s}
-                                                        includeGst={includeGst}
-                                                        token={token}
-                                                        submitting={savingOwnPriceId === s.submission_id}
-                                                        onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)}
-                                                    />
-                                                ) : (
-                                                    <>
-                                                        {/* Mobile: price + swipe to buy, full width of the right column */}
-                                                        <div className="relative z-10 flex w-[9.5rem] flex-col items-end gap-1.5 md:hidden">
-                                                            <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                                            <div data-swipe-buy="" className="w-full" onClick={(e) => e.stopPropagation()}>
-                                                                <SlideToConfirm
-                                                                    compact
-                                                                    label="Swipe to buy"
-                                                                    busyLabel="Opening…"
-                                                                    doneLabel="Opening…"
-                                                                    resetKey={`${s.submission_id}:${slideTick}`}
-                                                                    onConfirm={() => { onBuySeller(s); if (!isLoggedIn) setSlideTick((t) => t + 1); }}
-                                                                />
-                                                            </div>
-                                                        </div>
+                                                    {isOwn && (
+                                                        <button type="button" onClick={(e) => { e.stopPropagation(); onEditOwnListing(s.submission_id); }}
+                                                            className="relative z-10 mt-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold tracking-wide text-white" style={{ background: C.primary }}>
+                                                            Edit listing
+                                                        </button>
+                                                    )}
+                                                </div>
 
-                                                        {/* md and up: price + Buy now button */}
-                                                        <div className="hidden flex-col items-end gap-1.5 md:flex">
-                                                            <SellerPriceBlock pricing={pricing} unit={s.unit} />
-                                                            <span className="rounded-lg bg-[#F4511E] px-2.5 py-1 text-[12.5px] font-bold tracking-wide text-white shadow-[0_6px_14px_-8px_rgba(244,81,30,0.8)] transition-colors group-hover:bg-[#D83F0E]">
-                                                                Buy now
+                                                {/* price (or the reason there is none) */}
+                                                <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5 text-right">
+                                                    {outOfStock ? (
+                                                        <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>OUT OF STOCK</span>
+                                                    ) : notDeliverable ? (
+                                                        <div className="flex max-w-[9.5rem] flex-col items-end gap-1">
+                                                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#FDECEC", color: "#B3261E" }}>
+                                                                <Ban className="h-2.5 w-2.5" strokeWidth={2.8} /> NOT DELIVERABLE
+                                                            </span>
+                                                            <span className="text-[10.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
+                                                                Doesn't ship to {buyerAddress?.city}{buyerAddress?.state ? `, ${buyerAddress.state}` : ""}
                                                             </span>
                                                         </div>
-                                                    </>
-                                                )}
+                                                    ) : isOwn ? (
+                                                        <OwnListingPriceCell seller={s} includeGst={includeGst} token={token}
+                                                            submitting={savingOwnPriceId === s.submission_id}
+                                                            onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)} />
+                                                    ) : (
+                                                        <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                                    )}
+                                                </div>
                                             </div>
+
+                                            {/* quantity + total + Add to cart / Buy now (slider on phones) */}
+                                            {!outOfStock && !notDeliverable && !isOwn && (
+                                                <OfferActions variant="list" seller={s} includeGst={includeGst} token={token} isLoggedIn={isLoggedIn}
+                                                    onRequireLogin={onRequireLogin}
+                                                    onBuyNow={(quantity, basis) => onBuySeller(s, { quantity, basis })}
+                                                    onToast={onToast} />
+                                            )}
                                         </motion.div>
                                     </Fragment>
                                 );
@@ -2662,7 +2709,7 @@ function GroupThumb({ src }) {
             loading="lazy"
             decoding="async"
             onError={() => setFailed(true)}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
         />
     );
 }
@@ -2671,17 +2718,16 @@ function StackedThumbs({ images }) {
     const layers = (images || []).filter(Boolean).slice(0, 3);
     const list = layers.length ? layers : [null];
     return (
-        <span aria-hidden className="relative block h-20 w-[4.75rem] shrink-0">
+        <span aria-hidden className="relative block h-[5.5rem] w-[4.75rem] shrink-0">
             {list.map((src, depth) => (
                 <span
                     key={`${depth}-${src || "none"}`}
-                    className="absolute flex h-[4.5rem] w-[3.75rem] items-center justify-center overflow-hidden rounded-xl border shadow-[0_2px_6px_-2px_rgba(11,17,22,0.25)]"
+                    className="absolute flex h-20 w-[3.75rem] items-center justify-center overflow-hidden rounded-xl border shadow-[0_2px_8px_-2px_rgba(11,37,51,0.3)]"
                     style={{
                         left: depth * 8,
                         top: 8 - depth * 4,
                         zIndex: 3 - depth,
-                        background: C.imgBg,
-                        borderColor: "#fff",
+                        background: "#fff",
                     }}
                 >
                     <GroupThumb src={src} />
@@ -3679,12 +3725,12 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // with this seller. The decision (or explicit "no preference") is
     // looked up from the DB, per buyer-seller pair — not per device.
     // Works for both views: in seller view `seller` is that seller's offer.
-    const handleBuySeller = (item, seller) => {
+    const handleBuySeller = (item, seller, intent = null) => {
         track("buy_now_clicked", { source: shopSlug ? "store_view" : "seller_list", logged_in: !!effectiveLoggedIn, product_id: String(item.id) });
         if (!effectiveLoggedIn) { requireLogin(); return; }
         if (!token) { requireLogin("You need to login to place an order with this seller."); return; }
         closeDropdown();
-        setBuyState({ item, seller });
+        setBuyState({ item, seller, intent });
     };
 
     const handleSell = (item) => {
@@ -3886,7 +3932,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 className="sticky z-30 -mx-3 border-b bg-white px-3 pb-1 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
                 style={{ top: stickyTop, borderColor: C.hairSoft }}
             >
-                <div className="flex items-center justify-between gap-3 px-1 pt-0 mt-1.5">
+                <div className="flex items-center justify-between gap-3 px-1 pt-1">
                     <div className="min-w-0">
                         {myShopActive ? (
                             <button
@@ -3901,12 +3947,22 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                             <DeliverToBar />
                         )}
                     </div>
-                    <div className="shrink-0">
-                        <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+                    <div className="flex shrink-0 items-center gap-2.5 me-1.5">
+                        {/* <GstToggle includeGst={includeGst} onChange={setIncludeGst} /> */}
+                        <HomeCartButton />
                     </div>
                 </div>
 
                 {toolbar}
+
+                <div className="flex items-center justify-between gap-3 px-1 pt-1">
+                    <div className="min-w-0">
+
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2.5">
+                        <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+                    </div>
+                </div>
 
                 {brandName && (
                     <ActiveViewStrip
@@ -4037,16 +4093,34 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                                                             isLoggedIn={isLoggedIn}
                                                                             // Same dropdown in normal and seller view; in seller
                                                                             // view it loads only that seller's offer.
-                                                                            onToggle={() => {
-                                                                                dismissHint(); // tapping any record ends the hint for today
+                                                                            onToggle={shopSlug ? undefined : () => {
+                                                                                dismissHint();
                                                                                 return toggleDropdown(item);
                                                                             }}
                                                                             hideFrom={!!shopSlug}
-                                                                            showTapHint={showHint && item.id === firstHintId}
-                                                                            onPrefetch={shopSlug ? () => { if (isLoggedIn && token) getOffer(item.id); } : undefined}
+                                                                            showTapHint={showHint && !shopSlug && item.id === firstHintId}
+                                                                            onPrefetch={undefined}
                                                                             onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
                                                                             animateEntrance={newlyAppearedIds.has(item.id)}
                                                                         />
+
+                                                                        {shopSlug && (
+                                                                            <ShopRowOffer
+                                                                                item={item}
+                                                                                version={`${item.lowest_price}|${item.lowest_price_available_stock}|${item.lowest_price_moq}`}
+                                                                                getOffer={getOffer}
+                                                                                includeGst={includeGst}
+                                                                                token={token}
+                                                                                isLoggedIn={isLoggedIn}
+                                                                                isOwnShop={myShopActive}
+                                                                                buyerAddress={buyerAddress}
+                                                                                onRequireLogin={() => requireLogin("Login to view real seller pricing.")}
+                                                                                onBuy={(seller, intent) => handleBuySeller(item, seller, intent)}
+                                                                                onShare={(seller) => handleShareProduct(item, seller)}
+                                                                                onEdit={(submissionId) => setEditingSubmissionId(submissionId)}
+                                                                                onToast={(message) => showToast({ message }, 2200)}
+                                                                            />
+                                                                        )}
 
                                                                         <AnimatePresence>
                                                                             {highlightedItemId === item.id && (
@@ -4067,7 +4141,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                                                                                 <SellerDropdown
                                                                                     item={item}
                                                                                     state={sellerState[item.id]}
-                                                                                    onBuySeller={(seller) => handleBuySeller(item, seller)}
+                                                                                    onBuySeller={(seller, intent) => handleBuySeller(item, seller, intent)}
+                                                                                    onToast={(message) => showToast({ message }, 2200)}
                                                                                     onSell={() => handleSell(item)}
                                                                                     includeGst={includeGst}
                                                                                     sortMode={sellerSortMode}
@@ -4162,6 +4237,15 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                             subcategory_name: buyState.item.subcategory_name,
                         }}
                         onClose={() => setBuyState(null)}
+                        resumeIntent={buyState.intent ? {
+                            source: "buynow",
+                            offerId: buyState.seller.submission_id,
+                            quantity: buyState.intent.quantity,
+                            basis: buyState.intent.basis,
+                            orderMode: "standard",
+                            notes: "",
+                            addressId: null,
+                        } : undefined}
                     />
                 )}
 

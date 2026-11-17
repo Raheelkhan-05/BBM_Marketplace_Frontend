@@ -1,3 +1,5 @@
+//utils/buyerSellerPayload.js
+
 // Single mapper used by HomeProductFeed AND SharedProductPage so the
 // BuyNowModal always receives the exact same shape.
 export function effectiveLeadTime(s) {

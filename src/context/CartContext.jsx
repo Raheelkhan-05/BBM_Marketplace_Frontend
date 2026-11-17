@@ -1,12 +1,17 @@
 // context/CartContext.jsx
 //
-// Single source of truth for the cart item count, shared by Header (desktop
-// nav) and BottomNavStrip (mobile nav) — so the "Cart" badge stays in sync
-// without either of them independently re-fetching the cart. CartPage still
-// owns the full cart item list/mutations itself (via cartApi.js); this
-// context only tracks the count for badge display, and CartPage calls
-// `reload()` after any mutation so the badge reflects it immediately.
-import { createContext, useContext, useCallback, useEffect, useState } from "react";
+// Single source of truth for the buyer's cart: the item count (Header / BottomNavStrip / Home cart
+// button badge) AND a lookup of which listings are in the cart with their quantity + basis
+// (so Home rows and steppers know what's already there, with no extra requests).
+//
+//   cartCount                     number of lines in the cart
+//   lines                         Map<submissionId, { quantity, basis }>
+//   getLine(submissionId)         -> { quantity, basis } | null
+//   setLine(id, quantity, basis)  optimistic update (quantity <= 0 removes the line)
+//   syncItems(items)              replace everything from a fetchCart() result (used by the cart page)
+//   reload()                      re-fetch from the server
+//   setCountOptimistic(n)         kept for older callers (only touches the count)
+import { createContext, useContext, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "./AuthContext.jsx";
 import { fetchCart } from "../utils/cartApi.js";
 
@@ -18,26 +23,55 @@ export function useCart() {
     return ctx;
 }
 
+const toLines = (items) => {
+    const map = new Map();
+    for (const it of items || []) {
+        if (!it?.submission_id) continue;
+        map.set(String(it.submission_id), { quantity: Number(it.quantity) || 0, basis: it.purchase_basis || "per_pack" });
+    }
+    return map;
+};
+
 export function CartProvider({ children }) {
     const { token } = useAuth();
-    const [cartCount, setCartCount] = useState(0);
+    const [lines, setLines] = useState(() => new Map());
+    // Kept separate so the old setCountOptimistic(n) keeps working; reset whenever lines change.
+    const [countOverride, setCountOverride] = useState(null);
+
+    const syncItems = useCallback((items) => {
+        setLines(toLines(items));
+        setCountOverride(null);
+    }, []);
 
     const reload = useCallback(async () => {
-        if (!token) { setCartCount(0); return; }
-        const res = await fetchCart(token);
-        if (res?.success) setCartCount((res.items || []).length);
-    }, [token]);
+        if (!token) { setLines(new Map()); setCountOverride(null); return; }
+        try {
+            const res = await fetchCart(token);
+            if (res?.success) syncItems(res.items);
+        } catch { /* keep the last known cart */ }
+    }, [token, syncItems]);
 
     useEffect(() => { reload(); }, [reload]);
 
-    // Lets CartPage update the badge instantly on add/remove without
-    // waiting on a round trip — same optimistic pattern it already uses
-    // for its own item list.
-    const setCountOptimistic = useCallback((count) => setCartCount(count), []);
+    const setLine = useCallback((submissionId, quantity, basis) => {
+        const key = String(submissionId);
+        setCountOverride(null);
+        setLines((prev) => {
+            const next = new Map(prev);
+            if (!(Number(quantity) > 0)) next.delete(key);
+            else next.set(key, { quantity: Number(quantity), basis: basis || prev.get(key)?.basis || "per_pack" });
+            return next;
+        });
+    }, []);
 
-    return (
-        <CartContext.Provider value={{ cartCount, reload, setCountOptimistic }}>
-            {children}
-        </CartContext.Provider>
-    );
+    const getLine = useCallback((submissionId) => lines.get(String(submissionId)) || null, [lines]);
+
+    const setCountOptimistic = useCallback((count) => setCountOverride(Number(count) || 0), []);
+
+    const value = useMemo(() => ({
+        cartCount: countOverride != null ? countOverride : lines.size,
+        lines, getLine, setLine, syncItems, reload, setCountOptimistic,
+    }), [countOverride, lines, getLine, setLine, syncItems, reload, setCountOptimistic]);
+
+    return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
