@@ -1,0 +1,853 @@
+787a7f6 | Raheelkhan-05 | 2026-11-17 | feat(sales): show lead heat to admins and fix chat issues
+197b570 | Raheelkhan-05 | 2026-11-16 | Redesign Buy Now popup: compact layout, clearer price breakdown, smarter minimum-order alert
+e14ec0f | Raheelkhan-05 | 2026-11-16 | fix(sales-thread): pass onReply through Timeline to Entry
+ec2cec5 | Raheelkhan-05 | 2026-11-16 | fix(chat): Enter key adds a new line on mobile, send button sends; feat(sales): lead heat, voice notes and message replies in enquiries;
+6b204fb | Raheelkhan-05 | 2026-11-16 | Bug fix
+620a05b | Raheelkhan-05 | 2026-11-16 | feat(sales): lead heat, voice notes and message replies in enquiries
+48f1a0f | Raheelkhan-05 | 2026-11-16 | feat(sales): lead heat, voice notes and message replies in enquiries
+655f821 | Raheelkhan-05 | 2026-11-16 | Reordered the Input fields related to Quantity and price for better user experience in the OrderBook and SalesQuote components
+3293e79 | Raheelkhan-05 | 2026-11-16 | Reordered the Input fields related to Quantity and price for better user experience in the OrderBook and SalesQuote components.
+2ed57f2 | Raheelkhan-05 | 2026-11-16 | Update the color scheme of the header and footer components to improve visual consistency across the application. Adjusted background and text colors to enhance readability and align with the overall design theme.
+e33fe7b | Raheelkhan-05 | 2026-11-16 | - Updated footer color palette to brand orange #D8420F. - Replaced dark teal/yellow with warm charcoal and orange accents. - Refined link hover, contact icons, and focus states. - Improved footer branding consistency across the website
+f225942 | Raheelkhan-05 | 2026-11-16 | Updated footer color palette to brand orange #D8420F
+2333e26 | Raheelkhan-05 | 2026-11-14 | fix: point Capacitor app at www.bbm.business to match the live site host
+8c5a4ef | Raheelkhan-05 | 2026-11-14 | test: temporary referrer check for Android payment launcher (revert after)
+927d1e4 | Raheelkhan-05 | 2026-11-14 | Android payment launcher and return handling
+cf5617c | Raheelkhan-05 | 2026-11-14 | Removed the Edit Order button from the Buy Now modal to streamline the user experience and prevent confusion during the checkout process. This change ensures that users can focus on completing their purchase without unnecessary distractions.
+6e57486 | Raheelkhan-05 | 2026-11-14 | Remove transport selection from buying flow; add Android app (Capacitor)
+426cea3 | Raheelkhan-05 | 2026-11-07 | Fixed the routing issue for the Chat with Buyer button
+60707cf | Raheelkhan-05 | 2026-11-07 | Fix RFQ page crashes, separate internal sales enquiries, protect platform admin
+d54b8c3 | Raheelkhan-05 | 2026-11-07 | Fix crash on RFQ pages when a product has no name
+a638fa8 | Raheelkhan-05 | 2026-11-07 | Grow: set custom prices and buyer access by GST number, even for businesses not yet on BBM
+a62cd7e | Raheelkhan-05 | 2026-11-07 | Picker: move "Add new brand/product" button to the end of the list
+eed4c08 | Raheelkhan-05 | 2026-11-07 | Seller flow: smarter "Start selling" button and easier add brand/product
+b12b08d | Raheelkhan-05 | 2026-11-05 | Update terminology regarding GSTs
+5c3c20e | Raheelkhan-05 | 2026-11-05 | feat(sales): unread messages for RFQs — per-person read tracking, Unread tab and red dot
+3e10286 | Raheelkhan-05 | 2026-11-05 | feat(home): seller shop dropdown, group banner gallery, skeletons, hint fix
+16ac743 | Raheelkhan-05 | 2026-11-04 | Make product images bigger in the product list
+2a22249 | Raheelkhan-05 | 2026-11-04 | Hide bottom buttons while a filter dropdown is open
+08108eb | Raheelkhan-05 | 2026-11-04 | Enhanced the UI UX
+2c25cd7 | Raheelkhan-05 | 2026-11-04 | Add filters and bulk actions to "My products", and make the page fast
+fb187c9 | Raheelkhan-05 | 2026-11-04 | Add quick filters and bulk actions to "My products" for sellers
+6d60d96 | Raheelkhan-05 | 2026-11-04 | Show customer city in the RFQ list and make city searchable
+64be860 | Raheelkhan-05 | 2026-11-04 | feat(sales-monitor): full-page Team Activity view for admins, with enquiries, orders and a redesigned layout
+80c5e01 | Raheelkhan-05 | 2026-11-04 | fix: stop false "unread message" WhatsApp reminders and typing/ordering glitches in enquiry chat
+85ae629 | Raheelkhan-05 | 2026-11-03 | fix(BottomNavStrip): resolve "Cannot access 'tab' before initialization", And created the Appscript and the google sheet for automation of payment collection notifications
+c09b962 | Raheelkhan-05 | 2026-11-03 | feat: group chat on sales enquiries, with live typing and WhatsApp reminders
+bcc241e | Raheelkhan-05 | 2026-11-03 | Order Book activity: show real people's names instead of roles
+0f1823d | Raheelkhan-05 | 2026-11-03 | Order Book detail: clearer bill and clickable products
+bedb29a | Raheelkhan-05 | 2026-11-03 | Updated the LOW_STOCK_THRESHOLD to 10, to reflect the new business requirement for low stock alerts
+a83c36a | Raheelkhan-05 | 2026-11-03 | Highlight "add new" buttons and fix scrolling inside customer/product lists
+35f0824 | Raheelkhan-05 | 2026-11-03 | Customers can now have multiple contacts, show their address, and the company name is optional everywhere
+3b88cc4 | Raheelkhan-05 | 2026-11-02 | Add dispatcher alerts for new internal orders
+6f427d0 | Raheelkhan-05 | 2026-11-02 | Added Sales Enquiry Details Viewer - Added a special label for cold calls (enquiries without a product) - Automatically updates product details when a product is added later
+263ecf4 | Raheelkhan-05 | 2026-11-02 | Sales tab: show real salesperson names and add "All" filter (default)
+239781e | Raheelkhan-05 | 2026-11-02 | Fix bottom navigation hiding on confirmation popup
+68952b3 | Raheelkhan-05 | 2026-10-31 | Add Google Analytics with consent control
+286c108 | Raheelkhan-05 | 2026-10-31 | Added Google Analytics too
+27d4c21 | Raheelkhan-05 | 2026-10-31 | Removed the Sold By Tag from the Share Link generated
+1bab66c | Raheelkhan-05 | 2026-10-31 | Add privacy-friendly website analytics, full buying/selling funnel tracking, and a cookie-settings link
+a1e05f4 | Raheelkhan-05 | 2026-10-31 | Add Sales activity tracking for team admins
+ea27bf9 | Raheelkhan-05 | 2026-10-30 | Add Sales Monitor for team admins
+920679d | Raheelkhan-05 | 2026-10-30 | Renamed the save endpoint to the buy
+f717156 | Raheelkhan-05 | 2026-10-30 | Renamed the Grow endpoint to the sell
+a06dd0d | Raheelkhan-05 | 2026-10-30 | Show packaging details in a cleaner two-row layout
+a153c05 | Raheelkhan-05 | 2026-10-30 | Add brand-first flow for listing new products
+5e93e3e | Raheelkhan-05 | 2026-10-30 | Home page fix
+5e1836c | Raheelkhan-05 | 2026-10-30 | Removed the Unused Sell button from Home page
+dfc6349 | Raheelkhan-05 | 2026-10-30 | Corrected the grammer in the Brand and Shop URL
+40aa65f | Raheelkhan-05 | 2026-10-30 | Enhance the store URLs
+41e96f5 | Raheelkhan-05 | 2026-10-30 | Enhanced the UI UX
+9e8233b | Raheelkhan-05 | 2026-10-30 | Enhanced the UI UX
+13324bb | Raheelkhan-05 | 2026-10-30 | - Punch order now shows each product's marketplace price, the customer's custom price (if any) and the last price given to them.
+6d844a7 | Raheelkhan-05 | 2026-10-30 | Order Book: punched orders now set customer prices on the marketplace
+0e3a35f | Raheelkhan-05 | 2026-10-29 | Merge Order Book into Orders tab with Marketplace / Internal Orders switch
+58e6090 | Raheelkhan-05 | 2026-10-29 | feat: optional LR/bill on shipping; keep typed price when switching price unit or GST mode
+f1c5cc8 | Raheelkhan-05 | 2026-10-29 | Enhanced the UI UX of the order book module of the salesperson
+75da9b9 | Raheelkhan-05 | 2026-10-29 | Save customer contact details for future orders; add optional PO number to Order Book
+c8b3915 | Raheelkhan-05 | 2026-10-29 | Order Book, Enquiries & Quotations: address, product details, pack-based ordering, flexible pricing, order-received message
+1632523 | Raheelkhan-05 | 2026-10-28 | Order Book, Enquiries & Quotations: buyer address, product details and pack-based ordering
+65ff372 | Raheelkhan-05 | 2026-10-28 | Order Book: require customer contact and thank customers when order is processed
+301e459 | Raheelkhan-05 | 2026-10-28 | Add Order Book: salespeople punch customer orders, team processes them live
+acd90fd | Raheelkhan-05 | 2026-10-28 | fix(home): show mixed banner layouts inside category filter too
+ff6ff20 | Raheelkhan-05 | 2026-10-28 | feat(home): smarter banner placement + multi-size images for groups, categories & subcategories
+3a621f0 | Raheelkhan-05 | 2026-10-27 | feat(sales): improve enquiry management and add follow-up reminders
+cf9a1f5 | Raheelkhan-05 | 2026-10-27 | Improve Sales Enquiries UI/UX and Performance
+ed797a6 | Raheelkhan-05 | 2026-10-26 | - fix: show all product images in fullscreen gallery - enable image navigation in product lightbox - keep single product image in feed and show full gallery on click
+bc29d0b | Raheelkhan-05 | 2026-10-26 | feat(sales): add private enquiry threads, notes log and customer quotations for salespeople
+a17e93f | Raheelkhan-05 | 2026-10-26 | feat(feed): show regular prices to logged-out visitors
+25244cd | Raheelkhan-05 | 2026-10-26 | feat(home): admin-managed banners for product groups on the Home page
+4d101bf | Raheelkhan-05 | 2026-10-26 | Make website footer compact and cleaner
+eabb573 | Raheelkhan-05 | 2026-10-24 | Enhanced the UI UX
+eeb9ee2 | Raheelkhan-05 | 2026-10-24 | Align public pages with service-based marketing fee plan
+4c339df | Raheelkhan-05 | 2026-10-24 | Enhanced the UI UX
+690b1ef | Raheelkhan-05 | 2026-10-24 | SEO fix
+27574b2 | Raheelkhan-05 | 2026-10-24 | SEO fix
+d1e3466 | Raheelkhan-05 | 2026-10-24 | Make policy, services and pricing pages publicly visible for Jio Pay approval
+9d5d545 | Raheelkhan-05 | 2026-10-23 | Group similar products into one card to declutter the Home feed
+712da1f | Raheelkhan-05 | 2026-10-22 | feat(share): let logged-out visitors preview shared products
+efaa6d9 | Raheelkhan-05 | 2026-10-22 | Enhanced the UI UX
+23e1046 | Raheelkhan-05 | 2026-10-21 | - Updated Save module dummy AC product to industrial supplies (Flamix Hydraulic Oil AW68 – 26 Ltr). - Replaced dummy seller names with clearly labeled sample suppliers. - Adjusted seller prices to a realistic, narrow range. - Updated sorting options for Min MOQ, Best Price, and Fastest Delivery. - Updated Grow listing screenshot with industrial product details. - Refined product image and listing presentation requirements.
+4956f06 | Raheelkhan-05 | 2026-10-21 | Grow enquiry page: open to everyone, clearer errors, quote checks, matching design
+6abc321 | Raheelkhan-05 | 2026-10-21 | Fix crash when opening product images outside the main marketplace pages
+7ec5c1f | Raheelkhan-05 | 2026-10-21 | Sales: add Pipeline tab, and open product images full screen across the app
+cfc7409 | Raheelkhan-05 | 2026-10-21 | Sales workspace: give it the same look as Grow
+de814f8 | Raheelkhan-05 | 2026-10-21 | Fix sales RFQ page not loading and let salespeople view their team
+3b88351 | Raheelkhan-05 | 2026-10-20 | feat(sales): salesperson RFQ posting, single-step add-customer, realtime sync
+990e622 | Raheelkhan-05 | 2026-10-20 | middeleware fix for better SEO Handling and improved performance. Updated caching strategy and added meta tags for better search engine indexing.
+c68cb6c | Raheelkhan-05 | 2026-10-20 | feat(seo): serve DB-driven meta to bots and keep Seo.jsx in sync
+31d7d0c | Raheelkhan-05 | 2026-10-19 | Simplify "Add to my price list" form and auto-fill delivery address
+41e3fbd | Raheelkhan-05 | 2026-10-19 | feat: add Salesperson role with its own workspace, customer assignment, and fix for re-joining team members
+e6ddc3a | Raheelkhan-05 | 2026-10-19 | Add per-customer custom pricing and fix the dashboard "Add product" button
+3d7e2b6 | Raheelkhan-05 | 2026-10-17 | Fix team seller onboarding and product access
+cc59639 | Raheelkhan-05 | 2026-10-17 | Add Excel bulk product upload for sellers, with guided fixes and duplicate protection
+4037ebb | Raheelkhan-05 | 2026-10-16 | feat: add GSTIN conflict reporting and admin resolution
+863b066 | Raheelkhan-05 | 2026-10-16 | feat(team): show company names, order numbers and working links in activity log
+b371842 | Raheelkhan-05 | 2026-10-16 | feat(team): company teams with invites, roles, activity log and live updates
+e29bd74 | Raheelkhan-05 | 2026-10-15 | SEO: add sitemap, robots.txt, per-page meta tags and clean brand/seller URLs
+bd10f47 | Raheelkhan-05 | 2026-10-15 | - Improved navigation to direct users to the correct page based on ownership. - Ensured a smoother and more intuitive user experience
+1f1cd5f | Raheelkhan-05 | 2026-10-15 | Cart: buy selected items only. Notifications: timeline view and quick actions.
+f0c98ca | Raheelkhan-05 | 2026-10-14 | Show the same top bar as the Grow page on the Save page for visitors who are not logged in
+4731bf3 | Raheelkhan-05 | 2026-10-14 | feat(nav): replace Menu with Console (notifications, Helpline, Sign out)
+b89ee2f | Raheelkhan-05 | 2026-10-14 | Add buyer workspace ("Save") with fixed navigation, dashboard, chat, credit and transport
+8ae0135 | Raheelkhan-05 | 2026-10-14 | feat(rfq): show-only-to-enquirer quick option; price % vs listing in quote popup
+bc9cba9 | Raheelkhan-05 | 2026-10-14 | feat(buynow): compact sticky footer, MOQ note, credit quick-ask; resize bottom dock
+f6e5aed | Raheelkhan-05 | 2026-10-14 | UI Enhancement, in the Saveorder Awaiting Payment card
+8c9008c | Raheelkhan-05 | 2026-10-14 | feat(payments): live repricing for unpaid orders and safe resume-payment
+71f4a0f | Raheelkhan-05 | 2026-10-14 | feat(orders): let buyers resume unpaid orders
+8cc9d25 | Raheelkhan-05 | 2026-10-14 | - Add dialog attributes to Address Book modal - Hide bottom FABs while Address Book is open - Restore FABs when the modal closes
+2dcc875 | Raheelkhan-05 | 2026-10-13 | feat(payments,credit): static-IP JioPay relay + seller credit inside Customers
+f6b0498 | Raheelkhan-05 | 2026-10-12 | fix: clarify RFQ quantities and per-unit pricing
+0840f02 | Raheelkhan-05 | 2026-10-12 | Improve enquiry quotes and seller navigation
+a97b4f4 | Raheelkhan-05 | 2026-10-10 | fix(search): route home search through catalog_browse_feed; hide unlisted products
+8989956 | Raheelkhan-05 | 2026-10-10 | fix(sell): route "Sell this product" to GROW wizard; hide unlisted products
+8e60b1f | Raheelkhan-05 | 2026-10-10 | feat(grow): move "I want to sell this" to GROW wizard page
+0593025 | Raheelkhan-05 | 2026-10-10 | feat(grow): fix transport route form, autofill location, collapse shop sections
+4c8558b | Raheelkhan-05 | 2026-10-10 | fix(chat): keep mobile composer above keyboard
+f71f1df | Raheelkhan-05 | 2026-10-10 | Bug fix of input fied being hidden behind the keyboard
+f66b7b7 | Raheelkhan-05 | 2026-10-10 | fix(grow-chat): keep composer above mobile keyboard, stop UI jumping
+8d38de7 | Raheelkhan-05 | 2026-10-10 | style(feed): match Buy now and swipe-to-buy colours to Brands tile
+8fcddd4 | Raheelkhan-05 | 2026-10-10 | feat(payments): redesign payment return page as standalone screen
+bacaaf1 | Raheelkhan-05 | 2026-10-10 | Fixed cart redirect to old page
+0b2cef1 | Raheelkhan-05 | 2026-10-10 | Enhanced the UI in Sell (grow) module
+a1fc48f | Raheelkhan-05 | 2026-10-10 | Enhanced the UI in Sell (grow) module
+12ecccb | Raheelkhan-05 | 2026-10-10 | feat(grow): coming-soon tabs, 5-col tab grid, paginated wallet ledger
+df0daa4 | Raheelkhan-05 | 2026-10-10 | fix(grow): unify badge counts, remove duplicate providers, make FAB live
+ee52e8f | Raheelkhan-05 | 2026-10-10 | Redesign the seller (Grow) area with a new dashboard, icon navigation, and improved chat and transport pages.
+908393d | Raheelkhan-05 | 2026-10-09 | UI Enhancement
+2a208fa | Raheelkhan-05 | 2026-10-09 | now promo banner will be visible in every hour after closing in home page
+d1fd965 | Raheelkhan-05 | 2026-10-09 | feat(home): promo hero for guests, new tiles, labeled dock, active-view strips
+636c065 | Raheelkhan-05 | 2026-10-09 | Typo Fix
+8aab561 | Raheelkhan-05 | 2026-10-09 | Fixed the redirection routing after payment processings
+066c378 | Raheelkhan-05 | 2026-10-09 | Added Support for Payment processing using new Pay wall for the Wallet recharges and the group payments
+17e333b | Raheelkhan-05 | 2026-10-08 | fix(payments): route JioPay browser return through backend, fix frontend return route
+99fc9fe | Raheelkhan-05 | 2026-10-08 | feat(payments): integrate JioPay hosted checkout, replace manual UPI/UTR flow
+b769945 | Raheelkhan-05 | 2026-10-08 | Fixed brand logo import issues
+4dd8317 | Raheelkhan-05 | 2026-10-08 | Redesign buyer Cart, Orders and Order Details in the new Save look
+78493f8 | Raheelkhan-05 | 2026-10-08 | feat(grow): add "My shop" page to the GROW seller area
+6dbb7a9 | Raheelkhan-05 | 2026-10-08 | Make the GROW seller flow simpler and easier for new sellers
+4977f75 | Raheelkhan-05 | 2026-10-08 | fix(grow): make "Add your products" work when already on /grow - read ?start=1 on every render and keep it sticky - key GrowStartPage by location.key so each start remounts the flow
+635ead6 | Raheelkhan-05 | 2026-10-08 | feat(grow): show full GrowPage to non-sellers on /grow
+e53c67b | Raheelkhan-05 | 2026-10-08 | Added the brand logos in the Grow Enquiry Details Page
+a9f1649 | Raheelkhan-05 | 2026-10-08 | Improve Grow Enquiry & Quote Experience
+d69705b | Raheelkhan-05 | 2026-10-07 | Update button colors to a cleaner, more professional look
+6121fd0 | Raheelkhan-05 | 2026-10-07 | Grow: bring buyer access, custom pricing and a cleaner edit screen to the new product flow
+d9cc204 | Raheelkhan-05 | 2026-10-07 | Fix the page jumping when opening the Grow area
+6b85740 | Raheelkhan-05 | 2026-10-07 | Consistent dock layout; seller counts moved onto the Grow page
+031f9af | Raheelkhan-05 | 2026-10-07 | Fix Cancel in Add Product going to the Grow landing page
+a75a4a2 | Raheelkhan-05 | 2026-10-07 | Rework floating dock and menu (mobile + desktop), clean up header
+f195696 | Raheelkhan-05 | 2026-10-07 | Add the new SAVE (buyer) page and polish the bottom buttons
+92f41b9 | Raheelkhan-05 | 2026-10-07 | Improve the bottom buttons (the floating menu) across the app
+aa1951b | Raheelkhan-05 | 2026-10-07 | fix(grow): route non-pending SELLER_NOT_APPROVED sellers back to onboarding
+8d78c6f | Raheelkhan-05 | 2026-10-07 | feat(auth): redesign AuthPage and legal pages with new dark/light theme
+8ebe03b | Raheelkhan-05 | 2026-10-06 | Redesigned the Grow page completely and also redesigned the UI UX flow
+23bb242 | Raheelkhan-05 | 2026-10-06 | feat(grow): upgrade add-product wizard and speed up start flow
+b94bb9e | Raheelkhan-05 | 2026-10-06 | Redesigned the Grow page completely and also redesigned the UI UX flow
+cb1ad65 | Raheelkhan-05 | 2026-10-06 | Redesigned the Grow page completely
+0b59ea8 | Raheelkhan-05 | 2026-10-05 | Redesigned the Grow page completely
+dd0575b | Raheelkhan-05 | 2026-10-05 | Updated the Textings of the GROW page
+d963a63 | Raheelkhan-05 | 2026-10-05 | Designed the GROW Label
+118bd79 | Raheelkhan-05 | 2026-10-05 | feat(grow): Grow page with footer dock, hide Menu FAB on /grow, dock cleanup
+46a4d55 | Raheelkhan-05 | 2026-10-05 | Redesigned the Docker of home page
+4dcf9fe | Raheelkhan-05 | 2026-10-05 | Recolored the pin icon, to gold
+22a2eb3 | Raheelkhan-05 | 2026-10-05 | feat(home): add animated deep-teal dock with comet border for Grow/Save/Menu FABs
+dc8afe7 | Raheelkhan-05 | 2026-10-05 | Inrceased the Padding in Docker
+f763b87 | Raheelkhan-05 | 2026-10-05 | Recolored the Dock at home page to black color
+58d1cae | Raheelkhan-05 | 2026-10-05 | fix(nav): restore Menu FAB by repairing broken Tailwind class strings
+4b2b729 | Raheelkhan-05 | 2026-10-05 | style(home): add compact floating dock for Grow/Save/Menu FABs with per-button colours
+2580492 | Raheelkhan-05 | 2026-10-05 | style(home): tighten Grow/Save/Menu FAB spacing and add flat green/amber colours
+2f818db | Raheelkhan-05 | 2026-10-05 | feat(home): Grow / Save / Menu floating buttons, desktop support, RFQ bar removed
+a0b81ff | Raheelkhan-05 | 2026-10-05 | Redesigned the Home Page UI UX
+fb25c5c | Raheelkhan-05 | 2026-10-05 | fix(home): toolbar polish, scroll-to-results on search, mobile keyboard fixes
+71f49e5 | Raheelkhan-05 | 2026-10-05 | Recolored the Pin icon to the Amazon Yellow color
+13d9817 | Raheelkhan-05 | 2026-10-05 | Redesigned the Home Page UI UX
+93e3825 | Raheelkhan-05 | 2026-10-05 | Redesigned the Home Page UI UX
+8cd8971 | Raheelkhan-05 | 2026-10-05 | Redesigned the Home Page UI UX
+63c9fa4 | Raheelkhan-05 | 2026-10-05 | Redesigned the Home Page UI UX
+b93c5e4 | Raheelkhan-05 | 2026-10-05 | Redesigned the Home Page UI UX
+4232a30 | Raheelkhan-05 | 2026-10-05 | feat(home): pinned-first feed, live pin reorder, reworked toolbar layout
+121cd0c | Raheelkhan-05 | 2026-10-05 | fix(search): hide "Sell this product" on search rows the seller already lists
+89159bc | Raheelkhan-05 | 2026-10-03 | Fixed Routing Issue
+dafc6cb | Raheelkhan-05 | 2026-10-03 | Removed comming soon page routing of RFQ page
+703b807 | Raheelkhan-05 | 2026-10-03 | feat: add RFQ (Request for Quotation) module
+d8fcefc | Raheelkhan-05 | 2026-10-03 | feat: add Sellers page and replace "My Shop" tile with "Sellers"
+2484e17 | Raheelkhan-05 | 2026-10-03 | Enhanced UI UX
+1d07269 | Raheelkhan-05 | 2026-10-03 | Redesigened and reposition the address bar in the Home Page
+dd1fa3c | Raheelkhan-05 | 2026-10-03 | Enhanced the UI by recoloring the button of quick actions
+3143f6d | Raheelkhan-05 | 2026-10-03 | Enhanced the UI by recoloring the button of quick actions
+adac816 | Raheelkhan-05 | 2026-10-03 | Enhanced the UI by recoloring the button of quick actions
+1f4128c | Raheelkhan-05 | 2026-10-03 | Enhanced the UI UX of the Home Page
+b4e3635 | Raheelkhan-05 | 2026-10-03 | feat(home): add quick action row, brand filter, RFQ placeholder
+cf0918e | Raheelkhan-05 | 2026-10-03 | Added the dummy RFQ button
+1ec6f28 | Raheelkhan-05 | 2026-10-03 | Reduced the PWA install DELAY_MS to 10 sec
+225e4de | Raheelkhan-05 | 2026-10-03 | feat(pwa): redesign install prompt and fix install event capture
+b88ec34 | Raheelkhan-05 | 2026-10-02 | Updated the Pointer click effect to the ripple burst effect
+fc1e793 | Raheelkhan-05 | 2026-10-02 | Removed the Shimmer effect from the Hint button in the Home page and clearly visible the ripple effect on the click
+bcc88de | Raheelkhan-05 | 2026-10-02 | - Remove phone/email masking from buyer search results - Allow phone search starting from 3 digits - Return full buyer contact details in search results
+8d0e3c1 | Raheelkhan-05 | 2026-10-02 | Enhanced the UI
+fce27b3 | Raheelkhan-05 | 2026-10-02 | - Add seller Add Buyer flow with search by phone, email, or shop name - Add server-side buyer eligibility and verification filters - Mask buyer contact details in search results - Add buyer picker and direct credit approval flow - Handle pending, declined, disabled, and existing credit states - Create/reset credit rows and direct chat conversations as needed - Wire credit search/grant routes and hooks - Add validation and conflict handling for credit approvals
+f728875 | Raheelkhan-05 | 2026-10-02 | fix(auth): stop onboarding modal flashing for existing users after OTP login
+c24369d | Raheelkhan-05 | 2026-10-02 | feat(otp): add SMS provider waterfall for phone OTPs
+c994efd | Raheelkhan-05 | 2026-10-02 | Revert code to 3cf4c8f
+c1b6c9b | Raheelkhan-05 | 2026-10-02 | feat: improve expired listing frost and reactivation animation
+3cf4c8f | Raheelkhan-05 | 2026-10-02 | Fix Landing Page being Displayed in shared product page to Home Page
+88ca59e | Raheelkhan-05 | 2026-10-02 | Removed the Duplicate hint banner and recolor hint to redish
+7a7c580 | Raheelkhan-05 | 2026-10-02 | Testing UI
+fb01bcf | Raheelkhan-05 | 2026-10-02 | feat(home): add first-visit tap hint for product rows
+93297f9 | Raheelkhan-05 | 2026-10-02 | style(address): recolor aura ring to RAL 2009 traffic orange
+1f8e0f0 | Raheelkhan-05 | 2026-10-02 | Relabled the GSTToggle button
+6ac2e50 | Raheelkhan-05 | 2026-10-02 | feat(nav): open mobile menu as content-sized bottom sheet
+d45a792 | Raheelkhan-05 | 2026-10-01 | Import Fix
+8f2d3ce | Raheelkhan-05 | 2026-10-01 | Add listing validity so products go off-shelf after a time the seller chooses
+e9a9dec | Raheelkhan-05 | 2026-10-01 | feat(sellers-page): port HomeProductFeed seller list to BrandItemSellersPage
+b97b017 | Raheelkhan-05 | 2026-10-01 | Keep info icon inline after truncated product name
+03f2155 | Raheelkhan-05 | 2026-10-01 | Bug fixed related import issue of createPortal in Seller Onboarding Page
+b29ba90 | Raheelkhan-05 | 2026-10-01 | Replace native time input with centered time picker
+a8b33c9 | Raheelkhan-05 | 2026-10-01 | Fix search header price showing hidden sellers
+9a5f564 | Raheelkhan-05 | 2026-10-01 | Hide non-custom price on shared-link Buy Now modal
+40ac117 | Raheelkhan-05 | 2026-10-01 | Unify shared-link Buy Now modal and smooth its loading
+b7c4bb4 | Raheelkhan-05 | 2026-10-01 | Redesign price trend badge as rippling dot
+4579d08 | Raheelkhan-05 | 2026-10-01 | fix(credit): stop server crash when a seller updates a buyer's credit limit & updated the View Shop redirect in order page
+7d01b3b | Raheelkhan-05 | 2026-10-01 | feat(orders): auto-reject orders the seller doesn't accept within 24 hours and refund the buyer
+614f9e5 | Raheelkhan-05 | 2026-10-01 | feat(orders): add order cancellation reasons, 48-hour dispute window and held seller payouts
+6060286 | Raheelkhan-05 | 2026-10-01 | Removed Marketing nav menu option from the navbar
+fc2c202 | Raheelkhan-05 | 2026-09-30 | feat: streamline promotion plan & price update flow
+21a0e20 | Raheelkhan-05 | 2026-09-30 | Enhanced the UI
+8204907 | Raheelkhan-05 | 2026-09-30 | Update the Marketing commisions
+011a732 | Raheelkhan-05 | 2026-09-30 | Updated the Commision of Buyer Discovery
+c782b42 | Raheelkhan-05 | 2026-09-30 | Enhanced the UI
+a83f770 | Raheelkhan-05 | 2026-09-30 | Add Marketing & Promotion plans, seller marketing page and wallet fee breakdown
+a894b90 | Raheelkhan-05 | 2026-09-30 | Make My Products info cells tappable and improve dispatch display
+7742894 | Raheelkhan-05 | 2026-09-30 | Redesign My Products page for sellers and fix missing product details
+dba0c93 | Raheelkhan-05 | 2026-09-30 | Turn off price scroll-wheel (kept in code, switchable)
+ccc98c4 | Raheelkhan-05 | 2026-09-30 | Show personalized price up/down indicator on product rows in the product feed.
+6e5c22f | Raheelkhan-05 | 2026-09-30 | Removed the Border in the HomeProductFeed Page from the desktop view
+77e40b0 | Raheelkhan-05 | 2026-09-30 | Redesigned Buy Now, Cart & Delivery Experience
+2325992 | Raheelkhan-05 | 2026-09-29 | Updated the terminology
+87924d7 | Raheelkhan-05 | 2026-09-29 | Enhanced the UI
+b22e339 | Raheelkhan-05 | 2026-09-29 | feat(credit): redesign Credit page, add Approved tab, notification toast + deep links
+00949e6 | Raheelkhan-05 | 2026-09-29 | Moved credit requests and approvals out of chat into a new Credit page
+fc5be56 | Raheelkhan-05 | 2026-09-29 | Enhanced the UI
+13e14ae | Raheelkhan-05 | 2026-09-29 | Updated Routings
+ae01431 | Raheelkhan-05 | 2026-09-29 | Add product Follow feature and shareable store links
+9f94e2d | Raheelkhan-05 | 2026-09-29 | Add "Follow" feature so buyers can save products and see only those
+8e697c6 | Raheelkhan-05 | 2026-09-29 | feat(nav): thumb-reachable Home FAB in mobile menu
+e260b64 | Raheelkhan-05 | 2026-09-29 | fix(seller): buyer custom pricing save + increase/decrease handling
+c93409c | Raheelkhan-05 | 2026-09-28 | fix(nav): send non-approved sellers to /seller/onboarding from "My store"
+f345b0e | Raheelkhan-05 | 2026-09-28 | Updated Routings
+d80b97a | Raheelkhan-05 | 2026-09-28 | feat(nav): send approved sellers' "My store" link to /seller/onboarding
+2f9d7b1 | Raheelkhan-05 | 2026-09-28 | feat(nav): share menu items between header and mobile menu, add desktop overflow dropdown
+649489e | Raheelkhan-05 | 2026-09-28 | Enhanced the UI
+9dc8ecb | Raheelkhan-05 | 2026-09-28 | feat(seller): add /seller/store page for editing onboarding details
+93c3cf7 | Raheelkhan-05 | 2026-09-28 | Promotion budget box: value now saves by itself when the user stops typing
+b9802f8 | Raheelkhan-05 | 2026-09-28 | Enhanced the UI
+8e79669 | Raheelkhan-05 | 2026-09-28 | Enhanced the UI
+6526edb | Raheelkhan-05 | 2026-09-28 | Enhanced the UI
+55da077 | Raheelkhan-05 | 2026-09-28 | Changed the top bar color of the installed mobile app from blue to black
+cb5a38a | Raheelkhan-05 | 2026-09-28 | Enhanced the UI
+df46c24 | Raheelkhan-05 | 2026-09-28 | Enhanced the UI
+15cb29f | Raheelkhan-05 | 2026-09-28 | Updated the UI UX of home page and Mobile screens
+4e1bae1 | Raheelkhan-05 | 2026-09-28 | Added logs for the testing
+8ab7a5a | Raheelkhan-05 | 2026-09-28 | fix(feed): match seller row price labels to header + harden realtime updates
+eb8dbd7 | Raheelkhan-05 | 2026-09-28 | feat(feed): swipe-to-buy slider on mobile seller rows
+093e3a9 | Raheelkhan-05 | 2026-09-28 | Fix: Improve product search matching & Repositioned the Tax & Pricing section in the Seller Listing Form
+9eb0173 | Raheelkhan-05 | 2026-09-28 | feat(feed): show short units and per-quantity price labels in product rows
+b6dfb6b | Raheelkhan-05 | 2026-09-28 | Enhanced the UI
+5b37318 | Raheelkhan-05 | 2026-09-28 | feat(nav): full-screen mobile menu with seller items + direct order tabs
+9a34c26 | Raheelkhan-05 | 2026-09-28 | feat(pricing): live typed price updates + fix slide-to-confirm alignment
+64e99df | Raheelkhan-05 | 2026-09-28 | feat(seller): edit listings inline under the row instead of in a modal
+255b8eb | Raheelkhan-05 | 2026-09-28 | Update the labeling in the SellerManageListingsPage.jsx file to reflect the new terminology for the listing status
+7a8b5ee | Raheelkhan-05 | 2026-09-28 | Turned Off by-default suggestions in the search bar
+e6b2215 | Raheelkhan-05 | 2026-09-28 | Show out-of-stock sellers last and keep product headers accurate
+1aab49d | Raheelkhan-05 | 2026-09-28 | Prices now update instantly for everyone, with no refresh or loading.
+0a3a5a7 | Raheelkhan-05 | 2026-09-28 | Removed the X Sellers Listing this... label from the seller listing row
+8f0fe85 | Raheelkhan-05 | 2026-09-28 | feat: improve order shipping and seller listing UI
+17582b8 | Raheelkhan-05 | 2026-09-28 | fix: seller GSTIN not showing on purchase order & order detail pages
+dbf6cc7 | Raheelkhan-05 | 2026-09-28 | feat: auto-resume buyer orders after seller approves/rejects transport option
+0da8a10 | Raheelkhan-05 | 2026-09-28 | fix(transport): stop layout jumping before auto-opening delivery setup
+82e046a | Raheelkhan-05 | 2026-09-28 | feat(search): add clear (X) button to marketplace search bar
+5123963 | Raheelkhan-05 | 2026-09-28 | Remove Red shadow from the buttons
+7fb7afd | Raheelkhan-05 | 2026-09-28 | feat(slider): make commission slider speed-sensitive for smooth, precise control
+8b2f1ce | Raheelkhan-05 | 2026-09-28 | fix(auth): clarify OTP label and add resend for onboarding contact verification
+ab1bf87 | Raheelkhan-05 | 2026-09-26 | UI Enhancement
+9cebc66 | Raheelkhan-05 | 2026-09-26 | UI Enhancement
+5c02245 | Raheelkhan-05 | 2026-09-26 | UI Enhancement
+72b9ffa | Raheelkhan-05 | 2026-09-26 | UI Enhancement
+70d4894 | Raheelkhan-05 | 2026-09-26 | UI Enhancement
+90b006e | Raheelkhan-05 | 2026-09-26 | - Fixed: sellers couldn't set a custom price for a buyer when the listing was set to "All buyers" — there was no way to search for or add that buyer - Added buyer search to the "All buyers" mode, separate from the existing "Only selected buyers" search — adding a buyer here only opens their price editor, it does not restrict who can see the listing - Fixed a crash that occurred right after adding a new buyer this way - Fixed a bug where a newly added buyer would silently disappear from the list as soon as their price editor was closed, before a price was ever saved - Buyer rows added for pricing now stay visible until the seller either saves a price for them or explicitly removes them - Added a "Remove buyer" option so a seller can discard a buyer they added by mistake, or decided not to set a price for, with no leftover data saved anywhere
+d09b66b | Raheelkhan-05 | 2026-09-26 | Fix stale listing row after edit until manual page refresh
+30535f5 | Raheelkhan-05 | 2026-09-26 | UI Enhancement
+59864e7 | Raheelkhan-05 | 2026-09-26 | Enhanced the UI of the seller own listing row
+88edb6a | Raheelkhan-05 | 2026-09-26 | - Sellers can now see and update their Promotion & Visibility Budget % directly from the product feed, not just from the listing edit page - Clicking the price or the Promotion % on your own listing opens a single, larger update screen instead of the old cramped inline editor - The Promotion % can be adjusted using the exact same slider used when creating/editing a listing, including manually typing the number - Both the price and the Promotion % can be changed together and are saved in a single update - Backend updated so the Promotion % is now included whenever seller pricing is fetched for buyers (previously missing from that data) - Fixed misaligned pricing and Promotion % display in your own listing row so it lines up neatly like the rest of the page
+bd7e911 | Raheelkhan-05 | 2026-09-26 | - Added a proper price update screen for sellers when editing their own listing's price from the product feed — opens in the center of the screen with the background dimmed, instead of a cramped inline editor - Sellers can now update their price using Unit price, Pack price, or Master Pack price — whichever is easier for them — and the other two update automatically to match - Prices can be set either by scrolling to the value or by typing it in directly - Added a swipe-to-confirm step before any price change is saved, so it can't be changed by accident - The confirm swipe is now locked until an actual price change is made - Fixed a bug where scrolling quickly through several prices at once could show an incorrect final value - The price picker now waits for scrolling to fully settle before reading the number, so fast scrolling gives the same accurate result as scrolling slowly
+062b1b7 | Raheelkhan-05 | 2026-09-26 | Fixed "Buyer access & pricing" section not showing up while creating a new product listing Sellers can now set who can buy their product and at what custom price right at the time of listing it — no need to save first and edit again Made sure this new pricing/access info gets saved correctly to the database when a new listing is submitted
+6ae91b3 | Raheelkhan-05 | 2026-09-26 | feat: exclusive/private product listings + faster, live-feeling seller pricing tools
+1e72d98 | Raheelkhan-05 | 2026-09-26 | Added customPricing in SECTION_FILTERS in SellerManageListing Page
+f849b5d | Raheelkhan-05 | 2026-09-26 | Fix Gross amount / Taxable value mismatch in order breakdown
+9cc4c17 | Raheelkhan-05 | 2026-09-26 | Finalizing changes done till now
+d77fad1 | Raheelkhan-05 | 2026-09-26 | Finalizing changes done till now
+06878fb | Raheelkhan-05 | 2026-09-26 | Make mobile product feed full-width; restore colorful search bar frame
+bcb0271 | Raheelkhan-05 | 2026-09-25 | Add a Custom Pricing section to the listing form
+838aa72 | Raheelkhan-05 | 2026-09-25 | Make GST% a fixed setting on the product, not each listing
+7447dc5 | Raheelkhan-05 | 2026-09-25 | fix(seller-pricing): keep price input fields in one row on mobile, tidy up their labels
+a686bc0 | Raheelkhan-05 | 2026-09-25 | fix(wallet): restore missing transaction ledger and add running balance
+212efa7 | Raheelkhan-05 | 2026-09-25 | fix(chat): widen conversation-list contact tiles for longer names
+5630017 | Raheelkhan-05 | 2026-09-25 | feat(marketplace): let sellers adjust their own price directly from the buyer feed, plus a                     round of real-device bug fixes for touch, desktop, and page navigation
+ae82ea0 | Raheelkhan-05 | 2026-09-25 | fix(seller-pricing): stop price previews and price wheel from showing wrong numbers
+3c01f54 | Raheelkhan-05 | 2026-09-25 | fix(pricing): make the inline price/percent editor look like a normal input, not a spinning wheel
+4ea3b87 | Raheelkhan-05 | 2026-09-24 | fix: improve custom pricing modal UX
+1c9ba7e | Raheelkhan-05 | 2026-09-24 | Fix order pricing, discount and GST breakdown across the whole system
+4a96a50 | Raheelkhan-05 | 2026-09-24 | Prefill dispatch pincode from the business profile in seller setup
+4a12e81 | Raheelkhan-05 | 2026-09-24 | Make chat faster and fix the jumping message box on phones
+84fd6b2 | Raheelkhan-05 | 2026-09-24 | UI Enhancement
+c103f5b | Raheelkhan-05 | 2026-09-24 | fix(wallet): backfill signup credits correctly, fix note truncation, and cache page for instant back-navigation
+ea9f70a | Raheelkhan-05 | 2026-09-24 | fix(orders): resolve broken chat handoff, missing freight/credit data, and rework card UX
+1e13409 | Raheelkhan-05 | 2026-09-24 | Improve seller price updates: faster, clearer, and no more flicker
+17db7e5 | Raheelkhan-05 | 2026-09-23 | Redesigned the Footer and added a Privacy Policy page. Updated the AuthPage and TermsPage to include links to the new Privacy Policy page. Added privacy policy data in a separate file for better organization.
+bdbdb34 | Raheelkhan-05 | 2026-09-23 | UI Enhancement
+e515690 | Raheelkhan-05 | 2026-09-23 | fix(ship-order-modal): allow non-image file uploads on mobile
+9a77e23 | Raheelkhan-05 | 2026-09-23 | perf(buy-now): eliminate multi-second input lag on "Buy now" click and phase switches
+5b35a10 | Raheelkhan-05 | 2026-09-23 | UI Enhancements: Improved Layout Component for Better User Experience
+3a8ea4b | Raheelkhan-05 | 2026-09-23 | Add cart item detail modal matching BuyNowModal, fix row click UX
+f6e7f50 | Raheelkhan-05 | 2026-09-23 | Treat stock below MOQ as out-of-stock, not just zero stock
+be1f709 | Raheelkhan-05 | 2026-09-23 | UI Enhancement
+e92ad57 | Raheelkhan-05 | 2026-09-23 | Enforce required transport preference selection
+3beaa8a | Raheelkhan-05 | 2026-09-23 | UI Enhancement
+6b67564 | Raheelkhan-05 | 2026-09-23 | Improve transport preference modal copy for clarity
+194a599 | Raheelkhan-05 | 2026-09-23 | Recolored the bottom navigation strip to match the new color scheme, white colors.
+cb8a78b | Raheelkhan-05 | 2026-09-23 | Updated the labling in the transport preference module, from the No transport options recorded yet, to, check your feasibility and please set your transport preference
+8a5523b | Raheelkhan-05 | 2026-09-23 | fix(bottomnav): prevent background scroll when mobile nav sheet is open
+d70b017 | Raheelkhan-05 | 2026-09-23 | Usability improvements and bug fixes in HomeProductFeed component.
+aed06fd | Raheelkhan-05 | 2026-09-23 | fix(transport-modal): lock body scroll for full modal lifetime, not just dropdown
+53fdc2d | Raheelkhan-05 | 2026-09-23 | UI Enhancement
+be26c7a | Raheelkhan-05 | 2026-09-23 | fix(buynow): collapse price breakdown + prevent background scroll leak
+57db824 | Raheelkhan-05 | 2026-09-22 | fix(credit): resolve viewerRole check order in getCreditStatus fallback
+ce56e86 | Raheelkhan-05 | 2026-09-22 | Fixed 'View Sellers' button so it now opens a dedicated page for that one product instead of dumping the user back on the home page
+37e8edc | Raheelkhan-05 | 2026-09-22 | feat: add two-phase checkout flow
+b89d820 | Raheelkhan-05 | 2026-09-22 | Address checkbox redesign + bug fixes
+a4712f6 | Raheelkhan-05 | 2026-09-22 | UI Enhancement
+a2475b0 | Raheelkhan-05 | 2026-09-22 | UI Enhancement
+cd04609 | Raheelkhan-05 | 2026-09-22 | UI Enhancement
+4227c1a | Raheelkhan-05 | 2026-09-22 | UI Enhancement
+5286a7d | Raheelkhan-05 | 2026-09-22 | UI Enhancement
+e583af5 | Raheelkhan-05 | 2026-09-22 | Showing the Shop name instead of menu label in the bottom nav option menu
+abc4843 | Raheelkhan-05 | 2026-09-22 | Bottom Nav redesign
+d74c6ba | Raheelkhan-05 | 2026-09-22 | UI Enhancement
+d638dac | Raheelkhan-05 | 2026-09-22 | UI Enhancement
+956036d | Raheelkhan-05 | 2026-09-22 | Show live unread total on the overflow chevron badge
+b9d3e03 | Raheelkhan-05 | 2026-09-22 | Redesign mobile bottom nav: replace scroll strip with fit + overflow sheet
+558fb03 | Raheelkhan-05 | 2026-09-22 | feat: fixed-width shop name with marquee scroll on desktop
+313a2c7 | Raheelkhan-05 | 2026-09-22 | Removed quick select days from the working day due to UI UX issues
+ca516a2 | Raheelkhan-05 | 2026-09-22 | fix: header overlap and background gap on mobile
+d27cba2 | Raheelkhan-05 | 2026-09-22 | fix: header overlap and background gap on mobile
+e382590 | Raheelkhan-05 | 2026-09-22 | fix: prevent full reload flicker on seller sort switch
+87f8cca | Raheelkhan-05 | 2026-09-22 | fix: correct routing for brand-item sellers endpoint
+8272337 | Raheelkhan-05 | 2026-09-22 | Improve seller sorting and delivery estimates
+57d2b96 | Raheelkhan-05 | 2026-09-22 | Add "Fastest delivery" sorting to seller list on product cards
+a36d4a6 | Raheelkhan-05 | 2026-09-22 | fix(cart): match cart checkout flow to Buy Now (address + transport preference)
+dbe3298 | Raheelkhan-05 | 2026-09-22 | feat(shipping): unify address book picker and fix business profile sync bug
+a0ec1d7 | Raheelkhan-05 | 2026-09-18 | fix: transport preference modal + geo pincode fallback
+ea8ff04 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+e9516f5 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+55b6e44 | Raheelkhan-05 | 2026-09-18 | fix(seller-listing-form): correct keyboard advance skipping newly-visible conditional fields
+f9bb189 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+440f422 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+65ce780 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+bdd6582 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+bdf38ed | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+5a5d4fd | Raheelkhan-05 | 2026-09-18 | fix(auth): require & validate email verification on phone signup
+1966249 | Raheelkhan-05 | 2026-09-18 | fix(onboarding): replace checklist summary with inline field errors
+48d9898 | Raheelkhan-05 | 2026-09-18 | fix(onboarding): stop disabled submit button from reading as broken
+4e1e6d3 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+85f6821 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+5247f18 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+40f5154 | Raheelkhan-05 | 2026-09-18 | Updated Tagline
+2c6e9c8 | Raheelkhan-05 | 2026-09-18 | fix(auth): treat onboarding-incomplete users as guests everywhere
+cab4bcf | Raheelkhan-05 | 2026-09-18 | Add responsive Terms & Conditions page
+b20309d | Raheelkhan-05 | 2026-09-18 | Updated data of SELL_POINTS and BUY_POINTS
+e5265e8 | Raheelkhan-05 | 2026-09-18 | Redesign phone-call confirmation UI
+ae54c0f | Raheelkhan-05 | 2026-09-18 | Remove UPI payment option, keep NEFT/RTGS only
+e9715fa | Raheelkhan-05 | 2026-09-18 | Redesign AuthPage UI to match landing-page reference design
+da3e4c6 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+d69f1c7 | Raheelkhan-05 | 2026-09-18 | UI Enhancements
+ca4da9d | Raheelkhan-05 | 2026-09-18 | Redesign ListingRow mobile layout + add share, simplify deactivate
+b891930 | Raheelkhan-05 | 2026-09-18 | Fix GST incl/excl toggle in custom pricing modal returning no-op conversions
+11c2b45 | Raheelkhan-05 | 2026-09-18 | Add freight-included indicator to seller rows
+92a8418 | Raheelkhan-05 | 2026-09-17 | redesign(auth): rework AuthPage UI to Jio-style minimal layout, B2B icon, and mobile-first sticky CTA
+2f1c6e5 | Raheelkhan-05 | 2026-09-17 | - Redesign marketing commission field with clearer rate readout and custom-rate button - Add 0.05% and 0.1% step options to the price wheel picker for finer commission control
+1a62ead | Raheelkhan-05 | 2026-09-17 | UI Enhancements
+6388194 | Raheelkhan-05 | 2026-09-17 | feat: add seller-defined marketing commission system with payout-based settlement
+ea17572 | Raheelkhan-05 | 2026-09-17 | Open seller list inline on home feed instead of navigating away
+0e5a47c | Raheelkhan-05 | 2026-09-17 | UI Enhancements
+6abb6c0 | Raheelkhan-05 | 2026-09-17 | fix(auth): resolve login ambiguity and profile-fetch reliability issues
+74be619 | Raheelkhan-05 | 2026-09-17 | UI Enhancements
+d99c2bc | Raheelkhan-05 | 2026-09-17 | fix: bottom nav disappearing for logged-in users on some accounts
+70e4fad | Raheelkhan-05 | 2026-09-17 | fix: resolve has_own_listing always returning false on product feed
+3e6b81b | Raheelkhan-05 | 2026-09-17 | feat: enhance admin brand and custom pricing management
+9270c58 | Raheelkhan-05 | 2026-09-16 | - Added select all button to product pricing list - Lets seller check one box to grab every visible product - Only selects products currently shown - respects search and tab filter - Button label flips to deselect all once everything is checked
+2905c4d | Raheelkhan-05 | 2026-09-16 | Fix: JWT auth token overwritten by request-sequencing counter in HomeProductFeed
+fcbe127 | Raheelkhan-05 | 2026-09-16 | UI Enhancement
+5c205d4 | Raheelkhan-05 | 2026-09-16 | - Round displayed prices to whole rupees (inr() uses Math.round + maximumFractionDigits: 0) - Fix floating-point drift in round2() with epsilon + whole-number snap tolerance - Fix deriveDisplayPrices() to derive all price tiers from unrounded canonical price instead of compounding rounding errors - Store exact seller-entered absolute price as fixed instead of round-tripping through percent (fixes ₹2000→1999.99 / ₹3000→3000.01 bug) - Store equivalent discount percent alongside fixed price for future reference only, never used to reconstruct charged price - Fix missing saveWarning state causing silent ReferenceError after save, blocking screen transition back to list - Reset saveWarning and bulkSkippedCount on modal open and editor entry to avoid stale warnings - Add smooth crossfade transition between List/Edit/Review screens via AnimatePresence - Reorder confirmSave to await reload before switching back to list screen - Fix EditScreen not receiving bulkSkippedCount prop - Surface save-rejection warning in list screen UI
+9b1a12c | Raheelkhan-05 | 2026-09-16 | - Add custom pricing feature: sellers can now set special negotiated prices for individual buyers on a per-product basis - New database table to store each buyer-specific price, designed so it auto-adjusts if the seller later changes their regular price (keeps the same relative discount instead of going stale) - Custom price can be set as either a percentage off or a fixed rupee amount, seller's choice per product - Wired the new pricing into every single place a price shows up or gets charged: product feed, product detail page, seller listing pages, cart, checkout quote, and final order placement — this was the hardest and riskiest part, since pricing logic was duplicated across 6+ files (frontend and backend) and every single one had to be found and updated consistently, or buyers could see one price and get charged another - Made sure that when a buyer has a custom price, it fully replaces any bulk-discount tiers for that product, so there's no confusing overlap between 'buy more, pay less' pricing and a personal negotiated rate - Built a full seller-facing screen (opens from the chat window with that buyer) to view, search, and manage all custom prices at once — includes setting prices one at a time or in bulk across many products together, and removing them the same way - Added safety checks so a seller can't accidentally set a custom price on a product that's been removed from the marketplace by admin, matching the same protection already used on the seller's own product list - Redesigned the pricing screen for mobile phones — it initially only worked well on desktop; rebuilt the layout so it's just as easy to use on a small screen, including turning the bulk-editing controls into a proper expandable panel instead of a cramped row of buttons - Extensive back-and-forth testing and refinement to make sure prices stay perfectly accurate everywhere, amounts always round off correctly, and nothing about the existing pricing system (slabs, discounts, GST) broke in the process
+4e14852 | Raheelkhan-05 | 2026-09-16 | refactor: dock Help Bulb into bottom nav row on mobile
+527ee89 | Raheelkhan-05 | 2026-09-16 | fix: cascade soft-deletes to brand items; correct Home Page category filtering
+d1325a3 | Raheelkhan-05 | 2026-09-15 | Improve locked price UI for better alignment and clarity
+a6bdb48 | Raheelkhan-05 | 2026-09-15 | feat: make home page publicly browsable with login-gated pricing
+49d65a1 | Raheelkhan-05 | 2026-09-15 | feat: add monthly credit limit and increase request flow
+269928d | Raheelkhan-05 | 2026-09-15 | fix: improve transport option dropdown behavior and UI
+e5121bb | Raheelkhan-05 | 2026-09-15 | Add shareable seller-specific product links
+d1c2d99 | Raheelkhan-05 | 2026-09-15 | feat: live pending-proposal badge on Transport Library nav item
+7a21093 | Raheelkhan-05 | 2026-09-15 | fix: transport option reactivation not matching removed rows on casing/whitespace mismatch
+3fbb064 | Raheelkhan-05 | 2026-09-15 | feat: add Transport Preference Library and revamp order shipping flow
+db30e69 | Raheelkhan-05 | 2026-09-15 | fix: delivery date estimates silently breaking for many sellers
+a29c87a | Raheelkhan-05 | 2026-09-14 | fix: buyer checkout — pincode-based address entry, delivery-area accuracy, and address management
+24a5054 | Raheelkhan-05 | 2026-09-14 | Rollback frontend to b215d291
+740b67d | Raheelkhan-05 | 2026-09-13 | feat: rebuild dispatch location hierarchy on LGD data (state → district → taluka → village)
+b215d29 | Raheelkhan-05 | 2026-09-13 | perf: speed up the "Buy Now" checkout modal
+23253cc | Raheelkhan-05 | 2026-09-13 | perf: fix slow page loads and login checks across the app
+32e1a38 | Raheelkhan-05 | 2026-09-12 | fix(seller-listings): decouple row highlight fade from mount animation
+2abe75d | Raheelkhan-05 | 2026-09-12 | Doubled the quality of the images and logo, as they were looking blurry in Home Product Feed section
+fb0431c | Raheelkhan-05 | 2026-09-12 | fix(admin-db): hide soft-deleted rows from list view instead of adding permanent delete
+4f885b9 | Raheelkhan-05 | 2026-09-12 | fix: correct delivery label to reflect order status
+776b970 | Raheelkhan-05 | 2026-09-12 | fix: compute Buyer/order info panel height from actual content - Remove fixed 32pt row height that clipped wrapped multi-line values - Remove filled/bordered background panel — now plain text with thin   hairline dividers between rows, matching the requested style - Each row's height is now measured independently from its own   fields, with no cross-row interference - Add explicit top padding between each field's label and its value
+6495efa | Raheelkhan-05 | 2026-09-12 | fix: remove duplicate hidden text layer in PDF items table
+ee419fd | Raheelkhan-05 | 2026-09-12 | refactor: redesign BuyNowModal UI/UX (logic unchanged)
+e6695ed | Raheelkhan-05 | 2026-09-12 | fix: overhaul Purchase Order document — real data, correct pricing, and full UI/PDF redesign
+c6e6d7f | Raheelkhan-05 | 2026-09-12 | Merge order pages, restyle seller order view, fix transport-options bug, and add formal Purchase Order document with PDF export
+11479aa | Raheelkhan-05 | 2026-09-11 | feat: decouple product approval from category mapping (one-click "Direct Approve" + "Needs Mapping" workflow)
+410c349 | Raheelkhan-05 | 2026-09-11 | Improve keyboard navigation across seller listing form and payment modals
+b39295a | Raheelkhan-05 | 2026-09-11 | feat(chat): fix credit-request lifecycle, buyer visibility, and redesign credit UI
+f2b4071 | Raheelkhan-05 | 2026-09-11 | Hide "Pending" category/subcategory labels on product feed rows
+d65af06 | Raheelkhan-05 | 2026-09-11 | Fix Lenis blocking scroll in wallet payment QR modal
+c0db4d3 | Raheelkhan-05 | 2026-09-11 | Fix notification bell dropdown UX
+a806518 | Raheelkhan-05 | 2026-09-11 | Fix wallet-blocked sellers leaking into product feed and modal
+c5fa833 | Raheelkhan-05 | 2026-09-11 | Hide "Pending" category from category strip
+b48830f | Raheelkhan-05 | 2026-09-11 | Fix Packaging section over-counting fields when reselling an existing catalog item
+732ec08 | Raheelkhan-05 | 2026-09-11 | Fixed the 'List a product' form so optional-looking choices don't get auto-selected
+0f473f9 | Raheelkhan-05 | 2026-09-11 | Batch: seller account deletion now works safely and consistently across the whole platform
+6dbe6fc | Raheelkhan-05 | 2026-09-10 | Added the bottom navbar to the cart page too
+98b8600 | Raheelkhan-05 | 2026-09-10 | Resolved the routing issue regarding acknoledging the issues
+3434fad | Raheelkhan-05 | 2026-09-10 | Fix the onboarding routing issue
+47c8801 | Raheelkhan-05 | 2026-09-10 | Rework: closed-shop hours no longer block orders, they now delay the delivery estimate Before: if a seller's shop was closed or outside working hours, buyers simply could not place an order at all Now: orders can always be placed (this is an online store, not a physical counter) - a closed shop just adds a few days to the delivery estimate instead of stopping the sale Added a new shared calculation that figures out exactly how many days a closed/non-working day adds, and works out the next day the seller reopens, factoring in holidays and working-day schedules Delivery date shown to the buyer is now built from 3 combined factors instead of 1: how long until the seller accepts the order + how long they take to prepare it + how long shipping takes This 3-part breakdown is now shown clearly on the order screen (Buy Now) and in the cart, so buyers see exactly why a date was estimated, not just a single vague date Buyers now get a clear, friendly notice when a seller is currently closed (e.g. 'accepted tomorrow at 9 AM' or 'accepted Monday'), instead of being blocked with no explanation Updated this logic in 5 places that all touch order flow: the shared rules file, the order-placement backend, the cart-checkout backend, the Buy Now popup, and the cart page - so behavior stays consistent everywhere a buyer can order Deliverability by state/city is UNCHANGED and still blocks orders - only shop-hours/closed-day rules were loosened, since a seller not shipping to an area is a real fulfillment problem, not just a timing one Known follow-up (flagged, not fixed here): cart checkout's final delivery date is calculated by a database function that could not be edited from this session - it needs the same 'closed shop = added days' logic, or cart orders will show slightly wrong delivery dates until that's updated separately
+00d42bf | Raheelkhan-05 | 2026-09-10 | feat: decouple product approval from category mapping (one-click "Direct Approve" + "Needs Mapping" workflow)
+864b394 | Raheelkhan-05 | 2026-09-10 | Enhanced the HelpBulb texts
+b401b6f | Raheelkhan-05 | 2026-09-10 | Enhanced the HelpBulb texts
+6b9db71 | Raheelkhan-05 | 2026-09-10 | Add "My Products" notification tracking for listing approvals, restocking, and wallet alerts
+1ad1341 | Raheelkhan-05 | 2026-09-10 | feat: add WhatsApp order/payment/wallet notifications for buyers and sellers
+9edcf2f | Raheelkhan-05 | 2026-09-09 | feat(header): fixed-width truncating avatar pill + centered nav
+3c6cc6f | Raheelkhan-05 | 2026-09-09 | Removed the Home Nav as then logo button also working the same
+ec5096b | Raheelkhan-05 | 2026-09-09 | feat: notify admins instantly on payments
+caf4fdc | Raheelkhan-05 | 2026-09-09 | feat: add NEFT/RTGS bank transfer as a payment option alongside UPI
+71945cd | Raheelkhan-05 | 2026-09-09 | Add order-window/delivery-area checks to cart checkout and hide misleading delivery date
+e43d0c2 | Raheelkhan-05 | 2026-09-09 | Fix estimated delivery date showing different values in different places
+3c0b1c9 | Raheelkhan-05 | 2026-09-09 | Add and fix seller order-time & delivery-area restrictions in Buy Now
+aa08528 | Raheelkhan-05 | 2026-09-09 | Auto-populate delivery locations from official government pincode data
+df43fb3 | Raheelkhan-05 | 2026-09-09 | Move dispatch pincode from per-listing form to one-time seller setup
+1d82c38 | Raheelkhan-05 | 2026-09-09 | Fix janky seller list loading in product feed dropdown
+61a52d3 | Raheelkhan-05 | 2026-09-09 | Hide out-of-balance sellers from product seller listings
+b789011 | Raheelkhan-05 | 2026-09-09 | - Import useAuth() in HomeProductFeed; derive currentUserId from profile?.id - Pass currentUserId down to SellerDropdown - Add isOwnSellerRow() helper to match a seller row's owner (user_id/seller_user_id) against currentUserId - Hide "Sell this product" CTA when current user already has a listing in loaded sellers - Mark current user's own row as "(You)" and disable buy action on it - Note: check limited to first loaded page (30 sellers); may miss own listing if priced outside that page — flagged for future backend-side check
+e3a2c4b | Raheelkhan-05 | 2026-09-09 | fix(seller-listing): certificate upload was confusing sellers into re-uploading
+7fb5a20 | Raheelkhan-05 | 2026-09-09 | fix(auth): make OTP resend actually report failures
+72f29d1 | Raheelkhan-05 | 2026-09-09 | Seller listing form: fix section behavior and scroll jumping
+36e68e3 | Raheelkhan-05 | 2026-09-08 | feat: enforce hard stock limits on buyer orders (cart + buy now)
+671f723 | Raheelkhan-05 | 2026-09-08 | fix(cart): remove premature address guard blocking checkout; prefill new address from GST + profile
+16497ab | Raheelkhan-05 | 2026-09-08 | Feature: Simplified seller onboarding + added bank details for payouts
+c8d6b30 | Raheelkhan-05 | 2026-09-08 | Fix: Product image/file uploads were failing for guests and logged-in sellers alike
+f49c337 | Raheelkhan-05 | 2026-09-08 | Rewrite the confirmingCall message in login page
+a02f741 | Raheelkhan-05 | 2026-09-08 | Overhaul: safe account deletion, soft-delete for users, and proper handling of incomplete signups
+a5d7f9c | Raheelkhan-05 | 2026-09-08 | Fix: Products with sellers now always show up first
+c7fc076 | Raheelkhan-05 | 2026-09-08 | fix(seller listings): fix delivery info not loading properly on Edit listing
+fc4b220 | Raheelkhan-05 | 2026-09-08 | fix(seller listings): fix price editing in Quick Update panel
+0ab999f | Raheelkhan-05 | 2026-09-08 | feat(seller listings): direct file upload for certificates, with proper naming and downloads
+22ec726 | Raheelkhan-05 | 2026-09-08 | feat(seller): instant approval for sellers, with an admin override
+5c12b9d | Raheelkhan-05 | 2026-09-08 | fix(seller listings): background scroll leaking through Edit/Detail modals
+5145e55 | Raheelkhan-05 | 2026-09-08 | feat(seller): faster onboarding UX + auto-approve repeat product listings
+6efb934 | Raheelkhan-05 | 2026-09-07 | Notify sellers live when their shop is approved or rejected
+a00d271 | Raheelkhan-05 | 2026-09-07 | Simplify seller listings page header
+d9f872c | Raheelkhan-05 | 2026-09-07 | Auto-fill manufacturer for known brands in admin review
+a94fef3 | Raheelkhan-05 | 2026-09-07 | Fix category filtering and live category updates
+79df519 | Raheelkhan-05 | 2026-09-07 | Overhaul search to stay in place with tiered, merged results - Search button and Enter key now just close the suggestions dropdown instead of redirecting to another page - Fixed a bug where searching could accidentally block the next suggestion fetch - Typing still filters results live, and suggestions reappear correctly when typing resumes - Search results now show product matches first, then subcategory matches, then category matches, all in one combined list - Removed the old separate fallback banner approach in favor of one unified result list - Removed the exact-match redirect to the browse page entirely - Fixed category and subcategory names not showing on search result rows - Fixed brand logos not showing on search result rows
+0762c40 | Raheelkhan-05 | 2026-09-07 | - Improved section completion tracking - Replaced the progress bar with a clean circular progress indicator - Added clear field completion count inside the indicator - Added a checkmark state when all fields are completed - Improved visual clarity and overall form experience - Added smooth progress transitions for better user feedback
+eb41734 | Raheelkhan-05 | 2026-09-07 | Make product listing form sections collapsible
+34c6194 | Raheelkhan-05 | 2026-09-07 | git commit -m "Fix seller price sorting and improve GST toggle" -m "- Fixed Min MOQ tab showing wrong prices without discounts applied" -m "- Both Min MOQ and Best Price tabs now use the same correct pricing logic" -m "- Added a note next to each seller showing what quantity unlocks their discount, like '10+ Packs: 5% off'" -m "- Changed the GST toggle into a clear ON/OFF switch that is easy to understand at a glance" -m "- GST toggle now says 'GST included' or 'GST excluded' in full words instead of short labels"
+68d6af9 | Raheelkhan-05 | 2026-09-07 | Fix product feed animation glitch, pricing display, and title layout
+7149013 | Raheelkhan-05 | 2026-09-07 | Increase the Footer buttons size and adjusted padding so that buttons are clearly devices like iphone XS, and to avoid it's accidentel gestures exits
+ec8f003 | Raheelkhan-05 | 2026-09-07 | Fix: Transport preference cards in chat showed wrong or constantly-changing status
+99322f9 | Raheelkhan-05 | 2026-09-07 | Fix: Order details page was showing products with no price or quantity breakdown
+f434efa | Raheelkhan-05 | 2026-09-07 | Fix: Live order updates were silently broken — buyers/sellers had to refresh to see status changes
+8e9e02f | Raheelkhan-05 | 2026-09-06 | fix: seller stock was over-deducted on order payment; realtime order updates were completely disconnected; show agreed transport preference on orders
+9b90683 | Raheelkhan-05 | 2026-09-05 | fix: seller listing quantity mismatches + transport/credit chat sync; redesign credit & transport UI to be compact
+9225f48 | Raheelkhan-05 | 2026-09-03 | fix(chat): stop re-sorting messages by timestamp, causing order jumps
+b600e21 | Raheelkhan-05 | 2026-09-03 | fix(chat): stop messages/UI from jumping on send/receive, fix slow load, polish UI
+93f0eb8 | Raheelkhan-05 | 2026-09-03 | perf: speed up auth check on app load
+d341ccc | Raheelkhan-05 | 2026-09-03 | fix: hide seller tools from guests, and fix a severe slowdown on the "Your listings" page
+e8ab78b | Raheelkhan-05 | 2026-09-02 | Deployment Fix
+12d8276 | Raheelkhan-05 | 2026-09-02 | perf: fix home page taking 2.8 minutes to load on slow connections
+d236eb8 | Raheelkhan-05 | 2026-08-30 | Fix uncaught exception when contact sync runs on web
+dc8f64f | Raheelkhan-05 | 2026-08-30 | Add first-time transport preference prompt in checkout
+f683835 | Raheelkhan-05 | 2026-08-30 | feat: mutual transport-preference negotiation (chat-based) + order/chat reliability fixes
+a1754f8 | Raheelkhan-05 | 2026-08-30 | Updated the naming in the Orders tabs
+19aeb71 | Raheelkhan-05 | 2026-08-30 | Deployment Fix for Testing
+378ca18 | Raheelkhan-05 | 2026-08-30 | Add automatic phone contacts sync with smart dedup and account linking
+d19de22 | Raheelkhan-05 | 2026-08-30 | Prevent purchases of out-of-stock items
+b88cbe1 | Raheelkhan-05 | 2026-08-30 | Merge buyer and seller order pages into one "My Orders" page
+ca30e88 | Raheelkhan-05 | 2026-08-30 | fix(seller-listings): simplify GST pricing to always add on top of base price
+fd31364 | Raheelkhan-05 | 2026-08-30 | Fix 'Please complete: Brand' error blocking resale of unbranded catalog items
+41ca97f | Raheelkhan-05 | 2026-08-30 | Fix packaging fields showing up again for already-listed catalog items
+0e1d0d2 | Raheelkhan-05 | 2026-08-30 | Header: fix nav/bell overlap, keep bell background solid, add scroll fade to nav
+a3c5d3b | Raheelkhan-05 | 2026-08-30 | Fix seller listing page: unit display bug, background sync crash, and quick-edit pricing UI
+bb49c1a | Raheelkhan-05 | 2026-08-29 | Improve product pricing display and fix listing bugs
+56498b2 | Raheelkhan-05 | 2026-08-29 | Fix real-time chat: message ticks, credit request status not updating live
+35bb889 | Raheelkhan-05 | 2026-08-29 | Fix: category dropdown showed no results, causing duplicate entries
+fcc3414 | Raheelkhan-05 | 2026-08-29 | feat: edit listing as in-page modal instead of broken route
+c7a87c4 | Raheelkhan-05 | 2026-08-29 | feat: show sellers full order amount + wallet deduction breakdown
+58521ad | Raheelkhan-05 | 2026-08-29 | fix: cart total shown at payment didn't update after editing the cart
+9bbf9c9 | Raheelkhan-05 | 2026-08-29 | fix: resolve order quantity, pricing, and cart consistency issues across buy/checkout flow
+a3dfe87 | Raheelkhan-05 | 2026-08-29 | fix: make Pack vs Master Pack pricing consistent across the whole marketplace
+e3a3489 | Raheelkhan-05 | 2026-08-25 | Enhanced the UI
+0621076 | Raheelkhan-05 | 2026-08-25 | fix(admin-db-panel): resolve delete-flow bugs (type mismatch, incomplete cascade, session timing, duplicate keys)
+a3461f2 | Raheelkhan-05 | 2026-08-25 | feat(payments): dummy QR payment flow for wallet top-ups + unified admin verification screen
+11bf160 | Raheelkhan-05 | 2026-08-25 | feat(commission): allow admin to set custom commission per product, lower platform default
+291dec9 | Raheelkhan-05 | 2026-08-25 | feat(wallet,chat,admin): prepaid seller credits, shop-identity chat, admin panel scroll fix
+cd6d6cd | Raheelkhan-05 | 2026-08-25 | Improve seller sorting & pricing display in product feed dropdown
+07f6c4c | Raheelkhan-05 | 2026-08-25 | Added Navbar option to access the Admin Database Page
+759ef40 | Raheelkhan-05 | 2026-08-25 | Add generic database admin panel + fix critical auth & data-accuracy bugs
+bfc3e45 | Raheelkhan-05 | 2026-08-25 | feat: fix cart/order bugs, build seller wallet & commission system
+81cfe0f | Raheelkhan-05 | 2026-08-24 | feat: Add shopping cart with multi-seller checkout & unified payment verification
+514356e | Raheelkhan-05 | 2026-08-24 | fix(pricing): correct unit-to-pack price scaling and discount basis
+efda5a7 | Raheelkhan-05 | 2026-08-24 | fix(home-feed): derive pack/master-pack prices from per-unit price
+f14435d | Raheelkhan-05 | 2026-08-24 | Enhanced the UI
+fac725e | Raheelkhan-05 | 2026-08-24 | fix(home-feed): align price breakdown into two-column grid
+dc23e0b | Raheelkhan-05 | 2026-08-24 | feat(seller-listing): unit-aware sample qty & stock fields, brand image on home feed
+71fd263 | Raheelkhan-05 | 2026-08-24 | fix(data): add brand_image for Shell in hs_generic_product_brands
+8626785 | Raheelkhan-05 | 2026-08-24 | Enhanced the UI
+b2b871d | Raheelkhan-05 | 2026-08-24 | Updated the PACKAGING — OWN LINE fonts size so that it is clearly displayed in one line itself
+62876b4 | Raheelkhan-05 | 2026-08-24 | Updated the PACKAGING — OWN LINE fonts size so that it is clearly displayed in one line itself
+633a854 | Raheelkhan-05 | 2026-08-24 | Fixed the Incorrect labelings in the Home Page Feed and the Buy Now Module
+91bfe42 | Raheelkhan-05 | 2026-08-24 | Added the PACKAGING info in product row in Home page feed
+9bed9c8 | Raheelkhan-05 | 2026-08-24 | Added the FAB for selling new item in the sellermanagelisting page
+bc2554d | Raheelkhan-05 | 2026-08-24 | Standardize master-pack threshold to >=1 and fix MOQ display in BuyNowModal
+4d08cb7 | Raheelkhan-05 | 2026-08-24 | Fix wrong pricing unit shown on home page product cards
+8a6dc49 | Raheelkhan-05 | 2026-08-24 | Restyle seller price fields with inline ₹ prefix, default master pack size to 0
+792634f | Raheelkhan-05 | 2026-08-24 | Defer seller-status check to submit time on product listing form
+9bbd579 | Raheelkhan-05 | 2026-08-24 | Add non-blocking toast for seller redirect flow
+46b8f69 | Raheelkhan-05 | 2026-08-24 | Enhanced the UI
+0c14de9 | Raheelkhan-05 | 2026-08-24 | Hide "Start Selling" nav item for non-approved sellers
+c1d3188 | Raheelkhan-05 | 2026-08-24 | Remove seller nav entry from NavStrip
+e4307d8 | Raheelkhan-05 | 2026-08-24 | Simplify seller onboarding and merge it into the listings page
+e499f7b | Raheelkhan-05 | 2026-08-23 | Reposition the fields in the SellerListingForm UI
+260a526 | Raheelkhan-05 | 2026-08-23 | Fixed the Discount Logic bug
+a4e25db | Raheelkhan-05 | 2026-08-23 | Add unit suffixes and 70/30 layout to discount slab rows
+b44446d | Raheelkhan-05 | 2026-08-23 | Enhanced the UI
+3383407 | Raheelkhan-05 | 2026-08-23 | Enhanced the UI
+d1a111a | Raheelkhan-05 | 2026-08-23 | Enhanced the UI
+0aa0dc2 | Raheelkhan-05 | 2026-08-23 | Add basis-aware discount slabs and richer MOQ price breakdown
+ee2cc61 | Raheelkhan-05 | 2026-08-23 | Fix commission calculation and improve MOQ price breakdown UI
+8865537 | Raheelkhan-05 | 2026-08-23 | Add full MOQ price breakdown to pricing summary
+10e3486 | Raheelkhan-05 | 2026-08-23 | Reposition the fields in the SellerListingForm UI
+2c0df98 | Raheelkhan-05 | 2026-08-23 | Enhanced the UI
+b9fbb9c | Raheelkhan-05 | 2026-08-23 | Reposition the fields in the SellerListingForm UI
+d7fb54f | Raheelkhan-05 | 2026-08-23 | Updated the pricing section inputs
+7edc99e | Raheelkhan-05 | 2026-08-23 | Reposition the fields in the SellerListingForm UI
+4aaf6a0 | Raheelkhan-05 | 2026-08-23 | Enhanced the UI
+b9079ed | Raheelkhan-05 | 2026-08-23 | Enhanced the UI
+7c4884c | Raheelkhan-05 | 2026-08-23 | feat(listing-form): show derived packaging summary above MOQ
+4aa0429 | Raheelkhan-05 | 2026-08-23 | feat(listing-form): add fixed-width tiny inputs for pack-count fields on mobile
+34eef9d | Raheelkhan-05 | 2026-08-23 | feat(listing-form): dynamic MOQ label/unit based on outer pack toggle
+831809f | Raheelkhan-05 | 2026-08-23 | fix(buynow-modal): default to Master Pack basis and hide Packs option when master pack exists
+407b6cf | Raheelkhan-05 | 2026-08-23 | Updated the UI in seller listing form
+868a2d8 | Raheelkhan-05 | 2026-08-23 | Updated the UI in seller listing form
+f4fb502 | Raheelkhan-05 | 2026-08-23 | Updated the UI in seller listing form
+2562da3 | Raheelkhan-05 | 2026-08-23 | feat(listing-form): custom dropdown, mobile field widths, and outer pack info placement
+1ccc20b | Raheelkhan-05 | 2026-08-23 | Deployment Fix
+2bd3657 | Raheelkhan-05 | 2026-08-23 | feat(listing-form): add outer pack toggle for master pack configuration
+b82475c | Raheelkhan-05 | 2026-08-23 | fix(orders): correct pack-basis pricing and stock calculations in order quotes
+84b7900 | Raheelkhan-05 | 2026-08-23 | feat(listing-form): dynamic Pack/Master Pack labels based on selected unit
+a9b790e | Raheelkhan-05 | 2026-08-23 | fix(pricing): align frontend price preview with backend normalizeEnteredPrice
+bcd53b5 | Raheelkhan-05 | 2026-08-23 | refactor(product-form): move packaging info into field hints, fix mobile layout
+b10db83 | Raheelkhan-05 | 2026-08-23 | Minor UI Enhancements in AdminCatelogReview Page
+76b2589 | Raheelkhan-05 | 2026-08-23 | Fixed the pricing calculation issue which show per unit price, now updated to show the per pack price
+2fced08 | Raheelkhan-05 | 2026-08-23 | Minor UI Enhancements in SellerListingForm
+5e1683a | Raheelkhan-05 | 2026-08-23 | feat(discount slabs): fix Discount slabs based on MOQ/pack ordering bug
+7527b5b | Raheelkhan-05 | 2026-08-23 | feat(seller-listing, buy-now): fix MOQ/pack ordering bug, prefill listing form, add sell FAB
+023696d | Raheelkhan-05 | 2026-08-23 | fix(catalog): packaging fields still shown as editable/blank when selling an already-catalogued product
+965637e | Raheelkhan-05 | 2026-08-23 | feat(catalog): make packaging (unit/pack size/master pack) a fixed product property instead of re-entered per seller
+06ce61b | Raheelkhan-05 | 2026-08-23 | feat(catalog-images): replace unreliable AI photo generator with real-photo sourcing + safer AI fallback
+5e48b0e | Raheelkhan-05 | 2026-08-22 | Sort HomeProductFeed items with sellers first
+62e0a62 | Raheelkhan-05 | 2026-08-22 | Rework HomeProductFeed row layout and seller dropdown UX
+3b9a0b1 | Raheelkhan-05 | 2026-08-22 | Resized the Icons so that they dont get abruptly clip off in rounded icons style
+073dce7 | Raheelkhan-05 | 2026-08-22 | Resized the Icons so that they dont get abruptly clip off in rounded icons style
+5abf61f | Raheelkhan-05 | 2026-08-22 | Fix: Payment verification page stuck loading forever on request failure
+b5f1c35 | Raheelkhan-05 | 2026-08-22 | Fix: "Close" button on payment QR screen wasn't working until page refresh
+587459b | Raheelkhan-05 | 2026-08-22 | Reposition credit actions in BuyNowModal
+357c1ed | Raheelkhan-05 | 2026-08-22 | feat: add buy-on-credit system, checkout form persistence, and payment-screen recovery flow
+ffa8969 | Raheelkhan-05 | 2026-08-22 | feat: add buy-on-credit system for buyers, negotiated via chat with sellers
+a9f2e77 | Raheelkhan-05 | 2026-08-21 | Fix duplicate order notifications & rework delivery estimate logic
+50d469e | Raheelkhan-05 | 2026-08-21 | Simplify product feed row and inline seller dropdown UX
+cfe0b6f | Raheelkhan-05 | 2026-08-21 | Small UI Enhancement
+acfcd65 | Raheelkhan-05 | 2026-08-21 | feat(search-bar): live in-page search, suggestion fixes, and dedupe
+2b93652 | Raheelkhan-05 | 2026-08-21 | feat(home-feed): show brand items directly on home page instead of generic products
+37f06e4 | Raheelkhan-05 | 2026-08-21 | fix: catalog images not showing properly across the app
+3023a98 | Raheelkhan-05 | 2026-08-21 | Updated the Nav bar and repositioned the nav items in it
+0c3b304 | Raheelkhan-05 | 2026-08-21 | Updated the Nav bar and repositioned the nav items in it
+750440b | Raheelkhan-05 | 2026-08-21 | Updated the Nav bar and repositioned the nav items in it
+1ef9935 | Raheelkhan-05 | 2026-08-21 | fix(admin-catalog): guard entries against undefined API response to prevent crash
+18f2125 | Raheelkhan-05 | 2026-08-20 | Hide bottom navigation bar on individual chat pages
+1487155 | Raheelkhan-05 | 2026-08-20 | Chat: fix message deletion, read-receipt ticks, and typing indicator UI
+0d65917 | Raheelkhan-05 | 2026-08-20 | Fix delivery date estimates showing wrong/inconsistent dates at checkout
+03ac787 | Raheelkhan-05 | 2026-08-20 | Add animated color-sweep effect to search bar border
+e43c776 | Raheelkhan-05 | 2026-08-20 | feat(chat): real-time messaging system across the platform (WhatsApp-style)
+fc97583 | Raheelkhan-05 | 2026-08-20 | Improve checkout, order pricing accuracy, and readability
+de0c889 | Raheelkhan-05 | 2026-08-19 | fix(orders): show delivery date, hide outdated stock warning, fix missing fulfilment info
+dae88c1 | Raheelkhan-05 | 2026-08-19 | Fix free samples, guest listing access, duplicate notifications, order pages redesign
+9623559 | Raheelkhan-05 | 2026-08-19 | feat: implement wholesale pack purchasing, soft stock shortfalls, and sample order cycles
+139c44b | Raheelkhan-05 | 2026-08-19 | fix(seller-listing): reverse GST + commission together on inclusive price
+9326dc3 | Raheelkhan-05 | 2026-08-19 | feat(seller): auto-submit pending product listing app-wide on approval
+0097525 | Raheelkhan-05 | 2026-08-19 | feat(ui): add Amazon Ember typography and refine text sizing
+6d79419 | Raheelkhan-05 | 2026-08-19 | Updated the Font Size and spacing on the Seller Listing Form
+d41fd27 | Raheelkhan-05 | 2026-08-19 | Updated the Font Size and spacing on the Seller Listing Form
+c3e5c4b | Raheelkhan-05 | 2026-08-19 | Updated the Font Size and spacing on the Seller Listing Form
+46f6cc9 | Raheelkhan-05 | 2026-08-19 | Fix seller listing review & approval workflow
+5ce64ff | Raheelkhan-05 | 2026-08-18 | Fix PolicySelect dropdown clipping by portaling it to document.body
+e68f09e | Raheelkhan-05 | 2026-08-18 | Lock listings to India and fix inner-scroll hijack from Lenis
+695ff54 | Raheelkhan-05 | 2026-08-18 | Add state/city data, fix Gujarat cities not showing
+2fb2075 | Raheelkhan-05 | 2026-08-18 | Fix delivery-area picker: cities weren't loading, add select-all, and clean up confusing labels
+ab8d799 | Raheelkhan-05 | 2026-08-18 | Polish listing form: labels, brand picker, delivery areas, policies
+eb053ec | Raheelkhan-05 | 2026-08-18 | Use real BBM logo, Add a perk in the install app prompt
+e6b631a | Raheelkhan-05 | 2026-08-18 | Add "Install app" prompt after 15 seconds on site
+1828cd3 | Raheelkhan-05 | 2026-08-18 | Fix "Submit" button position on the listing form popup
+00fa4cb | Raheelkhan-05 | 2026-08-18 | Enhanced the UI UX of SellerListingForm
+f6c8044 | Raheelkhan-05 | 2026-08-18 | Enhanced the overall background color shade
+b82299e | Raheelkhan-05 | 2026-08-18 | fix(seller-listing-form): correct final price calculation to include GST and commission together
+d4f2ff9 | Raheelkhan-05 | 2026-08-18 | feat(seller-catalog): add full listing management console, APIs, live inventory sync, and admin mapping fixes
+5aee4e3 | Raheelkhan-05 | 2026-08-18 | feat(listing): overhaul seller listing workflow, product mapping, and buyer-facing listing details
+0eb643c | Raheelkhan-05 | 2026-08-17 | Enhanced the BrandItemSellerlisting page
+8ec981a | Raheelkhan-05 | 2026-08-17 | feat(catalog-listing): optimize listing UX, add tiered pricing, and streamline direct buying flow
+ec43eee | Raheelkhan-05 | 2026-08-17 | Enhance Home Page, Search Experience & Product Details UX
+60b7181 | Raheelkhan-05 | 2026-08-16 | Cleaned the Redundante Files
+8c23000 | Raheelkhan-05 | 2026-08-16 | Cleaned the Redundante Files
+0248a8b | Raheelkhan-05 | 2026-08-16 | Cleaned the Redundante Files
+148d236 | Raheelkhan-05 | 2026-08-16 | Cleaned the Redundante Files
+a665528 | Raheelkhan-05 | 2026-08-16 | Move homepage product feed calculation from browser to server
+b88ac78 | Raheelkhan-05 | 2026-08-16 | feat(home): redesign product feed for a smoother, more premium home page
+67143f7 | Raheelkhan-05 | 2026-08-16 | Enhanced the Sellerlisting records displaying
+b4b51c4 | Raheelkhan-05 | 2026-08-16 | Improve seller listing display: fix product identity, multiple images, and specs
+33607e3 | Raheelkhan-05 | 2026-08-16 | feat: add full listing details view + fix background scroll bug in modals
+d58c640 | Raheelkhan-05 | 2026-08-16 | Unify admin hierarchy mapping with seller catalog picker
+19cfb62 | Raheelkhan-05 | 2026-08-16 | Improve seller product listing flow: faster listing, fewer duplicate categories, better error guidance
+4add278 | Raheelkhan-05 | 2026-08-16 | feat(admin-review): inline category/subcategory/product creation + fix edit-modal clipping + remove text truncation
+a577743 | Raheelkhan-05 | 2026-08-16 | git commit -F- <<'EOF' feat(seller-listing): full commercial-spec listing flow, reusable groups, data-safety fixes & bulk-upload improvements
+90ad966 | Raheelkhan-05 | 2026-08-15 | Minor Enhancement in Sellerlisting page
+31edf75 | Raheelkhan-05 | 2026-08-15 | Clean the redundant files
+b8ceff2 | Raheelkhan-05 | 2026-08-15 | Upgrade notification sounds for a louder, reliable, and more polished experience
+3dc5452 | Raheelkhan-05 | 2026-08-15 | Add animated popup for new notifications
+a21aefe | Raheelkhan-05 | 2026-08-15 | Upgrade product cards with smooth and seamless image browsing - Added a responsive multi-image carousel to product cards so users can swipe or scroll through all available product photos directly from the listing - Connected the existing product image gallery data to the card instead of showing only the primary image, ensuring all available photos can be browsed - Built the carousel using native browser scrolling and scroll-snap for smooth touch, swipe, and trackpad interaction without heavy custom drag animations - Added support for horizontal trackpad gestures while preserving normal vertical page scrolling when users scroll with a regular mouse wheel - Added image position indicators so users can clearly see which product photo is currently active - Optimized carousel scrolling updates by coalescing position calculations per animation frame to prevent unnecessary UI updates and keep swiping smooth - Added seamless infinite looping so users can continue past the last image and return to the first, or move backward from the first to the last - Fixed fast or long swipes skipping multiple images by ensuring each gesture advances the carousel one image at a time - Kept single-image and no-image products lightweight and unchanged, with no carousel behavior added when there is nothing to browse - Preserved normal product-card navigation while allowing image galleries to be swiped naturally without introducing conflicting click or drag handling - Overall improved product discovery by making product images easier, smoother, and more intuitive to browse directly from the catalog"
+34ca1af | Raheelkhan-05 | 2026-08-15 | feat: smart Buy/Sell choice on Browse page based on seller's own listings
+d0e50fa | Raheelkhan-05 | 2026-08-15 | feat: replace listing delete with deactivate/activate, fix buyer visibility leaks
+dee4158 | Raheelkhan-05 | 2026-08-14 | feat(browse): add Buy/Sell choice sheet on product tap, extract shared sell modal
+3476a82 | Raheelkhan-05 | 2026-08-14 | redesign(seller): switch quick-manage listings from card carousel to list view
+68140db | Raheelkhan-05 | 2026-08-14 | Rebuild product search and browsing into a faster and more reliable experience - Unified category browsing and product search into one streamlined experience so users can discover and buy products directly from a single browse screen" - Improved search performance to feel almost instant by removing unnecessary processing and allowing results to load immediately" - Optimized backend and database processing so products, available filters, and result counts can be prepared together instead of through repeated requests" - Reworked the database search process to eliminate the underlying database error that could crash category browsing and made result calculations more efficient by processing the data once and reusing it" - Connected the main search bar and autocomplete experience to the new browse system so Home, mobile search, and Browse now use the same search flow" - Fixed search navigation in all major search entry points so searches consistently open the correct product results instead of outdated or missing pages" - Fixed category navigation so selecting a category now opens the correct product listing instead of a blank or unavailable page" - Fixed search interactions causing the search box to reset, duplicate product requests, or briefly show incorrect results while filtering" - Changed Browse search to update results directly on the current page for a smoother live-search experience without unnecessary page changes" - Rebuilt the filtering experience with combined subcategory, brand, and sorting controls so users can refine products together without leaving the browse page" - Redesigned the filter controls to keep the current sort, product count, and active filters visible at all times" - Added clear removable filter tags so users can easily understand which filters are active and remove individual filters without resetting everything" - Fixed filter menus appearing clipped or becoming unclickable by correcting how the Subcategory, Brand, and Sort menus are positioned over the scrolling filter area" - Fixed category titles changing back to the generic Browse title after searches or filter changes by preserving the selected category throughout the browsing session" - Added immediate loading feedback so the browse experience responds right away while product results are being retrieved" - Updated application routes and navigation links to support the new unified browsing structure and removed outdated navigation paths" - Overall upgraded product discovery across the marketplace with faster search, cleaner navigation, reliable filtering, stronger error handling, and a significantly smoother user experience"
+1bfd3a9 | Raheelkhan-05 | 2026-08-14 | fix: real-time notification delivery — missed and duplicate alerts resolved
+8e5848d | Raheelkhan-05 | 2026-08-14 | feat: realtime sync + notification redirects for seller listing review flow
+cc7c0b1 | Raheelkhan-05 | 2026-08-13 | Home page: added login/seller checks and real order counts on Purchase & Sales buttons
+44ca8a8 | Raheelkhan-05 | 2026-08-13 | fix(order): show instant quantity total with server confirmation
+c3dbe3f | Raheelkhan-05 | 2026-08-13 | Fix quick action buttons that were not responding to taps
+c8a9d3b | Raheelkhan-05 | 2026-08-12 | Add buyer checkout and order management system (dummy payments)
+a9e12ea | Raheelkhan-05 | 2026-08-12 | Restrict Lead Time to numbers in Sell This Item modal
+eb9e586 | Raheelkhan-05 | 2026-08-12 | Improve stacked image preview visibility for multi-image listings
+b6686c8 | Raheelkhan-05 | 2026-08-12 | Fix modal z-index on mobile and restrict editing of pending products
+0ae5179 | Raheelkhan-05 | 2026-08-12 | Fix multi-image gallery and fullscreen lightbox in seller listings
+513dbb5 | Raheelkhan-05 | 2026-08-12 | Restrict Lead Time to numbers in admin review edit modal
+611f50f | Raheelkhan-05 | 2026-08-12 | Restrict Lead Time field to numbers only
+52b4329 | Raheelkhan-05 | 2026-08-12 | Show pending listings in seller's quick manage widget
+bb1ff60 | Raheelkhan-05 | 2026-08-11 | polish(lightbox): improve image gallery viewing and navigation
+d648c67 | Raheelkhan-05 | 2026-08-11 | fix(catalog): improve catalog navigation, browsing, and product catalog
+762ba18 | Raheelkhan-05 | 2026-08-11 | Add multi-image support for product listings + fix image viewer bugs + Fix catalog browsing pages loading only 20 items and add smooth infinite scroll
+2db3db1 | Raheelkhan-05 | 2026-08-10 | fix(catalog): improve browsing experience and navigation reliability
+6d90a3e | Raheelkhan-05 | 2026-08-10 | Fix: real-time notifications weren't updating live, and message text wasn't saving
+d126bc4 | Raheelkhan-05 | 2026-08-10 | Enhance quick actions layout across screen sizes
+a7bbcb2 | Raheelkhan-05 | 2026-08-10 | Removed the extra white box behind the seller listings section
+3d5ec54 | Raheelkhan-05 | 2026-08-10 | Improve seller listing management UI
+2f6cb73 | Raheelkhan-05 | 2026-08-08 | Redesign product page with photo, pricing & seller signup
+1f0404d | Raheelkhan-05 | 2026-08-08 | Cleaned up admin catalog code to match the new brand item storage design
+77ad538 | Raheelkhan-05 | 2026-08-08 | Fixed Listing not found error when editing or deleting a seller listing
+254122e | Raheelkhan-05 | 2026-08-08 | Fix: approved seller products weren't showing up for buyers, and search broke on certain product names
+ff75148 | Raheelkhan-05 | 2026-08-08 | Improve mobile layout for seller and shop lists
+e6b68af | Raheelkhan-05 | 2026-08-08 | Updated the default page for the seller from manage to preview in their shop page
+1d431f2 | Raheelkhan-05 | 2026-08-08 | Match search results page design to category browsing pages
+3da57eb | Raheelkhan-05 | 2026-08-08 | Add product browsing pages and fix visibility of pending items
+adf3598 | Raheelkhan-05 | 2026-08-08 | Fix shop pages to show real product listings and let sellers manage them
+67e387a | Raheelkhan-05 | 2026-08-08 | Update the routings from old search results to new search module
+91ac289 | Raheelkhan-05 | 2026-08-08 | Build complete catalog brand item management and approved catalog search
+844099f | Raheelkhan-05 | 2026-08-08 | Simplify product listing process for sellers and improve catalog management for admins
+14a3817 | Raheelkhan-05 | 2026-08-07 | fix(seller-publish): defer auth/seller-approval check to Publish click
+dcbfa34 | Raheelkhan-05 | 2026-08-07 | refactor(seller-listings): replace approval workflow with Supabase-configurable form
+348b0e7 | Raheelkhan-05 | 2026-08-07 | Add category/subcategory browsing pages and fix search navigation
+f8fff0b | Raheelkhan-05 | 2026-08-07 | Remove redundant and dead code
+bbec1c7 | Raheelkhan-05 | 2026-08-07 | Improve category grid layout and responsive typography
+305a527 | Raheelkhan-05 | 2026-08-07 | Reset scroll position on route navigation
+f57f35e | Raheelkhan-05 | 2026-08-07 | feat(home): Major updates to category browsing UI Created some of the image icons for the categories displaying   Frontend: Redesigned 'Shop by Category' section with icon tiles in a horizontal scrollable rail, including smooth edge fade effects to indicate more categories are available.   Added dedicated pages for viewing all categories and subcategories, using a vertical grid layout for easier browsing.   Enhanced navigation: '/home' page is now accessible to both guests and logged-in users, but personalized banners only show for logged-in users.   Provided ready-to-use AI image generation prompts for all categories and subcategories, ensuring high-quality, transparent-background icons.   Improved visual consistency and integration with existing design elements (colors, fonts, spacing).   Added scroll-aware fade effects to category rails for better user experience and discoverability.
+ff30f41 | Raheelkhan-05 | 2026-08-05 | Update body fonts to Public sans
+3ce58bc | Raheelkhan-05 | 2026-08-05 | Fixed the missing import issue
+618b086 | Raheelkhan-05 | 2026-08-05 | Simplify seller onboarding from 11 steps down to 7 steps
+0f09668 | Raheelkhan-05 | 2026-08-05 | Fix product page skeleton not matching the real layout
+efc1e62 | Raheelkhan-05 | 2026-08-05 | Fix layout jumping around while search results load
+4f91be3 | Raheelkhan-05 | 2026-08-05 | Fix category list widening abruptly when opening categories with long subcategory names
+02cd25b | Raheelkhan-05 | 2026-08-04 | style: colorize trust strip logos, remove row divider, extend edge fade to card
+f4a57a2 | Raheelkhan-05 | 2026-08-04 | Updated the fonts
+8199ec5 | Raheelkhan-05 | 2026-08-04 | Improved the Layout of Hero section in Home page
+c87f520 | Raheelkhan-05 | 2026-08-04 | Improved the Layout of Hero section in Home page
+9145694 | Raheelkhan-05 | 2026-08-04 | fix(fonts): self-host Nunito Sans and Geist as webfonts
+6bc294e | Raheelkhan-05 | 2026-08-04 | chore(skeleton): rebuild HomePageSkeleton to match current homepage layout
+c19e793 | Raheelkhan-05 | 2026-08-04 | feat(home): redesign homepage with premium marketplace UI, smooth scrolling, and enhanced user experience - Redesigned Hero Banner with a modern premium marketplace layout - Revamped Marketplace Search component for improved discoverability - Redesigned Quick Actions with better visual hierarchy and interactions - Refined Welcome section with personalized greeting - Modernized Trust Strip and Company Logos section - Improved Top Categories experience and responsiveness - Enhanced Start Selling banner - Added premium Framer Motion animations and micro-interactions - Integrated Lenis for smooth scrolling experience - Improved typography, spacing, color hierarchy, and overall UI consistency - Optimized layouts for desktop, tablet, and mobile devices
+16e5ece | Raheelkhan-05 | 2026-08-04 | Stop AI import from creating duplicate products and brand items
+2673048 | Raheelkhan-05 | 2026-08-04 | Simplified the category card in search results, removed the two competing buttons
+1bd5fdc | Raheelkhan-05 | 2026-08-04 | Connected the homepage category section to real live data
+16d5057 | Raheelkhan-05 | 2026-08-03 | feat(legal): add Privacy Policy page for WhatsApp Business verification
+9bb8814 | Raheelkhan-05 | 2026-08-02 | Add Brand Family page with working search and suggestions
+6d20a32 | Raheelkhan-05 | 2026-08-02 | Search bar now jumps straight to the exact page instead of always going to browse
+80c2f7d | Raheelkhan-05 | 2026-08-02 | feat(catalog): implement end-to-end AI PDF catalog import workflow
+f3755f5 | Raheelkhan-05 | 2026-08-01 | fix(admin): strengthen catalog review workflow and improve admin experience
+f4d5129 | Raheelkhan-05 | 2026-07-31 | Fix hierarchy dropdowns opening simultaneously and mobile content getting blocked
+cb53e5b | Raheelkhan-05 | 2026-07-31 | Improve mobile header menu and fix inconsistencies with desktop
+4b5037d | Raheelkhan-05 | 2026-07-31 | feat(admin): build complete AI catalog review and manual catalog management system
+8c7413f | Raheelkhan-05 | 2026-07-31 | Fix full-screen image viewer overlapping search bar and page zoom issues
+13dbf5f | Raheelkhan-05 | 2026-07-31 | Enhance image viewing experience and improve authentication session reliability
+ffbf0fb | Raheelkhan-05 | 2026-07-30 | Fix: camera/gallery menu hidden off-screen on bottom-pinned mobile search bar
+9ccfa35 | Raheelkhan-05 | 2026-07-30 | Fix: image search camera option missing on some Android phones
+e9d4ab6 | Raheelkhan-05 | 2026-07-30 | feat(catalog): enhance product intelligence and redesign browsing experience
+6d5842c | Raheelkhan-05 | 2026-07-30 | feat(navigation): navigate to homepage from search bar Home link
+fa5a5b8 | Raheelkhan-05 | 2026-07-29 | fix(product): refine CTA typography and improve search bar logo rendering
+0a3cfab | Raheelkhan-05 | 2026-07-29 | Enhanced the Individual Product Details Page
+5523562 | Raheelkhan-05 | 2026-07-29 | Stop the browse page flash for direct product searches
+d63b25c | Raheelkhan-05 | 2026-07-29 | Make product page breadcrumb clickable
+89dc101 | Raheelkhan-05 | 2026-07-29 | feat(product): build responsive generic product details page
+06724ce | Raheelkhan-05 | 2026-07-29 | feat(search): use responsive search bar layout across mobile and desktop
+fd65a7d | Raheelkhan-05 | 2026-07-29 | Enhanced the search bar
+b453373 | Raheelkhan-05 | 2026-07-29 | Enhanced the search bar
+73e8674 | Raheelkhan-05 | 2026-07-29 | Enhanced the search bar
+408350e | Raheelkhan-05 | 2026-07-29 | fix: page jumping/pushing up when keyboard opens on mobile search bar
+3ff7ee7 | Raheelkhan-05 | 2026-07-29 | fix(browse): refresh results on repeat searches and improve mobile scrolling
+4d0abec | Raheelkhan-05 | 2026-07-29 | feat(mobile): replace bottom navigation with persistent search experience
+c9fba21 | Raheelkhan-05 | 2026-07-29 | fix: clear search bar text immediately when search is submitted - Previously the typed text stayed in the search bar after pressing   search/Enter, which made the results feel disconnected from the   action just taken - Now the search bar clears itself the instant search is submitted,   before the results/navigation happen, so it feels immediate and   smooth instead of stale
+f41665b | Raheelkhan-05 | 2026-07-29 | style: polish search autocomplete UI + fix real-time responsiveness
+97bf251 | Raheelkhan-05 | 2026-07-29 | feat: add real-time database-only search autocomplete + faster image loading for AI-created items
+493f329 | Raheelkhan-05 | 2026-07-29 | Mapped the Bottom Nav category button to browse page
+36f6b3b | Raheelkhan-05 | 2026-07-28 | Improve search: jump straight to exact matches like brand names
+5b5f950 | Raheelkhan-05 | 2026-07-28 | Enhanced the card view in search result page from Home Page
+920c2d3 | Raheelkhan-05 | 2026-07-28 | Fix: mobile image search now shows gallery option
+2b93a55 | Raheelkhan-05 | 2026-07-28 | Fix seller listings not loading for branded products
+a756a9e | Raheelkhan-05 | 2026-07-28 | Speed up product search, cut AI costs, add brand-specific items
+b416b87 | Raheelkhan-05 | 2026-07-28 | feat: add AI-assisted hierarchy search (text + photo search with auto-categorization)
+64ddc83 | Raheelkhan-05 | 2026-07-27 | Fix desktop dropdown alignment issue in categories accordion
+7a8cb03 | Raheelkhan-05 | 2026-07-27 | Improve quick actions section for desktop screens
+785f2df | Raheelkhan-05 | 2026-07-27 | Improve search bar display for desktop screens
+35f919f | Raheelkhan-05 | 2026-07-27 | Improve homepage banner display for desktop screens
+8103fc0 | Raheelkhan-05 | 2026-07-27 | Enhanced the Home Page
+66ab4a8 | Raheelkhan-05 | 2026-07-27 | feat(browse): connect Explore Categories and reset page scroll on navigation
+dc247b3 | Raheelkhan-05 | 2026-07-27 | feat(search): launch intelligent hierarchical product discovery experience
+c0ccaca | Raheelkhan-05 | 2026-07-27 | Enhanced the TrustLogo Marquee in Home Page
+2500b21 | Raheelkhan-05 | 2026-07-27 | feat(search): Enhanced the Search Result Page with Auth
+71a6d29 | Raheelkhan-05 | 2026-07-27 | feat(search): made search bar functional from home page
+5fca969 | Raheelkhan-05 | 2026-07-27 | feat(search): redesign homepage search bar with premium UI
+555c055 | Raheelkhan-05 | 2026-07-27 | feat(search): redesign homepage search bar with premium UI
+60ec093 | Raheelkhan-05 | 2026-07-27 | feat(search): redesign homepage search bar with premium UI
+e03c1c8 | Raheelkhan-05 | 2026-07-25 | Updated and Enhanced the TrustLogo Marquee in Home Page
+99003de | Raheelkhan-05 | 2026-07-25 | Added the TrustLogo Marquee in Home Page
+dfb55f8 | Raheelkhan-05 | 2026-07-25 | Enhanced the Explore Categories section in the Home Page
+49b3c93 | Raheelkhan-05 | 2026-07-25 | Enhanced the Explore Categories section in the Home Page
+9541726 | Raheelkhan-05 | 2026-07-25 | Added the Explore Categories section in the Home Page, below Daily Business Tools section
+cac56c5 | Raheelkhan-05 | 2026-07-25 | Added the Explore Categories section in the Home Page, below Daily Business Tools section
+c462926 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+578a898 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+5aaf0ac | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+f48d705 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+e88f1b6 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+0d0a77f | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+2e0d433 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+c9ba352 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+0acc3d3 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+684e91c | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+bf723b4 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+3465ac5 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+036de34 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+fb2c2f4 | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+a9e92bc | Raheelkhan-05 | 2026-07-25 | Enhanced the Quick Action in Home Page
+ba83118 | Raheelkhan-05 | 2026-07-25 | Enhanced the search bar in Home Page
+759e9b7 | Raheelkhan-05 | 2026-07-25 | Enhanced the search bar in Home Page
+6a4640e | Raheelkhan-05 | 2026-07-25 | Enhanced the search bar in Home Page
+ebd0c86 | Raheelkhan-05 | 2026-07-25 | Enhanced the search bar in Home Page
+891c721 | Raheelkhan-05 | 2026-07-25 | Increased the search bar placeholder font size and also the icons size
+d8941fb | Raheelkhan-05 | 2026-07-25 | Enlarge the logo in search bar and made the search button flat
+ab468c2 | Raheelkhan-05 | 2026-07-25 | Increased the height of the search bar
+867a473 | Raheelkhan-05 | 2026-07-25 | Made the search bar redesigned with logo
+693e202 | Raheelkhan-05 | 2026-07-25 | removed Navigation Dots from the carosel in home page
+fe953c6 | Raheelkhan-05 | 2026-07-25 | Repositioned the search bar in home page
+2aef091 | Raheelkhan-05 | 2026-07-25 | Improved the UI of the Home Page
+0870b97 | Raheelkhan-05 | 2026-07-24 | Improved the UI of the Home Page
+5327208 | Raheelkhan-05 | 2026-07-24 | Show real user name and improve Start Selling banner design
+27ce3cc | Raheelkhan-05 | 2026-07-24 | Add shop search and fix search page access for logged-in users
+8cf1300 | Raheelkhan-05 | 2026-07-24 | Let admin view every file a seller uploads, in full size
+58cd564 | Raheelkhan-05 | 2026-07-24 | Fixed the Bug coming in AdminSellerDetails Module, and Enhaced the overall user experience across the seller onboarding module
+7fedd7f | Raheelkhan-05 | 2026-07-24 | Remove the scrollbar while keeping the functionality in seller dashboard as it is, made the page more wider for the mobile screens by reducing x padings
+78fc571 | Raheelkhan-05 | 2026-07-24 | Add seller dashboard, editable shop pages, and admin review workflow
+c02b216 | Raheelkhan-05 | 2026-07-24 | Fix login navigation, page reloads, and seller menu bugs
+504694b | Raheelkhan-05 | 2026-07-23 | feat(marketplace): implement seller onboarding, admin tools, notifications, and shop pages
+c433efb | Raheelkhan-05 | 2026-07-22 | Add back navigation to the login screen
+478b522 | Raheelkhan-05 | 2026-07-22 | Fix duplicate OTP emails and smooth out login + home page loading
+984e79e | Raheelkhan-05 | 2026-07-22 | feat(auth): revamp authentication UI and integrate phone verification
+9645f53 | Raheelkhan-05 | 2026-07-22 | Center auth page and simplify flow
+045a4bf | Raheelkhan-05 | 2026-07-22 | Fixed Login Text Field Issue
+fd84c9f | Raheelkhan-05 | 2026-07-21 | Merge branch 'main' of https://github.com/Raheelkhan-05/BBM_Marketplace_Frontend
+290eacc | Raheelkhan-05 | 2026-07-21 | Fix: app was endlessly re-checking login status and hammering the server
+63899a3 | Raheelkhan Lohani | 2026-07-21 | Mystery Happens :-)
+e62c654 | Raheelkhan-05 | 2026-07-21 | feat(auth): implement end-to-end authentication system (v1)
+43dccf3 | Raheelkhan-05 | 2026-07-20 | Make footer more compact:
+78cfb47 | Raheelkhan-05 | 2026-07-20 | Fix app name showing as 'BBM' after install
+4f01ce0 | Raheelkhan-05 | 2026-07-20 | Update app title and favicon
+b365d93 | Raheelkhan-05 | 2026-07-20 | Update header: compact size, non-sticky on scroll
+da2eff2 | Raheelkhan-05 | 2026-07-20 | Adjusted the font size properly, so that content is clearly visible across all the screen sizes, and also accordingly adjusted the layouts and UI components
+d509578 | Raheelkhan-05 | 2026-07-18 | Increased the font sizes overall in Home Page
+6fab46f | Raheelkhan-05 | 2026-07-18 | fix(vercel): add SPA rewrite rules for client-side routing
+73c75b8 | Raheelkhan-05 | 2026-07-18 | perf(images): optimize homepage assets for improved loading performance
+ffb2f32 | Raheelkhan-05 | 2026-07-18 | feat(homepage): complete responsive design and premium UI overhaul
+4f5b85b | Raheelkhan-05 | 2026-07-17 | Add live product search results page with real-time price sync
+17db21d | Raheelkhan-05 | 2026-07-16 | Redesign landing page with cohesive brand visual identity
+e6105a0 | Raheelkhan-05 | 2026-07-14 | Update fonts style, size, and product showcase section and whyschoosebbm section
+e7842b1 | Raheelkhan-05 | 2026-07-13 | Optimized whybbmSection section
+673a3a4 | Raheelkhan-05 | 2026-07-13 | Fixed spacing in CTA
+e4fc143 | Raheelkhan-05 | 2026-07-13 | Fixed spacing in hero section
+3da2459 | Raheelkhan-05 | 2026-07-13 | Fixed spacing in hero section
+4039fc8 | Raheelkhan-05 | 2026-07-13 | Optimized whybbmSection section
+8c0f7f9 | Raheelkhan-05 | 2026-07-13 | Added whybbmSection section
+d1ee866 | Raheelkhan-05 | 2026-07-13 | UI enhancements, LandingPage
+f00297a | Raheelkhan-05 | 2026-07-13 | UI enhancements, LandingPage
+6e656c2 | Raheelkhan-05 | 2026-07-13 |  add new info cards with auto slide, and image caraousel also now auto slide
+8fccc15 | Raheelkhan-05 | 2026-07-13 | Updated the color theme according to BBM
+ce64c4c | Raheelkhan-05 | 2026-07-13 | Updated the color theme according to BBM
+7e07254 | Raheelkhan-05 | 2026-07-13 | Add PWA support
+5794e1d | Raheelkhan-05 | 2026-07-13 | Branding Properly
+5aa9412 | Raheelkhan-05 | 2026-07-13 | Ready for deployment and app installation
+48d6dd5 | Raheelkhan-05 | 2026-07-13 | Added Landing Page UI
+624767c | Raheelkhan-05 | 2026-07-13 | Added Landing Page UI
+687c929 | Raheelkhan-05 | 2026-07-13 | Added Landing Page UI

@@ -21,7 +21,7 @@ import "../orderBook/order-book.css";
 import "./sales-threads.cold.css";
 
 const NOTE_MAX = 4000;
-const QUICK_NOTES = ["Didn't pick up", "Call back later", "Not interested", "Interested, will share requirement"];
+const QUICK_NOTES = ["Didn't pick up", "Call back later", "Not interested", "Interested, will share requirement", "Need to Visit", "Follow-up Required"];
 const blankCustomer = { mode: "pick", picked: null, gstin: "", name: "", fromGst: false };
 const justContact = ({ name, phone, email }) => ({ name, phone, email });
 
