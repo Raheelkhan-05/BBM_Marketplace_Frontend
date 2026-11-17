@@ -1,8 +1,9 @@
 // src/pages/SalesMonitorEnquiriesPage.jsx: /sales/monitor/enquiries
-// Every enquiry of the company, same look as the salesperson's list, plus who created it and who updated it last.
+// Every enquiry of the company, same look as the salesperson's list, plus who created it, who updated it last,
+// the lead heat (Hot / Warm / Cold / Dead) and a heat filter.
 import { memo } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Receipt, Inbox, Loader2, Trophy, XCircle, Bell, PhoneCall, ArrowLeft } from "lucide-react";
+import { Receipt, Inbox, Loader2, Trophy, XCircle, Bell, PhoneCall } from "lucide-react";
 import { dateTime, listTime, qty } from "../components/sales/salesThreadFmt.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
@@ -10,9 +11,11 @@ import useMonitorFilters from "../hooks/useMonitorFilters.js";
 import useMonitorList from "../hooks/useMonitorList.js";
 import { fetchMonitorEnquiries } from "../utils/salesMonitorListApi.js";
 import MonitorFilters from "../components/team/monitor/MonitorFilters.jsx";
+import { HEATS, HeatBadge } from "../components/sales/salesHeat.jsx";
 import "../components/sales/sales-threads.css";
 import "../components/sales/sales-threads.cold.css";
 import "../components/sales/sales-chat.css";
+import "../components/sales/sales-heat.css";
 import "../components/team/monitor/monitor-lists.css";
 
 const TABS = [["", "All", "all"], ["open", "Open", "open"], ["reminder", "Reminders", "reminder"], ["cold", "Cold calls", "cold"], ["won", "Won", "won"], ["lost", "Lost", "lost"]];
@@ -44,6 +47,7 @@ const Row = memo(function Row({ t, from }) {
                     <span className="st-row-3">
                         <small>{cold ? "Logged" : "Posted"} {dateTime(t.createdAt)}</small>
                         <span className="st-badges">
+                            {t.heat && <HeatBadge heat={t.heat} />}
                             {cold && <span className="st-bd cold"><PhoneCall size={12} />Cold call</span>}
                             {t.reminderAt && kind === "open" && (
                                 <span className={`st-bd rem${due ? " due" : ""}`}><Bell size={12} />{due ? "Due " : ""}{dateTime(t.reminderAt)}</span>
@@ -67,10 +71,10 @@ export default function SalesMonitorEnquiriesPage() {
     const list = useMonitorList(fetchMonitorEnquiries, token, f.params);
     const sentinelRef = useInfiniteScrollSentinel(list.loadMore, { lookahead: 600, disabled: list.loading || list.loadingMore || !list.hasMore });
     const from = `${loc.pathname}${loc.search}`;
+    const hc = list.heatCounts;   // only shown once the server sends them
 
     return (
         <div className="gd st-listpage ml-page">
-            {/* <button type="button" className="st-ib" aria-label="Back" onClick={() => nav(-1)}><ArrowLeft size={18} /></button> */}
             <div className="gk-ph" style={{ marginTop: 18 }}>
                 <div><h1>Enquiries</h1><p>Every enquiry your team is working on. Tap one to read the chat.</p></div>
             </div>
@@ -85,6 +89,20 @@ export default function SalesMonitorEnquiriesPage() {
                 ))}
             </div>
 
+            <div className="sh-fl" role="group" aria-label="Filter by lead heat">
+                <button type="button" className={`sh-chip${!f.heat ? " on" : ""}`} aria-pressed={!f.heat} onClick={() => f.setHeat("")}>Any heat</button>
+                {HEATS.map(({ key, label, Icon }) => (
+                    <button key={key} type="button" className={`sh-chip ${key}${f.heat === key ? " on" : ""}`} aria-pressed={f.heat === key}
+                        onClick={() => f.setHeat(f.heat === key ? "" : key)}>
+                        <Icon size={14} aria-hidden="true" />{label}{hc && <span className="n">{hc[key] ?? 0}</span>}
+                    </button>
+                ))}
+                <button type="button" className={`sh-chip${f.heat === "none" ? " on" : ""}`} aria-pressed={f.heat === "none"}
+                    onClick={() => f.setHeat(f.heat === "none" ? "" : "none")}>
+                    Unrated{hc && <span className="n">{hc.none ?? 0}</span>}
+                </button>
+            </div>
+
             {!list.loading && !list.error && <p className="gd-note">{list.total} enquir{list.total === 1 ? "y" : "ies"}</p>}
 
             {list.loading && list.items.length === 0 ? (
@@ -95,7 +113,7 @@ export default function SalesMonitorEnquiriesPage() {
                 <div className="st-empty-card" style={{ marginTop: 10 }}>
                     <Inbox size={22} />
                     <b>No enquiries found</b>
-                    Try another date range, employee or search.
+                    Try another date range, employee, heat or search.
                     {f.filtered && <button type="button" className="st-btn" onClick={f.reset}>Reset filters</button>}
                 </div>
             )}

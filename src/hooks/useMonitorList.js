@@ -12,6 +12,7 @@ export default function useMonitorList(fetcher, token, params, enabled = true) {
     const [items, setItems] = useState([]);
     const [total, setTotal] = useState(0);
     const [counts, setCounts] = useState({});
+    const [heatCounts, setHeatCounts] = useState(null);
     const [hasMore, setHasMore] = useState(false);
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
@@ -39,6 +40,7 @@ export default function useMonitorList(fetcher, token, params, enabled = true) {
             itemsRef.current = next;
             setItems(next); setTotal(res.total ?? next.length); setHasMore(!!res.hasMore);
             if (res.counts) setCounts(res.counts);
+            if (res.heatCounts) setHeatCounts(res.heatCounts);
             setError("");
         } catch (e) {
             if (e?.name !== "AbortError" && !silent && my === seq.current) setHasMore(false);
@@ -68,5 +70,5 @@ export default function useMonitorList(fetcher, token, params, enabled = true) {
     const loadMore = useCallback(() => { if (!loadingMore && hasMore) load(itemsRef.current.length, true); }, [load, loadingMore, hasMore]);
     const reload = useCallback(() => load(0, false), [load]);
 
-    return { items, total, counts, hasMore, loading, loadingMore, error, loadMore, reload };
+    return { items, total, counts, heatCounts, hasMore, loading, loadingMore, error, loadMore, reload };
 }

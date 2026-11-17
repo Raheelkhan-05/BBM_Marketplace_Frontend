@@ -106,6 +106,7 @@ export default function SalesThreadViewer({ token, id, who: whoFallback, onClose
     const [files, setFiles] = useState([]);
     const [note, setNote] = useState("");
     const [replyTo, setReplyTo] = useState(null);
+    const replyRef = useRef(null); replyRef.current = replyTo;
 
     const scrollRef = useRef(null), stickRef = useRef(true), anchorRef = useRef(null), firstRef = useRef(true);
     const entriesRef = useRef([]); entriesRef.current = entries;

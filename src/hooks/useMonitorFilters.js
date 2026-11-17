@@ -1,8 +1,10 @@
 // src/hooks/useMonitorFilters.js
-// Filters shared by the monitor list pages. Kept in the URL (?actor=&range=&from=&to=&q=&st=) so a view can be shared.
+// Filters shared by the monitor list pages. Kept in the URL (?actor=&range=&from=&to=&q=&st=&heat=) so a view can be shared.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { PRESET_KEYS, rangeFor } from "../components/team/monitor/monitorHelpers.js";
+
+const HEAT_KEYS = ["hot", "warm", "cold", "dead", "none"];
 
 export default function useMonitorFilters(defaultPreset = "7d") {
     const [sp, setSp] = useSearchParams();
@@ -14,6 +16,7 @@ export default function useMonitorFilters(defaultPreset = "7d") {
     const [q, setQ] = useState(() => (sp.get("q") || "").trim());
     const [actorId, setActorId] = useState(() => sp.get("actor") || "");
     const [status, setStatus] = useState(() => sp.get("st") || "");
+    const [heat, setHeat] = useState(() => (HEAT_KEYS.includes(sp.get("heat")) ? sp.get("heat") : ""));
 
     useEffect(() => { const t = setTimeout(() => setQ(qInput.trim()), 300); return () => clearTimeout(t); }, [qInput]);
 
@@ -21,20 +24,21 @@ export default function useMonitorFilters(defaultPreset = "7d") {
         const n = new URLSearchParams();
         if (actorId) n.set("actor", actorId);
         if (status) n.set("st", status);
+        if (heat) n.set("heat", heat);
         if (preset !== defaultPreset) n.set("range", preset);
         if (preset === "custom") { if (custom.from) n.set("from", custom.from); if (custom.to) n.set("to", custom.to); }
         if (q) n.set("q", q);
         if (n.toString() !== spRef.current.toString()) setSp(n, { replace: true });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [actorId, status, preset, custom, q]);
+    }, [actorId, status, heat, preset, custom, q]);
 
     const range = useMemo(() => rangeFor(preset, custom), [preset, custom]);
     const params = useMemo(
-        () => ({ actorId, q, status, from: range.from, to: range.to }),
-        [actorId, q, status, range.from, range.to],
+        () => ({ actorId, q, status, heat, from: range.from, to: range.to }),
+        [actorId, q, status, heat, range.from, range.to],
     );
-    const filtered = !!(actorId || q || status || preset !== defaultPreset);
-    const reset = () => { setActorId(""); setStatus(""); setQInput(""); setQ(""); setPreset(defaultPreset); };
+    const filtered = !!(actorId || q || status || heat || preset !== defaultPreset);
+    const reset = () => { setActorId(""); setStatus(""); setHeat(""); setQInput(""); setQ(""); setPreset(defaultPreset); };
 
-    return { preset, setPreset, custom, setCustom, qInput, setQInput, q, actorId, setActorId, status, setStatus, range, params, filtered, reset };
+    return { preset, setPreset, custom, setCustom, qInput, setQInput, q, actorId, setActorId, status, setStatus, heat, setHeat, range, params, filtered, reset };
 }
