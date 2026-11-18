@@ -14,6 +14,12 @@ export const STORE_ACCENTS = [
     { name: "Ochre", hex: "#8A5A00" },
     { name: "Berry", hex: "#9C2C5B" },
     { name: "Graphite", hex: "#23272B" },
+
+    { name: "Orange", hex: "#F4511E" },
+    { name: "Sunshine", hex: "#FFD60A" },
+    { name: "Blue", hex: "#1E78D6" },
+    { name: "Green", hex: "#22A06B" },
+    { name: "Deep teal", hex: "#0B5563" },
 ];
 
 // Optional "need ideas?" helpers in the editor. NOT pre-selected; sellers type their own.
