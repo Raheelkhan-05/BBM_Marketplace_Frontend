@@ -3,14 +3,17 @@
 //   <ShopHeader />      – fetches the shop and renders it (HomePage)
 //   <ShopHeaderView />  – pure presentation (also the live preview in GrowStorePage)
 //
-// Templates, each with its OWN accent treatment:
-//   letterhead = Classic | solid = Bold | cover = Photo | compact = Compact
+// Templates, each with its OWN accent treatment AND its own background art:
+//   letterhead = Classic  -> soft corner glow + loose flowing lines (art: ArtLight)
+//   solid      = Bold     -> aurora glow + sweeping ribbon + scattered specks (art: ArtBold)
+//   cover      = Photo    -> layered waves + offset sun, only when no cover photo (art: ArtWaves)
+//   compact    = Compact  -> one faint corner glow (pure CSS)
 // Size comes from the header's own width (ResizeObserver -> data-w = s | m | l).
 // Every rule is scoped to .sh-wrap and its specificity is raised in code (see CSS below),
 // so global stylesheets such as .gsl cannot override it.
 //
-// TUNING: all font sizes / icon sizes / chip heights live in the "TYPE SCALE" block at the
-// top of RAW_CSS. Edit the numbers there only.
+// TUNING: font sizes / icon sizes / chip heights live in "TYPE SCALE";
+//         background-art strength lives in "BACKGROUND ART". Edit the numbers there only.
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { BadgeCheck, Check, ChevronDown, MapPin, Share2, X } from "lucide-react";
@@ -56,6 +59,18 @@ const RAW_CSS = `
 .sh-wrap[data-w="m"]{--fs-name:26px;--fs-tagline:18.5px;--fs-cname:19px}
 .sh-wrap[data-w="l"]{--fs-name:31px;--fs-tagline:19.5px;--fs-cname:20px}
 
+/* =====================================================================
+   BACKGROUND ART – overall strength per template.
+   1 = as designed, 0.5 = half as visible, 0 = hidden.
+   The art is also masked so it fades out behind the text on its own.
+   ===================================================================== */
+.sh-wrap{
+  --art-light:0.5;         /* Classic: glow + flowing lines */
+  --art-dark:0.8;          /* Bold: aurora + ribbon + specks */
+  --art-waves:1;         /* Photo (no cover image): waves + sun */
+  --art-compact:0.7;       /* Compact: corner glow */
+}
+
 /* ===================== layout tokens ===================== */
 .sh-wrap{display:block;width:100%;min-width:0;font-family:inherit;
   --ink:#0B1116;--body:#34414A;--mute:#5B6770;--hair:rgba(11,17,22,.1);
@@ -72,23 +87,26 @@ const RAW_CSS = `
   animation:sh-in .45s cubic-bezier(.16,1,.3,1) both}
 .sh-wrap .sh h2,.sh-wrap .sh p,.sh-wrap .sh ul,.sh-wrap .sh li{padding:0;list-style:none;font-family:inherit;text-transform:none}
 @keyframes sh-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@keyframes sh-drift{from{transform:translate(0,0)}to{transform:translate(-10px,8px)}}
+@keyframes sh-drift{from{transform:translate(0,0)}to{transform:translate(-8px,6px)}}
 @keyframes sh-pop{from{opacity:0;transform:translateY(-50%) scale(.96)}to{opacity:1;transform:translateY(-50%) scale(1)}}
 
 /* surfaces */
 .sh-wrap .sh-light{background:#fff;color:var(--ink);border:1px solid var(--hair);
   box-shadow:0 1px 2px rgba(11,17,22,.04),0 16px 32px -26px rgba(11,17,22,.35)}
 .sh-wrap .sh-dark{color:#fff;
-  background:radial-gradient(70% 120% at 100% 0%,rgba(255,255,255,.15) 0%,rgba(255,255,255,0) 60%),
+  background:radial-gradient(60% 110% at 100% 0%,rgba(255,255,255,.08) 0%,rgba(255,255,255,0) 60%),
              linear-gradient(135deg,var(--a-hi) 0%,var(--a-lo) 100%);
   box-shadow:0 20px 40px -26px var(--a-lo)}
 .sh-wrap .sh-dark::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.14)}
+
+/* background art (decorative only, always behind content) */
 .sh-wrap .sh-art{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0}
-.sh-wrap .sh-art.d{color:#fff}
-.sh-wrap .sh-art.l{color:var(--a)}
-.sh-wrap .sh-art .a1{animation:sh-drift 14s ease-in-out infinite alternate}
-.sh-wrap .sh-art .a2{animation:sh-drift 18s ease-in-out infinite alternate-reverse}
+.sh-wrap .sh-art.l{color:var(--a);opacity:var(--art-light)}
+.sh-wrap .sh-art.d{color:#fff;opacity:var(--art-dark)}
+.sh-wrap .sh-art.w{color:#fff;opacity:var(--art-waves)}
+.sh-wrap .sh-art .a1{animation:sh-drift 22s ease-in-out infinite alternate}
+.sh-wrap .sh-art .a2{animation:sh-drift 30s ease-in-out infinite alternate-reverse}
 .sh-wrap .sh-in{display:block;position:relative;z-index:2;width:100%;padding:var(--pad)}
 
 /* identity */
@@ -209,6 +227,9 @@ const RAW_CSS = `
 
 /* compact */
 .sh-wrap .sh-compact{--btn:34px;--logo:44px;background:var(--tint);border:1px solid var(--edge);color:var(--ink)}
+.sh-wrap .sh-compact::before{content:"";position:absolute;right:-36px;top:-52px;width:170px;height:150px;border-radius:50%;
+  pointer-events:none;z-index:0;opacity:calc(.16 * var(--art-compact));
+  background:radial-gradient(closest-side,var(--a) 0%,transparent 100%)}
 .sh-wrap[data-w="l"] .sh-compact{--btn:36px;--logo:48px}
 .sh-wrap .sh-compact .sh-logo.empty{background:var(--a);color:#fff}
 .sh-wrap .sh-crow{position:relative;z-index:2;display:flex;align-items:center;gap:12px;padding:10px}
@@ -323,37 +344,108 @@ function Logo({ shop }) {
     );
 }
 
-function Art({ tone, uid }) {
-    const dark = tone === "dark";
-    const k = dark ? 1 : 0.55;
+/* ---------- background art ----------
+   All three are anchored to the right edge ("xMaxYMid slice") and masked so they fade out
+   before the text column. Shapes are deliberately irregular: no matching radii, no even spacing. */
+
+// Classic: a soft glow bleeding in from the top-right corner plus loose, hand-drawn style lines.
+function ArtLight({ uid }) {
+    const glow = `g${uid}`, fade = `f${uid}`, mask = `m${uid}`;
     return (
-        <svg className={`sh-art ${dark ? "d" : "l"}`} viewBox="0 0 480 240" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+        <svg className="sh-art l" viewBox="0 0 480 240" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
             <defs>
-                <pattern id={`d${uid}`} width="14" height="14" patternUnits="userSpaceOnUse">
-                    <circle cx="1.5" cy="1.5" r="1.2" fill="currentColor" />
-                </pattern>
-                <linearGradient id={`f${uid}`} x1="1" y1="0" x2="0" y2="0">
+                <radialGradient id={glow} cx="0.5" cy="0.5" r="0.5">
+                    <stop offset="0" stopColor="currentColor" stopOpacity="0.2" />
+                    <stop offset="1" stopColor="currentColor" stopOpacity="0" />
+                </radialGradient>
+                <linearGradient id={fade} x1="1" y1="0" x2="0" y2="0">
                     <stop offset="0" stopColor="#fff" />
-                    <stop offset="0.85" stopColor="#fff" stopOpacity="0" />
+                    <stop offset="0.5" stopColor="#fff" stopOpacity="0.55" />
+                    <stop offset="0.78" stopColor="#fff" stopOpacity="0" />
                 </linearGradient>
-                <mask id={`m${uid}`}><rect width="480" height="240" fill={`url(#f${uid})`} /></mask>
+                <mask id={mask} maskUnits="userSpaceOnUse" x="0" y="0" width="480" height="240">
+                    <rect width="480" height="240" fill={`url(#${fade})`} />
+                </mask>
             </defs>
-            {dark && (
-                <g mask={`url(#m${uid})`}>
-                    <rect x="200" width="280" height="240" fill={`url(#d${uid})`} opacity="0.22" />
+            <g mask={`url(#${mask})`}>
+                <ellipse cx="452" cy="6" rx="210" ry="118" fill={`url(#${glow})`} />
+                <ellipse cx="338" cy="252" rx="128" ry="64" fill={`url(#${glow})`} opacity="0.45" />
+                <g className="a1" fill="none" stroke="currentColor" strokeLinecap="round">
+                    <path d="M236 252 C 300 176, 352 214, 410 128 S 468 44, 500 12" strokeWidth="1.3" strokeOpacity="0.16" />
+                    <path d="M284 258 C 340 196, 384 236, 440 160 S 486 92, 510 70" strokeWidth="0.9" strokeOpacity="0.11" />
+                    <path d="M318 262 C 372 214, 408 244, 462 196 S 494 150, 512 138" strokeWidth="0.8" strokeOpacity="0.08" />
                 </g>
-            )}
-            <g className="a1" fill="none" stroke="currentColor" strokeOpacity={0.16 * k} strokeWidth="1.2">
-                <circle cx="404" cy="56" r="46" /><circle cx="404" cy="56" r="86" />
-                <circle cx="404" cy="56" r="130" />{dark && <circle cx="404" cy="56" r="176" />}
+                <g className="a2" fill="currentColor">
+                    <circle cx="372" cy="58" r="1.8" opacity="0.3" />
+                    <circle cx="398" cy="94" r="1.2" opacity="0.26" />
+                    <circle cx="436" cy="70" r="2.2" opacity="0.2" />
+                    <circle cx="352" cy="132" r="1.1" opacity="0.2" />
+                    <circle cx="462" cy="118" r="1.5" opacity="0.24" />
+                    <path d="M424 188 c 10 -14 30 -10 32 6 c 2 14 -18 22 -30 14 c -6 -4 -6 -14 -2 -20 z" opacity="0.06" />
+                </g>
             </g>
-            {dark && (
-                <g className="a2">
-                    <circle cx="444" cy="196" r="52" fill="currentColor" fillOpacity="0.08" />
-                    <rect x="318" y="150" width="46" height="46" rx="12" transform="rotate(18 341 173)" fill="none"
-                        stroke="currentColor" strokeOpacity="0.24" strokeWidth="1.4" />
+        </svg>
+    );
+}
+
+// Bold: aurora glows, one sweeping translucent ribbon and a few scattered specks over the dark gradient.
+function ArtBold({ uid }) {
+    const glow = `g${uid}`, rib = `r${uid}`, fade = `f${uid}`, mask = `m${uid}`;
+    return (
+        <svg className="sh-art d" viewBox="0 0 480 240" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+            <defs>
+                <radialGradient id={glow} cx="0.5" cy="0.5" r="0.5">
+                    <stop offset="0" stopColor="#fff" stopOpacity="0.2" />
+                    <stop offset="1" stopColor="#fff" stopOpacity="0" />
+                </radialGradient>
+                <linearGradient id={rib} x1="0" y1="1" x2="1" y2="0">
+                    <stop offset="0" stopColor="#fff" stopOpacity="0" />
+                    <stop offset="0.55" stopColor="#fff" stopOpacity="0.09" />
+                    <stop offset="1" stopColor="#fff" stopOpacity="0.02" />
+                </linearGradient>
+                <linearGradient id={fade} x1="1" y1="0" x2="0" y2="0">
+                    <stop offset="0" stopColor="#fff" />
+                    <stop offset="0.45" stopColor="#fff" stopOpacity="0.7" />
+                    <stop offset="0.8" stopColor="#fff" stopOpacity="0" />
+                </linearGradient>
+                <mask id={mask} maskUnits="userSpaceOnUse" x="0" y="0" width="480" height="240">
+                    <rect width="480" height="240" fill={`url(#${fade})`} />
+                </mask>
+            </defs>
+            <g mask={`url(#${mask})`}>
+                <ellipse cx="410" cy="34" rx="170" ry="96" fill={`url(#${glow})`} />
+                <ellipse cx="478" cy="214" rx="116" ry="84" fill={`url(#${glow})`} opacity="0.55" />
+                <g className="a1">
+                    <path d="M176 246 C 254 206, 294 128, 376 116 C 438 106, 470 64, 484 -4 L 484 246 Z" fill={`url(#${rib})`} />
+                    <path d="M176 246 C 254 206, 294 128, 376 116 C 438 106, 470 64, 484 -4" fill="none" stroke="#fff" strokeOpacity="0.15" strokeWidth="1.1" strokeLinecap="round" />
+                    <path d="M214 250 C 288 218, 330 160, 404 150 C 450 144, 478 112, 488 76" fill="none" stroke="#fff" strokeOpacity="0.08" strokeWidth="0.9" strokeLinecap="round" />
                 </g>
-            )}
+                <g className="a2" fill="#fff">
+                    <circle cx="352" cy="40" r="2" opacity="0.3" />
+                    <circle cx="384" cy="72" r="1.1" opacity="0.34" />
+                    <circle cx="426" cy="30" r="1.5" opacity="0.26" />
+                    <circle cx="448" cy="86" r="2.4" opacity="0.18" />
+                    <circle cx="332" cy="98" r="1" opacity="0.26" />
+                    <circle cx="470" cy="152" r="1.4" opacity="0.24" />
+                    <circle cx="404" cy="176" r="1.8" opacity="0.14" />
+                </g>
+                <path d="M 330 28 a 38 38 0 0 1 52 -14" fill="none" stroke="#fff" strokeOpacity="0.16" strokeWidth="1.1" strokeLinecap="round" />
+            </g>
+        </svg>
+    );
+}
+
+// Photo (only when no cover image is set): layered waves with an off-centre sun, like a horizon.
+function ArtWaves() {
+    return (
+        <svg className="sh-art w" viewBox="0 0 480 240" preserveAspectRatio="xMaxYMax slice" aria-hidden="true">
+            <circle cx="338" cy="74" r="24" fill="#fff" opacity="0.13" />
+            <circle cx="338" cy="74" r="42" fill="none" stroke="#fff" strokeOpacity="0.09" strokeWidth="1" />
+            <g className="a1">
+                <path d="M0 164 C 62 136, 124 186, 204 160 S 342 116, 402 148 S 468 168, 480 158 L 480 240 L 0 240 Z" fill="#fff" opacity="0.08" />
+            </g>
+            <path d="M0 198 C 82 176, 152 214, 242 194 S 382 162, 480 188 L 480 240 L 0 240 Z" fill="#fff" opacity="0.09" />
+            <path d="M0 224 C 104 208, 204 236, 304 220 S 444 208, 480 222 L 480 240 L 0 240 Z" fill="#fff" opacity="0.11" />
         </svg>
     );
 }
@@ -468,7 +560,7 @@ function Identity({ c, tone }) {
 function Classic({ c }) {
     return (
         <header className="sh sh-light sh-classic">
-            <Art tone="light" uid={c.uid} />
+            <ArtLight uid={c.uid} />
             <div className="sh-in">
                 <Identity c={c} tone="pale" />
                 {c.theme.tagline && <p className="sh-tagline py-5 my-5">{c.theme.tagline}</p>}
@@ -482,7 +574,7 @@ function Classic({ c }) {
 function Bold({ c }) {
     return (
         <header className="sh sh-dark sh-bold">
-            <Art tone="dark" uid={c.uid} />
+            <ArtBold uid={c.uid} />
             <div className="sh-in">
                 <Identity c={c} tone="glass" />
                 {c.theme.tagline && <p className="sh-tagline">{c.theme.tagline}</p>}
@@ -498,8 +590,8 @@ function Photo({ c }) {
         <header className="sh sh-light sh-photo">
             <div className="sh-cover">
                 {c.theme.coverUrl
-                    ? <SmartImg src={c.theme.coverUrl} width={1400} alt="" className="sh-cphoto" fallback={<Art tone="dark" uid={c.uid} />} />
-                    : <Art tone="dark" uid={c.uid} />}
+                    ? <SmartImg src={c.theme.coverUrl} width={1400} alt="" className="sh-cphoto" fallback={<ArtWaves />} />
+                    : <ArtWaves />}
                 <Acts tone="glass" share={c.share} onClose={c.onClose} />
             </div>
             <div className="sh-in">
