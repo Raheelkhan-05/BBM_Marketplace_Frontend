@@ -599,7 +599,7 @@ function AppearanceSection({ seller, token, onSaved }) {
                     <textarea id="sa-about" rows={4} maxLength={MAX_ABOUT} value={draft.about || ""}
                         placeholder="Who you are, how long you've been trading, what buyers can count on…"
                         onChange={(e) => set({ about: e.target.value })}
-                        style={{ width: "100%", border: "none", background: "transparent", outline: "none", resize: "vertical", font: "inherit", minHeight: 88, padding: 0 }} />
+                        style={{ width: "100%", border: "none", background: "transparent", outline: "none", resize: "vertical", font: "inherit", minHeight: 88, paddingTop: 4, paddingBottom: 4, paddingLeft: 8, paddingRight: 6 }} />
                 </div>
                 <p className="st-cap">{(draft.about || "").length}/{MAX_ABOUT} · Shown under “About this store”.</p>
             </div>
