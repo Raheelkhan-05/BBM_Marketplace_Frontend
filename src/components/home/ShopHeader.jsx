@@ -116,7 +116,7 @@ const RAW_CSS = `
   width:var(--logo);height:var(--logo);border-radius:calc(var(--logo) * .27);background:#fff;color:var(--a);
   font-size:calc(var(--logo) * .4);font-weight:800;line-height:1;
   box-shadow:0 8px 18px -10px rgba(0,0,0,.4),0 0 0 1px rgba(11,17,22,.08)}
-.sh-wrap .sh-logo img{display:block;width:100%;height:100%;object-fit:contain;padding:6px;border-radius:0}
+.sh-wrap .sh-logo img{display:block;width:100%;height:100%;object-fit:contain;padding:0px;border-radius:0}
 .sh-wrap .sh-light .sh-logo.empty{background:var(--tint2)}
 .sh-wrap .sh-name{font-size:var(--fs-name);line-height:1.15;font-weight:800;letter-spacing:-.02em;text-wrap:balance;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
