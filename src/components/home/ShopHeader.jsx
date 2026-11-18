@@ -45,9 +45,9 @@ const RAW_CSS = `
   --fs-label:14px;       /* small uppercase section labels */
 
   /* Group 4: compact template */
-  --fs-cname:19px;       /* shop name in the compact row */
-  --fs-csub:16px;        /* location · tagline line */
-  --ic-cname:18px;       /* verified icon next to compact name */
+  --fs-cname:15px;       /* shop name in the compact row */
+  --fs-csub:12px;        /* location · tagline line */
+  --ic-cname:14px;       /* verified icon next to compact name */
 
   /* Group 5: misc */
   --fs-base:16px;        /* fallback size for the whole header */
