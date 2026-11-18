@@ -137,6 +137,8 @@ import ImageLightbox from "../ImageLightbox.jsx";
 import PromotionPlanModal, { PromotionRow, savePromotionPlan, saveResultMessage } from "../seller/listingForm/PromotionPlanModal.jsx";
 import BrandItemDetailModal from "../catalog/BrandItemDetailModal";
 
+import StoreCheckoutBar from "./StoreCheckoutBar.jsx";
+
 import BuyNowModal from "../BuyNowModal";
 import { shareProductLink } from "../../utils/share.js";
 import { useSocket } from "../../context/SocketContext.jsx";
@@ -2682,7 +2684,7 @@ function SellerDropdown({
                 {!showSkeleton && !alreadySelling && !shopMode && (
                     <button
                         onClick={onSell}
-                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-[#1E78D6] bg-[#1E78D6] px-3 py-2 text-[12.5px] font-bold tracking-wide text-white shadow-[0_8px_16px_-10px_rgba(30,120,214,0.9)] transition-colors duration-150 hover:border-[#1666B8] hover:bg-[#1666B8] active:scale-[0.99]"
+                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg border-2 border-[#1E78D6] bg-[#1E78D6] px-3 py-2 text-[14.5px] font-bold tracking-wide text-white shadow-[0_8px_16px_-10px_rgba(30,120,214,0.9)] transition-colors duration-150 hover:border-[#1666B8] hover:bg-[#1666B8] active:scale-[0.99]"
                     >
                         <Store className="h-3.5 w-3.5" /> Sell this product
                     </button>
@@ -3920,12 +3922,14 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     return (
         <>
             <Seo {...seo} path={seoPath} noindex={thin} />
-            <FeedQuickActions
-                active={activeTile}
-                brandLabel={brandName}
-                onBrands={handleBrands}
-                onMyShop={handleSellers}
-            />
+            {!shopSlug && (
+                <FeedQuickActions
+                    active={activeTile}
+                    brandLabel={brandName}
+                    onBrands={handleBrands}
+                    onMyShop={handleSellers}
+                />
+            )}
 
             <div
                 ref={stickyRef}
@@ -3975,7 +3979,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                     />
                 )}
 
-                {shopSlug && fromSellers && (
+                {/* {shopSlug && fromSellers && (
                     <ActiveViewStrip
                         variant="seller"
                         label={myShopActive ? "Your shop" : "Seller"}
@@ -3984,7 +3988,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                         onClear={clearShop}
                         clearLabel="Clear seller"
                     />
-                )}
+                )} */}
                 {groupId && (
                     <GroupViewStrip
                         name={groupInfo?.name || location.state?.groupName || "Variants"}
@@ -4270,6 +4274,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                     : (console.error("EditListingModal failed to import — check the file path/export"), null)
             )}
 
+            {shopSlug && <StoreCheckoutBar />}
             <div className="pointer-events-none fixed inset-x-0 z-[80] flex justify-center px-4 bottom-[calc(84px+env(safe-area-inset-bottom,0px))] md:bottom-6">
                 <AnimatePresence>
                     {followToast && (

@@ -9,6 +9,7 @@ import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
 import PromoHero from "../components/home/PromoHero.jsx";
 // import FloatingSellButton from "../components/FloatingSellButton.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
+import ShopHeader from "../components/home/ShopHeader.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
@@ -96,7 +97,8 @@ export default function HomePage() {
             <SmoothScrollProvider>
                 <main className="mx-auto max-w-7xl px-2.5 sm:mt-2 sm:px-4 lg:px-6 pb-28 md:pb-20">
 
-                    {shopSlug && !viaSellers && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
+                    {/* {shopSlug && !viaSellers && <ShopBanner shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />} */}
+                    {shopSlug && <ShopHeader shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
 
                     <AnimatePresence initial={false}>
                         {showPromo && (

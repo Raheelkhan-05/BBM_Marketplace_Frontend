@@ -9,11 +9,15 @@ import { TransportLibraryProvider } from "../context/TransportLibraryContext.jsx
 // NEW: must sit inside NotificationsProvider and TransportLibraryProvider, and wrap both the pages
 // (Outlet) and the Console (BottomNavStrip) so they share the same live "waiting for decision" state.
 import { NotificationActionsProvider } from "../context/NotificationActionsContext.jsx";
+import { DockVisibilityProvider, useDockHidden } from "../context/DockVisibilityContext.jsx";
 import { LightboxVisibilityContext } from "../context/LightboxVisibilityContext.jsx";
 import BottomNavStrip from "./BottomNavStrip.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const HIDE = [/^\/admin/, /^\/cart(\/|$)/, /^\/seller\/wallet/, /^\/sell\/bulk/, /^\/chat\/[^/]+/, /^\/orders\//, /^\/seller\/orders\//, /^\/login/, /^\/terms/, /^\/privacy-policy/, /^\/refund-policy/, /^\/contact/, /^\/services/, /^\/pricing/, /^\/payment\/return/, /^\/sales(\/|$)/];
+
+function Dock({ show }) { const hidden = useDockHidden(); return show && !hidden ? <BottomNavStrip /> : null; }
+
 
 export default function AppShell() {
     const { pathname } = useLocation();
@@ -40,10 +44,12 @@ export default function AppShell() {
     return (
         <NotificationsProvider><CartProvider><ChatProvider><ListingsProvider><HelpRequestProvider><TransportLibraryProvider>
             <NotificationActionsProvider>
-                <LightboxVisibilityContext.Provider value={lightboxValue}>
-                    <Outlet />
-                    {show && <BottomNavStrip />}
-                </LightboxVisibilityContext.Provider>
+                <DockVisibilityProvider>
+                    <LightboxVisibilityContext.Provider value={lightboxValue}>
+                        <Outlet />
+                        <Dock show={show} />
+                    </LightboxVisibilityContext.Provider>
+                </DockVisibilityProvider>
             </NotificationActionsProvider>
         </TransportLibraryProvider ></HelpRequestProvider></ListingsProvider></ChatProvider></CartProvider></NotificationsProvider>
     );

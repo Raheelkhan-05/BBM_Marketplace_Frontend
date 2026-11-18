@@ -171,13 +171,19 @@ export default function OfferActions({
                                 {p.discountPercent > 0 ? ` · ${p.discountPercent}% quantity discount applied` : ""}
                             </p>
 
-                            <div className="mt-2 flex items-center justify-between gap-2 border-t pt-2" style={{ borderColor: HAIR }}>
-                                <span className="flex items-center gap-1.5 text-[12px] font-bold" style={{ color: TEAL_DK }}>
-                                    {busy === "save" ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <>In your cart</>}
-                                </span>
+                            <p className="mt-2 flex items-center gap-1.5 text-[12px] font-bold" style={{ color: TEAL_DK }}>
+                                {busy === "save" ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <>✓ In your cart</>}
+                            </p>
+                            <div className="mt-2.5 flex items-stretch gap-2 border-t pt-3" style={{ borderColor: HAIR }}>
                                 <button type="button" onClick={removeLine} disabled={busy === "cart"}
-                                    className="py-1 text-[12px] font-bold disabled:opacity-50" style={{ color: MUTED }}>
+                                    className="flex h-11 shrink-0 items-center justify-center rounded-xl border px-4 text-[12.5px] font-bold disabled:opacity-50"
+                                    style={{ borderColor: HAIR, color: MUTED }}>
                                     {busy === "cart" ? "Removing…" : "Remove"}
+                                </button>
+                                <button type="button" onClick={buyNow} disabled={busy === "cart" || busy === "save" || blocked}
+                                    className="flex h-11 flex-1 items-center justify-center rounded-xl text-[15px] font-extrabold text-white transition-transform active:scale-[0.98] disabled:opacity-50"
+                                    style={{ background: "#F4511E", boxShadow: "0 6px 14px -8px rgba(244,81,30,0.8)" }}>
+                                    Buy now
                                 </button>
                             </div>
                         </div>

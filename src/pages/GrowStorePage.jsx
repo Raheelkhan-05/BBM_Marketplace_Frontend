@@ -20,12 +20,20 @@ import Ic from "../components/growSeller/Ic.jsx";
 import { Empty } from "../components/growSeller/ui.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
 import "../components/growSeller/grow-store.css";
+import { ShopHeaderView, SmartImg } from "../components/home/ShopHeader.jsx";
+import {
+    STORE_TEMPLATES, STORE_ACCENTS, HIGHLIGHT_IDEAS, SELL_IDEAS,
+    MAX_TAGLINE, MAX_ABOUT, MAX_HIGHLIGHTS, MAX_HIGHLIGHT_LEN, MAX_SELLS, MAX_SELL_LEN, MAX_POINTS, MAX_POINT_LEN,
+    sanitizeTheme, readableOn,
+} from "../utils/storeTheme.js";
+
 
 const ICON = {
     gst: { d: "M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6zM9 12l2 2 4-4", s: { background: "#E6F0FB", color: "#0F63B5" } },
     contact: { d: "M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21c0-4 4-6 8-6s8 2 8 6", s: { background: "#FDE9E2", color: "#C23A0B" } },
     ops: { d: "M3 6h11v10H3zM14 10h4l3 3v3h-7M7 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4M17 16a2 2 0 1 0 0 4 2 2 0 0 0 0-4", s: { background: "#E3F5EC", color: "#12794A" } },
     bank: { d: "M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 21h18", s: { background: "#FFF4C2", color: "#8A6500" } },
+    look: { d: "M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.8 1.7-1.6 0-.9-.6-1.2-.6-2 0-.9.7-1.4 1.6-1.4H17a4 4 0 0 0 4-4c0-4.4-4-9-9-9zM7.5 11.5h.01M10 7.5h.01M14.5 7.5h.01", s: { background: "#F1E9FB", color: "#6B3FA0" } },
 };
 
 const hhmm = (t) => String(t || "").slice(0, 5);
@@ -113,7 +121,7 @@ function ShopCard({ seller }) {
     return (
         <div className="card">
             <div className="st-hero">
-                <div className="st-logo">{seller.logo_url ? <img src={seller.logo_url} alt="" /> : letter}</div>
+                <div className="st-logo"><SmartImg src={seller.logo_url} width={160} alt="" fallback={letter} /></div>
                 <div className="st-who">
                     <h2>{seller.display_name || "Your shop"}</h2>
                     {seller.status === "approved" && <span className="stt approved">Live</span>}
@@ -202,7 +210,7 @@ function ContactSection({ seller, email, token, onSaved }) {
             <div className="f">
                 <label>Company logo (optional)</label>
                 <div className="st-lg">
-                    <div className="st-logo">{logo ? <img src={logo} alt="Company logo" /> : letter}</div>
+                    <div className="st-logo"><SmartImg src={logo} width={160} alt="Company logo" fallback={letter} /></div>
                     <div className="st-btns">
                         <label className={`st-up${logoBusy ? " off" : ""}`}>
                             {logoBusy
@@ -363,6 +371,256 @@ function BankSection({ token }) {
     );
 }
 
+const COVER_UPLOAD_KIND = "logo"; // change to "cover" if your upload endpoint supports a separate kind
+
+function ListEditor({ label, hint, items, onChange, max, maxLen, placeholder, ideas = [], rows = false }) {
+    const [text, setText] = useState("");
+    const full = items.length >= max;
+
+    const add = (raw) => {
+        const t = String(raw).replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, maxLen);
+        if (!t || full) return;
+        if (!items.some((x) => x.toLowerCase() === t.toLowerCase())) onChange([...items, t]);
+        setText("");
+    };
+    const remove = (i) => onChange(items.filter((_, k) => k !== i));
+    const onKey = (e) => {
+        if (e.key === "Enter" || (!rows && e.key === ",")) { e.preventDefault(); add(text); }
+    };
+    const unused = ideas.filter((i) => !items.some((v) => v.toLowerCase() === i.toLowerCase()));
+
+    return (
+        <div className="f">
+            <label>{label} <span className="le-n">· {items.length}/{max}</span></label>
+
+            {items.length > 0 && (
+                <div className={`le-list${rows ? " rows" : ""}`}>
+                    {items.map((t, i) => (
+                        <div key={t} className="le-item">
+                            <span>{t}</span>
+                            <button type="button" className="le-x" aria-label={`Remove ${t}`} onClick={() => remove(i)}>×</button>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            <div className="le-add">
+                <div className="inp">
+                    <input value={text} maxLength={maxLen} disabled={full} placeholder={full ? "Limit reached" : placeholder}
+                        onChange={(e) => setText(e.target.value)} onKeyDown={onKey} />
+                </div>
+                <button type="button" className="bt sm" disabled={full || !text.trim()} onClick={() => add(text)}>Add</button>
+            </div>
+
+            {hint && <p className="st-cap">{hint}</p>}
+
+            {!full && unused.length > 0 && (
+                <div className="le-ideas">
+                    <small>Need ideas?</small>
+                    {unused.map((i) => <button key={i} type="button" onClick={() => add(i)}>+ {i}</button>)}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function LayoutThumb({ id, accent }) {
+    const deep = `color-mix(in srgb, ${accent} 50%, #000)`;
+    const bar = (w, c = "#0B1116", o = 0.18) => <i style={{ display: "block", height: 3, width: w, borderRadius: 2, background: c, opacity: o }} />;
+    const box = { height: 58, borderRadius: 10, overflow: "hidden", position: "relative", border: "1px solid rgba(11,17,22,0.1)", background: "#fff" };
+    const sq = (c, s = 16) => <b style={{ width: s, height: s, borderRadius: 5, background: c, flex: "none" }} />;
+    const ring = (c) => (
+        <span aria-hidden style={{ position: "absolute", right: -14, top: -14, width: 44, height: 44, borderRadius: 999, border: `1.5px solid ${c}` }} />
+    );
+    if (id === "solid") {
+        return (
+            <div style={{ ...box, background: `linear-gradient(135deg, ${accent}, ${deep})`, border: "none", padding: 8, display: "flex", alignItems: "flex-end", gap: 6 }}>
+                {ring("rgba(255,255,255,0.3)")}
+                {sq("#fff", 20)}<div style={{ display: "grid", gap: 4, flex: 1 }}>{bar("70%", "#fff", 0.9)}{bar("45%", "#fff", 0.5)}</div>
+            </div>
+        );
+    }
+    if (id === "cover") {
+        return (
+            <div style={box}>
+                <div style={{ height: 26, background: `linear-gradient(135deg, ${accent}, ${deep})`, position: "relative" }}>{ring("rgba(255,255,255,0.3)")}</div>
+                <div style={{ display: "flex", gap: 6, padding: "0 8px", marginTop: -9, alignItems: "flex-end" }}>
+                    {sq("#fff", 20)}<div style={{ paddingBottom: 3 }}>{bar(34, "#0B1116", 0.5)}</div>
+                </div>
+            </div>
+        );
+    }
+    if (id === "compact") {
+        return (
+            <div style={{ ...box, background: `color-mix(in srgb, ${accent} 8%, #fff)`, display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                <span aria-hidden style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: accent }} />
+                {sq(accent, 18)}<div style={{ display: "grid", gap: 4, flex: 1 }}>{bar("60%", "#0B1116", 0.5)}{bar("35%")}</div>
+            </div>
+        );
+    }
+    return (
+        <div style={{ ...box, padding: 8, display: "grid", gap: 6 }}>
+            <span aria-hidden style={{ position: "absolute", left: 0, right: 0, top: 0, height: 3, background: accent }} />
+            {ring(`color-mix(in srgb, ${accent} 30%, #fff)`)}
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 3 }}>
+                {sq(`color-mix(in srgb, ${accent} 18%, #fff)`, 18)}
+                <div style={{ display: "grid", gap: 4, flex: 1 }}>{bar(24, accent, 0.8)}{bar("60%", "#0B1116", 0.5)}</div>
+            </div>
+            {bar("85%")}
+        </div>
+    );
+}
+
+function AppearanceSection({ seller, token, onSaved }) {
+    const { say } = useGrowSeller();
+    const initial = sanitizeTheme(seller.store_theme);
+    const [draft, setDraft] = useState(initial);
+    const [base, setBase] = useState(initial);
+    const [coverBusy, setCoverBusy] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState(null);
+    // const [device, setDevice] = useState("full");
+
+    const clean = sanitizeTheme(draft);
+    const dirty = JSON.stringify(clean) !== JSON.stringify(base) && !coverBusy;
+    const set = (patch) => { setDraft((d) => ({ ...d, ...patch })); setError(null); };
+
+    const pickCover = async (file) => {
+        if (!file) return;
+        if (!file.type?.startsWith("image/")) return setError("Please choose an image file.");
+        setError(null);
+        setCoverBusy(true);
+        try {
+            const r = await uploadSellerFile(token, file, COVER_UPLOAD_KIND);
+            if (r?.success) set({ coverUrl: r.url }); else setError(r?.message || "Upload failed. Try again.");
+        } catch { setError("Upload failed. Try again."); }
+        finally { setCoverBusy(false); }
+    };
+
+    const save = async () => {
+        setError(null);
+        setSaving(true);
+        let res = null;
+        try { res = await updateSellerProfile(token, { store_theme: clean }); } catch { res = null; }
+        setSaving(false);
+        if (!res?.success) return setError(res?.message || "Couldn't save your store look.");
+        setBase(clean);
+        say(res.staged ? "Saved. Changes will go live after review." : "Store look saved.");
+        onSaved();
+    };
+
+    const previewShop = {
+        display_name: seller.display_name || "Your shop",
+        shop_slug: seller.shop_slug,
+        logo_url: seller.logo_url,
+        city: seller.city || seller.dispatch_district,
+        state: seller.state || seller.dispatch_state,
+        status: seller.status,
+        store_theme: clean,
+    };
+
+    return (
+        <Collapsible id="look" title="Store look" sub="How your shop introduces itself to buyers">
+            <div className="f">
+                <label>Live preview</label>
+                <div className="sl-frame">
+                    <ShopHeaderView shop={previewShop} defaultOpen />
+                </div>
+                <p className="st-cap">This is how buyers see your store header. Details open under “About this store”.</p>
+            </div>
+
+            <div className="f">
+                <label>Layout</label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                    {STORE_TEMPLATES.map((t) => {
+                        const on = clean.template === t.id;
+                        return (
+                            <button key={t.id} type="button" aria-pressed={on} onClick={() => set({ template: t.id })}
+                                style={{ textAlign: "left", padding: 8, borderRadius: 12, background: "#fff", cursor: "pointer", border: `2px solid ${on ? clean.accent : "rgba(11,17,22,0.12)"}` }}>
+                                <LayoutThumb id={t.id} accent={clean.accent} />
+                                <b style={{ display: "block", marginTop: 7, fontSize: 12.5 }}>{t.label}</b>
+                                <small style={{ display: "block", fontSize: 11, opacity: 0.65, lineHeight: 1.3 }}>{t.hint}</small>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div className="f">
+                <label>Accent colour</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {STORE_ACCENTS.map((a) => {
+                        const on = clean.accent === a.hex;
+                        return (
+                            <button key={a.hex} type="button" aria-label={a.name} aria-pressed={on} title={a.name} onClick={() => set({ accent: a.hex })}
+                                style={{
+                                    width: 34, height: 34, borderRadius: 999, background: a.hex, cursor: "pointer", border: "2px solid #fff",
+                                    boxShadow: on ? `0 0 0 2px ${a.hex}` : "0 0 0 1px rgba(11,17,22,0.15)", color: readableOn(a.hex), display: "flex", alignItems: "center", justifyContent: "center"
+                                }}>
+                                {on && <svg className="ic" viewBox="0 0 24 24" aria-hidden="true" style={{ width: 16, height: 16 }}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>}
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {clean.template === "cover" && (
+                <div className="f">
+                    <label>Cover photo (optional)</label>
+                    <div className="st-btns">
+                        <label className={`st-up${coverBusy ? " off" : ""}`}>
+                            {coverBusy ? <><Ic n="spin" />Uploading…</> : clean.coverUrl ? "Replace photo" : "Add photo"}
+                            <input type="file" accept="image/*" hidden disabled={coverBusy}
+                                onChange={(e) => { pickCover(e.target.files?.[0]); e.target.value = ""; }} />
+                        </label>
+                        {clean.coverUrl && !coverBusy && <button type="button" className="st-rm" onClick={() => set({ coverUrl: "" })}>Remove</button>}
+                    </div>
+                    <p className="st-cap">Wide photos work best (shop front, warehouse, products). Without one, a gradient in your accent colour is used.</p>
+                </div>
+            )}
+
+            <div className="f">
+                <label htmlFor="sa-tag">Tagline (optional)</label>
+                <div className="inp">
+                    <input id="sa-tag" maxLength={MAX_TAGLINE} value={draft.tagline || ""} placeholder="e.g. Bearings and spares for commercial vehicles"
+                        onChange={(e) => set({ tagline: e.target.value })} />
+                </div>
+                <p className="st-cap">{(draft.tagline || "").length}/{MAX_TAGLINE} · One line buyers read first.</p>
+            </div>
+
+            <ListEditor
+                label="Highlights" items={clean.highlights} onChange={(v) => set({ highlights: v })}
+                max={MAX_HIGHLIGHTS} maxLen={MAX_HIGHLIGHT_LEN} placeholder="Type a highlight, press Enter"
+                hint="Short badges shown on the banner. Write your own (e.g. “30+ years in trade”)." ideas={HIGHLIGHT_IDEAS} />
+
+            <div className="f">
+                <label htmlFor="sa-about">About your shop (optional)</label>
+                <div className="inp">
+                    <textarea id="sa-about" rows={4} maxLength={MAX_ABOUT} value={draft.about || ""}
+                        placeholder="Who you are, how long you've been trading, what buyers can count on…"
+                        onChange={(e) => set({ about: e.target.value })}
+                        style={{ width: "100%", border: "none", background: "transparent", outline: "none", resize: "vertical", font: "inherit", minHeight: 88, padding: 0 }} />
+                </div>
+                <p className="st-cap">{(draft.about || "").length}/{MAX_ABOUT} · Shown under “About this store”.</p>
+            </div>
+
+            <ListEditor
+                label="What you sell" items={clean.sells} onChange={(v) => set({ sells: v })}
+                max={MAX_SELLS} maxLen={MAX_SELL_LEN} placeholder="Add a category or product type"
+                hint="Your main categories or product types." ideas={SELL_IDEAS} />
+
+            <ListEditor
+                label="Key points" rows items={clean.points} onChange={(v) => set({ points: v })}
+                max={MAX_POINTS} maxLen={MAX_POINT_LEN} placeholder="Add a bullet point, press Enter"
+                hint="Features or promises, one per line (e.g. “Same-day dispatch before 4 PM”)." />
+
+            <p className="st-cap">Only fill what you need. A tagline plus 2–3 highlights already looks complete.</p>
+
+            <SaveRow dirty={dirty} saving={saving} error={error} onSave={save} label="Save store look" />
+        </Collapsible>
+    );
+}
+
 /* ---------- page ---------- */
 export default function GrowStorePage() {
     const nav = useNavigate();
@@ -424,6 +682,7 @@ export default function GrowStorePage() {
             <div className="dgrid">
                 <div className="dcol">
                     <ShopCard seller={seller} />
+                    <AppearanceSection seller={seller} token={token} onSaved={load} />
                     {dash.seller?.has_pending_changes && (
                         <div className="note warn">Some of your changes are waiting for review and will go live once approved.</div>
                     )}
