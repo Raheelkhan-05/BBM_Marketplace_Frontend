@@ -16,7 +16,7 @@ const EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
 
 // Tuning knobs — change these numbers to resize the whole strip.
 const ICON_PX = 30;   // icon artwork size (expanded strip)
-const ITEM_W_PX = 84; // width of each category cell (label wraps inside this)
+const ITEM_W_PX = 83; // width of each category cell (label wraps inside this)
 
 // Collapse behaviour knobs.
 const COLLAPSE_AFTER_PX = 48; // scroll DOWN this far (while stuck) -> collapse
@@ -453,9 +453,9 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
 
                     <div
                         ref={scrollRef}
-                        className="relative flex snap-x items-stretch gap-0.5 overflow-x-auto scroll-smooth px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                        className="relative flex snap-x items-stretch gap-0.5 overflow-x-auto scroll-smooth px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden mt-2"
                     >
-                        <CategoryItem active={allActive} onClick={() => onSelect(null)} label="All">
+                        <CategoryItem active={allActive} onClick={() => onSelect(null)} label="All Categories">
                             <AllIcon active={allActive} />
                         </CategoryItem>
 
