@@ -9,9 +9,16 @@
 // brand-new category never renders blank. Order matters: more specific rules
 // (e.g. DrumIcon for "industrial oil") must sit above broader ones (OilIcon).
 
-const INK = "#111111";
-const Y = "#FFD60A";
-const W = "#FFFFFF";
+const INK = "#08222B";
+const Y = "var(--ic-a)";   // main fill
+const W = "var(--ic-b)";   // light tint of the same hue (replaces white)
+
+export const TONES = {
+    blue: { a: "#1E78D6", b: "#CFE3FA" },
+    green: { a: "#22A06B", b: "#C9EFDD" },
+    gold: { a: "#FFC400", b: "#FFEFA6" },
+    teal: { a: "#F4511E", b: "#FFD9C8" },
+};
 
 function Svg({ children }) {
     return (
@@ -19,7 +26,7 @@ function Svg({ children }) {
             viewBox="0 0 48 48"
             fill="none"
             stroke={INK}
-            strokeWidth="2.2"
+            strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden="true"
@@ -31,15 +38,24 @@ function Svg({ children }) {
     );
 }
 
+function Tinted({ tone = "blue", children }) {
+    const t = TONES[tone] || TONES.blue;
+    return (
+        <span className="block h-full w-full" style={{ "--ic-a": t.a, "--ic-b": t.b }}>
+            {children}
+        </span>
+    );
+}
+
 /* ───────────── Icons ───────────── */
 
 export function AllIcon() {
     return (
         <Svg>
-            <rect x="7" y="7" width="14" height="14" rx="4" fill={Y} />
-            <rect x="27" y="7" width="14" height="14" rx="4" fill={W} />
-            <rect x="7" y="27" width="14" height="14" rx="4" fill={W} />
-            <rect x="27" y="27" width="14" height="14" rx="4" fill={W} />
+            <rect x="7" y="7" width="14" height="14" rx="4" fill={TONES.blue.a} />
+            <rect x="27" y="7" width="14" height="14" rx="4" fill={TONES.teal.a} />
+            <rect x="7" y="27" width="14" height="14" rx="4" fill={TONES.green.a} />
+            <rect x="27" y="27" width="14" height="14" rx="4" fill={TONES.gold.a} />
         </Svg>
     );
 }
@@ -297,50 +313,54 @@ function GearIcon() {
 }
 
 /* ───────────── Matching rules (first match wins — order matters) ───────────── */
-
 const ICON_RULES = [
-    { icon: BearingIcon, test: /bearing|bush(?:ing)?|\broller\b/ },
-    // Specific oil rule BEFORE the generic one so "Industrial Oil" and
-    // "Lubricants" get different icons.
-    { icon: DrumIcon, test: /industrial oil|\bdrums?\b|barrel/ },
-    { icon: OilIcon, test: /\boils?\b|lubric|grease|\bfuel|petrol|diesel/ },
-    { icon: DumbbellIcon, test: /sport|fitness|\bgym|exercise|athlet/ },
-    { icon: BulbIcon, test: /\blights?\b|lighting|\blamps?\b|\bled\b|bulb/ },
-    { icon: BoltIcon, test: /electri|cable|\bwire|switch|\bpower\b|battery|inverter/ },
-    { icon: HammerIcon, test: /\btools?\b|plier|spanner|wrench|drill|hand ?tool/ },
-    { icon: NutIcon, test: /fasten|\bbolts?\b|\bnuts?\b|screw|hardware|fitting/ },
-    { icon: BoxIcon, test: /packag|carton|\bbox|courier|logistic/ },
-    { icon: HelmetIcon, test: /safety|\bppe\b|helmet|protect/ },
-    { icon: ValveIcon, test: /\bpipes?\b|plumb|valve|pump|water|sanit/ },
-    { icon: FlaskIcon, test: /chemical|\blab\b|laborator|solvent|adhesive|reagent/ },
-    { icon: CarIcon, test: /\bauto|\bcars?\b|vehicle|tyre|tire|\bbike|automotive/ },
-    { icon: ChipIcon, test: /electronic|computer|mobile|semiconductor|\bchip|\bit\b|laptop/ },
-    // station(a|e)r covers both "stationery" and the "stationary" spelling in the DB.
-    { icon: PencilIcon, test: /station(?:a|e)r|office|paper|print|\bbooks?\b/ },
-    { icon: AppleIcon, test: /\bfood|grocer|beverage|fmcg|snack|edible|dairy/ },
-    { icon: ShirtIcon, test: /textile|cloth|apparel|garment|fabric|fashion|\bwear\b/ },
-    { icon: MedicalIcon, test: /medical|health|pharma|hospital|surgical/ },
-    { icon: BuildingIcon, test: /construct|building|cement|\bcivil|real ?estate|infrastructure/ },
-    { icon: RollerIcon, test: /paint|coating|colou?r|varnish/ },
-    { icon: SproutIcon, test: /agri|\bfarm|\bseeds?\b|fertili|garden|\bplants?\b/ },
-    { icon: BucketIcon, test: /clean|hygiene|housekeep|janitor|detergent/ },
-    { icon: BeamIcon, test: /steel|\bmetals?\b|\biron\b|alloy|alumin|\bsheets?\b/ },
-    { icon: GearIcon, test: /machin|motor|industrial|engine|\bgears?\b|equipment|mechanical/ },
+    { icon: BearingIcon, tone: "blue", test: /bearing|bush(?:ing)?|\broller\b/ },
+    { icon: DrumIcon, tone: "teal", test: /industrial oil|\bdrums?\b|barrel/ },
+    { icon: OilIcon, tone: "gold", test: /\boils?\b|lubric|grease|\bfuel|petrol|diesel/ },
+    { icon: DumbbellIcon, tone: "green", test: /sport|fitness|\bgym|exercise|athlet/ },
+    { icon: BulbIcon, tone: "gold", test: /\blights?\b|lighting|\blamps?\b|\bled\b|bulb/ },
+    { icon: BoltIcon, tone: "gold", test: /electri|cable|\bwire|switch|\bpower\b|battery|inverter/ },
+    { icon: HammerIcon, tone: "teal", test: /\btools?\b|plier|spanner|wrench|drill|hand ?tool/ },
+    { icon: NutIcon, tone: "blue", test: /fasten|\bbolts?\b|\bnuts?\b|screw|hardware|fitting/ },
+    { icon: BoxIcon, tone: "gold", test: /packag|carton|\bbox|courier|logistic/ },
+    { icon: HelmetIcon, tone: "gold", test: /safety|\bppe\b|helmet|protect/ },
+    { icon: ValveIcon, tone: "blue", test: /\bpipes?\b|plumb|valve|pump|water|sanit/ },
+    { icon: FlaskIcon, tone: "green", test: /chemical|\blab\b|laborator|solvent|adhesive|reagent/ },
+    { icon: CarIcon, tone: "blue", test: /\bauto|\bcars?\b|vehicle|tyre|tire|\bbike|automotive/ },
+    { icon: ChipIcon, tone: "blue", test: /electronic|computer|mobile|semiconductor|\bchip|\bit\b|laptop/ },
+    { icon: PencilIcon, tone: "teal", test: /station(?:a|e)r|office|paper|print|\bbooks?\b/ },
+    { icon: AppleIcon, tone: "green", test: /\bfood|grocer|beverage|fmcg|snack|edible|dairy/ },
+    { icon: ShirtIcon, tone: "teal", test: /textile|cloth|apparel|garment|fabric|fashion|\bwear\b/ },
+    { icon: MedicalIcon, tone: "green", test: /medical|health|pharma|hospital|surgical/ },
+    { icon: BuildingIcon, tone: "blue", test: /construct|building|cement|\bcivil|real ?estate|infrastructure/ },
+    { icon: RollerIcon, tone: "teal", test: /paint|coating|colou?r|varnish/ },
+    { icon: SproutIcon, tone: "green", test: /agri|\bfarm|\bseeds?\b|fertili|garden|\bplants?\b/ },
+    { icon: BucketIcon, tone: "teal", test: /clean|hygiene|housekeep|janitor|detergent/ },
+    { icon: BeamIcon, tone: "blue", test: /steel|\bmetals?\b|\biron\b|alloy|alumin|\bsheets?\b/ },
+    { icon: GearIcon, tone: "blue", test: /machin|motor|industrial|engine|\bgears?\b|equipment|mechanical/ },
 ];
 
 const cache = new Map();
 
-export function getCategoryIcon(name = "", slug = "") {
+function resolve(name = "", slug = "") {
     const key = `${name}|${slug}`;
     if (cache.has(key)) return cache.get(key);
     const hay = `${name} ${slug}`.toLowerCase().replace(/[-_]+/g, " ");
     const hit = ICON_RULES.find((r) => r.test.test(hay));
-    const icon = hit ? hit.icon : FallbackIcon;
-    cache.set(key, icon);
-    return icon;
+    const result = hit ? { Icon: hit.icon, tone: hit.tone } : { Icon: FallbackIcon, tone: "blue" };
+    cache.set(key, result);
+    return result;
+}
+
+export function getCategoryIcon(name = "", slug = "") {
+    return resolve(name, slug).Icon;
 }
 
 export function CategoryIcon({ name, slug }) {
-    const Icon = getCategoryIcon(name, slug);
-    return <Icon />;
+    const { Icon, tone } = resolve(name, slug);
+    return (
+        <Tinted tone={tone}>
+            <Icon />
+        </Tinted>
+    );
 }

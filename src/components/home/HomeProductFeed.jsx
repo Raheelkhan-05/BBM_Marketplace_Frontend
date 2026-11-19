@@ -1017,7 +1017,7 @@ function GstToggle({ includeGst, onChange }) {
             aria-checked={includeGst}
             aria-label={`GST ${includeGst ? "included" : "excluded"}`}
             onClick={() => onChange(!includeGst)}
-            className="group inline-flex h-0 pb-2 items-center gap-2 rounded-full transition-all duration-200 cursor-pointer"
+            className="group inline-flex h-7 items-center gap-2 rounded-full transition-all duration-200 cursor-pointer"
         >
             <span
                 className="min-w-[66px] whitespace-nowrap text-right text-[11px] font-bold leading-none tracking-wide"
@@ -4156,22 +4156,16 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                             <DeliverToBar />
                         )}
                     </div>
-                    <div className="flex shrink-0 items-center gap-2.5 me-1.5">
-                        {/* <GstToggle includeGst={includeGst} onChange={setIncludeGst} /> */}
+                    <div className="flex shrink-0 items-center gap-3 me-1.5">
+                        <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
+                        <span aria-hidden className="h-4 w-px" style={{ background: C.hair }} />
                         <HomeCartButton />
                     </div>
                 </div>
 
                 {toolbar}
 
-                <div className="flex items-center justify-between gap-3 px-1 pt-1">
-                    <div className="min-w-0">
 
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2.5">
-                        <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
-                    </div>
-                </div>
 
                 {brandName && (
                     <ActiveViewStrip

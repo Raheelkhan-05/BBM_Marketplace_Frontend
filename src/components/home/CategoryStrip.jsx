@@ -15,7 +15,7 @@ const EASE = [0.16, 1, 0.3, 1];
 const EASE_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
 
 // Tuning knobs — change these numbers to resize the whole strip.
-const ICON_PX = 38;   // icon artwork size (expanded strip)
+const ICON_PX = 30;   // icon artwork size (expanded strip)
 const ITEM_W_PX = 84; // width of each category cell (label wraps inside this)
 
 // Collapse behaviour knobs.
@@ -264,8 +264,9 @@ function CompactBar({ category, onExpand }) {
             aria-label={`${label}. Show all categories`}
             className="group flex h-9 w-full items-center gap-2 rounded-lg px-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-black/40"
         >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center">
-                {category ? <CategoryIcon name={category.name} slug={category.slug} /> : <AllIcon />}
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center">
+                {/* {category ? <CategoryIcon name={category.name} slug={category.slug} /> : <AllIcon />} */}
+                {category ? <CategoryIcon name={category.name} slug={category.slug} active /> : <AllIcon active />}
             </span>
             <span
                 className="min-w-0 flex-1 truncate text-[14.5px] font-extrabold tracking-wide"
@@ -455,7 +456,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                         className="relative flex snap-x items-stretch gap-0.5 overflow-x-auto scroll-smooth px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                     >
                         <CategoryItem active={allActive} onClick={() => onSelect(null)} label="All">
-                            <AllIcon />
+                            <AllIcon active={allActive} />
                         </CategoryItem>
 
                         {loading
@@ -475,7 +476,7 @@ export default function CategoryStrip({ activeCategoryId, onSelect }) {
                                             transition: { duration: 0.25, delay: Math.min(i * 0.02, 0.2), ease: EASE },
                                         }}
                                     >
-                                        <CategoryIcon name={cat.name} slug={cat.slug} />
+                                        <CategoryIcon name={cat.name} slug={cat.slug} active={active} />
                                     </CategoryItem>
                                 );
                             })}
