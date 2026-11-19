@@ -90,12 +90,16 @@ function GuestHeader() {
     >
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 md:px-7">
         <SmartLink to="/" aria-label="BBM home" className="flex min-w-0 items-center gap-2">
-          <img src="/Logo.png" alt="BBM" className="block h-7 w-auto object-contain" />
           <span
-            className="whitespace-nowrap text-[18px] font-extrabold leading-none tracking-[.02em] text-[#08222B]"
-            style={{ fontFamily: "'Bricolage Grotesque','Figtree',system-ui,sans-serif" }}
+            className="whitespace-nowrap text-[25px] leading-none font-extrabold lowercase"
+            style={{
+              fontFamily: "'Manrope', sans-serif",
+              fontWeight: 800,
+              // letterSpacing: "-0.065em",
+              color: "#092747",
+            }}
           >
-            BBM
+            bbm.business
           </span>
         </SmartLink>
         <span className="flex-1" />
@@ -111,7 +115,7 @@ function GuestHeader() {
 }
 
 export default function Header() {
-  const { profile, effectiveLoggedIn } = useAuth();
+  const { effectiveLoggedIn } = useAuth();
 
   if (!effectiveLoggedIn) return <GuestHeader />;
 
@@ -121,13 +125,17 @@ export default function Header() {
       style={{ paddingTop: "calc(env(safe-area-inset-top, 0px))" }}
     >
       <div className="mx-auto hidden h-7 max-w-7xl items-center px-4 md:flex lg:px-8">
-        <SmartLink to="/" className="flex shrink-0 items-center gap-2">
-          <MarqueeText
-            text={profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM"}
-            width={256}
-            className="text-[16px] font-extrabold tracking-wide"
-            style={{ fontFamily: "'Bricolage Grotesque', sans-serif", color: C.ink }}
-          />
+        <SmartLink to="/" className="flex shrink-0 items-center">
+          <span
+            className="whitespace-nowrap text-[25px] leading-none font-extrabold lowercase"
+            style={{
+              fontFamily: "'Manrope', sans-serif",
+              fontWeight: 800,
+              color: "#092747",
+            }}
+          >
+            bbm.business
+          </span>
         </SmartLink>
       </div>
     </header>
