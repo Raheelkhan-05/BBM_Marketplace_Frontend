@@ -694,42 +694,87 @@ function FastestBadge() {
 
 // Seller-row price block. Uses the SAME labelling rules as the product
 // header's PriceBreakdown.
+
 function SellerPriceBlock({ pricing, unit }) {
     if (!pricing) return null;
-    const { discountPercent, hasMasterPack, unit: u, pack, masterPack, packQty, masterQty } = pricing;
+
+    const {
+        discountPercent,
+        hasMasterPack,
+        unit: u,
+        pack,
+        masterPack,
+        packQty,
+        masterQty
+    } = pricing;
+
     const hasDiscount = discountPercent > 0;
 
     const short = shortUnit(unit);
     const packDuplicatesUnit = !!unit && Number(packQty) === 1;
 
     const rows = [
-        unit ? { label: short, ...u } : null,
+        unit ? { label: short, ...u, isUnit: true } : null,
+
         !packDuplicatesUnit
-            ? { label: unit ? `${fmtQty(packQty)} ${short}` : "Pack", ...pack }
+            ? {
+                label: unit ? `${fmtQty(packQty)} ${short}` : "Pack",
+                ...pack,
+                isUnit: false
+            }
             : null,
+
         hasMasterPack && masterPack
-            ? { label: unit ? `${fmtQty(masterQty)} ${short}` : "M Pack", ...masterPack }
+            ? {
+                label: unit ? `${fmtQty(masterQty)} ${short}` : "M Pack",
+                ...masterPack,
+                isUnit: false
+            }
             : null,
     ].filter(Boolean);
 
     if (!rows.length) return null;
 
     return (
-        <div className="grid shrink-0 items-baseline gap-x-1.5 gap-y-0.5" style={{ gridTemplateColumns: "auto auto auto" }}>
+        <div
+            className="grid shrink-0 items-baseline gap-x-1 gap-y-0"
+            style={{
+                gridTemplateColumns: "auto auto auto",
+                // justifyContent: "end"
+            }}
+        >
             {rows.map((r) => (
                 <div key={r.label} className="contents">
+
+                    {/* ORIGINAL PRICE */}
                     {hasDiscount && (
-                        <span className="text-[9.5px] text-right font-semibold tabular-nums line-through" style={{ color: C.muted }}>
+                        <span
+                            className="text-[9.5px] text-right font-semibold tabular-nums line-through whitespace-nowrap"
+                            style={{ color: C.muted }}
+                        >
                             ₹{inr(r.original)}
                         </span>
                     )}
+
+                    {/* FINAL PRICE */}
                     <span
-                        className="text-right text-[12.5px] font-extrabold tabular-nums whitespace-nowrap"
-                        style={{ color: hasDiscount ? C.secondary : C.ink, gridColumn: hasDiscount ? "auto" : "1 / span 2" }}
+                        className={`text-right ${r.isUnit
+                            ? "text-[16px] sm:text-[16px] font-extrabold"
+                            : "text-[12px] font-bold"
+                            } tabular-nums whitespace-nowrap`}
+                        style={{
+                            color: hasDiscount ? C.secondary : C.ink,
+                            gridColumn: hasDiscount ? "auto" : "1 / span 2"
+                        }}
                     >
                         ₹{inr(r.final)}
                     </span>
-                    <span className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap" style={{ color: C.muted }}>
+
+                    {/* UNIT */}
+                    <span
+                        className="text-left text-[9px] font-semibold tracking-wide whitespace-nowrap"
+                        style={{ color: C.muted }}
+                    >
                         /{r.label}
                     </span>
                 </div>
@@ -737,6 +782,7 @@ function SellerPriceBlock({ pricing, unit }) {
         </div>
     );
 }
+
 
 // Merges a new page of results into the existing list, dropping any
 // item whose id is already present (offset pagination can hand back an id
@@ -1353,10 +1399,12 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
             }}
         >
             <AnimatePresence>{showTapHint && <HintRing key="hint-ring" />}</AnimatePresence>
-            <div className="grid w-full grid-cols-[5.25rem_minmax(0,1fr)_auto] items-center gap-3 px-3 pt-3 pb-3 min-h-[9rem] sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:min-h-[10rem] sm:px-4">
+
+            <div className="grid w-full grid-cols-[5.25rem_minmax(0,1fr)_auto] items-center gap-x-3 px-3 py-2 sm:grid-cols-[6rem_minmax(0,1fr)_auto] sm:px-4">
+
                 {/* COL 1 — IMAGE */}
-                <div className="flex h-full items-center justify-center">
-                    <span className="flex h-28 w-[5.25rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white sm:h-32 sm:w-24">
+                <div className="row-span-2 flex items-center justify-center">
+                    <span className="flex h-28 w-[5.95rem] shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white sm:h-32 sm:w-28">
                         <ProductImage
                             src={item.image}
                             alt=""
@@ -1366,15 +1414,48 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     </span>
                 </div>
 
-                {/* COL 2 — PRODUCT INFO + PACKAGING */}
+                {/* PRODUCT NAME — SPANS COL 2 + COL 3 */}
+                <div className="col-span-2 flex min-w-0 items-start justify-between gap-2">
+
+                    <div
+                        onClick={guardedToggle}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                guardedToggle();
+                            }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        className="min-w-0 flex-1 cursor-pointer text-left"
+                    >
+                        <ProductNameWithInfo
+                            name={toTitleCase(item.name)}
+                            onInfo={onInfo}
+                        />
+                    </div>
+
+                    <div className="flex shrink-0 items-center pt-0.5">
+                        <FollowButton
+                            following={isFollowed}
+                            onToggle={onToggleFollow}
+                        />
+                    </div>
+                </div>
+
+                {/* COL 2 — BRAND, CATEGORY, SUBCATEGORY, PACKAGING */}
                 <div
                     onClick={guardedToggle}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); guardedToggle(); } }}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            guardedToggle();
+                        }
+                    }}
                     role="button"
                     tabIndex={0}
-                    className="min-w-0 cursor-pointer text-left min-h-[5rem] flex flex-col justify-center"
+                    className="min-w-0 cursor-pointer text-left"
                 >
-                    <ProductNameWithInfo name={toTitleCase(item.name)} onInfo={onInfo} />
                     <p
                         className="mt-0.5 flex min-w-0 items-center gap-1 truncate uppercase text-[11.5px] font-bold tracking-wider"
                         style={{ color: "#006F83" }}
@@ -1382,10 +1463,9 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                         <BrandBadge name={item.brand_name} image={item.brand_image} />
                         <span className="truncate">{subLabel}</span>
                     </p>
-                    <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                        {categoryLabel ? `${categoryLabel} · ` : ""}
-                        {subcategoryLabel}
-                    </p>
+
+
+
                     <p
                         className="mt-1 text-[10px] sm:text-[11px] md:text-[11.5px] font-semibold leading-tight tracking-wide min-h-[1.2em]"
                         style={{ color: C.secondary }}
@@ -1394,18 +1474,20 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                     </p>
                 </div>
 
-                {/* COL 3 — FOLLOW + PRICE */}
+                {/* COL 3 — PRICE */}
                 <div
                     role="button"
                     tabIndex={0}
                     onClick={guardedToggle}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); guardedToggle(); } }}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            guardedToggle();
+                        }
+                    }}
                     aria-label={isOpen ? "Collapse sellers" : "Expand sellers"}
                     className="flex h-full shrink-0 flex-col items-end justify-center gap-1 text-right cursor-pointer"
                 >
-                    <div className="flex items-center gap-1">
-                        <FollowButton following={isFollowed} onToggle={onToggleFollow} />
-                    </div>
                     {isOutOfStock ? (
                         <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>
                             OUT OF STOCK
@@ -1422,15 +1504,23 @@ function ProductRow({ item, idx, isOpen, onToggle, onInfo, onImageOpen, includeG
                                 <div className="flex items-center gap-1.5">
                                     {isLoggedIn && <PriceTrendBadge trend={item.price_trend} />}
                                     {breakdown && !hideFrom && (
-                                        <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>from</span>
+                                        <span className="text-[10px] font-semibold uppercase leading-tight tracking-wider" style={{ color: C.muted }}>
+                                            from
+                                        </span>
                                     )}
                                 </div>
                             )}
-                            <PriceBreakdown breakdown={breakdown} unit={item.lowest_price_unit} size="row" />
+
+                            <PriceBreakdown
+                                breakdown={breakdown}
+                                unit={item.lowest_price_unit}
+                                size="row"
+                            />
                         </>
                     )}
                 </div>
             </div>
+
 
             <AnimatePresence>
                 {showTapHint && <TapHintStrip key="hint-strip" onClick={guardedToggle} />}
@@ -2598,78 +2688,193 @@ function SellerDropdown({
                                 const isFastest = fastestSubmissionId != null && s.submission_id === fastestSubmissionId;
 
                                 return (
+
                                     <Fragment key={s.submission_id}>
                                         {s.submission_id === firstOutOfStockId && (
-                                            <p className="pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-wider" style={{ color: C.muted }}>Out of stock</p>
+                                            <p
+                                                className="pt-3 pb-1 text-[10px] font-extrabold uppercase tracking-[0.13em]"
+                                                style={{ color: C.muted }}
+                                            >
+                                                Out of stock
+                                            </p>
                                         )}
+
                                         <motion.div
                                             layout
                                             transition={{ layout: { duration: 0.35, ease: EASE } }}
-                                            className="bg-[#FCFBF9] py-4 text-left"
-                                            style={outOfStock ? { opacity: 0.5 } : notDeliverable ? { opacity: 0.75 } : undefined}
+                                            className="bg-[#FCFBF9] px-1 py-3 text-left"
+                                            style={
+                                                outOfStock
+                                                    ? { opacity: 0.5 }
+                                                    : notDeliverable
+                                                        ? { opacity: 0.75 }
+                                                        : undefined
+                                            }
                                         >
-                                            <div className="flex items-start gap-3">
-                                                {/* seller info */}
-                                                <div className="min-w-0 flex-1">
-                                                    <p className="truncate text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>
-                                                        {s.display_name}{isOwn ? " (You)" : ""}
-                                                    </p>
+                                            {/* ROW 1 — SHOP NAME: FULL WIDTH */}
+                                            <div className="mb-2 min-w-0">
+                                                <p
+                                                    className="text-[15px] sm:text-[15.5px] font-extrabold leading-snug tracking-[0.025em] break-words"
+                                                    style={{ color: C.ink }}
+                                                >
+                                                    {s.display_name}{isOwn ? " (You)" : ""}
+                                                </p>
+                                            </div>
+
+                                            {/* ROW 2 — SELLER DETAILS + PRICE */}
+                                            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
+
+                                                {/* COL 1 — LOCATION + MOQ + DELIVERY + DISCOUNT */}
+                                                <div className="min-w-0">
+
+                                                    {/* LOCATION */}
                                                     {(s.city || s.state) && (
-                                                        <p className="mt-0.5 flex items-center gap-1 truncate text-[11.5px] font-medium tracking-wide" style={{ color: C.muted }}>
-                                                            <MapPin className="h-3 w-3 shrink-0" /> {[s.city, s.state].filter(Boolean).join(", ")}
+                                                        <p
+                                                            className="flex min-w-0 items-center gap-1 text-[11.5px] font-medium leading-snug tracking-[0.055em]"
+                                                            style={{ color: C.muted }}
+                                                        >
+                                                            <MapPin className="h-3 w-3 shrink-0" />
+                                                            <span className="truncate">
+                                                                {[s.city, s.state].filter(Boolean).join(", ")}
+                                                            </span>
                                                         </p>
                                                     )}
-                                                    <p className="mt-1 text-[11.5px] font-semibold tracking-wide" style={{ color: C.muted }}>
-                                                        {s.moq ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}` : priceUnitLabel(s.units_per_master_pack)}
-                                                        {!notDeliverable && totalDeliveryDays != null ? ` · ~${totalDeliveryDays}d delivery` : ""}
-                                                        {!notDeliverable && !s.is_custom_priced && pricing?.discountPercent > 0
-                                                            ? ` · ${pricing.saleQty}+ ${pricing.saleUnit}${pricing.saleQty === 1 ? "" : "s"}: ${pricing.discountPercent}% off`
-                                                            : ""}
-                                                    </p>
-                                                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                                                        <FreightPill included={s.freight_included} />
-                                                        {isFastest && <FastestBadge />}
+
+                                                    {/* MOQ + DELIVERY */}
+                                                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+
+                                                        <span
+                                                            className="text-[12px] font-bold leading-snug tracking-[0.045em]"
+                                                            style={{ color: C.ink }}
+                                                        >
+                                                            {s.moq
+                                                                ? `MOQ ${s.moq} ${priceUnitLabel(s.units_per_master_pack)}`
+                                                                : priceUnitLabel(s.units_per_master_pack)}
+                                                        </span>
+
+                                                        {!notDeliverable && totalDeliveryDays != null && (
+                                                            <span
+                                                                className="text-[11.5px] font-semibold leading-snug tracking-[0.04em]"
+                                                                style={{ color: C.muted }}
+                                                            >
+                                                                · ~{totalDeliveryDays}d delivery
+                                                            </span>
+                                                        )}
                                                     </div>
-                                                    {isOwn && (
-                                                        <button type="button" onClick={(e) => { e.stopPropagation(); onEditOwnListing(s.submission_id); }}
-                                                            className="relative z-10 mt-2.5 rounded-lg px-3 py-1.5 text-[12.5px] font-bold tracking-wide text-white" style={{ background: C.primary }}>
-                                                            Edit listing
-                                                        </button>
-                                                    )}
+
+                                                    {/* QUANTITY DISCOUNT */}
+                                                    {!notDeliverable &&
+                                                        !s.is_custom_priced &&
+                                                        pricing?.discountPercent > 0 && (
+                                                            <p
+                                                                className="mt-1 text-[11.5px] font-bold leading-snug tracking-[0.055em]"
+                                                                style={{ color: C.primary }}
+                                                            >
+                                                                {pricing.saleQty}+ {pricing.saleUnit}
+                                                                {pricing.saleQty === 1 ? "" : "s"}:{" "}
+                                                                {pricing.discountPercent}% off
+                                                            </p>
+                                                        )}
                                                 </div>
 
-                                                {/* price (or the reason there is none) */}
+                                                {/* COL 2 — PRICE / AVAILABILITY */}
                                                 <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5 text-right">
+
                                                     {outOfStock ? (
-                                                        <span className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#f1f1f1", color: C.muted }}>OUT OF STOCK</span>
+                                                        <span
+                                                            className="rounded-full px-2 py-1 text-[10px] font-extrabold tracking-[0.12em]"
+                                                            style={{
+                                                                background: "#f1f1f1",
+                                                                color: C.muted
+                                                            }}
+                                                        >
+                                                            OUT OF STOCK
+                                                        </span>
                                                     ) : notDeliverable ? (
                                                         <div className="flex max-w-[9.5rem] flex-col items-end gap-1">
-                                                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-wide" style={{ background: "#FDECEC", color: "#B3261E" }}>
-                                                                <Ban className="h-2.5 w-2.5" strokeWidth={2.8} /> NOT DELIVERABLE
+
+                                                            <span
+                                                                className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-extrabold tracking-[0.1em]"
+                                                                style={{
+                                                                    background: "#FDECEC",
+                                                                    color: "#B3261E"
+                                                                }}
+                                                            >
+                                                                <Ban
+                                                                    className="h-2.5 w-2.5"
+                                                                    strokeWidth={2.8}
+                                                                />
+                                                                NOT DELIVERABLE
                                                             </span>
-                                                            <span className="text-[10.5px] font-semibold leading-snug tracking-wide" style={{ color: C.muted }}>
-                                                                Doesn't ship to {buyerAddress?.city}{buyerAddress?.state ? `, ${buyerAddress.state}` : ""}
+
+                                                            <span
+                                                                className="text-[10.5px] font-semibold leading-snug tracking-[0.035em]"
+                                                                style={{ color: C.muted }}
+                                                            >
+                                                                Doesn't ship to {buyerAddress?.city}
+                                                                {buyerAddress?.state
+                                                                    ? `, ${buyerAddress.state}`
+                                                                    : ""}
                                                             </span>
                                                         </div>
                                                     ) : isOwn ? (
-                                                        <OwnListingPriceCell seller={s} includeGst={includeGst} token={token}
+                                                        <OwnListingPriceCell
+                                                            seller={s}
+                                                            includeGst={includeGst}
+                                                            token={token}
                                                             submitting={savingOwnPriceId === s.submission_id}
-                                                            onApply={(payload) => handleOwnPriceSave(s.submission_id, payload)} />
+                                                            onApply={(payload) =>
+                                                                handleOwnPriceSave(s.submission_id, payload)
+                                                            }
+                                                        />
                                                     ) : (
-                                                        <SellerPriceBlock pricing={pricing} unit={s.unit} />
+                                                        <SellerPriceBlock
+                                                            pricing={pricing}
+                                                            unit={s.unit}
+                                                        />
                                                     )}
                                                 </div>
                                             </div>
 
-                                            {/* quantity + total + Add to cart / Buy now (slider on phones) */}
+                                            {/* ROW 3 — FREIGHT + FASTEST BADGES */}
+                                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                                <FreightPill included={s.freight_included} />
+                                                {isFastest && <FastestBadge />}
+                                            </div>
+
+                                            {/* ROW 4 — EDIT LISTING */}
+                                            {isOwn && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onEditOwnListing(s.submission_id);
+                                                    }}
+                                                    className="relative z-10 mt-2.5 rounded-lg px-3 py-1.5 text-[12px] font-bold tracking-[0.07em] text-white"
+                                                    style={{ background: C.primary }}
+                                                >
+                                                    Edit listing
+                                                </button>
+                                            )}
+
+                                            {/* ROW 5 — QUANTITY + TOTAL + BUY ACTIONS */}
                                             {!outOfStock && !notDeliverable && !isOwn && (
-                                                <OfferActions variant="list" seller={s} includeGst={includeGst} token={token} isLoggedIn={isLoggedIn}
+                                                <OfferActions
+                                                    variant="list"
+                                                    seller={s}
+                                                    includeGst={includeGst}
+                                                    token={token}
+                                                    isLoggedIn={isLoggedIn}
                                                     onRequireLogin={onRequireLogin}
-                                                    onBuyNow={(quantity, basis) => onBuySeller(s, { quantity, basis })}
-                                                    onToast={onToast} />
+                                                    onBuyNow={(quantity, basis) =>
+                                                        onBuySeller(s, { quantity, basis })
+                                                    }
+                                                    onToast={onToast}
+                                                />
                                             )}
                                         </motion.div>
                                     </Fragment>
+
                                 );
                             })}
                             {hasMore && (
@@ -2800,11 +3005,11 @@ function GroupRow({ item, idx, includeGst, isLoggedIn, animateEntrance, onOpen, 
                         >
                             {title}
                         </p>
-                        {(categoryLabel || subcategoryLabel) && (
+                        {/* {(categoryLabel || subcategoryLabel) && (
                             <p className="mt-0.5 truncate text-[10.5px] font-medium tracking-wide" style={{ color: C.muted }}>
                                 {categoryLabel ? `${categoryLabel} · ` : ""}{subcategoryLabel}
                             </p>
-                        )}
+                        )} */}
                         <span
                             className="mt-1.5 inline-flex w-fit items-center rounded-full px-2 py-[3px] text-[10.5px] font-extrabold tracking-wide"
                             style={{ background: "#fff", color: C.brandInk, border: `1px solid ${C.brandHair}` }}
@@ -4049,7 +4254,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                             {sections.map((section, si) => (
                                 <Fragment key={si}>
                                     {section.items.length > 0 && (
-                                        <div className="flex divide-x pt-3" style={{ borderColor: C.hair }}>
+                                        <div className="flex divide-x pt-1" style={{ borderColor: C.hair }}>
                                             {bucketItemsByColumn(section.items, columnCount).map((colItems, colIdx) => (
                                                 <div key={colIdx} className="min-w-0 flex-1" style={{ borderColor: C.hairSoft }}>
                                                     {colItems.map((item) => {
