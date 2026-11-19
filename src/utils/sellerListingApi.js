@@ -284,3 +284,36 @@ export async function bulkMarketingChunked(token, { ids, mode, services }) {
     }
     return { success: true, updated, skipped };
 }
+
+/* ---------- product photo requests ---------- */
+export const fetchProductImageRequests = (token, submissionId) =>
+    authedJson(`/seller/catalog/submissions/${submissionId}/image-requests`, token);
+
+export const createProductImageRequest = (token, submissionId, payload) =>
+    authedJson(`/seller/catalog/submissions/${submissionId}/image-requests`, token, { method: "POST", body: JSON.stringify(payload) });
+
+export const cancelProductImageRequest = (token, submissionId, requestId) =>
+    authedJson(`/seller/catalog/submissions/${submissionId}/image-requests/${requestId}`, token, { method: "DELETE" });
+
+// admin
+export const adminListImageRequests = (token, { status = "pending", limit = 30, offset = 0 } = {}) =>
+    authedJson(`/admin/product-image-requests?${new URLSearchParams({ status, limit, offset })}`, token);
+
+export const adminApproveImageRequest = (token, id) =>
+    authedJson(`/admin/product-image-requests/${id}/approve`, token, { method: "POST" });
+
+export const adminRejectImageRequest = (token, id, reason) =>
+    authedJson(`/admin/product-image-requests/${id}/reject`, token, { method: "POST", body: JSON.stringify({ reason }) });
+
+export const adminImageAuditLog = (token, { brandItemId, requestId, limit = 50, offset = 0 } = {}) => {
+    const p = new URLSearchParams({ limit, offset });
+    if (brandItemId) p.set("brandItemId", brandItemId);
+    if (requestId) p.set("requestId", requestId);
+    return authedJson(`/admin/product-image-requests/audit?${p}`, token);
+};
+
+export const adminRollbackPreview = (token, brandItemId) =>
+    authedJson(`/admin/product-image-requests/rollback-preview?${new URLSearchParams({ brandItemId })}`, token);
+
+export const adminRollbackImages = (token, brandItemId, logId) =>
+    authedJson(`/admin/product-image-requests/rollback`, token, { method: "POST", body: JSON.stringify({ brandItemId, logId }) });

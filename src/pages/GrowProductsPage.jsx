@@ -201,6 +201,7 @@ const ProductCard = memo(function ProductCard({
                 ) : (
                     <>
                         <button className="bt sm" type="button" onClick={() => onShare(it)}><Ic n="share" />Share</button>
+                        <button className="bt sm" type="button" onClick={() => onEditSection(it.id, "photos")}>Photos</button>
                         <button className="bt sm" type="button" onClick={() => onEditSection(it.id, null)}>Edit details <Ic n="chev" /></button>
                     </>
                 )}

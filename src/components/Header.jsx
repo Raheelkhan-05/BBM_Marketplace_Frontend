@@ -91,7 +91,7 @@ function GuestHeader() {
       <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 md:px-7">
         <SmartLink to="/" aria-label="BBM home" className="flex min-w-0 items-center gap-2">
           <span
-            className="whitespace-nowrap text-[25px] leading-none font-extrabold lowercase"
+            className="whitespace-nowrap text-[22px] leading-none font-extrabold lowercase"
             style={{
               fontFamily: "'Manrope', sans-serif",
               fontWeight: 800,
@@ -127,7 +127,7 @@ export default function Header() {
       <div className="mx-auto hidden h-7 max-w-7xl items-center px-4 md:flex lg:px-8">
         <SmartLink to="/" className="flex shrink-0 items-center">
           <span
-            className="whitespace-nowrap text-[25px] leading-none font-extrabold lowercase"
+            className="whitespace-nowrap text-[22px] leading-none font-extrabold lowercase"
             style={{
               fontFamily: "'Manrope', sans-serif",
               fontWeight: 800,

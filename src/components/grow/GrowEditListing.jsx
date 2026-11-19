@@ -13,14 +13,16 @@ import DispatchingLocationsPicker from "../seller/listingForm/DispatchingLocatio
 import MarketingServicePicker from "../seller/listingForm/MarketingServicePicker.jsx";
 import { VALIDITY_OPTIONS, validityLabel, resolveValidityHours } from "../../shared/listingValidity.js";
 import { normalizeServiceKeys } from "../../shared/marketingServices.js";
+import GrowProductPhotos from "./GrowProductPhotos.jsx";
 import { GrowBuyerAccessLive, Seg, YN, Field } from "./GrowBuyerAccess.jsx";
 import "./grow-access.css";
 
 const GST_LABEL = "GST is fixed for this product";
-const ALIAS = { identity: "identity", dispatch: "delivery", delivery: "delivery", policies: "policies", terms: "policies" };
+const ALIAS = { identity: "identity", photos: "photos", dispatch: "delivery", delivery: "delivery", policies: "policies", terms: "policies" };
 const TITLES = {
     validity: ["Listing validity", "How long it stays live"],
     identity: ["Product", "Locked once approved"],
+    photos: ["Product photos", "Add or change photos"],
     packaging: ["Packaging & minimum order", "MOQ and samples"],
     pricing: ["Tax & pricing", "Price, GST, discounts"],
     fulfilment: ["Fulfilment", "Stock or lead time"],
@@ -29,7 +31,7 @@ const TITLES = {
     marketing: ["Marketing & promotion", "Promotion budget"],
     customPricing: ["Buyer access & pricing", "Who sees it, special prices"],
 };
-const ORDER = ["validity", "identity", "packaging", "pricing", "fulfilment", "delivery", "policies", "marketing", "customPricing"];
+const ORDER = ["validity", "identity", "photos", "packaging", "pricing", "fulfilment", "delivery", "policies", "marketing", "customPricing"];
 
 const r2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 const num = (s) => String(s).replace(/[^\d.]/g, "");
@@ -167,6 +169,7 @@ export default function GrowEditListing({ token, submissionId, focusSection, onC
 
     const save = async () => {
         setBanner("");
+        if (only === "photos") { onClose?.(); return; }   // photo requests are sent as they're added
         if (missing.length) {
             setShowErr(true);
             setBanner(`Please complete: ${missing.slice(0, 4).map((m) => m.label).join(", ")}${missing.length > 4 ? `, +${missing.length - 4} more` : ""}.`);
@@ -220,7 +223,7 @@ export default function GrowEditListing({ token, submissionId, focusSection, onC
     };
 
     const title = only ? (TITLES[only]?.[0] || "Edit listing") : "Edit listing";
-    const saveLabel = only === "customPricing" ? "Save buyer prices" : "Save changes";
+    const saveLabel = only === "customPricing" ? "Save buyer prices" : only === "photos" ? "Done" : "Save changes";
 
     return (
         <div className="gax gax-edit" ref={rootRef} data-lenis-prevent="" data-scroll-lock-allow="">
@@ -249,7 +252,13 @@ export default function GrowEditListing({ token, submissionId, focusSection, onC
                     {show("identity") && (
                         <Sec id="identity" only={only} open={open} setOpen={setOpen} count={0}>
                             <div className="gax-fixed"><small>Product</small><b>{f.productName}</b>{f.brandName && <div style={{ color: "var(--g-blue)", fontWeight: 700, fontSize: ".9rem" }}>{f.brandName}</div>}</div>
-                            <p className="gax-cap">Name and brand are locked after approval.</p>
+                            <p className="gax-cap">Name and brand are locked after approval. To change photos, use the Photos section.</p>
+                        </Sec>
+                    )}
+
+                    {show("photos") && (
+                        <Sec id="photos" only={only} open={open} setOpen={setOpen} count={0}>
+                            <GrowProductPhotos token={token} submissionId={submissionId} />
                         </Sec>
                     )}
 
@@ -358,7 +367,7 @@ export default function GrowEditListing({ token, submissionId, focusSection, onC
             </div>
 
             <div className="gax-ef">
-                <button type="button" className="gax-gh" onClick={onClose}>Cancel</button>
+                {only !== "photos" && <button type="button" className="gax-gh" onClick={onClose}>Cancel</button>}
                 <button type="button" className="gax-go" disabled={busy || phase !== "ready"} onClick={save}>{busy ? "Saving…" : saveLabel}</button>
             </div>
         </div>
