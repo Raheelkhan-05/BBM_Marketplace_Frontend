@@ -114,7 +114,7 @@ function BrandLogo({ src, name }) {
                 referrerPolicy="no-referrer"
                 onLoad={() => setLoaded(true)}
                 onError={() => setFailed(true)}
-                className={`h-full w-full object-contain transition-opacity duration-300 motion-reduce:transition-none ${loaded ? "opacity-100" : "opacity-0"}`}
+                className={`h-full w-full aspect-square object-contain rounded-xl transition-opacity duration-300 motion-reduce:transition-none ${loaded ? "opacity-100" : "opacity-0"}`}
             />
         </div>
     );
