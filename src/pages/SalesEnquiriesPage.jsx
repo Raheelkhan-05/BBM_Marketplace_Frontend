@@ -3,7 +3,7 @@
 // Opens instantly from cache and refreshes quietly; hovering/touching a row warms up its thread.
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
-import { Plus, Search, X, Receipt, Inbox, Loader2, Trophy, XCircle, Bell, PhoneCall, MapPin } from "lucide-react";
+import { Plus, Search, X, Receipt, Inbox, Loader2, Trophy, XCircle, Users, Bell, PhoneCall, MapPin } from "lucide-react";
 import { dateTime, listTime, qty } from "../components/sales/salesThreadFmt.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
@@ -75,6 +75,11 @@ const ThreadRow = memo(function ThreadRow({ t, onWarm, onHeat }) {
                     <span className="st-row-3">
                         <small>{cold ? "Logged" : "Posted"} {dateTime(t.createdAt)}</small>
                         <span className="st-badges">
+                            {t.shared && (
+                                <span className="st-bd" title={`Shared with you${t.salespersonName ? ` by ${t.salespersonName}` : ""}`}>
+                                    <Users size={12} />{t.salespersonName ? `By ${t.salespersonName}` : "Shared"}
+                                </span>
+                            )}
                             {cold && <span className="st-bd cold" title="Started as a cold call"><PhoneCall size={12} />Cold call</span>}
                             {t.reminderAt && kind === "open" && (
                                 <span className={`st-bd rem${due ? " due" : ""}`} title={due ? "Reminder due" : "Reminder"}>
@@ -122,6 +127,7 @@ export default function SalesEnquiriesPage() {
     const abortRef = useRef(null);
     const seqRef = useRef(0);
     const itemsRef = useRef([]); itemsRef.current = items;
+    const filterRef = useRef(filter); filterRef.current = filter;
     const heatRef = useRef(heat); heatRef.current = heat;
     const pendingRef = useRef(new Map());            // id -> heat still being saved: refreshes must not undo it
     const reloadT = useRef(0);
@@ -133,8 +139,13 @@ export default function SalesEnquiriesPage() {
     const fix = (list) => {
         const p = pendingRef.current;
         if (!p.size) return list;
-        return list.map((i) => (p.has(i.id) ? { ...i, heat: p.get(i.id) } : i))
-            .filter((i) => !p.has(i.id) || matchHeat(i.heat, heatRef.current));
+        return list
+            .map((i) => {
+                if (!p.has(i.id)) return i;
+                const h = p.get(i.id);
+                return { ...i, heat: h, kind: h && i.kind === "cold_call" ? "enquiry" : i.kind };
+            })
+            .filter((i) => !p.has(i.id) || (matchHeat(i.heat, heatRef.current) && !(filterRef.current === "cold" && i.kind !== "cold_call")));
     };
 
     const load = useCallback(async (offset, append, silent = false) => {
@@ -206,22 +217,28 @@ export default function SalesEnquiriesPage() {
         const cur = itemsRef.current.find((i) => i.id === id);
         if (!cur) return;
         const prev = cur.heat || null;
-        if (prev === next) return;
+        const wasCold = !!next && cur.kind === "cold_call";   // any heat makes a cold call a regular enquiry
+        if (prev === next && !wasCold) return;
 
         pendingRef.current.set(id, next);
-        const gone = !matchHeat(next, heatRef.current);
-        setItems((list) => list.map((i) => (i.id === id ? { ...i, heat: next } : i)).filter((i) => matchHeat(i.heat, heatRef.current)));
+        const keep = (i) => matchHeat(i.heat, heatRef.current) && !(filterRef.current === "cold" && i.kind !== "cold_call");
+        const gone = !matchHeat(next, heatRef.current) || (wasCold && filterRef.current === "cold");
+        setItems((list) => list
+            .map((i) => (i.id === id ? { ...i, heat: next, ...(wasCold ? { kind: "enquiry" } : {}) } : i))
+            .filter(keep));
         if (gone) setTotal((n) => Math.max(0, n - 1));
-        setHeatCounts((c) => ({
-            ...c,
-            [prev || "none"]: Math.max(0, (c[prev || "none"] || 0) - 1),
-            [next || "none"]: (c[next || "none"] || 0) + 1,
-        }));
+        if (wasCold) setCounts((c) => ({ ...c, cold: Math.max(0, (c.cold || 0) - 1) }));
+        if (prev !== next) {
+            setHeatCounts((c) => ({
+                ...c,
+                [prev || "none"]: Math.max(0, (c[prev || "none"] || 0) - 1),
+                [next || "none"]: (c[next || "none"] || 0) + 1,
+            }));
+        }
 
         const res = await setThreadHeat(token, id, next);
         if (pendingRef.current.get(id) === next) pendingRef.current.delete(id);
         if (!res.success) say(res.message || "Couldn't update the heat. Please try again.");
-        // success or failure: one quiet refresh (coalesced) puts server truth on screen
         clearTimeout(reloadT.current);
         reloadT.current = setTimeout(() => { if (!pendingRef.current.size) loadRef.current(0, false, true); }, 500);
     }, [token, say]);

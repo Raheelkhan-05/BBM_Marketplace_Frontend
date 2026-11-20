@@ -54,8 +54,8 @@ export default function ParticipantsSheet({ token, threadId, people, meId, canMa
                         {people.map((p) => (
                             <li key={p.userId}>
                                 <Avatar name={p.name} id={p.userId} size={34} />
-                                <span className="sc-ppl-t"><b>{p.name}{p.userId === meId ? " (you)" : ""}</b><small>{p.isOwner ? "Owner" : ROLE[p.role]}</small></span>
-                                {p.role !== "salesperson" && (canManage || p.userId === meId) && (
+                                <span className="sc-ppl-t"><b>{p.name}{p.userId === meId ? " (you)" : ""}</b><small>{p.isCreator ? "Enquiry owner" : p.isOwner ? "Owner" : ROLE[p.role]}</small></span>
+                                {!p.isCreator && (canManage || p.userId === meId) && (
                                     <button type="button" className="st-lnk" disabled={busy === p.userId} onClick={() => remove(p)}>
                                         {busy === p.userId ? "…" : p.userId === meId ? "Leave" : "Remove"}
                                     </button>

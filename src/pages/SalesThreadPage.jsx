@@ -154,10 +154,13 @@ const Entry = memo(function Entry({ e, busyKey, onRetry, onResend, onDiscard, on
     const hover = canReply ? <ReplyHover onClick={() => onReply(e)} /> : null;
 
     if (e.authorId && e.authorId !== ownerId) {
+        const isQuote = e.kind === "quote" && !!e.quote;
         return row(
-            <OtherBubble name={who(e.authorId, e.authorName)} id={e.authorId} time={clock(e.createdAt)}>
+            <OtherBubble name={who(e.authorId, e.authorName)} id={e.authorId} time={clock(e.createdAt)} quote={isQuote}>
                 {quote}
-                {e.body && <p className="st-body"><BodyText body={e.body} names={tagNames} meName={who(ownerId, "")} /></p>}
+                {isQuote
+                    ? <QuoteCard e={e} busyKey={busyKey} onRetry={onRetry} />
+                    : e.body && <p className="st-body"><BodyText body={e.body} names={tagNames} meName={who(ownerId, "")} /></p>}
                 {e.attachments?.length > 0 && <div className="st-atts">{e.attachments.map((a) => <ChatAttachment key={a.path} a={a} />)}</div>}
                 {hover}
             </OtherBubble>,
@@ -551,6 +554,8 @@ export default function SalesThreadPage() {
 
     // Older cached threads have no flag: they always had a product.
     const hasProduct = thread ? thread.hasProduct !== false : true;
+    const meId = thread?.viewerId || thread?.salespersonId;       // who is looking at this page
+    const isOwner = !thread || thread.isOwner !== false;
 
     // mode "fresh": newest page, replaces the list. mode "after": only what's new since the last saved entry we hold.
     const load = useCallback(async (mode) => {
@@ -602,7 +607,7 @@ export default function SalesThreadPage() {
     useEffect(() => { if (token && isReady) loadPeople(); }, [token, threadId, isReady, loadPeople]);
 
     const chat = useChatSocket(threadId, {
-        selfId: thread?.salespersonId,
+        selfId: meId,
         onMessage: (p) => {
             if (!p.entry) return;
             if (distFromBottom() < 260) stickRef.current = true;
@@ -614,7 +619,7 @@ export default function SalesThreadPage() {
     const nameMap = useMemo(() => new Map(people.list.map((p) => [p.userId, p.name])), [people.list]);
     const who = useCallback((id, fb) => nameMap.get(id) || fb || "Teammate", [nameMap]);
     const tagNames = useMemo(() => people.list.map((p) => p.name), [people.list]);
-    const tagPeople = useMemo(() => people.list.filter((p) => p.userId !== thread?.salespersonId), [people.list, thread?.salespersonId]);
+    const tagPeople = useMemo(() => people.list.filter((p) => p.userId !== meId), [people.list, meId]);
 
     // Reading the chat (tab visible) clears unread badges and stops the 1-hour WhatsApp reminder.
     // Reading = the chat is open and visible. Confirmed again every 20s so being present always counts as reading.
@@ -763,7 +768,7 @@ export default function SalesThreadPage() {
         const id = `tmp-${now}-${Math.random().toString(36).slice(2, 8)}`;
         const rp = replyRef.current;
         const tmp = {
-            id, clientKey: id, local: true, kind: "note", authorId: thread?.salespersonId, body, createdAt: now, replyTo: rp,
+            id, clientKey: id, local: true, kind: "note", authorId: meId, body, createdAt: now, replyTo: rp,
             attachments: attachments.map((a) => ({ ...a, url: previews?.[a.path] || null })),
             payload: { body, attachments, mentions, replyTo: rp?.id || undefined },
         };
@@ -772,7 +777,7 @@ export default function SalesThreadPage() {
         setThread((t) => (t ? { ...t, lastActivityAt: now, reminderAt: null } : t));
         setReplyTo(null);
         post(id, tmp.payload);
-    }, [post, thread?.salespersonId]);
+    }, [post, meId]);
 
     const sendVoice = useCallback(({ blob, type, duration }) => {
         const now = new Date().toISOString();
@@ -782,7 +787,7 @@ export default function SalesThreadPage() {
         const rp = replyRef.current;
         voiceRef.current.set(id, { file, duration, replyTo: rp?.id || null });
         const tmp = {
-            id, clientKey: id, local: true, kind: "note", authorId: thread?.salespersonId, body: "", createdAt: now, replyTo: rp,
+            id, clientKey: id, local: true, kind: "note", authorId: meId, body: "", createdAt: now, replyTo: rp,
             attachments: [{ path: id, name: file.name, type, size: file.size, duration, url: URL.createObjectURL(blob) }],
         };
         stickRef.current = true;
@@ -790,7 +795,7 @@ export default function SalesThreadPage() {
         setThread((t) => (t ? { ...t, lastActivityAt: now, reminderAt: null } : t));
         setReplyTo(null);
         postVoice(id);
-    }, [postVoice, thread?.salespersonId]);
+    }, [postVoice, meId]);
 
     const onResend = useCallback((id) => {
         setEntries((prev) => prev.map((x) => (x.id === id ? { ...x, failed: false, error: undefined } : x)));
@@ -799,7 +804,7 @@ export default function SalesThreadPage() {
         if (e?.payload) post(id, e.payload);
     }, [post, postVoice]);
     const onDiscard = useCallback((id) => { voiceRef.current.delete(id); setEntries((prev) => prev.filter((x) => x.id !== id)); }, []);
-    const onReply = useCallback((e) => setReplyTo(snippetOf(e, thread?.salespersonId)), [thread?.salespersonId]);
+    const onReply = useCallback((e) => setReplyTo(snippetOf(e, meId)), [meId]);
 
     const retry = useCallback(async (quoteId, channel) => {
         setBusyKey(`${quoteId}:${channel}`);
@@ -902,8 +907,12 @@ export default function SalesThreadPage() {
                 <Link to="/sales/enquiries" className="st-ib" aria-label="Back to RFQs"><ArrowLeft size={18} /></Link>
                 <div className="st-head-t">
                     <h1>{thread.displayName}</h1>
-                    <p>{hasProduct ? `${thread.productName} · ${qty(thread.quantity)} ${thread.unit}` : "Cold call · no product yet"}</p>
-                    <p className="sub">{cold ? "Logged" : "Posted"} {dateTime(thread.createdAt)}{cold && hasProduct ? " · Started as a cold call" : ""}</p>
+                    <p>{hasProduct ? `${thread.productName} · ${qty(thread.quantity)} ${thread.unit}` : cold ? "Cold call · no product yet" : "No product yet"}</p>
+                    <p className="sub">
+                        {cold ? "Logged" : "Posted"} {dateTime(thread.createdAt)}
+                        {cold && hasProduct ? " · Started as a cold call" : ""}
+                        {!isOwner && thread.salespersonName ? ` · Owner: ${thread.salespersonName}` : ""}
+                    </p>
                 </div>
                 <ParticipantStack people={people.list} onClick={() => setSheet(true)} />
                 <span className={`st-state ${st.k}`}>{st.l}</span>
@@ -942,7 +951,7 @@ export default function SalesThreadPage() {
                     </div>
                 )}
                 <Timeline entries={entries} busyKey={busyKey} onRetry={retry} onResend={onResend} onDiscard={onDiscard}
-                    onReply={onReply} ownerId={thread.salespersonId} who={who} tagNames={tagNames} />
+                    onReply={onReply} ownerId={meId} who={who} tagNames={tagNames} />
             </div>
 
             {/* Sticky dock: the "Latest" button lives inside it, so it always sits just above the composer, whatever its height. */}
@@ -966,7 +975,7 @@ export default function SalesThreadPage() {
                     <Composer key={threadId} token={token} threadId={threadId} say={say} onSend={onSend} onVoice={sendVoice} onQuote={openQuote}
                         onOutcome={askOutcome} onRemind={askRemind} onAddProduct={openAddProduct}
                         people={tagPeople} onTyping={chat.emitTyping}
-                        replyTo={replyTo} onClearReply={() => setReplyTo(null)} who={who} meId={thread.salespersonId}
+                        replyTo={replyTo} onClearReply={() => setReplyTo(null)} who={who} meId={meId}
                         hasReminder={!!thread.reminderAt} hasProduct={hasProduct} />
                 )}
             </div>
@@ -988,9 +997,12 @@ export default function SalesThreadPage() {
                 onCancel={closeRemind} onSave={saveReminder} onExited={remindGone} />}
 
             {sheet && (
-                <ParticipantsSheet token={token} threadId={threadId} people={people.list} meId={thread.salespersonId}
+                <ParticipantsSheet token={token} threadId={threadId} people={people.list} meId={meId}
                     canManage={people.canManage} onClose={() => setSheet(false)}
-                    onChanged={(list) => setPeople((p) => ({ ...p, list }))} />
+                    onChanged={(list) => {
+                        setPeople((p) => ({ ...p, list }));
+                        if (!isOwner && !list.some((x) => x.userId === meId)) nav("/sales/enquiries", { replace: true });
+                    }} />
             )}
         </div>
     );

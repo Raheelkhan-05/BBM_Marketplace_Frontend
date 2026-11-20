@@ -371,7 +371,7 @@ export default function SalesMonitorThreadPage() {
                 <Link to={back} className="st-ib" aria-label="Back"><ArrowLeft size={18} /></Link>
                 <div className="st-head-t">
                     <h1>{thread.displayName || "Enquiry"}</h1>
-                    <p>{hasProduct ? `${thread.productName} · ${qty(thread.quantity)} ${thread.unit}` : "Cold call · no product yet"}</p>
+                    <p>{hasProduct ? `${thread.productName} · ${qty(thread.quantity)} ${thread.unit}` : cold ? "Cold call · no product yet" : "No product yet"}</p>
                     <p className="sub">{cold ? "Logged by" : "Created by"} <b>{creatorName}</b> · {dateTime(thread.createdAt)}</p>
                     {differs && <p className="sub">Last updated by <b>{who(lastId, lastReal.authorName)}</b> · {dateTime(lastReal.createdAt)}</p>}
                 </div>
