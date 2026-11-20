@@ -155,7 +155,6 @@ import ActiveViewStrip from "./ActiveViewStrip.jsx";
 import { GroupBannerCard } from "./GroupBannerCarousel.jsx";
 import GroupBannerBlock from "./GroupBannerBlock.jsx";
 import useHomeBannerPlan from "../../hooks/useHomeBannerPlan";
-import useGroupBanners from "../../hooks/useGroupBanners";
 import { track } from "../../lib/analytics.js";
 import HomeCartButton from "./HomeCartButton.jsx";
 import OfferActions from "./OfferActions.jsx";

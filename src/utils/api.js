@@ -875,9 +875,12 @@ export async function fetchLowestPriceForBrandItem(genericProductBrandId, token)
   return res.json();
 }
 
-export async function fetchBrandsPage({ q = "", limit = 24, offset = 0, signal } = {}) {
+export async function fetchBrandsPage({ q = "", limit = 24, offset = 0, signal, token } = {}) {
   const params = new URLSearchParams({ q, limit, offset });
-  const res = await fetch(`${API_BASE}/catalog/brands?${params}`, { signal });
+  const res = await fetch(`${API_BASE}/catalog/brands?${params}`, {
+    signal,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
   if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
   return res.json();
 }

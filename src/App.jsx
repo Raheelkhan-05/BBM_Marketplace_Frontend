@@ -40,49 +40,11 @@ import PaymentAppHandoff from "./components/PaymentAppHandoff.jsx";
 // visitor's home-page load. Pages registered in routeImports use that
 // SAME import function here, so a prefetch triggered from routePreload.js
 // (hover, idle) warms exactly the chunk this lazy() will resolve from.
-const LandingPage = lazy(() => import("./pages/LandingPage"));
-const SearchResultsPage = lazy(() => import("./pages/SearchResultsPage"));
 const HomePage = lazy(routeImports["/home"]);
-const CatalogLevelPage = lazy(() => import("./pages/CatalogLevelPage.jsx"));
 const AuthPage = lazy(() => import("./pages/AuthPage.jsx"));
-const SellerOnboardingPage = lazy(() => import("./pages/SellerOnboardingPage.jsx"));
-const SellerStatusPage = lazy(() => import("./pages/SellerStatusPage.jsx"));
-const AdminSellersPage = lazy(() => import("./pages/admin/AdminSellersPage.jsx"));
-const AdminSellerDetailPage = lazy(() => import("./pages/admin/AdminSellerDetailPage.jsx"));
-const AdminManageAdminsPage = lazy(() => import("./pages/admin/AdminManageAdminsPage.jsx"));
 const ShopRoute = lazy(() => import("./pages/ShopRoute.jsx"));
 const ProductDetailPage = lazy(() => import("./pages/ProductDetailPage.jsx"));
-const CategoryLandingPage = lazy(() => import("./pages/CategoryLandingPage.jsx"));
-const SubcategoryLandingPage = lazy(() => import("./pages/SubcategoryLandingPage.jsx"));
-const AdminCatalogReviewPage = lazy(() => import("./pages/admin/AdminCatalogReviewPage.jsx"));
-const AdminCatalogDetailPage = lazy(() => import("./pages/admin/AdminCatalogDetailPage.jsx"));
-const BrandDetailPage = lazy(() => import("./pages/BrandDetailPage.jsx"));
-const BrandFamilyPage = lazy(() => import("./pages/BrandFamilyPage.jsx"));
-// NOTE: the old ./pages/legal/PrivacyPolicy.jsx page is no longer routed (it
-// duplicated /privacy-policy). The file can be deleted.
-const SellPublishProductPage = lazy(routeImports["/seller/sell"]);
-const AdminSellerSubmissionsPage = lazy(() => import("./pages/admin/AdminSellerSubmissionsPage.jsx"));
-const OrdersPage = lazy(routeImports["/orders"]);
-const SalesOrdersPage = lazy(() => import("./pages/SalesOrdersPage.jsx"));
-const OrderDetailPage = lazy(() => import("./pages/OrderDetailPage.jsx"));
-const SellerOrderDetailPage = lazy(() => import("./pages/SellerOrderDetailPage.jsx"));
-const BrowsePage = lazy(() => import("./pages/BrowsePage.jsx"));
-const GenericProductSellersPage = lazy(() => import("./pages/GenericProductSellersPage.jsx"));
-const CategoryProductsPage = lazy(() => import("./pages/CategoryProductsPage.jsx"));
-const GenericProductBrandsPage = lazy(() => import("./pages/GenericProductBrandsPage.jsx"));
 const BrandItemSellersPage = lazy(() => import("./pages/BrandItemSellersPage.jsx"));
-const SellerManageListingsPage = lazy(routeImports["/seller/products"]);
-const ChatPage = lazy(routeImports["/chat"]);
-const PaymentVerificationPage = lazy(() => import('./pages/admin/PaymentVerificationPage.jsx'));
-const AdminFullCatalogUploadPage = lazy(() => import('./pages/admin/AdminFullCatalogUploadPage.jsx'));
-const CartPage = lazy(routeImports["/cart"]);
-const AdminWalletSellersPage = lazy(() => import("./pages/admin/AdminWalletSellersPage.jsx"));
-const SellerWalletPage = lazy(routeImports["/seller/wallet"]);
-const AdminDatabasePanel = lazy(() => import("./pages/admin/AdminDatabasePanel.jsx"));
-const AdminProductCommissionsPage = lazy(() => import("./pages/admin/AdminProductCommissionsPage.jsx"));
-const SellerEditListingPage = lazy(() => import("./pages/SellerEditListingPage.jsx"));
-const TransportLibraryPage = lazy(() => import("./pages/TransportLibraryPage.jsx"));
-const AdminHelpRequestsPage = lazy(() => import("./pages/admin/AdminHelpRequestsPage.jsx"));
 const SharedProductPage = lazy(() => import("./pages/SharedProductPage.jsx"));
 const TermsPage = lazy(() => import("./pages/TermsPage.jsx"));
 const PrivacyPage = lazy(() => import("./pages/PrivacyPage.jsx"));
@@ -90,14 +52,9 @@ const RefundPolicyPage = lazy(() => import("./pages/RefundPolicyPage.jsx"));
 const ContactPage = lazy(() => import("./pages/ContactPage.jsx"));
 const ServicesPage = lazy(() => import("./pages/ServicesPage.jsx"));
 const PricingPage = lazy(() => import("./pages/PricingPage.jsx"));
-const SellerStorePage = lazy(() => import("./pages/SellerStorePage.jsx"));
-const CreditPage = lazy(() => import("./pages/CreditPage.jsx"));
 const SellerMarketingPage = lazy(() => import("./pages/SellerMarketingPage.jsx"));
-const RFQPage_ComingSoon = lazy(() => import("./pages/RFQPage_ComingSoon.jsx"));
-const RFQPage = lazy(() => import("./pages/RFQPage.jsx"));
 const BrandsPage = lazy(() => import("./pages/BrandsPage.jsx"));
 const SellersPage = lazy(() => import("./pages/SellersPage.jsx"));
-const AdminRfqPage = lazy(() => import("./pages/admin/AdminRfqPage.jsx"));
 
 const GrowPage = lazy(() => import("./pages/GrowPage.jsx"));
 const GrowEntry = lazy(() => import("./pages/GrowEntry.jsx"));
@@ -130,12 +87,6 @@ const SalesEnquiriesPage = lazy(() => import("./pages/SalesEnquiriesPage.jsx"));
 const SalesPipelinePage = lazy(() => import("./pages/SalesPipelinePage.jsx"));
 const SalesThreadPage = lazy(() => import("./pages/SalesThreadPage.jsx"));
 const SalesMonitorRoutes = lazy(() => import("./pages/SalesMonitorRoutes.jsx"));
-
-
-function CatalogLevelPageWithKey({ configKey }) {
-  const { idOrSlug } = useParams();
-  return <CatalogLevelPage key={idOrSlug || "root"} configKey={configKey} />;
-}
 
 // Deliberately blank: any visible fallback here would itself flash before
 // a route's own (much cheaper) internal skeleton takes over, on every

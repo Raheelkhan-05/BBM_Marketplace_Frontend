@@ -24,6 +24,7 @@ import { ArrowLeft, ArrowUp, Search, X, Loader2, Tags } from "lucide-react";
 import { fetchBrandsPage } from "../utils/api";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
 import { resizedImageUrl } from "../utils/imageUrl";
+import { useAuth } from "../context/AuthContext.jsx";
 import Seo from "../components/Seo.jsx";
 
 
@@ -41,11 +42,15 @@ const BACK_TO_TOP_AFTER_PX = 1200;
 // key: search term → { brands, hasMore, scrollY, ts }
 const listCache = new Map();
 
-function readCache(q) {
-    const entry = listCache.get(q);
+// cache helpers: key = viewer + search term
+const cacheKey = (viewer, q) => `${viewer}::${q}`;
+
+function readCache(viewer, q) {
+    const k = cacheKey(viewer, q);
+    const entry = listCache.get(k);
     if (!entry) return null;
     if (Date.now() - entry.ts > CACHE_TTL_MS) {
-        listCache.delete(q);
+        listCache.delete(k);
         return null;
     }
     return entry;
@@ -134,9 +139,6 @@ export default function BrandsPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const initialQ = (searchParams.get("q") || "").trim();
 
-    // Hydrate synchronously from cache so there is no loading flash on "back"
-    const initialCache = useRef(readCache(initialQ)).current;
-
     const [input, setInput] = useState(initialQ);
     const [q, setQ] = useState(initialQ);
     const [brands, setBrands] = useState(initialCache?.brands ?? []);
@@ -155,6 +157,13 @@ export default function BrandsPage() {
     const scrollYRef = useRef(0);
     const firstRunRef = useRef(true);
     const inputRef = useRef(null);
+
+    const { token } = useAuth();
+    const viewer = token || "guest";
+    const viewerRef = useRef(viewer);
+    viewerRef.current = viewer;
+
+    const initialCache = useRef(readCache(viewer, initialQ)).current;
 
     qRef.current = q;
 
@@ -184,7 +193,7 @@ export default function BrandsPage() {
         setError(null);
         setMoreError(false);
 
-        fetchBrandsPage({ q, limit: PAGE, offset, signal: controller.signal })
+        fetchBrandsPage({ q, limit: PAGE, offset, signal: controller.signal, token })
             .then((res) => {
                 if (seq !== seqRef.current) return;
                 if (!res?.success) throw new Error("bad response");
@@ -199,7 +208,7 @@ export default function BrandsPage() {
                 listRef.current = next;
                 setBrands(next);
                 setHasMore(!!res.hasMore);
-                listCache.set(q, { brands: next, hasMore: !!res.hasMore, scrollY: 0, ts: Date.now() });
+                listCache.set(cacheKey(viewer, q), { brands: next, hasMore: !!res.hasMore, scrollY: 0, ts: Date.now() });
             })
             .catch((err) => {
                 if (err?.name === "AbortError") return;
@@ -217,7 +226,7 @@ export default function BrandsPage() {
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [q]);
+    }, [q, token, viewer]);
 
     // Search term changed (or first mount)
     useEffect(() => {
@@ -265,8 +274,9 @@ export default function BrandsPage() {
         window.addEventListener("scroll", onScroll, { passive: true });
         return () => {
             window.removeEventListener("scroll", onScroll);
-            const entry = listCache.get(qRef.current);
-            if (entry) listCache.set(qRef.current, { ...entry, scrollY: scrollYRef.current });
+            const key = cacheKey(viewerRef.current, qRef.current);
+            const entry = listCache.get(key);
+            if (entry) listCache.set(key, { ...entry, scrollY: scrollYRef.current });
         };
     }, []);
 
