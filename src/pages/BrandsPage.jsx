@@ -139,6 +139,13 @@ export default function BrandsPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const initialQ = (searchParams.get("q") || "").trim();
 
+    const { token } = useAuth();
+    const viewer = token || "guest";
+    const viewerRef = useRef(viewer);
+    viewerRef.current = viewer;
+
+    const initialCache = useRef(readCache(viewer, initialQ)).current;
+
     const [input, setInput] = useState(initialQ);
     const [q, setQ] = useState(initialQ);
     const [brands, setBrands] = useState(initialCache?.brands ?? []);
@@ -157,13 +164,6 @@ export default function BrandsPage() {
     const scrollYRef = useRef(0);
     const firstRunRef = useRef(true);
     const inputRef = useRef(null);
-
-    const { token } = useAuth();
-    const viewer = token || "guest";
-    const viewerRef = useRef(viewer);
-    viewerRef.current = viewer;
-
-    const initialCache = useRef(readCache(viewer, initialQ)).current;
 
     qRef.current = q;
 
