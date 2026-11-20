@@ -93,7 +93,12 @@ function SellerLogo({ src, name }) {
                     style={{ color: ACCENT }}
                     aria-label={`${name} logo`}
                 >
-                    {name.trim().slice(0, 2).toUpperCase()}
+                    {name
+                        .trim()
+                        .split(/\s+/)
+                        .map((word) => word[0])
+                        .join("")
+                        .toUpperCase()}
                 </span>
             )}
         </div>
