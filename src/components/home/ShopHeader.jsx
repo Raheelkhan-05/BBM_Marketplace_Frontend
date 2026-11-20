@@ -336,10 +336,21 @@ export function SmartImg({ src, width, fallback = null, ...rest }) {
 /* ---------- pieces ---------- */
 
 function Logo({ shop }) {
-    const letter = (shop?.display_name || "S").trim()[0]?.toUpperCase() || "S";
+    const initials = (shop?.display_name || "S")
+        .trim()
+        .split(/\s+/)
+        .map((word) => word[0])
+        .join("")
+        .toUpperCase() || "S";
+
     return (
         <span className={`sh-logo${shop?.logo_url ? "" : " empty"}`}>
-            <SmartImg src={shop?.logo_url} width={200} alt="" fallback={<b>{letter}</b>} />
+            <SmartImg
+                src={shop?.logo_url}
+                width={200}
+                alt=""
+                fallback={<b>{initials}</b>}
+            />
         </span>
     );
 }
