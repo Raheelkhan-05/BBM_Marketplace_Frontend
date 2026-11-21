@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, useRef } f
 import { supabase } from "../utils/supabaseClient.js";
 import { fetchMe } from "../utils/api.js";
 import posthog from "../lib/posthog.js";
+import { readImpersonation, saveImpersonation, leaveImpersonation } from "../utils/impersonation.js";
 
 const AuthContext = createContext(null);
 const DEV_TOKEN_KEY = "bbm_dev_bypass_token";
@@ -10,13 +11,17 @@ const AUTH_TOKEN_KEY = "bbm_auth_token";
 // (Realtime note from the previous version kept in spirit: every real-time push goes through
 // Socket.IO via useSocket(); registerResyncHandler/runResync below is the tab-focus safety net.)
 
-// Reads whichever session token is in localStorage, synchronously, with
+// Reads whichever session token is stored, synchronously, with
 // no async work at all. Used as AuthProvider's INITIAL state (see
 // useState below) — not inside an effect — so "is this person logged
 // in" is known the instant this component first renders, before the
 // browser has even painted anything.
+//
+// An admin "act as user" session (sessionStorage, this tab only) always wins over a stored login.
 function readStoredSession() {
   if (typeof window === "undefined") return null;
+  const imp = readImpersonation();
+  if (imp) return { access_token: imp.token, impersonating: true };
   const authToken = localStorage.getItem(AUTH_TOKEN_KEY);
   if (authToken) return { access_token: authToken };
   const devToken = localStorage.getItem(DEV_TOKEN_KEY);
@@ -28,6 +33,8 @@ export function AuthProvider({ children }) {
   // Lazy initializer — runs once, synchronously, on first render.
   const [session, setSession] = useState(readStoredSession);
   const [profile, setProfile] = useState(null);
+  // { sessionId, targetName, companyName, adminName, reason, expiresAt } while an admin is acting as a user.
+  const [impersonation, setImpersonation] = useState(() => readImpersonation()?.meta ?? null);
   const identifiedUserIdRef = useRef(null);
 
   // Only tracks whether the PROFILE fetch for an already-known session is
@@ -84,7 +91,9 @@ export function AuthProvider({ children }) {
         return;
       }
       // 401 covers an expired session AND a team member who has been removed (TEAM_ACCESS_REMOVED).
+      // For an admin session it means the session ended or was revoked: drop it without touching any real login.
       if (res?.status === 401) {
+        if (readImpersonation()?.token === token) { leaveImpersonation("/home"); return; }
         await clearSession();
         return;
       }
@@ -104,6 +113,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const clearSession = useCallback(async () => {
+    // Inside an admin session, "clear" only ever means leaving that session; the real login is never touched.
+    if (readImpersonation()) { leaveImpersonation("/home"); return; }
     posthog?.reset();
     identifiedUserIdRef.current = null;
     localStorage.removeItem(DEV_TOKEN_KEY);
@@ -114,6 +125,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    if (readImpersonation()) { leaveImpersonation("/home"); return; }
     posthog?.reset();
     identifiedUserIdRef.current = null;
     localStorage.removeItem(DEV_TOKEN_KEY);
@@ -139,10 +151,22 @@ export function AuthProvider({ children }) {
     return loadProfile(token);
   }, [loadProfile]);
 
+  // Admin "act as user": stores the short-lived admin token in THIS TAB ONLY (sessionStorage).
+  // Resolves once the user's profile has loaded, so the caller can navigate without a guest flash.
+  const startImpersonation = useCallback((token, meta) => {
+    saveImpersonation(token, meta);
+    setImpersonation(meta);
+    setProfile(null);
+    setSession({ access_token: token, impersonating: true });
+    return loadProfile(token);
+  }, [loadProfile]);
+
   // The profile is resolved after login and on a restored session. Identifying
   // here attributes all later browser captures and errors without repeating it
   // at individual pages or event call sites.
+  // Never during an admin session: the admin's browsing must not be attributed to the user.
   useEffect(() => {
+    if (impersonation) return;
     const distinctId = profile?.id ? String(profile.id) : null;
 
     if (!distinctId) {
@@ -162,7 +186,7 @@ export function AuthProvider({ children }) {
       ...(profile.team?.role ? { role: profile.team.role } : {}),
     });
     identifiedUserIdRef.current = distinctId;
-  }, [profile]);
+  }, [profile, impersonation]);
 
   useEffect(() => {
     let mounted = true;
@@ -177,6 +201,7 @@ export function AuthProvider({ children }) {
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
       if (event === "INITIAL_SESSION") return;
+      if (readImpersonation()) return; // an admin session must never be replaced by a background auth event
       if (newSession?.access_token) {
         localStorage.setItem(AUTH_TOKEN_KEY, newSession.access_token);
         setSession(newSession);
@@ -208,6 +233,10 @@ export function AuthProvider({ children }) {
         initializing: profileLoading,
         isLoggedIn,
         effectiveLoggedIn: isLoggedIn,
+        // ADMIN "ACT AS USER"
+        isImpersonating: !!impersonation,
+        impersonation,
+        startImpersonation,
         // TEAM
         isTeamMember: !!profile?.team && !profile.team.isAdmin,
         isSalesperson: profile?.team?.role === "salesperson",

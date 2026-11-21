@@ -34,6 +34,7 @@ import GrowOrdersShell from "./components/growSeller/GrowOrdersShell.jsx";
 import AnalyticsBridge from "./components/analytics/AnalyticsBridge.jsx";
 import PaymentAppBridge from "./components/PaymentAppBridge.jsx";
 import PaymentAppHandoff from "./components/PaymentAppHandoff.jsx";
+import ImpersonationBanner from "./components/ImpersonationBanner.jsx";
 
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
@@ -42,6 +43,7 @@ import PaymentAppHandoff from "./components/PaymentAppHandoff.jsx";
 // (hover, idle) warms exactly the chunk this lazy() will resolve from.
 const HomePage = lazy(routeImports["/home"]);
 const AuthPage = lazy(() => import("./pages/AuthPage.jsx"));
+const ImpersonatePage = lazy(() => import("./pages/ImpersonatePage.jsx"));
 const ShopRoute = lazy(() => import("./pages/ShopRoute.jsx"));
 const ProductDetailPage = lazy(() => import("./pages/ProductDetailPage.jsx"));
 const BrandItemSellersPage = lazy(() => import("./pages/BrandItemSellersPage.jsx"));
@@ -119,6 +121,8 @@ function App() {
           <AnalyticsBridge />
           <PaymentAppBridge />
           <PaymentAppHandoff />
+          {/* Always visible (and not dismissable) while an admin is acting as a user. Renders nothing otherwise. */}
+          <ImpersonationBanner />
           {/*
             InstallAppPrompt, PendingSubmissionWatcher, PendingPaymentGate and
             ContactsBootstrapper are app-wide background features unrelated
@@ -144,6 +148,8 @@ function App() {
                   <Route path="/login" element={<AuthPage />} />
                 </Route>
                 <Route path="/join-team" element={<JoinTeamPage />} />
+                {/* Admin "act as user" entry: exchanges the one-time code from the admin panel for a session. */}
+                <Route path="/impersonate" element={<ImpersonatePage />} />
 
                 {/* Public policy / information pages. Must stay reachable without
                     login: payment-gateway and bank reviewers open them logged out.

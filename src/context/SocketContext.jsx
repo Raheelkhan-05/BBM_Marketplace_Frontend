@@ -7,13 +7,14 @@ const SocketContext = createContext(null);
 export const useSocket = () => useContext(SocketContext);
 
 export function SocketProvider({ children }) {
-    const { token } = useAuth();
+    const { token, isImpersonating } = useAuth();
     const socketRef = useRef(null);
     const [connected, setConnected] = useState(false);
     const [socket, setSocket] = useState(null);
 
     useEffect(() => {
-        if (!token) return;
+        // Admin "act as user" sessions never open a socket: no presence, no read receipts, no unlogged socket writes.
+        if (!token || isImpersonating) return;
 
         if (!import.meta.env.VITE_SOCKET_URL) {
             console.error("[socket] VITE_SOCKET_URL is not set — sockets will try to connect to the frontend's own origin, which is wrong unless API and app share a host.");
@@ -52,7 +53,7 @@ export function SocketProvider({ children }) {
             setSocket(null);
 
         };
-    }, [token]);
+    }, [token, isImpersonating]);
 
     return (
         <SocketContext.Provider value={{ socket, connected }}>
