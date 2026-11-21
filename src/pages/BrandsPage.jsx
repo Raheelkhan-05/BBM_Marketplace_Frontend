@@ -424,6 +424,7 @@ export default function BrandsPage() {
                             <Link
                                 key={b.brand_name.toLowerCase()}
                                 to={`/brand/${encodeURIComponent(b.brand_name)}`}
+                                state={{ brandImage: b.brand_image || null }}
                                 className="group flex min-w-0 flex-col items-center rounded-xl text-center transition-transform duration-200 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                                 style={{ outlineColor: ACCENT }}
                             >

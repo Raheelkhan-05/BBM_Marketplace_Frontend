@@ -159,6 +159,8 @@ import { track } from "../../lib/analytics.js";
 import HomeCartButton from "./HomeCartButton.jsx";
 import OfferActions from "./OfferActions.jsx";
 
+import useBrandLogo from "../../hooks/useBrandLogo";
+
 const C = {
     ink: "#0B1116", muted: "#667077", primary: "#000000", secondary: "#000000",
     hair: "rgba(11,17,22,0.09)", hairSoft: "rgba(11,17,22,0.05)", imgBg: "#F4F5F6",
@@ -3195,6 +3197,21 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     // Only one quick-action view is active at a time. Any store view lights up the Sellers tile.
     const activeTile = brandName ? "brands" : shopSlug ? "shop" : null;
 
+    // Logo resolves from the navigation hint / cache / one early request, not
+    // from the feed rows, so it is ready on the first paint.
+    const brandLogo = useBrandLogo(brandName, location.state?.brandImage ?? null, token);
+
+    // Logo for the active brand strip: taken from the loaded rows (they already
+    // carry brand_image), matched by name so a different brand's logo never shows.
+    // const activeBrandImage = useMemo(() => {
+    //     if (!brandName) return null;
+    //     const want = brandName.trim().toLowerCase();
+    //     const row = items.find(
+    //         (it) => it.brand_image && String(it.brand_name || "").trim().toLowerCase() === want
+    //     );
+    //     return row?.brand_image || null;
+    // }, [items, brandName]);
+
     // Sellers tile: inside a store -> back to all products; otherwise open the Sellers page.
     const handleSellers = () => {
         if (shopSlug) { clearShop(); return; }
@@ -4164,13 +4181,22 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
                 {toolbar}
 
-
-
                 {brandName && (
                     <ActiveViewStrip
                         variant="brand"
                         label="Brand"
                         name={brandName}
+                        meta={total != null && !loading ? `${total} ${Number(total) === 1 ? "product" : "products"}` : null}
+                        image={brandLogo.url}
+                        imageLoading={brandLogo.loading}
+                        onImageOpen={brandLogo.url ? () => setLightboxImages([brandLogo.url]) : undefined}
+                        shareUrl={`${window.location.origin}/brand/${encodeURIComponent(brandName)}`}
+                        shareTitle={`${brandName} on BBM`}
+                        shareText={`Check out ${brandName} products on BBM`}
+                        onShared={(result) => {
+                            if (result === "copied") showToast({ message: "Brand link copied" }, 2000);
+                            else if (result === "failed") showToast({ message: "Couldn't share. Try again" }, 2200);
+                        }}
                         changeTo="/brands"
                         onClear={clearBrand}
                         clearLabel="Clear brand"

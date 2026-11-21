@@ -1,17 +1,24 @@
 // components/home/ActiveViewStrip.jsx
 //
-// Slim "you are viewing X" strip shown in the feed's sticky block when a Brand
-// or a Seller (store) view is active. Colours match the quick-action tile that
-// opened the view (Brands = orange, Sellers = blue), so the two read as one system.
+// Compact "you are viewing X" strip for the feed's sticky block.
 //
-// Layout (one row, ~48px tall, works from 320px up):
-//   [icon chip] [LABEL / name (truncates)] [Change] [X]
+//   [logo] [BRAND · 128 products / Name (truncates)  ›]   [share] | [x]
+//
+// - The left block is a Link to `changeTo` (tap to pick another brand/seller).
+// - `image` + `imageLoading`: while the logo URL is still being resolved a
+//   shimmer is shown (never the fallback icon), so there is no icon→logo swap.
+//   The fallback icon only appears when there is truly no logo (or it fails).
+// - The <img> fades in over the shimmer once decoded.
+// - `shareUrl`: native share sheet (navigator.share), copy fallback.
 
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { motion, useReducedMotion } from "framer-motion";
-import { Store, Tag, X } from "lucide-react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Store, Tag, X, Share2, Check, ChevronRight } from "lucide-react";
+import { resizedImageUrl } from "../../utils/imageUrl";
 
-const C = { ink: "#0B1116" };
+const INK = "#0B1116";
+const MUTED = "#667077";
 const EASE = [0.16, 1, 0.3, 1];
 
 const VARIANTS = {
@@ -21,69 +28,210 @@ const VARIANTS = {
 
 const FOCUS = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1";
 
+async function copyText(text) {
+    try {
+        if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch { /* fall through */ }
+    try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        return ok;
+    } catch {
+        return false;
+    }
+}
+
+async function shareLink({ url, title, text }) {
+    if (navigator.share) {
+        try {
+            await navigator.share({ title, text, url });
+            return "shared";
+        } catch (e) {
+            if (e?.name === "AbortError") return "cancelled";
+        }
+    }
+    return (await copyText(url)) ? "copied" : "failed";
+}
+
+// Logo tile. Same width (240) as the Brands page so the browser cache is reused.
+function LogoTile({ accent, Icon, image, loading, onOpen }) {
+    const [failed, setFailed] = useState(false);
+    const [loaded, setLoaded] = useState(false);
+    const imgRef = useRef(null);
+
+    useEffect(() => { setFailed(false); setLoaded(false); }, [image]);
+
+    useEffect(() => {
+        const el = imgRef.current;
+        if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
+    }, [image]);
+
+    const box = "flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg";
+
+    if (loading) {
+        return (
+            <span aria-hidden className={`${box} animate-pulse motion-reduce:animate-none`}
+                style={{ background: `color-mix(in srgb, ${accent} 12%, #fff)` }} />
+        );
+    }
+
+    if (image && !failed) {
+        const Wrapper = onOpen ? "button" : "span";
+        const interactive = onOpen
+            ? { type: "button", onClick: onOpen, "aria-label": "View logo full screen", title: "View logo" }
+            : { "aria-hidden": true };
+        return (
+            <Wrapper
+                {...interactive}
+                className={`${box} relative border bg-white p-0.5 ${onOpen ? `cursor-zoom-in transition active:scale-95 ${FOCUS}` : ""}`}
+                style={{ borderColor: `color-mix(in srgb, ${accent} 22%, #fff)`, "--tw-ring-color": accent }}
+            >
+                {!loaded && (
+                    <span className="absolute inset-0 animate-pulse motion-reduce:animate-none"
+                        style={{ background: `color-mix(in srgb, ${accent} 8%, #fff)` }} />
+                )}
+                <img
+                    ref={imgRef}
+                    src={resizedImageUrl(image, { width: 240 })}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    decoding="async"
+                    fetchpriority="high"
+                    onLoad={() => setLoaded(true)}
+                    onError={() => setFailed(true)}
+                    className={`relative h-full w-full object-contain transition-opacity duration-200 motion-reduce:transition-none ${loaded ? "opacity-100" : "opacity-0"}`}
+                />
+            </Wrapper>
+        );
+    }
+
+    return (
+        <span aria-hidden className={`${box} text-white`}
+            style={{ background: `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 70%, #000))` }}>
+            <Icon className="h-4 w-4" strokeWidth={2.3} />
+        </span>
+    );
+}
+
 export default function ActiveViewStrip({
     variant = "brand",   // "brand" | "seller"
-    label,               // small uppercase caption, e.g. "Brand", "Seller", "Your shop"
-    name,                // the selected brand / seller name
-    changeTo,            // route for the "Change" pill
-    onClear,             // X button handler
+    label,               // "Brand", "Seller", "Your shop"
+    name,
+    meta = null,         // e.g. "128 products"
+    image = null,
+    imageLoading = false,
+    onImageOpen,
+    shareUrl = null,
+    shareTitle,
+    shareText,
+    onShared,            // (result) => void
+    changeTo,            // route to pick another one (left block becomes a link)
+    onClear,
     clearLabel = "Clear",
 }) {
     const reduce = useReducedMotion();
     const { accent, Icon } = VARIANTS[variant] || VARIANTS.brand;
+
+    const [copied, setCopied] = useState(false);
+    const copiedTimerRef = useRef(null);
+    useEffect(() => () => clearTimeout(copiedTimerRef.current), []);
+
+    const handleShare = async () => {
+        if (!shareUrl) return;
+        const result = await shareLink({ url: shareUrl, title: shareTitle || name, text: shareText });
+        onShared?.(result);
+        if (result === "copied") {
+            setCopied(true);
+            clearTimeout(copiedTimerRef.current);
+            copiedTimerRef.current = setTimeout(() => setCopied(false), 1600);
+        }
+    };
+
+    const identity = (
+        <div className="min-w-0 flex-1 text-left">
+            <p className="flex items-center gap-1 truncate text-[9.5px] font-extrabold uppercase leading-none tracking-[0.12em]" style={{ color: accent }}>
+                <span>{label}</span>
+                {/* {meta && (
+                    <>
+                        <span aria-hidden style={{ color: MUTED }}>·</span>
+                        <span className="truncate normal-case tracking-wide" style={{ color: MUTED }}>{meta}</span>
+                    </>
+                )} */}
+            </p>
+            <p className="mt-0.5 flex items-center gap-0.5 leading-tight">
+                <span className="truncate text-[14px] font-extrabold capitalize tracking-wide" style={{ color: INK }}>{name}</span>
+                {changeTo && <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" style={{ color: accent }} strokeWidth={2.6} />}
+            </p>
+        </div>
+    );
+
+    const iconBtn = `flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition active:scale-95 hover:bg-black/[0.06] ${FOCUS}`;
 
     return (
         <motion.div
             initial={reduce ? false : { opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2, ease: EASE }}
-            className="my-1.5 flex items-center gap-2.5 rounded-2xl border py-1.5 pl-1.5 pr-1.5 sm:pr-2"
+            className="my-1 flex items-center gap-1 rounded-xl border py-1 pl-1.5 pr-1"
             style={{
-                background: `color-mix(in srgb, ${accent} 7%, #fff)`,
-                borderColor: `color-mix(in srgb, ${accent} 24%, #fff)`,
+                background: `color-mix(in srgb, ${accent} 6%, #fff)`,
+                borderColor: `color-mix(in srgb, ${accent} 22%, #fff)`,
             }}
         >
-            {/* Icon chip: same gradient language as the quick-action tiles */}
-            <span
-                aria-hidden
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white"
-                style={{
-                    background: `linear-gradient(135deg, ${accent}, color-mix(in srgb, ${accent} 70%, #000))`,
-                    boxShadow: `0 8px 14px -8px ${accent}`,
-                }}
-            >
-                <Icon className="h-[17px] w-[17px]" strokeWidth={2.3} />
-            </span>
+            <LogoTile accent={accent} Icon={Icon} image={image} loading={imageLoading} onOpen={onImageOpen} />
 
-            {/* Text */}
-            <div className="min-w-0 flex-1">
-                <p className="text-[9.5px] font-extrabold uppercase leading-none tracking-[0.14em]" style={{ color: accent }}>
-                    {label}
-                </p>
-                <p className="mt-0 truncate text-[14px] font-extrabold capitalize leading-tight tracking-wide" style={{ color: C.ink }}>
-                    {name}
-                </p>
-            </div>
-
-            {/* Change */}
-            {changeTo && (
+            {changeTo ? (
                 <Link
                     to={changeTo}
-                    className={`inline-flex h-8 shrink-0 items-center rounded-full border bg-white px-3 text-[11px] font-extrabold tracking-wide transition active:scale-[0.97] hover:bg-white/60 ${FOCUS}`}
-                    style={{ borderColor: `color-mix(in srgb, ${accent} 35%, #fff)`, color: accent, "--tw-ring-color": accent }}
+                    aria-label={`Change ${label.toLowerCase()}: currently ${name}`}
+                    className={`flex min-w-0 flex-1 items-center rounded-lg py-0.5 pl-1 ${FOCUS}`}
+                    style={{ "--tw-ring-color": accent }}
                 >
-                    Change
+                    {identity}
                 </Link>
+            ) : (
+                <div className="flex min-w-0 flex-1 items-center py-0.5 pl-1">{identity}</div>
             )}
 
-            {/* Close */}
-            <button
-                type="button"
-                onClick={onClear}
-                aria-label={clearLabel}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition active:scale-95 hover:bg-black/[0.06] ${FOCUS}`}
-                style={{ "--tw-ring-color": accent }}
-            >
+            {shareUrl && (
+                <button
+                    type="button"
+                    onClick={handleShare}
+                    aria-label={copied ? "Link copied" : `Share ${name}`}
+                    title={copied ? "Link copied" : "Share"}
+                    className={iconBtn}
+                    style={{ "--tw-ring-color": accent }}
+                >
+                    <AnimatePresence mode="wait" initial={false}>
+                        <motion.span
+                            key={copied ? "check" : "share"}
+                            initial={reduce ? false : { scale: 0.5, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={reduce ? undefined : { scale: 0.5, opacity: 0 }}
+                            transition={{ duration: 0.12 }}
+                            className="flex"
+                        >
+                            {copied
+                                ? <Check className="h-4 w-4" style={{ color: "#12794A" }} strokeWidth={2.8} />
+                                : <Share2 className="h-4 w-4" style={{ color: accent }} strokeWidth={2.4} />}
+                        </motion.span>
+                    </AnimatePresence>
+                </button>
+            )}
+
+            <span aria-hidden className="h-4 w-px shrink-0" style={{ background: `color-mix(in srgb, ${accent} 25%, #fff)` }} />
+
+            <button type="button" onClick={onClear} aria-label={clearLabel} className={iconBtn} style={{ "--tw-ring-color": accent }}>
                 <X className="h-4 w-4" style={{ color: accent }} strokeWidth={2.5} />
             </button>
         </motion.div>
