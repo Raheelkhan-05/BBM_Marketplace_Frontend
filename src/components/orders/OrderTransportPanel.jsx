@@ -7,6 +7,9 @@
 // Only what the SELLER services is offered (server-enforced, see orderTransport.controller.js).
 // Shows an "Action needed" tag when a reply is waiting on you, flashes when the other side changes something
 // while you are looking, and keeps an Activity log so both sides can see exactly what happened and when.
+// If this seller + buyer + route already has an agreed transport, the server applies it to the order automatically and
+// this card opens on "Transport already agreed for this route" (no choosing, no approving). Either side can still use
+// "Change for this order"; once the other side accepts, the change becomes the new saved agreement.
 // Renders nothing when there is nothing to show (unpaid / shipped / cancelled orders with no agreement).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Truck, ArrowRight, Check, X, Loader2, Clock, Info, Send, Undo2, Plus, ChevronDown } from "lucide-react";
@@ -187,7 +190,8 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged }) {
     const activity = buildActivity(data.history, viewer);
 
     /* ---------------- agreed ---------------- */
-    if (data.phase === "agreed" && agreed) {
+    const saved = data.agreedVia === "saved";
+    if (data.phase === "agreed" && agreed && !data.canChange) {
         return (
             <section className={`ot ok${flash ? " flash" : ""}`}>
                 <div className="ot-h"><span className="ot-ic ok"><Check size={16} strokeWidth={3} /></span><h3>Transport agreed</h3></div>
@@ -195,11 +199,13 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged }) {
                     <Choice mode={agreed.mode} fields={agreed.fields} />
                 </div>
                 <RouteLine route={route} />
+                {saved && <p className="ot-sub">Agreed earlier by you and {other} for this route.</p>}
                 {!isBuyer && <p className="ot-sub">You'll see this again when you mark the order as shipped.</p>}
                 <ActivityLog items={activity} />
             </section>
         );
     }
+    const isAgreed = data.phase === "agreed" && !!agreed; // agreed, but still changeable until the seller ships
 
     /* ---------------- open ---------------- */
     const modes = options?.modes || [];
@@ -237,18 +243,34 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged }) {
     };
 
     return (
-        <section className={`ot${theirs ? " hot" : ""}${flash ? " flash" : ""}`}>
+        <section className={`ot${isAgreed ? " ok" : ""}${theirs ? " hot" : ""}${flash ? " flash" : ""}`}>
             <div className="ot-h">
-                <span className="ot-ic"><Truck size={16} /></span>
-                <h3>Delivery transport</h3>
-                {theirs ? <span className="ot-tag hot">Action needed</span> : <span className="ot-tag">Optional</span>}
+                {isAgreed
+                    ? <span className="ot-ic ok"><Check size={16} strokeWidth={3} /></span>
+                    : <span className="ot-ic"><Truck size={16} /></span>}
+                <h3>{isAgreed ? (saved ? "Transport already agreed for this route" : "Transport agreed") : "Delivery transport"}</h3>
+                {theirs ? <span className="ot-tag hot">Action needed</span> : !isAgreed && <span className="ot-tag">Optional</span>}
             </div>
             <RouteLine route={route} />
-            <p className="ot-sub">
-                {isBuyer
-                    ? "Choose how this order should reach you. You can skip this, and the seller can also suggest an option."
-                    : "Agree on delivery transport with the buyer. You can skip this and ship as usual."}
-            </p>
+            {isAgreed ? (
+                <>
+                    <div className="ot-box">
+                        <Choice mode={agreed.mode} fields={agreed.fields} />
+                    </div>
+                    <p className="ot-sub">
+                        {saved
+                            ? `You and ${other} have already agreed on this transport for this route${data.agreementAt ? ` (${when(data.agreementAt)})` : ""}. It was applied to this order automatically, so there's nothing to choose or approve.`
+                            : `This transport is agreed and will be used automatically for your future orders on this route.`}
+                        {!isBuyer && " You'll see it again when you mark the order as shipped."}
+                    </p>
+                </>
+            ) : (
+                <p className="ot-sub">
+                    {isBuyer
+                        ? "Choose how this order should reach you. You can skip this, and the seller can also suggest an option. Once agreed, it's remembered for future orders on this route."
+                        : "Agree on delivery transport with the buyer. You can skip this and ship as usual. Once agreed, it's remembered for future orders on this route."}
+                </p>
+            )}
 
             {theirs && (
                 <div className="ot-box in">
@@ -302,6 +324,7 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged }) {
             {!active && lastDeclined && (
                 <div className="ot-box bad">
                     <p className="ot-lbl">
+                        {isAgreed ? "Change not accepted, the agreed transport above still applies. " : ""}
                         {lastDeclined.proposed_by_role === viewer ? `${isBuyer ? "The seller" : "The buyer"} declined your suggestion` : "You declined the last suggestion"}
                         {lastDeclined.resolved_at ? ` · ${when(lastDeclined.resolved_at)}` : ""}
                     </p>
@@ -313,7 +336,7 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged }) {
             {!active && !formOpen && (
                 canSuggest ? (
                     <div className="ot-acts">
-                        <button type="button" className="ot-btn go" disabled={busy} onClick={openForm}><Plus size={15} />{isBuyer ? "Choose transport" : "Suggest transport"}</button>
+                        <button type="button" className={`ot-btn${isAgreed ? "" : " go"}`} disabled={busy} onClick={openForm}><Plus size={15} />{isAgreed ? "Change for this order" : isBuyer ? "Choose transport" : "Suggest transport"}</button>
                     </div>
                 ) : (
                     <p className="ot-hint"><Info size={14} />
@@ -381,7 +404,7 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged }) {
 
             {actionError && <p className="ot-err" role="alert">{actionError}</p>}
 
-            {isBuyer && data.orderStatus === "pending_confirmation" && (
+            {isBuyer && !isAgreed && data.orderStatus === "pending_confirmation" && (
                 <p className="ot-hint"><Info size={14} />Can't agree on transport? You can cancel this order below until the seller confirms it.</p>
             )}
             {!isBuyer && data.responseDueAt && (
