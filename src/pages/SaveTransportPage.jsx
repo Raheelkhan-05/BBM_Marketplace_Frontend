@@ -1,7 +1,9 @@
-// src/pages/SaveTransportPage.jsx — Transport library for buyers. Route: /save/transport (inside SaveLayout).
-// Same UI as the Grow transport page's Browse view (same gk / gt-* classes from grow-modules.css),
-// but READ-ONLY: no Manage tab, no Use / Remove buttons, no proposals. Buyers only look.
-// Same API call as the Grow page's Browse tab: browseTransportLibrary({ originCity, destCity }).
+// src/pages/SaveTransportPage.jsx — Transport for buyers. Route: /save/transport (inside SaveLayout).
+// Two views:
+//   "My agreements" -> TransportAgreementsPanel (replies waiting on you, your suggestions, saved agreements per route;
+//                      clicking a row opens the transport card in a modal).
+//   "Browse"        -> read-only route library, same UI as the Grow transport page's Browse view.
+//                      Same API call: browseTransportLibrary({ originCity, destCity }).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Truck, Search, ArrowRight, Loader2 } from "lucide-react";
 import { browseTransportLibrary } from "../utils/api.transport.js";
@@ -11,6 +13,7 @@ import {
 import TransportAgreementsPanel from "../components/orders/TransportAgreementsPanel.jsx";
 import { toTitleCase } from "../components/growSeller/sellerHelpers.js";
 import "../components/growSeller/grow-modules.css";
+import "../components/orders/transport-agreements.css";
 
 const PAGE = 30; // rows rendered at a time
 
@@ -25,22 +28,21 @@ function RouteCard({ opt }) {
             <div className="gt-main">
                 <b>{routeOptionSummary(opt.mode, opt.fields)}</b>
                 <small>
-                    <span>{routeTransportModeLabel(opt.mode)}</span>·
-                    <span>{toTitleCase(opt.origin_city)}</span><ArrowRight size={12} /><span>{toTitleCase(opt.dest_city)}</span>
+                    <span>{routeTransportModeLabel(opt.mode)}</span> · {" "}
+                    <span>{toTitleCase(opt.origin_city)}</span> <ArrowRight size={12} /> <span>{toTitleCase(opt.dest_city)}</span>
                 </small>
             </div>
         </div>
     );
 }
 
-export default function SaveTransportPage() {
+function BrowseView() {
     const [originCity, setOriginCity] = useState("");
     const [destCity, setDestCity] = useState("");
     const [options, setOptions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
     const [visible, setVisible] = useState(PAGE);
-    const [view, setView] = useState("agreements");
     const seq = useRef(0);
 
     const run = useCallback(async (from, to) => {
@@ -78,55 +80,62 @@ export default function SaveTransportPage() {
     const onKey = (e) => { if (e.key === "Enter") search(); };
 
     return (
+        <div className="gt-sec tap">
+            <div className="gt-search">
+                <div className="gk-field"><label htmlFor="gt-from">From city</label>
+                    <input id="gt-from" className="gk-inp" placeholder="e.g. Rajkot" value={originCity} onKeyDown={onKey} onChange={(e) => setOriginCity(e.target.value)} /></div>
+                <div className="gk-field"><label htmlFor="gt-to">To city</label>
+                    <input id="gt-to" className="gk-inp" placeholder="e.g. Surat" value={destCity} onKeyDown={onKey} onChange={(e) => setDestCity(e.target.value)} /></div>
+                <button type="button" className="gk-btn go" style={{ height: 48 }} disabled={loading} onClick={search}>
+                    {loading ? <Loader2 size={17} className="gk-spin" /> : <Search size={17} />}Search
+                </button>
+            </div>
+
+            <div className="gt-list" style={{ marginTop: 16 }} aria-busy={loading}>
+                {loading ? [0, 1, 2, 3].map((i) => <div key={i} className="gk-skel" style={{ height: 70 }} />)
+                    : error ? (
+                        <div className="gk-empty" style={{ gridColumn: "1 / -1" }}>
+                            <Truck size={26} /><b>Couldn't load transport options</b>Please try again.
+                            <button type="button" className="gk-btn go" onClick={search}>Try again</button>
+                        </div>
+                    ) : deduped.length === 0 ? (
+                        <div className="gk-empty" style={{ gridColumn: "1 / -1" }}><Truck size={26} /><b>No transport options found</b>Try a different city, or check back later.</div>
+                    ) : deduped.slice(0, visible).map(({ k, opt }) => <RouteCard key={k} opt={opt} />)}
+            </div>
+
+            {!loading && !error && deduped.length > visible && (
+                <div style={{ display: "flex", justifyContent: "center", marginTop: 18 }}>
+                    <button type="button" className="gk-btn" onClick={() => setVisible((v) => v + PAGE)}>
+                        Show more ({deduped.length - visible} left)
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+export default function SaveTransportPage() {
+    const [view, setView] = useState("agreements"); // "agreements" | "browse"
+
+    return (
         // `sh-w svc` = the Save page container (width matches the tab bar), the content inside is the Grow UI.
         <div className="sh-w svc">
             <div className="gk gt">
                 <div className="gk-ph gk-rise" style={{ "--i": 0 }}>
-                    <div className="gt-top" style={{ marginBottom: 14 }}>
-                        <div className="gk-seg" role="group" aria-label="Transport views">
-                            <button type="button" aria-pressed={view === "agreements"} onClick={() => setView("agreements")}>My agreements</button>
-                            <button type="button" aria-pressed={view === "browse"} onClick={() => setView("browse")}>Browse</button>
-                        </div>
+                    <div>
+                        <h1>Transport</h1>
+                        <p>Your agreed transport with sellers, and the routes available for delivery.</p>
                     </div>
-
-                    {view === "agreements" ? <TransportAgreementsPanel viewer="buyer" /> : (
-                        <div className="gt-sec"> ...existing search + list + show-more JSX unchanged... </div>
-                    )}
                 </div>
 
-                {view === "browse" ?
-                    <div className="gt-sec">
-                        <div className="gt-search">
-                            <div className="gk-field"><label htmlFor="gt-from">From city</label>
-                                <input id="gt-from" className="gk-inp" placeholder="e.g. Rajkot" value={originCity} onKeyDown={onKey} onChange={(e) => setOriginCity(e.target.value)} /></div>
-                            <div className="gk-field"><label htmlFor="gt-to">To city</label>
-                                <input id="gt-to" className="gk-inp" placeholder="e.g. Surat" value={destCity} onKeyDown={onKey} onChange={(e) => setDestCity(e.target.value)} /></div>
-                            <button type="button" className="gk-btn go" style={{ height: 48 }} disabled={loading} onClick={search}>
-                                {loading ? <Loader2 size={17} className="gk-spin" /> : <Search size={17} />}Search
-                            </button>
-                        </div>
-
-                        <div className="gt-list" style={{ marginTop: 16 }} aria-busy={loading}>
-                            {loading ? [0, 1, 2, 3].map((i) => <div key={i} className="gk-skel" style={{ height: 70 }} />)
-                                : error ? (
-                                    <div className="gk-empty" style={{ gridColumn: "1 / -1" }}>
-                                        <Truck size={26} /><b>Couldn't load transport options</b>Please try again.
-                                        <button type="button" className="gk-btn go" onClick={search}>Try again</button>
-                                    </div>
-                                ) : deduped.length === 0 ? (
-                                    <div className="gk-empty" style={{ gridColumn: "1 / -1" }}><Truck size={26} /><b>No transport options found</b>Try a different city, or check back later.</div>
-                                ) : deduped.slice(0, visible).map(({ k, opt }) => <RouteCard key={k} opt={opt} />)}
-                        </div>
-
-                        {!loading && !error && deduped.length > visible && (
-                            <div style={{ display: "flex", justifyContent: "center", marginTop: 18 }}>
-                                <button type="button" className="gk-btn" onClick={() => setVisible((v) => v + PAGE)}>
-                                    Show more ({deduped.length - visible} left)
-                                </button>
-                            </div>
-                        )}
+                <div className="gt-top gk-rise" style={{ "--i": 1, marginBottom: 16 }}>
+                    <div className="gk-seg" role="group" aria-label="Transport views">
+                        <button type="button" aria-pressed={view === "agreements"} onClick={() => setView("agreements")}>My agreements</button>
+                        <button type="button" aria-pressed={view === "browse"} onClick={() => setView("browse")}>Browse</button>
                     </div>
-                    : null}
+                </div>
+
+                {view === "agreements" ? <TransportAgreementsPanel viewer="buyer" /> : <BrowseView />}
             </div>
         </div>
     );
