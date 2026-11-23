@@ -66,7 +66,7 @@ export function TransportAgreementStep({
                 <button type="button" className="ts-go" disabled={busy || loading} onClick={onContinue}>
                     {busy ? <Loader2 size={18} className="ot-spin" /> : <>{continueLabel}<ArrowRight size={16} /></>}
                 </button>
-                {onBack && <button type="button" className="ts-back" disabled={busy} onClick={onBack}>{backLabel}</button>}
+                {/* {onBack && <button type="button" className="ts-back" disabled={busy} onClick={onBack}>{backLabel}</button>} */}
             </footer>
         </div>
     );
