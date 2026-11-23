@@ -262,7 +262,7 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged, onLoad
                     </div>
                     <p className="ot-sub">
                         {saved
-                            ? `You and ${other} have already agreed on this transport for this route${data.agreementAt ? ` (${when(data.agreementAt)})` : ""}. It was applied to this order automatically, so there's nothing to choose or approve.`
+                            ? `You and ${other} have already agreed on this transport for this route${data.agreementAt ? ` (${when(data.agreementAt)})` : ""}.`
                             : `This transport is agreed and will be used automatically for your future orders on this route.`}
                         {!isBuyer && " You'll see it again when you mark the order as shipped."}
                     </p>

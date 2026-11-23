@@ -55,6 +55,7 @@
     width: 30px;
     height: 30px;
     border-radius: 9px;
+    letter-spacing: 0.005em;
     background: var(--ot-pri-bg);
     color: var(--ot-pri);
     display: flex;
@@ -89,7 +90,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12.5px;
+    font-size: 18px;
+    letter-spacing: 0.005em;
     font-weight: 700;
     color: var(--ot-mute);
     flex-wrap: wrap
@@ -97,7 +99,8 @@
 
 .ot-sub {
     margin: 0;
-    font-size: 13px;
+    font-size: 14px;
+    letter-spacing: 0.005em;
     line-height: 1.5;
     color: var(--ot-mute)
 }
@@ -154,13 +157,15 @@
 }
 
 .ot-ct b {
-    font-size: 14px;
+    font-size: 15px;
+    letter-spacing: 0.005em;
     font-weight: 700;
     overflow-wrap: anywhere
 }
 
 .ot-ct small {
-    font-size: 12px;
+    font-size: 13px;
+    letter-spacing: 0.005em;
     color: var(--ot-mute)
 }
 

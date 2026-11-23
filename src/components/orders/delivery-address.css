@@ -47,7 +47,8 @@
 
 .da .da-n {
     margin: 8px 0 0;
-    font-size: 12.5px;
+    font-size: 14.5px;
+    letter-spacing: 0.005em;
     line-height: 1.45;
     opacity: .75;
 }
@@ -82,7 +83,7 @@
 
 .da .da-v {
     margin: 4px 0 0;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 600;
     overflow-wrap: anywhere;
 }
