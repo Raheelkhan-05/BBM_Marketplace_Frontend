@@ -6,6 +6,8 @@ import { Truck, ArrowRight, Check, X, Loader2, Handshake } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { useSocket } from "../../context/SocketContext.jsx";
 import useOrderTransportSummary from "../../hooks/useOrderTransportSummary.js";
+import TransportDetailModal from "./TransportDetailModal.jsx";
+import "./transport-agreements.css";
 import { fetchTransportAgreements, endTransportAgreement, acceptOrderTransport, declineOrderTransport } from "../../utils/api.transport.js";
 import { routeTransportModeLabel } from "../../../shared/routeTransportFields.js";
 import { toTitleCase } from "../growSeller/sellerHelpers.js";
@@ -20,6 +22,7 @@ export default function TransportAgreementsPanel({ viewer }) {
     const [agreements, setAgreements] = useState([]);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(null);
+    const [openRow, setOpenRow] = useState(null); // { orderId, orderNumber }
     const [msg, setMsg] = useState(null);
     const other = viewer === "seller" ? "Buyer" : "Seller";
     const orderPath = (id) => `${viewer === "seller" ? "/sell/orders/" : "/buy/orders/"}${id}`;
@@ -48,19 +51,23 @@ export default function TransportAgreementsPanel({ viewer }) {
         reloadSummary(); loadAgreements();
     };
 
+    const refreshAll = () => { reloadSummary(); loadAgreements(); };
+
     const entries = Object.entries(summary || {}).map(([orderId, s]) => ({ orderId, ...s }));
     const needs = entries.filter((e) => e.state === "needs_you");
     const waiting = entries.filter((e) => e.state === "waiting");
     const declined = entries.filter((e) => e.state === "declined");
 
     const Row = ({ e, children }) => (
-        <div className="gt-card">
+        <div className="gt-card click" role="button" tabIndex={0}
+            onClick={() => setOpenRow({ orderId: e.orderId, orderNumber: e.orderNumber })}
+            onKeyDown={(ev) => { if (ev.target !== ev.currentTarget) return; if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setOpenRow({ orderId: e.orderId, orderNumber: e.orderNumber }); } }}>
             <span className="gk-ico" style={{ "--a": "var(--k-tt)" }}><Truck /></span>
             <div className="gt-main">
                 <b>{e.summary}</b>
-                <small><span>{routeTransportModeLabel(e.mode)}</span>·<span>Order {e.orderNumber}</span></small>
+                <small><span>{routeTransportModeLabel(e.mode)}</span> · <span>Order {e.orderNumber}</span></small>
             </div>
-            {children}
+            <div onClick={(ev) => ev.stopPropagation()}>{children}</div>
         </div>
     );
 
@@ -87,7 +94,7 @@ export default function TransportAgreementsPanel({ viewer }) {
                                             if (reason === null) return;
                                             act(e.requestId, () => declineOrderTransport(e.requestId, reason || "", token), "Suggestion declined.");
                                         }}><X size={15} />Decline</button>
-                                    <button type="button" className="gk-btn sm" onClick={() => nav(orderPath(e.orderId))}>Open order</button>
+                                    <button type="button" className="gk-btn sm" onClick={() => setOpenRow({ orderId: e.orderId, orderNumber: e.orderNumber })}>Review</button>
                                 </div>
                             </Row>
                         ))}
@@ -102,6 +109,7 @@ export default function TransportAgreementsPanel({ viewer }) {
                         {[...waiting, ...declined].map((e) => (
                             <Row key={e.orderId} e={e}>
                                 <span className="gt-note">{e.state === "waiting" ? "Waiting for reply" : "Declined"}</span>
+                                <button type="button" className="gk-btn sm" onClick={() => setOpenRow({ orderId: e.orderId, orderNumber: e.orderNumber })}>Review</button>
                                 <button type="button" className="gk-btn sm" onClick={() => nav(orderPath(e.orderId))}>Open order</button>
                             </Row>
                         ))}
@@ -109,7 +117,7 @@ export default function TransportAgreementsPanel({ viewer }) {
                 </section>
             )}
 
-            <section className="gt-sec">
+            <section className="gt-sec tap">
                 <div className="gt-sech"><h2>Agreed transport<span className="gt-count">{agreements.length}</span></h2></div>
                 {agreements.length === 0 ? (
                     <div className="gk-empty"><Handshake size={26} /><b>No saved agreements yet</b>
@@ -137,6 +145,17 @@ export default function TransportAgreementsPanel({ viewer }) {
                             </div>
                         ))}
                     </div>
+                )}
+
+                {openRow && (
+                    <TransportDetailModal
+                        orderId={openRow.orderId}
+                        orderNumber={openRow.orderNumber}
+                        viewer={viewer}
+                        onChanged={refreshAll}
+                        onClose={() => { setOpenRow(null); refreshAll(); }}
+                        onOpenOrder={() => { const id = openRow.orderId; setOpenRow(null); nav(orderPath(id)); }}
+                    />
                 )}
             </section>
         </div>
