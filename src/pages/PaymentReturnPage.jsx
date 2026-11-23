@@ -18,7 +18,6 @@ import {
 import { track } from "../lib/analytics.js";
 
 const REF_RE = /^BBM[0-9A-F]{17}$/;
-const POLL_MS = 2500;
 const MAX_POLL_MS = 3 * 60 * 1000;
 const SLOW_AFTER_MS = 20 * 1000;
 
@@ -103,6 +102,7 @@ export default function PaymentReturnPage() {
     const [payment, setPayment] = useState(null);
     const [error, setError] = useState(null);
     const [timedOut, setTimedOut] = useState(false);
+    const [checkFailed, setCheckFailed] = useState(false);
     const [retrying, setRetrying] = useState(false);
     const [authWaited, setAuthWaited] = useState(false);
     const [slow, setSlow] = useState(false);
@@ -126,26 +126,49 @@ export default function PaymentReturnPage() {
         return () => clearTimeout(t);
     }, []);
 
+    // Polling: fast at first, slower later, re-checks the moment the tab becomes visible again
+    // (mobile browsers throttle background timers), and stops spinning after repeated errors.
     useEffect(() => {
         if (!validRef || !token) return undefined;
-        let cancelled = false;
-        let timer;
+        let cancelled = false, busy = false, done = false, fails = 0, timer;
+
+        const delay = () => {
+            const t = Date.now() - startedAt.current;
+            return t < 15000 ? 1000 : t < 60000 ? 2000 : 4000;
+        };
 
         const tick = async () => {
-            const res = await fetchPaymentStatus(token, ref);
+            if (cancelled || done || busy) return;
+            busy = true;
+            clearTimeout(timer);
+            let res;
+            try { res = await fetchPaymentStatus(token, ref, true); } catch { res = null; }
+            busy = false;
             if (cancelled) return;
+
             if (res?.success && res.payment) {
+                fails = 0;
+                setCheckFailed(false);
                 setPayment(res.payment);
                 setError(null);
-                if (res.payment.final) return;
+                if (res.payment.final) { done = true; return; }
             } else {
+                fails += 1;
                 setError(res?.message || "Couldn't check the payment status.");
+                if (fails >= 3) setCheckFailed(true);
             }
             if (Date.now() - startedAt.current > MAX_POLL_MS) { setTimedOut(true); return; }
-            timer = setTimeout(tick, POLL_MS);
+            timer = setTimeout(tick, delay());
         };
+
+        const onVisible = () => { if (document.visibilityState === "visible") tick(); };
+        document.addEventListener("visibilitychange", onVisible);
         tick();
-        return () => { cancelled = true; clearTimeout(timer); };
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+            document.removeEventListener("visibilitychange", onVisible);
+        };
     }, [ref, token, validRef]);
 
     // A paid cart is cleared server-side; refresh the badge once.
@@ -179,7 +202,7 @@ export default function PaymentReturnPage() {
         const res = payment.purpose === "order_group"
             ? await startGroupPayment(token, payment.groupId)
             : await startOrderPayment(token, payment.orderId);
-        if (!res?.success || !redirectToGateway(res.redirectUrl)) {
+        if (!res?.success || !redirectToGateway(res.redirectUrl, res.ref)) {
             setRetrying(false);
             setError(res?.message || "Couldn't start the payment. Please try again.");
         }
@@ -204,8 +227,8 @@ export default function PaymentReturnPage() {
             ? { tone: "warn", icon: AlertTriangle, title: "Please sign in", text: "Sign in to see the result of your payment.", actions: [["Sign in", () => navigate("/login", { state: { from: location.pathname + location.search } }), true]] }
             : { tone: "wait", icon: Loader2, spin: true, title: "Checking your session…", text: "" };
     } else if (!payment) {
-        view = timedOut
-            ? { tone: "warn", icon: Clock, title: "Still waiting", text: error || "We couldn't load the payment yet.", actions: [["Go to my orders", () => navigate(ordersPath), true]] }
+        view = (timedOut || checkFailed)
+            ? { tone: "warn", icon: Clock, title: "Still waiting", text: error || "We couldn't load the payment yet. If money was deducted it will be confirmed automatically.", actions: [["Go to my orders", () => navigate(ordersPath), true]] }
             : { tone: "wait", icon: Loader2, spin: true, title: "Confirming your payment…", text: "Please don't pay again or close this page.", steps: 1 };
     } else if (payment.status === "success") {
         view = {

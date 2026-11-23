@@ -28,8 +28,10 @@ export const startGroupPayment = (token, groupId, expectedTotal = null) =>
 export const startWalletPayment = (token, amount) =>
     apiPost(`/payments/wallet/checkout`, token, { amount: String(amount) });
 
-export const fetchPaymentStatus = (token, ref) =>
-    apiGet(`/payments/attempts/${encodeURIComponent(ref)}`, token);
+// returned=true tells the backend the buyer has come back from the gateway, so a verified
+// "failed" answer is treated as final immediately instead of waiting for the session to expire.
+export const fetchPaymentStatus = (token, ref, returned = false) =>
+    apiGet(`/payments/attempts/${encodeURIComponent(ref)}${returned ? "?returned=1" : ""}`, token);
 
 export function rememberPaymentReturnPath() {
     try { sessionStorage.setItem(RETURN_KEY, window.location.pathname + window.location.search); } catch { /* private mode */ }
