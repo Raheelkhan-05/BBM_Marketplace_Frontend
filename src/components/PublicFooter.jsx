@@ -66,6 +66,30 @@ const CSS = `
 .bbmf-tag{margin-top:10px;color:var(--f-ink);font:700 .92rem/1.35 "Bricolage Grotesque","Figtree",system-ui,sans-serif}
 .bbmf-sub{margin-top:3px;max-width:46ch;font-size:.82rem;line-height:1.45}
 
+.bbmf-corporate-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 10px;
+    color: #FFFFFF !important;
+    font-size: .82rem;
+    font-weight: 800;
+    text-decoration: none;
+    transition: opacity .15s ease;
+}
+
+.bbmf-corporate-link:hover {
+    opacity: .78;
+    color: #FFFFFF !important;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.bbmf-corporate-link:focus-visible {
+    outline: 2px solid #FFFFFF;
+    outline-offset: 4px;
+}
+
 .bbmf-contact{display:grid;gap:6px}
 .bbmf-contact li{display:flex;gap:8px;align-items:flex-start;overflow-wrap:anywhere}
 
@@ -117,6 +141,16 @@ export default function PublicFooter({ dock = false }) {
                         <p className="bbmf-sub">
                             A B2B marketplace and business services company for registered businesses.
                         </p>
+                        <a
+                            href="https://www.bbmpvtltd.com/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bbmf-corporate-link"
+                            aria-label="Visit Brand Brigade Marketing corporate website (opens in a new tab)"
+                        >
+                            <span>Visit our Corporate Website</span>
+                            <span aria-hidden="true">↗</span>
+                        </a>
                     </div>
 
                     <ul className="bbmf-contact" aria-label="Contact">
