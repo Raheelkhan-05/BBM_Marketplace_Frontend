@@ -2,6 +2,7 @@
 // Same data/actions as the old OrderDetailPage: fetchOrderById + useRealtimeOrder, markOrderRead(id, "buyer") on open,
 // DisputePanel, CancelOrderControl, TransportInfoCard, PurchaseOrderDocument. Only the presentation changed.
 // Unpaid orders ("awaiting_payment") show a "Complete your payment" card at the top.
+// Once paid, an OPTIONAL "Delivery transport" card (OrderTransportPanel) lets the buyer agree transport with the seller.
 // Layout mirrors GrowOrderDetailPage (two columns on wide screens). Render inside the same ".sv" wrapper as SaveHomePage.
 import { useCallback, useEffect } from "react";
 import { useNavigate, useParams, useLocation, Link } from "react-router-dom";
@@ -12,6 +13,7 @@ import { fetchOrderById } from "../utils/api.js";
 import DisputePanel from "../components/orders/DisputePanel.jsx";
 import { CancelOrderControl } from "../components/orders/PurchaseCardActions.jsx";
 import ResumePaymentButton from "../components/orders/ResumePaymentButton.jsx";
+import OrderTransportPanel from "../components/orders/OrderTransportPanel.jsx";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
@@ -172,6 +174,11 @@ export default function SaveOrderDetailPage() {
                                 </Section>
                             )}
                         </>
+                    )}
+
+                    {/* Optional, after payment: agree the delivery transport with the seller. Hides itself when not applicable. */}
+                    {!unpaid && (
+                        <OrderTransportPanel orderId={order.id} viewer="buyer" onChanged={() => reload({ silent: true })} />
                     )}
 
                     <Section title="Payment & freight">

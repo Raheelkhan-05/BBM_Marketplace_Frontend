@@ -120,3 +120,30 @@ export function saveBuyerTransportPreference({ sellerId, destState, destCity, pr
 export function fetchBuyerFallbackLocation(token) {
     return request(`/geo/buyer-fallback-location`, { token });
 }
+
+// ---- Post-payment transport agreement for ONE order (buyer + seller) ----
+export function fetchOrderTransport(orderId, token) {
+    return request(`/order-transport/${encodeURIComponent(orderId)}`, { token });
+}
+
+// payload: { routeOptionId } OR { mode, fields }, plus optional { note }
+export function proposeOrderTransport(orderId, payload, token) {
+    return request(`/order-transport/${encodeURIComponent(orderId)}/propose`, { method: "POST", token, body: payload });
+}
+
+export function acceptOrderTransport(requestId, token) {
+    return request(`/order-transport/requests/${encodeURIComponent(requestId)}/accept`, { method: "POST", token });
+}
+
+export function declineOrderTransport(requestId, reason, token) {
+    return request(`/order-transport/requests/${encodeURIComponent(requestId)}/decline`, { method: "POST", token, body: { reason } });
+}
+
+export function withdrawOrderTransport(requestId, token) {
+    return request(`/order-transport/requests/${encodeURIComponent(requestId)}/withdraw`, { method: "POST", token });
+}
+
+// For the order LIST pages: { [orderId]: { state: "needs_you" | "waiting" | "declined", summary, mode, fields } }
+export function fetchOrderTransportSummary(as, token) {
+    return request(`/order-transport/summary?as=${as === "seller" ? "seller" : "buyer"}`, { token });
+}

@@ -1,4 +1,6 @@
 // src/pages/GrowOrdersPage.jsx — sales orders in the new UI (same data/actions as OrdersPage "Sales" tab).
+// Each card shows a transport tag when the buyer suggested transport and is waiting for a reply (reply needed),
+// when the seller's own suggestion is waiting on the buyer, or when it was declined.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -9,7 +11,9 @@ import {
 } from "../utils/api.js";
 import { shipSellerOrderWithTransport } from "../utils/api.transport.js";
 import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
+import useOrderTransportSummary from "../hooks/useOrderTransportSummary.js";
 import GrowShipSheet from "../components/growSeller/GrowShipSheet.jsx";
+import OrderTransportTag from "../components/orders/OrderTransportTag.jsx";
 import {
     ItemQuantityLine, ChatWithBuyerButton, computeWalletDeduction, getPaymentTerms, orderFreightState,
 } from "../components/orders/OrderDisplayHelpers.jsx";
@@ -52,7 +56,7 @@ export function OrderTags({ order }) {
     );
 }
 
-function OrderCard({ order, busy, onAction, onOpen, unread }) {
+function OrderCard({ order, busy, onAction, onOpen, unread, transport }) {
     const isSample = order.order_type === "sample";
     const actions = NEXT_ACTION[order.status] || [];
     const addr = order.shipping_address_snapshot || {};
@@ -76,6 +80,7 @@ function OrderCard({ order, busy, onAction, onOpen, unread }) {
                 <span className={`stt ${order.status}`}>{STATUS_LABEL[order.status] || order.status}</span>
             </div>
             <OrderTags order={order} />
+            <OrderTransportTag variant="grow" viewer="seller" transport={transport} />
             {(order.items || []).map((item) => (
                 <div className="it" key={item.id}>
                     <Thumb src={item.image_snapshot} name={item.product_name_snapshot} />
@@ -135,6 +140,7 @@ export default function GrowOrdersPage() {
         return res.orders;
     }, [token, status, type]);
     const { orders, loading, reload } = useRealtimeOrders({ channelToken: profile?.notificationChannel, fetcher });
+    const { summary } = useOrderTransportSummary("seller");
 
     useEffect(() => { window.scrollTo({ top: 0 }); }, []);
 
@@ -185,7 +191,8 @@ export default function GrowOrdersPage() {
                     {list.map((o) => (
                         <OrderCard key={o.id} order={o} busy={busy} onAction={onAction}
                             onOpen={(id) => nav(`/sell/orders/${id}`)}
-                            unread={salesOrderUnreadCounts?.get(String(o.id)) || 0} />
+                            unread={salesOrderUnreadCounts?.get(String(o.id)) || 0}
+                            transport={summary[o.id]} />
                     ))}
                     {!list.length && <Empty title="No orders here" text="Orders will appear as buyers place them." />}
                 </div>

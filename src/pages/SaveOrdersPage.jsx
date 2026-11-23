@@ -3,6 +3,8 @@
 // grouping by order_group_id, purchaseOrderUnreadCounts, PurchaseCardActions. Cards open /orders/:id.
 // Unpaid ("awaiting_payment") orders get a "Complete payment" button; orders that belong to a cart
 // group get ONE button on the group header (the whole cart is paid in one payment).
+// Paid orders show a transport tag: a reply is needed / waiting for the seller / declined, or a soft
+// "choose delivery transport (optional)" nudge when nothing has been agreed yet.
 // Render it inside the same ".sv" wrapper as SaveHomePage.
 import { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -13,7 +15,9 @@ import { useNotifications } from "../context/NotificationsContext.jsx";
 import { fetchMyOrders } from "../utils/api.js";
 import PurchaseCardActions from "../components/orders/PurchaseCardActions.jsx";
 import ResumePaymentButton from "../components/orders/ResumePaymentButton.jsx";
+import OrderTransportTag from "../components/orders/OrderTransportTag.jsx";
 import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
+import useOrderTransportSummary from "../hooks/useOrderTransportSummary.js";
 import PriceChangeNotice, { OrderBlockedNotice } from "../components/orders/PriceChangeNotice.jsx";
 import { orderPriceInfo, groupPriceInfo } from "../utils/orderPrice.js";
 import { transportLabel } from "../../shared/transportOptions.js";
@@ -41,6 +45,8 @@ const STATUS_TABS = [
 const TYPE_TABS = [["", "All orders"], ["standard", "Standard"], ["sample", "Samples"]];
 
 const isUnpaid = (o) => o?.status === "awaiting_payment";
+// Paid, not yet shipped, and no transport agreed: the buyer can still choose one (optional).
+const canChooseTransport = (o) => !o.transport_mode && (o.status === "pending_confirmation" || o.status === "confirmed");
 
 /* ---------- tags ---------- */
 function OrderTags({ order, isSample }) {
@@ -74,7 +80,7 @@ function GroupTags({ orders }) {
 }
 
 /* ---------- order card ---------- */
-function OrderCard({ order, idx, onChanged, inGroup = false }) {
+function OrderCard({ order, idx, onChanged, transport, inGroup = false }) {
     const navigate = useNavigate();
     const { purchaseOrderUnreadCounts } = useNotifications();
     const unread = purchaseOrderUnreadCounts?.get(String(order.id)) || 0;
@@ -110,6 +116,7 @@ function OrderCard({ order, idx, onChanged, inGroup = false }) {
             </div>
 
             <OrderTags order={order} isSample={isSample} />
+            <OrderTransportTag variant="save" viewer="buyer" transport={transport} nudge={canChooseTransport(order)} />
             <div className="sh-tw" onClick={stop}><OrderTimingNote order={order} viewer="buyer" /></div>
 
             {!inGroup && price?.changed && (
@@ -159,8 +166,8 @@ function OrderCard({ order, idx, onChanged, inGroup = false }) {
 }
 function stop(e) { e.stopPropagation(); }
 
-function OrderGroup({ group, startIdx, onChanged }) {
-    if (!group.groupId) return <OrderCard order={group.orders[0]} idx={startIdx} onChanged={onChanged} />;
+function OrderGroup({ group, startIdx, onChanged, summary }) {
+    if (!group.groupId) return <OrderCard order={group.orders[0]} idx={startIdx} onChanged={onChanged} transport={summary[group.orders[0].id]} />;
     const gp = groupPriceInfo(group.orders);
     const unpaid = group.orders.filter(isUnpaid);
     return (
@@ -190,7 +197,7 @@ function OrderGroup({ group, startIdx, onChanged }) {
                 </div>
             )}
             <div className="sh-og">
-                {group.orders.map((o, i) => <OrderCard key={o.id} order={o} idx={startIdx + i} onChanged={onChanged} inGroup />)}
+                {group.orders.map((o, i) => <OrderCard key={o.id} order={o} idx={startIdx + i} onChanged={onChanged} transport={summary[o.id]} inGroup />)}
             </div>
         </div>
     );
@@ -209,6 +216,7 @@ export default function SaveOrdersPage() {
     }, [token, activeStatus, activeType]);
 
     const { orders, loading, reload } = useRealtimeOrders({ channelToken: profile?.notificationChannel, fetcher });
+    const { summary } = useOrderTransportSummary("buyer");
 
     const groups = useMemo(() => {
         const map = new Map();
@@ -258,7 +266,7 @@ export default function SaveOrdersPage() {
                 <div className="sh-og top">
                     <AnimatePresence initial={false}>
                         {groups.map((g, i) => (
-                            <OrderGroup key={g.groupId || g.orders[0].id} group={g} startIdx={i} onChanged={reload} />
+                            <OrderGroup key={g.groupId || g.orders[0].id} group={g} startIdx={i} onChanged={reload} summary={summary} />
                         ))}
                     </AnimatePresence>
                 </div>

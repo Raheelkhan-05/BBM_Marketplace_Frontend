@@ -1,4 +1,6 @@
 // src/pages/GrowOrderDetailPage.jsx — sales order detail in the new UI (same data/actions as SellerOrderDetailPage).
+// Includes the OPTIONAL post-payment "Delivery transport" card (OrderTransportPanel): the buyer or the seller can suggest
+// transport, the other accepts / declines. The agreed transport then shows in the ship sheet ("Agreed transport").
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -10,6 +12,7 @@ import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import GrowShipSheet from "../components/growSeller/GrowShipSheet.jsx";
 import DisputePanel from "../components/orders/DisputePanel.jsx";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
+import OrderTransportPanel from "../components/orders/OrderTransportPanel.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
 import OrderTimingNote from "../components/orders/OrderTimingNote.jsx";
 import {
@@ -143,6 +146,9 @@ export default function GrowOrderDetailPage() {
                         <div className="ltb"><PaymentTermsBanner order={order} viewer="seller" standalone /><FreightNotice order={order} viewer="seller" className="mt-3" /></div>
                         <div className="ltb"><OrderTimingNote order={order} viewer="seller" /></div>
                     </div>
+
+                    {/* Optional: agree the delivery transport with the buyer. Hides itself when not applicable. */}
+                    <OrderTransportPanel orderId={order.id} viewer="seller" onChanged={reload} />
 
                     <div className="card">
                         <div className="ctl">Order status</div>

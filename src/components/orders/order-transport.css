@@ -1,0 +1,457 @@
+/* src/components/orders/order-transport.css — self-contained; works inside both the Save (sh-) and Grow UIs */
+.ot {
+    --ot-ink: #141b22;
+    --ot-mute: #5b6672;
+    --ot-line: rgba(20, 27, 34, .1);
+    --ot-pri: #0b5563;
+    --ot-pri-bg: #e6f3f5;
+    --ot-ok: #12794a;
+    --ot-ok-bg: #e7f6ee;
+    --ot-bad: #b3261e;
+    --ot-bad-bg: #fdecea;
+    --ot-warn-bg: #fef6e7;
+    --ot-hot: #c2410c;
+    --ot-hot-bg: #fff1e6;
+    background: #fff;
+    border: 1px solid var(--ot-line);
+    border-radius: 16px;
+    padding: 16px;
+    color: var(--ot-ink);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    transition: box-shadow .3s, border-color .3s
+}
+
+.ot.ok {
+    border-color: rgba(18, 121, 74, .28)
+}
+
+.ot.hot {
+    border-color: rgba(194, 65, 12, .4);
+    box-shadow: 0 0 0 3px rgba(194, 65, 12, .08)
+}
+
+.ot.flash {
+    animation: ot-flash 2.5s ease-out
+}
+
+.ot-h {
+    display: flex;
+    align-items: center;
+    gap: 10px
+}
+
+.ot-h h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+    flex: 1;
+    min-width: 0
+}
+
+.ot-ic {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: var(--ot-pri-bg);
+    color: var(--ot-pri);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none
+}
+
+.ot-ic.ok {
+    background: var(--ot-ok-bg);
+    color: var(--ot-ok)
+}
+
+.ot-tag {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ot-mute);
+    border: 1px solid var(--ot-line);
+    border-radius: 999px;
+    padding: 2px 9px;
+    white-space: nowrap
+}
+
+.ot-tag.hot {
+    color: #fff;
+    background: var(--ot-hot);
+    border-color: var(--ot-hot)
+}
+
+.ot-route {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ot-mute);
+    flex-wrap: wrap
+}
+
+.ot-sub {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ot-mute)
+}
+
+.ot-lbl {
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ot-mute);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex-wrap: wrap
+}
+
+.ot-box {
+    border: 1px solid var(--ot-line);
+    border-radius: 12px;
+    padding: 12px;
+    background: #fbfcfc;
+    display: flex;
+    flex-direction: column;
+    gap: 2px
+}
+
+.ot-box.in {
+    background: var(--ot-pri-bg);
+    border-color: rgba(11, 85, 99, .2)
+}
+
+.ot-box.wait {
+    background: var(--ot-warn-bg);
+    border-color: rgba(217, 154, 31, .3)
+}
+
+.ot-box.bad {
+    background: var(--ot-bad-bg);
+    border-color: rgba(179, 38, 30, .2)
+}
+
+.ot-box.bad .ot-lbl {
+    color: var(--ot-bad)
+}
+
+.ot.ok .ot-box {
+    background: var(--ot-ok-bg);
+    border-color: rgba(18, 121, 74, .2)
+}
+
+.ot-ct {
+    display: flex;
+    flex-direction: column;
+    min-width: 0
+}
+
+.ot-ct b {
+    font-size: 14px;
+    font-weight: 700;
+    overflow-wrap: anywhere
+}
+
+.ot-ct small {
+    font-size: 12px;
+    color: var(--ot-mute)
+}
+
+.ot-note {
+    margin: 6px 0 0;
+    font-size: 13px;
+    font-style: italic;
+    color: var(--ot-ink);
+    overflow-wrap: anywhere
+}
+
+.ot-acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px
+}
+
+.ot-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 11px;
+    border: 1px solid var(--ot-line);
+    background: #fff;
+    color: var(--ot-ink);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s
+}
+
+.ot-btn:active {
+    transform: scale(.98)
+}
+
+.ot-btn:disabled {
+    opacity: .5;
+    cursor: not-allowed
+}
+
+.ot-btn.go {
+    background: var(--ot-pri);
+    border-color: var(--ot-pri);
+    color: #fff
+}
+
+.ot-btn.danger {
+    background: #fff;
+    border-color: rgba(179, 38, 30, .4);
+    color: var(--ot-bad)
+}
+
+.ot-btn.ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--ot-pri)
+}
+
+.ot-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 2px
+}
+
+.ot-grp {
+    display: flex;
+    flex-direction: column;
+    gap: 8px
+}
+
+.ot-opt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1.5px solid var(--ot-line);
+    border-radius: 12px;
+    padding: 11px 12px;
+    cursor: pointer;
+    background: #fff;
+    min-height: 48px
+}
+
+.ot-opt.on {
+    border-color: var(--ot-pri);
+    background: var(--ot-pri-bg)
+}
+
+.ot-opt input {
+    accent-color: var(--ot-pri);
+    width: 18px;
+    height: 18px;
+    flex: none
+}
+
+.ot-fld {
+    display: flex;
+    flex-direction: column;
+    gap: 5px
+}
+
+.ot-fld label {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ot-mute)
+}
+
+.ot-inp {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1.5px solid var(--ot-line);
+    border-radius: 11px;
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--ot-ink);
+    background: #fff;
+    resize: vertical
+}
+
+.ot-inp:focus {
+    outline: none;
+    border-color: var(--ot-pri);
+    box-shadow: 0 0 0 3px rgba(11, 85, 99, .12)
+}
+
+.ot-hint {
+    margin: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--ot-mute)
+}
+
+.ot-hint svg {
+    flex: none;
+    margin-top: 2px
+}
+
+.ot-err {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ot-bad);
+    background: var(--ot-bad-bg);
+    border-radius: 10px;
+    padding: 9px 12px
+}
+
+/* activity log */
+.ot-log {
+    border-top: 1px dashed var(--ot-line);
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px
+}
+
+.ot-logb {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: none;
+    border: 0;
+    padding: 6px 0;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ot-mute);
+    cursor: pointer
+}
+
+.ot-logb svg {
+    transition: transform .2s
+}
+
+.ot-logb svg.up {
+    transform: rotate(180deg)
+}
+
+.ot-log ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px
+}
+
+.ot-log li {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start
+}
+
+.ot-log li p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.4;
+    overflow-wrap: anywhere
+}
+
+.ot-log li small {
+    font-size: 11.5px;
+    color: var(--ot-mute)
+}
+
+.ot-lognote {
+    font-style: italic;
+    color: var(--ot-mute)
+}
+
+.ot-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ot-pri);
+    margin-top: 6px;
+    flex: none
+}
+
+.ot-log li.ok .ot-dot {
+    background: var(--ot-ok)
+}
+
+.ot-log li.bad .ot-dot {
+    background: var(--ot-bad)
+}
+
+.ot-skel {
+    height: 84px;
+    border-radius: 12px;
+    background: linear-gradient(90deg, #eef2f3, #f7f9f9, #eef2f3);
+    background-size: 200% 100%;
+    animation: ot-sh 1.2s infinite
+}
+
+.ot-spin {
+    animation: ot-rot .8s linear infinite
+}
+
+@keyframes ot-sh {
+    to {
+        background-position: -200% 0
+    }
+}
+
+@keyframes ot-rot {
+    to {
+        transform: rotate(360deg)
+    }
+}
+
+@keyframes ot-flash {
+    0% {
+        box-shadow: 0 0 0 0 rgba(11, 85, 99, .45)
+    }
+
+    40% {
+        box-shadow: 0 0 0 6px rgba(11, 85, 99, .18)
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(11, 85, 99, 0)
+    }
+}
+
+@media (max-width:480px) {
+    .ot {
+        padding: 14px
+    }
+
+    .ot-acts .ot-btn {
+        flex: 1 1 auto
+    }
+}
+
+@media (prefers-reduced-motion:reduce) {
+    .ot.flash {
+        animation: none
+    }
+
+    .ot-spin {
+        animation-duration: 1.6s
+    }
+}
