@@ -96,7 +96,7 @@ function ActivityLog({ items }) {
     );
 }
 
-export default function OrderTransportPanel({ orderId, viewer, onChanged }) {
+export default function OrderTransportPanel({ orderId, viewer, onChanged, onLoaded }) {
     const { token } = useAuth();
     const { socket } = useSocket();
     const isBuyer = viewer === "buyer";
@@ -145,6 +145,9 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged }) {
         document.addEventListener("visibilitychange", onVisible);
         return () => document.removeEventListener("visibilitychange", onVisible);
     }, [load]);
+
+    // Lets the page's "Delivery address" card show the same agreed / suggested transport without a second request.
+    useEffect(() => { onLoaded?.(data); }, [data, onLoaded]);
 
     // Brief highlight when something changes after the first load (e.g. the other side just replied).
     useEffect(() => {

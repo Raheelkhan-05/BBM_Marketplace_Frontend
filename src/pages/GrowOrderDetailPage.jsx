@@ -13,6 +13,7 @@ import GrowShipSheet from "../components/growSeller/GrowShipSheet.jsx";
 import DisputePanel from "../components/orders/DisputePanel.jsx";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import OrderTransportPanel from "../components/orders/OrderTransportPanel.jsx";
+import DeliveryAddressCard from "../components/orders/DeliveryAddressCard.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
 import OrderTimingNote from "../components/orders/OrderTimingNote.jsx";
 import {
@@ -69,6 +70,7 @@ export default function GrowOrderDetailPage() {
     const [busy, setBusy] = useState(null);
     const [shipOpen, setShipOpen] = useState(false);
     const [gstin, setGstin] = useState(null);
+    const [transportInfo, setTransportInfo] = useState(null); // filled by OrderTransportPanel, shown in the address card
 
     useEffect(() => { fetchSellerOwnGstin(token).then((r) => r?.success && setGstin(r.gstin || null)); }, [token]);
 
@@ -101,7 +103,6 @@ export default function GrowOrderDetailPage() {
 
     const isSample = order.order_type === "sample";
     const first = order.items?.[0];
-    const addr = order.shipping_address_snapshot || {};
     const actions = NEXT_ACTION[order.status] || [];
     const delivered = events.find((e) => e.to_status === "delivered");
     const vendorOverride = {
@@ -147,8 +148,11 @@ export default function GrowOrderDetailPage() {
                         <div className="ltb"><OrderTimingNote order={order} viewer="seller" /></div>
                     </div>
 
+                    {/* Where to deliver + the transport agreed for this order (address is the copy saved with this order) */}
+                    <DeliveryAddressCard order={order} viewer="seller" transport={transportInfo} variant="grow" />
+
                     {/* Optional: agree the delivery transport with the buyer. Hides itself when not applicable. */}
-                    <OrderTransportPanel orderId={order.id} viewer="seller" onChanged={reload} />
+                    <OrderTransportPanel orderId={order.id} viewer="seller" onChanged={reload} onLoaded={setTransportInfo} />
 
                     <div className="card">
                         <div className="ctl">Order status</div>
@@ -194,7 +198,6 @@ export default function GrowOrderDetailPage() {
                         <div className="ctl">Buyer</div>
                         <b>{order.buyer_contact_name}</b>
                         {order.buyer_business_name && <small>{order.buyer_business_name}{order.buyer_gstin ? ` · ${order.buyer_gstin}` : ""}</small>}
-                        {addr.contact_name && <small style={{ marginTop: 6 }}>Deliver to: {addr.contact_name}</small>}
                         <div style={{ marginTop: 12 }} onClick={(e) => e.stopPropagation()}><ChatWithBuyerButton order={order} /></div>
                         {order.buyer_notes && <p className="quote">"{order.buyer_notes}"</p>}
                     </div>

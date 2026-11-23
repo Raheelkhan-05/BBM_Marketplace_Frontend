@@ -1,0 +1,97 @@
+/* src/components/orders/delivery-address.css — self-contained; works inside both the Save (sh-) and Grow UIs */
+.da .da-ad {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin: 0;
+    font-style: normal;
+}
+
+.da .da-pin {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    background: rgba(120, 120, 140, .12);
+}
+
+.da .da-ad b {
+    display: block;
+    font-size: 14.5px;
+}
+
+.da .da-ad p {
+    margin: 2px 0 0;
+    font-size: 13.5px;
+    line-height: 1.45;
+    opacity: .85;
+    overflow-wrap: anywhere;
+}
+
+.da .da-lb {
+    display: inline-block;
+    margin: 3px 0 2px;
+    padding: 1px 8px;
+    border-radius: 99px;
+    font-size: 11.5px;
+    background: rgba(120, 120, 140, .14);
+}
+
+.da .da-ph {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.da .da-n {
+    margin: 8px 0 0;
+    font-size: 12.5px;
+    line-height: 1.45;
+    opacity: .75;
+}
+
+.da .da-tr {
+    margin-top: 14px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(120, 120, 140, .25);
+}
+
+.da .da-tr.ok {
+    border-color: rgba(34, 160, 90, .45);
+    background: rgba(34, 160, 90, .08);
+}
+
+.da .da-tr.wait {
+    border-color: rgba(220, 150, 20, .45);
+    background: rgba(220, 150, 20, .08);
+}
+
+.da .da-k {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    opacity: .85;
+}
+
+.da .da-v {
+    margin: 4px 0 0;
+    font-size: 14px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.da .da-v small {
+    font-weight: 400;
+    opacity: .7;
+}
+
+.da .da-tr .da-n {
+    margin-top: 4px;
+}

@@ -2,9 +2,10 @@
 // Same data/actions as the old OrderDetailPage: fetchOrderById + useRealtimeOrder, markOrderRead(id, "buyer") on open,
 // DisputePanel, CancelOrderControl, TransportInfoCard, PurchaseOrderDocument. Only the presentation changed.
 // Unpaid orders ("awaiting_payment") show a "Complete your payment" card at the top.
+// A "Delivery address" card shows where this order is going (the address saved with the order) and the transport agreed for it.
 // Once paid, an OPTIONAL "Delivery transport" card (OrderTransportPanel) lets the buyer agree transport with the seller.
 // Layout mirrors GrowOrderDetailPage (two columns on wide screens). Render inside the same ".sv" wrapper as SaveHomePage.
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation, Link } from "react-router-dom";
 import { ArrowLeft, Package, Store, Check, X, Truck, CreditCard } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -14,6 +15,7 @@ import DisputePanel from "../components/orders/DisputePanel.jsx";
 import { CancelOrderControl } from "../components/orders/PurchaseCardActions.jsx";
 import ResumePaymentButton from "../components/orders/ResumePaymentButton.jsx";
 import OrderTransportPanel from "../components/orders/OrderTransportPanel.jsx";
+import DeliveryAddressCard from "../components/orders/DeliveryAddressCard.jsx";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
@@ -97,6 +99,7 @@ export default function SaveOrderDetailPage() {
 
     const fetcher = useCallback((orderId) => fetchOrderById(token, orderId), [token]);
     const { order: rawOrder, events, loading, reload } = useRealtimeOrder({ orderId: id, fetcher });
+    const [transportInfo, setTransportInfo] = useState(null); // filled by OrderTransportPanel, shown in the address card
 
 
     // Steps down the My Orders badge for this order the moment its detail page is opened.
@@ -176,9 +179,12 @@ export default function SaveOrderDetailPage() {
                         </>
                     )}
 
+                    {/* Where this order is going + the transport agreed for it (address is the copy saved with this order) */}
+                    <DeliveryAddressCard order={order} viewer="buyer" transport={unpaid ? null : transportInfo} variant="save" />
+
                     {/* Optional, after payment: agree the delivery transport with the seller. Hides itself when not applicable. */}
                     {!unpaid && (
-                        <OrderTransportPanel orderId={order.id} viewer="buyer" onChanged={() => reload({ silent: true })} />
+                        <OrderTransportPanel orderId={order.id} viewer="buyer" onChanged={() => reload({ silent: true })} onLoaded={setTransportInfo} />
                     )}
 
                     <Section title="Payment & freight">
