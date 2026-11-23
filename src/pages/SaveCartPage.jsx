@@ -21,6 +21,7 @@ import { startGroupPayment, redirectToGateway } from "../utils/paymentsApi.js";
 import { fetchOrderConstraints } from "../utils/api.js";
 import { track, safeCode } from "../lib/analytics.js";
 import AddressBook from "../components/shipping/AddressBook.jsx";
+import TransportAgreementModal from "../components/orders/TransportAgreementStep.jsx";
 import PriceBill from "../components/PriceBill.jsx";
 import { BuyerAddressProvider, useBuyerAddress } from "../context/BuyerAddressContext.jsx";
 import { useCart } from "../context/CartContext.jsx";
@@ -315,6 +316,9 @@ function CartPageInner() {
     const [checking, setChecking] = useState(false);
     const [error, setError] = useState(null);
     const pendingWrites = useRef({});
+    const [transportGroup, setTransportGroup] = useState(null); // { groupId }
+    const checkoutPropsRef = useRef(null);
+
     const [deselected, setDeselected] = useState(() => new Set());
 
     // Back/forward-cache restore from the payment page can leave the button on its spinner.
@@ -492,13 +496,26 @@ function CartPageInner() {
                 return;
             }
 
-            const pay = await startGroupPayment(token, res.orderGroupId);
+            // Transport step first; payment starts from "Continue to payment".
+            checkoutPropsRef.current = checkoutProps;
+            setTransportGroup({ groupId: res.orderGroupId });
+        } finally {
+            if (!navigating) setChecking(false);
+        }
+    };
+
+    const payForGroup = async (groupId) => {
+        setError(null);
+        setChecking(true);
+        let navigating = false;
+        try {
+            const pay = await startGroupPayment(token, groupId);
             if (!pay?.success) {
                 track("checkout_failed", { stage: "start_payment", code: safeCode(pay?.code) });
                 setError(pay?.message || "Couldn't start the payment. Tap the button again to retry.");
                 return;
             }
-            track("payment_initiated", checkoutProps);
+            track("payment_initiated", checkoutPropsRef.current || {});
             navigating = redirectToGateway(pay.redirectUrl);
             if (!navigating) setError("Couldn't open the payment page. Tap the button again to retry.");
         } finally {
@@ -668,6 +685,17 @@ function CartPageInner() {
                         <PayButton className="min-w-0 flex-1" />
                     </div>
                 </div>
+            )}
+
+            {transportGroup && (
+                <TransportAgreementModal
+                    groupId={transportGroup.groupId}
+                    busy={checking}
+                    error={error}
+                    onContinue={() => payForGroup(transportGroup.groupId)}
+                    onBack={() => setTransportGroup(null)}
+                    backLabel="Back to cart"
+                />
             )}
 
             {viewingItem && <CartItemDetailModal item={viewingItem} onClose={() => setViewingItem(null)} />}

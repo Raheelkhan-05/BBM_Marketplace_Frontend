@@ -8,6 +8,7 @@ import { browseTransportLibrary } from "../utils/api.transport.js";
 import {
     routeTransportModeLabel, routeOptionSummary, routeOptionIdentity,
 } from "../../shared/routeTransportFields.js";
+import TransportAgreementsPanel from "../components/orders/TransportAgreementsPanel.jsx";
 import { toTitleCase } from "../components/growSeller/sellerHelpers.js";
 import "../components/growSeller/grow-modules.css";
 
@@ -39,6 +40,7 @@ export default function SaveTransportPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
     const [visible, setVisible] = useState(PAGE);
+    const [view, setView] = useState("agreements");
     const seq = useRef(0);
 
     const run = useCallback(async (from, to) => {
@@ -80,43 +82,51 @@ export default function SaveTransportPage() {
         <div className="sh-w svc">
             <div className="gk gt">
                 <div className="gk-ph gk-rise" style={{ "--i": 0 }}>
-                    <div>
-                        <h1>Transport</h1>
-                        <p>Routes and transporters available for delivery between cities.</p>
-                    </div>
-                </div>
-
-                <div className="gt-sec">
-                    <div className="gt-search">
-                        <div className="gk-field"><label htmlFor="gt-from">From city</label>
-                            <input id="gt-from" className="gk-inp" placeholder="e.g. Rajkot" value={originCity} onKeyDown={onKey} onChange={(e) => setOriginCity(e.target.value)} /></div>
-                        <div className="gk-field"><label htmlFor="gt-to">To city</label>
-                            <input id="gt-to" className="gk-inp" placeholder="e.g. Surat" value={destCity} onKeyDown={onKey} onChange={(e) => setDestCity(e.target.value)} /></div>
-                        <button type="button" className="gk-btn go" style={{ height: 48 }} disabled={loading} onClick={search}>
-                            {loading ? <Loader2 size={17} className="gk-spin" /> : <Search size={17} />}Search
-                        </button>
-                    </div>
-
-                    <div className="gt-list" style={{ marginTop: 16 }} aria-busy={loading}>
-                        {loading ? [0, 1, 2, 3].map((i) => <div key={i} className="gk-skel" style={{ height: 70 }} />)
-                            : error ? (
-                                <div className="gk-empty" style={{ gridColumn: "1 / -1" }}>
-                                    <Truck size={26} /><b>Couldn't load transport options</b>Please try again.
-                                    <button type="button" className="gk-btn go" onClick={search}>Try again</button>
-                                </div>
-                            ) : deduped.length === 0 ? (
-                                <div className="gk-empty" style={{ gridColumn: "1 / -1" }}><Truck size={26} /><b>No transport options found</b>Try a different city, or check back later.</div>
-                            ) : deduped.slice(0, visible).map(({ k, opt }) => <RouteCard key={k} opt={opt} />)}
-                    </div>
-
-                    {!loading && !error && deduped.length > visible && (
-                        <div style={{ display: "flex", justifyContent: "center", marginTop: 18 }}>
-                            <button type="button" className="gk-btn" onClick={() => setVisible((v) => v + PAGE)}>
-                                Show more ({deduped.length - visible} left)
-                            </button>
+                    <div className="gt-top" style={{ marginBottom: 14 }}>
+                        <div className="gk-seg" role="group" aria-label="Transport views">
+                            <button type="button" aria-pressed={view === "agreements"} onClick={() => setView("agreements")}>My agreements</button>
+                            <button type="button" aria-pressed={view === "browse"} onClick={() => setView("browse")}>Browse</button>
                         </div>
+                    </div>
+
+                    {view === "agreements" ? <TransportAgreementsPanel viewer="buyer" /> : (
+                        <div className="gt-sec"> ...existing search + list + show-more JSX unchanged... </div>
                     )}
                 </div>
+
+                {view === "browse" ?
+                    <div className="gt-sec">
+                        <div className="gt-search">
+                            <div className="gk-field"><label htmlFor="gt-from">From city</label>
+                                <input id="gt-from" className="gk-inp" placeholder="e.g. Rajkot" value={originCity} onKeyDown={onKey} onChange={(e) => setOriginCity(e.target.value)} /></div>
+                            <div className="gk-field"><label htmlFor="gt-to">To city</label>
+                                <input id="gt-to" className="gk-inp" placeholder="e.g. Surat" value={destCity} onKeyDown={onKey} onChange={(e) => setDestCity(e.target.value)} /></div>
+                            <button type="button" className="gk-btn go" style={{ height: 48 }} disabled={loading} onClick={search}>
+                                {loading ? <Loader2 size={17} className="gk-spin" /> : <Search size={17} />}Search
+                            </button>
+                        </div>
+
+                        <div className="gt-list" style={{ marginTop: 16 }} aria-busy={loading}>
+                            {loading ? [0, 1, 2, 3].map((i) => <div key={i} className="gk-skel" style={{ height: 70 }} />)
+                                : error ? (
+                                    <div className="gk-empty" style={{ gridColumn: "1 / -1" }}>
+                                        <Truck size={26} /><b>Couldn't load transport options</b>Please try again.
+                                        <button type="button" className="gk-btn go" onClick={search}>Try again</button>
+                                    </div>
+                                ) : deduped.length === 0 ? (
+                                    <div className="gk-empty" style={{ gridColumn: "1 / -1" }}><Truck size={26} /><b>No transport options found</b>Try a different city, or check back later.</div>
+                                ) : deduped.slice(0, visible).map(({ k, opt }) => <RouteCard key={k} opt={opt} />)}
+                        </div>
+
+                        {!loading && !error && deduped.length > visible && (
+                            <div style={{ display: "flex", justifyContent: "center", marginTop: 18 }}>
+                                <button type="button" className="gk-btn" onClick={() => setVisible((v) => v + PAGE)}>
+                                    Show more ({deduped.length - visible} left)
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                    : null}
             </div>
         </div>
     );

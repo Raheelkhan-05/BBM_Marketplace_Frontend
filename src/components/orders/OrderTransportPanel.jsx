@@ -407,6 +407,14 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged, onLoad
 
             {actionError && <p className="ot-err" role="alert">{actionError}</p>}
 
+            {isBuyer && data.unpaid && (
+                <p className="ot-hint"><Info size={14} />
+                    {active
+                        ? "The seller sees your suggestion as soon as you pay, and can accept it before confirming your order."
+                        : "The seller is told about the transport once your payment is done."}
+                </p>
+            )}
+
             {isBuyer && !isAgreed && data.orderStatus === "pending_confirmation" && (
                 <p className="ot-hint"><Info size={14} />Can't agree on transport? You can cancel this order below until the seller confirms it.</p>
             )}

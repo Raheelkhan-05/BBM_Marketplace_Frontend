@@ -13,6 +13,7 @@ import { shipSellerOrderWithTransport } from "../utils/api.transport.js";
 import useRealtimeOrders from "../hooks/useRealtimeOrders.js";
 import useOrderTransportSummary from "../hooks/useOrderTransportSummary.js";
 import GrowShipSheet from "../components/growSeller/GrowShipSheet.jsx";
+import GrowTransportGateSheet from "../components/growSeller/GrowTransportGateSheet.jsx";
 import OrderTransportTag from "../components/orders/OrderTransportTag.jsx";
 import {
     ItemQuantityLine, ChatWithBuyerButton, computeWalletDeduction, getPaymentTerms, orderFreightState,
@@ -132,6 +133,7 @@ export default function GrowOrdersPage() {
     const [status, setStatus] = useState("");
     const [type, setType] = useState("");
     const [busy, setBusy] = useState(null);
+    const [gateFor, setGateFor] = useState(null);
     const [shipFor, setShipFor] = useState(null);
 
     const fetcher = useCallback(async () => {
@@ -154,6 +156,7 @@ export default function GrowOrdersPage() {
 
     const onAction = async (order, a) => {
         if (a.needsShipModal) { setShipFor(order); return; }
+        if (a.key === "confirm" && summary[order.id]?.state === "needs_you") { setGateFor(order); return; }
         let reason;
         if (a.needsReason) {
             reason = window.prompt("Reason for rejecting this order (shown to the buyer):");
@@ -162,12 +165,20 @@ export default function GrowOrdersPage() {
         setBusy(`${order.id}:${a.key}`);
         const res = await a.fn(token, order.id, reason);
         setBusy(null);
+        if (res?.code === "TRANSPORT_REPLY_REQUIRED") { setGateFor(order); return; }
         if (res?.success) {
             if (a.key === "reject" || a.key === "deliver") await markOrderRead(order.id, "seller");
             if (a.key === "confirm" || a.key === "reject") markOrderHandled(order.id, a.key === "confirm" ? "confirmed" : "rejected");
             say(a.key === "confirm" ? "Order confirmed" : a.key === "reject" ? "Order rejected" : "Marked as delivered");
             reload();
         } else say(res?.message || "Couldn't update the order.");
+    };
+
+    const confirmFromGate = async () => {
+        const order = gateFor;
+        const res = await confirmSellerOrder(token, order.id);
+        if (res?.success) { markOrderHandled(order.id, "confirmed"); say("Order confirmed"); setGateFor(null); reload(); }
+        return res;
     };
 
     const list = orders || [];
@@ -206,6 +217,8 @@ export default function GrowOrdersPage() {
                         return res;
                     }} />
             )}
+
+            {gateFor && <GrowTransportGateSheet order={gateFor} onClose={() => setGateFor(null)} onConfirm={confirmFromGate} onChanged={() => reload()} />}
         </div>
     );
 }

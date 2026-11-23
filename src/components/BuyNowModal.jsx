@@ -39,6 +39,7 @@ import {
     fetchOrderById,
 } from "../utils/api.js";
 import { addToCart, updateCartItem } from "../utils/cartApi.js";
+import { TransportAgreementStep } from "./orders/TransportAgreementStep.jsx";
 import { startOrderPayment, redirectToGateway } from "../utils/paymentsApi.js";
 import { ChipToggleGroup } from "./seller/listingForm/FormPrimitives.jsx";
 import { purchaseQtyToSaleUnitQty, saleUnitQtyToBaseUnits, saleUnitQtyToPacks, hasOuterPack, saleUnitLabel, round2 } from "../shared/packUnits.js";
@@ -407,6 +408,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
 
     // ---- Payment hand-off state ----
     const [pendingPay, setPendingPay] = useState(null); // { orderId, orderNumber }
+    const [transportStep, setTransportStep] = useState(null); // { orderId, orderNumber, res }
     const [redirecting, setRedirecting] = useState(false);
     const [orderMode, setOrderMode] = useState("standard"); // standard | sample | credit
     const isSample = orderMode === "sample";
@@ -768,6 +770,7 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
         new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
     ]);
 
+
     // ---- Start the JioPay payment for an order that is awaiting payment ----
     const beginPayment = async (orderId, orderNumber) => {
         setError(null);
@@ -788,6 +791,21 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
             setSubmitting(false);
             setError("Couldn't open the payment page. Please try again.");
         }
+    };
+
+    const continueFromTransport = async () => {
+        const s = transportStep;
+        if (!s || submitting) return;
+        if (s.res.orderStatus === "awaiting_payment") await beginPayment(s.orderId, s.orderNumber);
+        else { setTransportStep(null); setDone(s.res); } // credit / sample orders have no payment step
+    };
+    const backFromTransport = () => {
+        const s = transportStep;
+        setTransportStep(null);
+        setError(null);
+        if (!s) return;
+        if (s.res.orderStatus === "awaiting_payment") setPendingPay({ orderId: s.orderId, orderNumber: s.orderNumber || null });
+        else setDone(s.res);
     };
 
     // ---- Place order ----
@@ -841,12 +859,14 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
             return setError(res?.message || "Couldn't place the order.");
         }
 
-        if (res.orderStatus === "awaiting_payment") {
-            await beginPayment(res.orderId, res.orderNumber);
-        } else {
-            setSubmitting(false);
-            setDone(res);
+        setSubmitting(false);
+        if (res.orderId) {
+            // Show the transport step first; payment (or the success screen) follows from there.
+            setTransportStep({ orderId: res.orderId, orderNumber: res.orderNumber, res });
+            return;
         }
+        if (res.orderStatus === "awaiting_payment") await beginPayment(res.orderId, res.orderNumber);
+        else setDone(res);
     };
 
     // Kept for the (currently hidden) "Edit order" button on the pending-payment panel.
@@ -1071,6 +1091,17 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                             Please don't close or refresh this page. You'll be brought back here once the payment is done.
                         </p>
                     </div>
+                ) : transportStep ? (
+                    <TransportAgreementStep
+                        embedded
+                        orderIds={[transportStep.orderId]}
+                        continueLabel={transportStep.res.orderStatus === "awaiting_payment" ? "Continue to payment" : "Done"}
+                        backLabel={transportStep.res.orderStatus === "awaiting_payment" ? "Pay later from My orders" : "Skip for now"}
+                        busy={submitting}
+                        error={error}
+                        onContinue={continueFromTransport}
+                        onBack={backFromTransport}
+                    />
                 ) : pendingPay ? (
                     <div className="flex flex-col items-center bg-white px-6 py-10 text-center">
                         <span className="flex h-16 w-16 items-center justify-center rounded-full text-white shadow-lg" style={{ background: CTA_RED }}>
@@ -1091,10 +1122,10 @@ function BuyNowModalInner({ seller, product, onClose, resumeIntent: resumeIntent
                                 style={{ background: CTA_RED }}>
                                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Pay now"}
                             </button>
-                            <button onClick={handleClose} disabled={submitting}
+                            {/* <button onClick={handleClose} disabled={submitting}
                                 className="min-h-[44px] w-full text-[13.5px] font-bold disabled:opacity-60" style={{ color: T.muted }}>
                                 Pay later from My orders
-                            </button>
+                            </button> */}
                         </div>
                     </div>
                 ) : done ? (

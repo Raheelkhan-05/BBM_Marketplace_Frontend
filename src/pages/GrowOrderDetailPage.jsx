@@ -6,7 +6,6 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useNotifications } from "../context/NotificationsContext.jsx";
 import { useNotificationActions } from "../context/NotificationActionsContext.jsx";
-import { fetchSellerOrderById, fetchSellerOwnGstin } from "../utils/api.js";
 import { shipSellerOrderWithTransport } from "../utils/api.transport.js";
 import useRealtimeOrder from "../hooks/useRealtimeOrder.js";
 import GrowShipSheet from "../components/growSeller/GrowShipSheet.jsx";
@@ -14,6 +13,8 @@ import DisputePanel from "../components/orders/DisputePanel.jsx";
 import TransportInfoCard from "../components/orders/TransportInfoCard.jsx";
 import OrderTransportPanel from "../components/orders/OrderTransportPanel.jsx";
 import DeliveryAddressCard from "../components/orders/DeliveryAddressCard.jsx";
+import { fetchSellerOrderById, fetchSellerOwnGstin, confirmSellerOrder } from "../utils/api.js";
+import GrowTransportGateSheet from "../components/growSeller/GrowTransportGateSheet.jsx";
 import PurchaseOrderDocument from "../components/orders/PurchaseOrderDocument.jsx";
 import OrderTimingNote from "../components/orders/OrderTimingNote.jsx";
 import {
@@ -70,6 +71,7 @@ export default function GrowOrderDetailPage() {
     const [busy, setBusy] = useState(null);
     const [shipOpen, setShipOpen] = useState(false);
     const [gstin, setGstin] = useState(null);
+    const [gateOpen, setGateOpen] = useState(false);
     const [transportInfo, setTransportInfo] = useState(null); // filled by OrderTransportPanel, shown in the address card
 
     useEffect(() => { fetchSellerOwnGstin(token).then((r) => r?.success && setGstin(r.gstin || null)); }, [token]);
@@ -112,6 +114,7 @@ export default function GrowOrderDetailPage() {
 
     const run = async (a) => {
         if (a.needsShipModal) { setShipOpen(true); return; }
+        if (a.key === "confirm" && transportInfo?.active?.proposed_by_role === "buyer") { setGateOpen(true); return; }
         let reason;
         if (a.needsReason) {
             reason = window.prompt("Reason for rejecting this order (shown to the buyer):");
@@ -120,6 +123,7 @@ export default function GrowOrderDetailPage() {
         setBusy(a.key);
         const res = await a.fn(token, id, reason);
         setBusy(null);
+        if (res?.code === "TRANSPORT_REPLY_REQUIRED") { setGateOpen(true); return; }
         if (res?.success) {
             if (a.key === "reject" || a.key === "deliver") await markOrderRead(id, "seller");
             if (a.key === "confirm" || a.key === "reject") markOrderHandled(id, a.key === "confirm" ? "confirmed" : "rejected");
@@ -222,6 +226,15 @@ export default function GrowOrderDetailPage() {
                     onConfirm={async (formData) => {
                         const res = await shipSellerOrderWithTransport(token, id, formData);
                         if (res?.success) { setShipOpen(false); say("Marked as shipped"); reload(); }
+                        return res;
+                    }} />
+            )}
+
+            {gateOpen && (
+                <GrowTransportGateSheet order={order} onClose={() => setGateOpen(false)} onChanged={() => reload()}
+                    onConfirm={async () => {
+                        const res = await confirmSellerOrder(token, id);
+                        if (res?.success) { markOrderHandled(id, "confirmed"); say("Order confirmed"); setGateOpen(false); reload(); }
                         return res;
                     }} />
             )}

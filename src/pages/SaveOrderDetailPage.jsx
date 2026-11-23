@@ -180,12 +180,9 @@ export default function SaveOrderDetailPage() {
                     )}
 
                     {/* Where this order is going + the transport agreed for it (address is the copy saved with this order) */}
-                    <DeliveryAddressCard order={order} viewer="buyer" transport={unpaid ? null : transportInfo} variant="save" />
+                    <DeliveryAddressCard order={order} viewer="buyer" transport={transportInfo} variant="save" />
 
-                    {/* Optional, after payment: agree the delivery transport with the seller. Hides itself when not applicable. */}
-                    {!unpaid && (
-                        <OrderTransportPanel orderId={order.id} viewer="buyer" onChanged={() => reload({ silent: true })} onLoaded={setTransportInfo} />
-                    )}
+                    <OrderTransportPanel orderId={order.id} viewer="buyer" onChanged={() => reload({ silent: true })} onLoaded={setTransportInfo} />
 
                     <Section title="Payment & freight">
                         <OrderTags order={order} isSample={isSample} />

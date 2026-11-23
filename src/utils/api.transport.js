@@ -147,3 +147,13 @@ export function withdrawOrderTransport(requestId, token) {
 export function fetchOrderTransportSummary(as, token) {
     return request(`/order-transport/summary?as=${as === "seller" ? "seller" : "buyer"}`, { token });
 }
+
+export function fetchGroupTransport(groupId, token) {
+    return request(`/order-transport/group/${encodeURIComponent(groupId)}`, { token });
+}
+export function fetchTransportAgreements(as, token) {
+    return request(`/order-transport/agreements?as=${as === "seller" ? "seller" : "buyer"}`, { token });
+}
+export function endTransportAgreement(id, token) {
+    return request(`/order-transport/agreements/${encodeURIComponent(id)}/end`, { method: "POST", token });
+}

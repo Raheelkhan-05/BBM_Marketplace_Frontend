@@ -46,7 +46,7 @@ const TYPE_TABS = [["", "All orders"], ["standard", "Standard"], ["sample", "Sam
 
 const isUnpaid = (o) => o?.status === "awaiting_payment";
 // Paid, not yet shipped, and no transport agreed: the buyer can still choose one (optional).
-const canChooseTransport = (o) => !o.transport_mode && (o.status === "pending_confirmation" || o.status === "confirmed");
+const canChooseTransport = (o) => !o.transport_mode && ["awaiting_payment", "pending_confirmation", "confirmed"].includes(o.status);
 
 /* ---------- tags ---------- */
 function OrderTags({ order, isSample }) {

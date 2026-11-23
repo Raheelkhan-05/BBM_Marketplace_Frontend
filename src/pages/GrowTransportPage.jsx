@@ -10,6 +10,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { useTransportLibrary } from "../context/TransportLibraryContext.jsx";
 import { useNotificationActions } from "../context/NotificationActionsContext.jsx";
 import { useSocket } from "../context/SocketContext.jsx";
+import TransportAgreementsPanel from "../components/orders/TransportAgreementsPanel.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
 import {
     browseTransportLibrary, fetchMyRouteOptions, fetchPendingProposals,
@@ -437,22 +438,24 @@ export default function GrowTransportPage() {
     const { profile, token } = useAuth();
     const [params, setParams] = useSearchParams();
     const isApproved = profile?.seller_status === "approved";
-    const tab = isApproved && params.get("tab") !== "browse" ? "manage" : "browse";
-    const setTab = (t) => setParams(t === "browse" ? { tab: "browse" } : {}, { replace: true });
+    const t = params.get("tab");
+    const tab = isApproved ? (["agreements", "manage", "browse"].includes(t) ? t : "agreements") : "browse";
+    const setTab = (v) => setParams({ tab: v }, { replace: true });
 
     return (
         <div className="gk gt">
             <div className="gk-ph gk-rise" style={{ "--i": 0 }}>
                 <div>
                     <h1>Transport</h1>
-                    <p>Routes and transporters your buyers can choose when ordering.</p>
+                    <p>Agreed transport with your buyers, and the routes you offer.</p>
                 </div>
             </div>
 
             {isApproved && (
                 <div className="gt-top gk-rise" style={{ "--i": 1 }}>
                     <div className="gk-seg" role="group" aria-label="Transport views">
-                        <button type="button" aria-pressed={tab === "manage"} onClick={() => setTab("manage")}>Manage</button>
+                        <button type="button" aria-pressed={tab === "agreements"} onClick={() => setTab("agreements")}>Agreements</button>
+                        <button type="button" aria-pressed={tab === "manage"} onClick={() => setTab("manage")}>My routes</button>
                         <button type="button" aria-pressed={tab === "browse"} onClick={() => setTab("browse")}>Browse</button>
                     </div>
                 </div>
@@ -460,7 +463,8 @@ export default function GrowTransportPage() {
 
             {!profile ? (
                 <div className="gt-list" style={{ marginTop: 24 }} aria-busy="true">{[0, 1, 2, 3].map((i) => <div key={i} className="gk-skel" style={{ height: 70 }} />)}</div>
-            ) : tab === "manage" ? <ManageTab /> : <BrowseTab canAdd={isApproved} token={token} />}
+            ) : tab === "agreements" ? <div style={{ marginTop: 18 }}><TransportAgreementsPanel viewer="seller" /></div>
+                : tab === "manage" ? <ManageTab /> : <BrowseTab canAdd={isApproved} token={token} />}
         </div>
     );
 }
