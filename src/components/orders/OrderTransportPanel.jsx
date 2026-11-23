@@ -339,7 +339,7 @@ export default function OrderTransportPanel({ orderId, viewer, onChanged, onLoad
             {!active && !formOpen && (
                 canSuggest ? (
                     <div className="ot-acts">
-                        <button type="button" className={`ot-btn${isAgreed ? "" : " go"}`} disabled={busy} onClick={openForm}><Plus size={15} />{isAgreed ? "Change for this order" : isBuyer ? "Choose transport" : "Suggest transport"}</button>
+                        <button type="button" className={`ot-btn${isAgreed ? "" : " go"}`} disabled={busy} onClick={openForm}><Plus size={15} />{isAgreed ? "Want to change?" : isBuyer ? "Choose transport" : "Suggest transport"}</button>
                     </div>
                 ) : (
                     <p className="ot-hint"><Info size={14} />
