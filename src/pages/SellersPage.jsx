@@ -14,7 +14,7 @@ import Seo from "../components/Seo.jsx";
 import { ArrowLeft, ArrowUp, Search, X, Loader2, Store, ListFilter } from "lucide-react";
 import { fetchSellersPage } from "../utils/api";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
-import { shortLabel } from "../hooks/useCategories.js";
+import { filterLabel } from "../hooks/useCategories.js";
 import { resizedImageUrl } from "../utils/imageUrl";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useHomeFilters } from "../context/HomeFiltersContext.jsx";
@@ -118,7 +118,7 @@ function SellerCardSkeleton() {
     );
 }
 
-function CategoryNotice({ category, noun, onClear }) {
+function CategoryNotice({ label, noun, onClear }) {
     return (
         <div
             role="status"
@@ -128,7 +128,7 @@ function CategoryNotice({ category, noun, onClear }) {
             <ListFilter className="h-4 w-4 shrink-0" style={{ color: FILTER_BLUE }} strokeWidth={2.4} />
             <p className="min-w-0 flex-1 text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: INK }}>
                 Showing only {noun} with products in{" "}
-                <b className="font-extrabold" style={{ color: FILTER_BLUE }}>{shortLabel(category.name)}</b>
+                <b className="font-extrabold" style={{ color: FILTER_BLUE }}>{label}</b>
             </p>
             <button
                 type="button"
@@ -147,13 +147,17 @@ const GRID = "grid grid-cols-4 gap-x-4 gap-y-4 sm:grid-cols-5 sm:gap-x-5 md:grid
 export default function SellersPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const { profile, token } = useAuth();
-    const { activeCategory, setActiveCategory } = useHomeFilters();
+    const { activeCategory, activeSubcategory, setCategoryFilter } = useHomeFilters();
     const categoryId = activeCategory?.id || null;
+    const subcategoryId = activeSubcategory?.id || null;
+    // One key for "which filter is applied": drives the cache, resets and refetches.
+    const filterKey = subcategoryId ? `${categoryId}/${subcategoryId}` : categoryId;
+    const filterText = activeCategory ? filterLabel(activeCategory, activeSubcategory) : "";
     const myShopSlug = profile?.shop_slug || null;
     const tokenKey = token ? token.slice(-16) : "anon";
 
     const initialQ = (searchParams.get("q") || "").trim();
-    const initialCache = useRef(readCache(cacheKey(tokenKey, categoryId, initialQ))).current;
+    const initialCache = useRef(readCache(cacheKey(tokenKey, filterKey, initialQ))).current;
 
     const [input, setInput] = useState(initialQ);
     const [q, setQ] = useState(initialQ);
@@ -172,15 +176,15 @@ export default function SellersPage() {
     const qRef = useRef(initialQ);
     const scrollYRef = useRef(0);
     const firstRunRef = useRef(true);
-    const prevCategoryRef = useRef(categoryId);
+    const prevCategoryRef = useRef(filterKey);
     const inputRef = useRef(null);
 
     qRef.current = q;
 
     const tokenKeyRef = useRef(tokenKey);
     tokenKeyRef.current = tokenKey;
-    const categoryRef = useRef(categoryId);
-    categoryRef.current = categoryId;
+    const categoryRef = useRef(filterKey);
+    categoryRef.current = filterKey;
 
     useEffect(() => {
         const t = setTimeout(() => setQ(input.trim()), DEBOUNCE_MS);
@@ -206,7 +210,7 @@ export default function SellersPage() {
         setError(null);
         setMoreError(false);
 
-        fetchSellersPage({ q, limit: PAGE, offset, categoryId, signal: controller.signal, token })
+        fetchSellersPage({ q, limit: PAGE, offset, categoryId, subcategoryId, signal: controller.signal, token })
             .then((res) => {
                 if (seq !== seqRef.current) return;
                 if (!res?.success) throw new Error("bad response");
@@ -221,7 +225,7 @@ export default function SellersPage() {
                 listRef.current = next;
                 setSellers(next);
                 setHasMore(!!res.hasMore);
-                listCache.set(cacheKey(tokenKey, categoryId, q), { sellers: next, hasMore: !!res.hasMore, scrollY: 0, ts: Date.now() });
+                listCache.set(cacheKey(tokenKey, filterKey, q), { sellers: next, hasMore: !!res.hasMore, scrollY: 0, ts: Date.now() });
             })
             .catch((err) => {
                 if (err?.name === "AbortError") return;
@@ -238,16 +242,16 @@ export default function SellersPage() {
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [q, token, tokenKey, categoryId]);
+    }, [q, token, tokenKey, categoryId, subcategoryId, filterKey]);
 
     useEffect(() => {
         const isFirst = firstRunRef.current;
         firstRunRef.current = false;
 
-        const categoryChanged = prevCategoryRef.current !== categoryId;
-        prevCategoryRef.current = categoryId;
+        const categoryChanged = prevCategoryRef.current !== filterKey;
+        prevCategoryRef.current = filterKey;
 
-        const cached = readCache(cacheKey(tokenKey, categoryId, q));
+        const cached = readCache(cacheKey(tokenKey, filterKey, q));
         if (cached) {
             abortRef.current?.abort();
             seqRef.current += 1;
@@ -275,7 +279,7 @@ export default function SellersPage() {
         load(0, false);
         return () => abortRef.current?.abort();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [q, categoryId, load]);
+    }, [q, filterKey, load]);
 
     useEffect(() => {
         let ticking = false;
@@ -317,7 +321,7 @@ export default function SellersPage() {
         setInput("");
         inputRef.current?.focus();
     };
-    const clearCategory = () => setActiveCategory(null);
+    const clearCategory = () => setCategoryFilter(null, null);
 
     const showSkeleton = loading && sellers.length === 0;
     const refreshing = loading && sellers.length > 0;
@@ -363,7 +367,7 @@ export default function SellersPage() {
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder={activeCategory ? `Search sellers in ${shortLabel(activeCategory.name)}…` : "Search sellers…"}
+                            placeholder={activeCategory ? `Search sellers in ${filterText}…` : "Search sellers…"}
                             aria-label="Search sellers"
                             autoComplete="off"
                             autoCorrect="off"
@@ -391,7 +395,7 @@ export default function SellersPage() {
                     {loading ? "Loading sellers" : sellers.length ? `${sellers.length} sellers shown` : ""}
                 </p>
 
-                {activeCategory && <CategoryNotice category={activeCategory} noun="sellers" onClear={clearCategory} />}
+                {activeCategory && <CategoryNotice label={filterText} noun="sellers" onClear={clearCategory} />}
 
                 {showSkeleton ? (
                     <div className={GRID}>
@@ -415,9 +419,9 @@ export default function SellersPage() {
                         <Store className="h-6 w-6" style={{ color: MUTED }} />
                         <p className="text-[13px] font-bold" style={{ color: INK }}>
                             {q
-                                ? `No sellers match “${q}”${activeCategory ? ` in ${shortLabel(activeCategory.name)}` : ""}`
+                                ? `No sellers match “${q}”${activeCategory ? ` in ${filterText}` : ""}`
                                 : activeCategory
-                                    ? `No sellers have products in ${shortLabel(activeCategory.name)} yet`
+                                    ? `No sellers have products in ${filterText} yet`
                                     : "No sellers available yet"}
                         </p>
                         {q && <p className="text-[11.5px] font-medium" style={{ color: MUTED }}>Check the spelling or try a shorter name.</p>}

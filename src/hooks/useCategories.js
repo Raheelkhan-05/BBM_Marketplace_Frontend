@@ -87,6 +87,13 @@ function start() {
     }, 2000);
 }
 
+// "Category" or "Category › Subcategory", for chips, notices, placeholders.
+export function filterLabel(category, subcategory) {
+    if (!category) return "";
+    const base = shortLabel(category.name);
+    return subcategory ? `${base} › ${shortLabel(subcategory.name)}` : base;
+}
+
 export default function useCategories() {
     useEffect(() => { start(); }, []);
     return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);

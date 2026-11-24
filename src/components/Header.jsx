@@ -18,7 +18,7 @@ import MarketplaceSearchBar from "./MarketplaceSearchBar";
 import DeliverToBar from "./shipping/DeliverToBar.jsx";
 import HomeCartButton from "./home/HomeCartButton.jsx";
 import { CategoryList } from "./home/CategorySidebar.jsx";
-import { shortLabel } from "../hooks/useCategories.js";
+import { shortLabel, filterLabel } from "../hooks/useCategories.js";
 
 const C = { ink: "#141B22", muted: "#667077", hair: "rgba(11,17,22,0.09)", green: "#22A06B", greenInk: "#12794A", accent: "#0765CD", orange: "#D8420F" };
 const EASE = [0.16, 1, 0.3, 1];
@@ -147,7 +147,7 @@ function ProfileMenu({ info, onSignOut }) {
   );
 }
 
-function CategoryDrawer({ open, activeCategory, onSelect, onClear, onClose }) {
+function CategoryDrawer({ open, activeCategory, activeSubcategory, scope, onSelect, onClear, onClose }) {
   useEffect(() => {
     if (!open) return undefined;
     const prev = document.body.style.overflow;
@@ -194,7 +194,7 @@ function CategoryDrawer({ open, activeCategory, onSelect, onClear, onClose }) {
             {activeCategory && (
               <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-xl px-3 py-2" style={{ background: "#EAF2FD" }}>
                 <span className="min-w-0 truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.accent }}>
-                  Filtered: {shortLabel(activeCategory.name)}
+                  Filtered: {filterLabel(activeCategory, activeSubcategory)}
                 </span>
                 <button
                   type="button"
@@ -208,7 +208,12 @@ function CategoryDrawer({ open, activeCategory, onSelect, onClear, onClose }) {
             )}
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-8">
-              <CategoryList activeCategoryId={activeCategory?.id} onSelect={onSelect} />
+              <CategoryList
+                activeCategoryId={activeCategory?.id}
+                activeSubcategoryId={activeSubcategory?.id}
+                onSelect={onSelect}
+                scope={scope}
+              />
             </div>
           </motion.div>
         </>
@@ -218,8 +223,11 @@ function CategoryDrawer({ open, activeCategory, onSelect, onClear, onClose }) {
   );
 }
 
-// Always-visible "what is filtered" row. Lives in the sticky header, so it never scrolls away.
-function ActiveFilterBar({ category, onClear }) {
+
+// Always-visible "what is filtered" row (category, or category › subcategory). Lives in the sticky
+// header, so it never scrolls away. The chip's X removes the most specific level first
+// (subcategory -> back to the whole category); "Clear" removes everything.
+function ActiveFilterBar({ category, subcategory, onRemoveLast, onClear }) {
   return (
     <AnimatePresence initial={false}>
       {category && (
@@ -237,12 +245,12 @@ function ActiveFilterBar({ category, onClear }) {
             </span>
             <button
               type="button"
-              onClick={onClear}
-              aria-label={`Remove category filter ${category.name}`}
+              onClick={onRemoveLast}
+              aria-label={subcategory ? `Remove subcategory filter ${subcategory.name}` : `Remove category filter ${category.name}`}
               className="group inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border py-1 pl-3 pr-1.5 text-[12.5px] font-bold tracking-wide transition active:scale-[0.98] hover:bg-[#DDEAFB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0765CD]/50"
               style={{ background: "#EAF2FD", borderColor: "#C9DDF7", color: C.accent }}
             >
-              <span className="truncate">Category: {shortLabel(category.name)}</span>
+              <span className="truncate">Category: {filterLabel(category, subcategory)}</span>
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white">
                 <X className="h-3 w-3" strokeWidth={3} />
               </span>
@@ -262,14 +270,22 @@ function ActiveFilterBar({ category, onClear }) {
   );
 }
 
+
 export default function Header() {
   const location = useLocation();
-  const isHomePage = location.pathname === "/home";
+
+  const pathname = location.pathname;
+
+  const isHomePage =
+    pathname === "/home" ||
+    pathname.startsWith("/brand/") ||
+    pathname.startsWith("/seller/");
+
   const navigate = useNavigate();
   const { effectiveLoggedIn, profile, user, signOut } = useAuth();
   const {
     query, setQuery, shopName, feedActive,
-    activeCategory, setActiveCategory, includeGst, setIncludeGst,
+    activeCategory, activeSubcategory, setCategoryFilter, viewScope, includeGst, setIncludeGst,
   } = useHomeFilters();
 
   const headerRef = useRef(null);
@@ -314,12 +330,26 @@ export default function Header() {
     ensureFeed();
   };
 
-  const pickCategory = (cat) => {
-    setActiveCategory(cat);
+  const pickCategory = (cat, sub = null) => {
+    setCategoryFilter(cat, sub);
     ensureFeed();
     setDrawerOpen(false);
   };
-  const clearCategory = useCallback(() => { setActiveCategory(null); setDrawerOpen(false); }, [setActiveCategory]);
+  const clearCategory = useCallback(() => { setCategoryFilter(null, null); setDrawerOpen(false); }, [setCategoryFilter]);
+  const clearSubcategory = useCallback(() => setCategoryFilter(activeCategory, null), [setCategoryFilter, activeCategory]);
+
+  // When a seller / brand page is open, the drawer lists only what that seller / brand sells.
+  const scopeActive = !!(viewScope?.shopSlug || viewScope?.brandName);
+  const drawerScope = scopeActive
+    ? {
+      shopSlug: viewScope.shopSlug,
+      brandName: viewScope.brandName,
+      kind: viewScope.brandName ? "brand" : "shop",
+      name: viewScope.brandName || shopName || formatShopName(viewScope.shopSlug),
+      onClear: () => { viewScope.clear?.(); setDrawerOpen(false); },
+    }
+    : null;
+
   const closeDrawer = useCallback(() => setDrawerOpen(false), []);
 
   return (
@@ -411,12 +441,19 @@ export default function Header() {
           )}
         </div>
 
-        <ActiveFilterBar category={activeCategory} onClear={clearCategory} />
+        <ActiveFilterBar
+          category={activeCategory}
+          subcategory={activeSubcategory}
+          onRemoveLast={activeSubcategory ? clearSubcategory : clearCategory}
+          onClear={clearCategory}
+        />
       </header>
 
       <CategoryDrawer
         open={drawerOpen}
         activeCategory={activeCategory}
+        activeSubcategory={activeSubcategory}
+        scope={drawerScope}
         onSelect={pickCategory}
         onClear={clearCategory}
         onClose={closeDrawer}

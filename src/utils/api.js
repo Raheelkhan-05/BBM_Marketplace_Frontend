@@ -875,9 +875,10 @@ export async function fetchLowestPriceForBrandItem(genericProductBrandId, token)
   return res.json();
 }
 
-export async function fetchSellersPage({ q = "", limit = 48, offset = 0, categoryId = null, signal, token } = {}) {
+export async function fetchSellersPage({ q = "", limit = 48, offset = 0, categoryId = null, subcategoryId = null, signal, token } = {}) {
   const params = new URLSearchParams({ q, limit, offset });
   if (categoryId) params.set("categoryId", categoryId);
+  if (subcategoryId) params.set("subcategoryId", subcategoryId);
   const res = await fetch(`${API_BASE}/catalog/sellers?${params}`, {
     signal,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -885,9 +886,10 @@ export async function fetchSellersPage({ q = "", limit = 48, offset = 0, categor
   if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
   return res.json();
 }
-export async function fetchBrandsPage({ q = "", limit = 24, offset = 0, categoryId = null, signal, token } = {}) {
+export async function fetchBrandsPage({ q = "", limit = 24, offset = 0, categoryId = null, subcategoryId = null, signal, token } = {}) {
   const params = new URLSearchParams({ q, limit, offset });
   if (categoryId) params.set("categoryId", categoryId);
+  if (subcategoryId) params.set("subcategoryId", subcategoryId);
   const res = await fetch(`${API_BASE}/catalog/brands?${params}`, {
     signal,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -896,7 +898,21 @@ export async function fetchBrandsPage({ q = "", limit = 24, offset = 0, category
   return res.json();
 }
 
-export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, followedOnly = false, shopSlug = null, brands = [], groupId = null, destPincode, destState, signal, token } = {}) {
+// Categories + subcategories this viewer can see, optionally limited to one seller / brand.
+export async function fetchCategoryTree({ shopSlug = null, brandName = null, signal, token } = {}) {
+  const params = new URLSearchParams();
+  if (shopSlug) params.set("shop", shopSlug);
+  if (brandName) params.append("brand", brandName);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE}/catalog/category-tree${qs ? `?${qs}` : ""}`, {
+    signal,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
+  return res.json();
+}
+
+export async function fetchBrandItemsFeed({ categoryId = null, subcategoryId = null, q = "", sort = "relevance", limit = 24, offset = 0, followedOnly = false, shopSlug = null, brands = [], groupId = null, destPincode, destState, signal, token } = {}) {
   const params = new URLSearchParams({ q, sort, limit, offset });
   if (categoryId) params.set("categoryId", categoryId);
   if (followedOnly) params.set("followed", "1");
@@ -907,6 +923,7 @@ export async function fetchBrandItemsFeed({ categoryId = null, q = "", sort = "r
     if (destPincode) params.set("destPincode", destPincode);
     if (destState) params.set("destState", destState);
   }
+  if (subcategoryId) params.set("subcategoryId", subcategoryId);
   const res = await fetch(`${API_BASE}/catalog/brand-items-feed?${params}`, {
     signal,
     headers: token ? { Authorization: `Bearer ${token}` } : {},

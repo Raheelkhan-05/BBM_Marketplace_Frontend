@@ -2,7 +2,7 @@
 //
 // Search, category, GST, Deliver-to and cart now live in the header / sidebar. This page only lays
 // out [sidebar | feed] and registers itself so the header knows results are on screen.
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate, useLocation, useSearchParams, useParams } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
@@ -12,6 +12,7 @@ import ShopHeader from "../components/home/ShopHeader.jsx";
 import { SmoothScrollProvider } from "../providers/SmoothScrollProvider";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useHomeFilters } from "../context/HomeFiltersContext.jsx";
+import useCategoryTree from "../hooks/useCategoryTree.js";
 
 const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 
@@ -35,7 +36,7 @@ export default function HomePage() {
     const navigate = useNavigate();
     const location = useLocation();
     const { effectiveLoggedIn, needsOnboarding } = useAuth();
-    const { query, activeCategory, setActiveCategory, setShopName, registerFeed } = useHomeFilters();
+    const { query, activeCategory, activeSubcategory, setCategoryFilter, setViewScope, shopName, setShopName, registerFeed } = useHomeFilters();
 
     const [searchParams, setSearchParams] = useSearchParams();
     const { brandName: brandParam, shopSlug: shopParam } = useParams();
@@ -56,6 +57,38 @@ export default function HomePage() {
         setSearchParams(next, { replace: true });
     };
 
+
+    // ── Seller / brand scope ─────────────────────────────────────────────────
+    // The sidebar (and the header drawer) list only what this seller / brand sells.
+    const scopeName = brandName || shopName
+        || (shopSlug
+            ? shopSlug.replace(/-\d+$/, "").split("-").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+            : null);
+    const clearScope = () => {
+        if (shopParam || brandParam) { navigate("/home"); return; }
+        const next = new URLSearchParams(searchParams);
+        ["shop", "via", "brand", "group"].forEach((k) => next.delete(k));
+        setSearchParams(next, { replace: true });
+    };
+    const clearScopeRef = useRef(clearScope);
+    clearScopeRef.current = clearScope;
+    useEffect(() => {
+        setViewScope({ shopSlug, brandName, clear: () => clearScopeRef.current() });
+        return () => setViewScope(null);
+    }, [shopSlug, brandName, setViewScope]);
+
+    // If the active category / subcategory isn't in this scope's list (e.g. you opened a seller that
+    // doesn't sell it), drop it, so the feed never shows an empty page for a filter you can't see.
+    const tree = useCategoryTree({ shopSlug, brandName });
+    useEffect(() => {
+        if (!tree.categories || !activeCategory) return;
+        const cat = tree.categories.find((c) => c.id === activeCategory.id);
+        if (!cat) { setCategoryFilter(null, null); return; }
+        if (activeSubcategory && !(cat.subcategories || []).some((s) => s.id === activeSubcategory.id)) {
+            setCategoryFilter(activeCategory, null);
+        }
+    }, [tree.categories, activeCategory, activeSubcategory, setCategoryFilter]);
+
     const [promoDismissed, setPromoDismissed] = useState(readPromoDismissed);
     const showPromo = !effectiveLoggedIn && !promoDismissed;
     const dismissPromo = () => { setPromoDismissed(true); writePromoDismissed(); };
@@ -71,7 +104,12 @@ export default function HomePage() {
             </h1>
             <SmoothScrollProvider>
                 <div className="flex items-start sm:mt-2 lg:gap-6 lg:px-6">
-                    <CategorySidebar activeCategoryId={activeCategory?.id} onSelect={setActiveCategory} />
+                    <CategorySidebar
+                        activeCategoryId={activeCategory?.id}
+                        activeSubcategoryId={activeSubcategory?.id}
+                        onSelect={setCategoryFilter}
+                        scope={scopeName ? { shopSlug, brandName, kind: brandName ? "brand" : "shop", name: scopeName, onClear: clearScope } : null}
+                    />
 
                     <main className="min-w-0 flex-1 px-2.5 pb-28 pt-2 sm:px-4 md:pb-20 lg:px-0">
                         {shopSlug && <ShopHeader shopSlug={shopSlug} onClear={clearShop} onLoaded={setShopName} />}
@@ -90,6 +128,7 @@ export default function HomePage() {
 
                         <HomeProductFeed
                             category={activeCategory}
+                            subcategory={activeSubcategory}
                             q={query}
                             shopSlug={shopSlug}
                             brandName={brandName}

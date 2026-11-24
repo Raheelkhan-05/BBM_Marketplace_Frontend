@@ -3088,7 +3088,7 @@ function GroupViewStrip({ name, count, onBack }) {
 // same unfiltered behavior as before. Passing it wires up live search.
 // `toolbar` is optional too: HomePage passes the Category strip + search bar,
 // which this component renders inside its sticky block (see header note).
-export default function HomeProductFeed({ category, q = "", shopSlug = null, brandName = null, toolbar = null, viaSellers = false }) {
+export default function HomeProductFeed({ category, subcategory = null, q = "", shopSlug = null, brandName = null, toolbar = null, viaSellers = false }) {
     const params = useParams();
     const pathBrand = !!params.brandName;
     const pathShop = !!params.shopSlug;
@@ -3234,9 +3234,12 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const [tipDismissed, setTipDismissed] = useState(() => readFlag(FOLLOW_TIP_KEY));
     const shopSlugRef = useRef(null);
     const categoryRef = useRef(null);
+    const subcategoryRef = useRef(null);
     const qRef = useRef("");
     shopSlugRef.current = shopSlug;
     categoryRef.current = category;
+    subcategoryRef.current = subcategory;
+
     qRef.current = q;
 
     const offerCacheRef = useRef(new Map());
@@ -3281,6 +3284,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
             try {
                 const res = await fetchBrandItemsFeed({
                     categoryId: categoryRef.current?.id || null,
+                    subcategoryId: subcategoryRef.current?.id || null,
+
                     q: qRef.current.trim(),
                     limit: Math.min(Math.max(itemsRef.current.length, PAGE_SIZE), 96),
                     offset: 0, token, shopSlug: shop,
@@ -3343,7 +3348,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     const shopDestKey = shopSlug ? (buyerAddress?.pincode || "") : "";
 
-    const feedKey = `${category?.id || ""}::${q}::${token || ""}::${shopSlug || ""}::${shopDestKey}::${brandsKey}`;
+    const feedKey = `${category?.id || ""}/${subcategory?.id || ""}::${q}::${token || ""}::${shopSlug || ""}::${shopDestKey}::${brandsKey}`;
 
     const [highlightedItemId, setHighlightedItemId] = useState(null);
     const rowRefs = useRef({});
@@ -3735,7 +3740,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         const trimmed = q.trim();
         const addr = buyerAddressRef.current;
         const request = fetchBrandItemsFeed({
-            categoryId: category?.id || null, q: trimmed, limit: PAGE_SIZE, offset,
+            categoryId: category?.id || null, subcategoryId: subcategory?.id || null, q: trimmed, limit: PAGE_SIZE, offset,
             signal: controller.signal, token, shopSlug,
             brands: selectedBrands, groupId,
             destPincode: addr?.pincode || undefined, destState: addr?.state || undefined,
@@ -3773,7 +3778,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [category?.id, q, token, shopSlug, brandsKey, isLoggedIn, groupId, verifyLowestFor]);
+    }, [category?.id, subcategory?.id, q, token, shopSlug, brandsKey, isLoggedIn, groupId, verifyLowestFor]);
 
     useEffect(() => {
         const key = `${feedKey}::${groupId || ""};`;
@@ -3827,7 +3832,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         );
         return () => clearTimeout(debounceRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [category?.id, q, token, shopSlug, shopDestKey, brandsKey, groupId]);
+    }, [category?.id, subcategory?.id, q, token, shopSlug, shopDestKey, brandsKey, groupId]);
 
     useEffect(() => () => sellerAbortRef.current?.abort(), []);
     useEffect(() => () => clearTimeout(searchTrackRef.current), []);
@@ -3893,7 +3898,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         if (restoreScrollRef.current != null) return;   // Back from variants: restore, don't jump
         scrollListToTop();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [q, category?.id, shopSlug, brandsKey, groupId]);
+    }, [q, category?.id, subcategory?.id, shopSlug, brandsKey, groupId]);
 
     useLayoutEffect(() => {
         const y = restoreScrollRef.current;
@@ -3932,15 +3937,15 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
     const handleGroupBack = () => (location.state?.fromFeed ? navigate(-1) : clearGroup());
 
     // Searching or changing category from inside a variants view leaves it (search is global).
-    const filtersRef = useRef({ q, cat: category?.id });
+    const filtersRef = useRef({ q, cat: category?.id, sub: subcategory?.id });
     useEffect(() => {
         const prev = filtersRef.current;
-        filtersRef.current = { q, cat: category?.id };
+        filtersRef.current = { q, cat: category?.id, sub: subcategory?.id };
         if (!groupIdRef.current) return;
-        if (prev.q === q && prev.cat === category?.id) return;
+        if (prev.q === q && prev.cat === category?.id && prev.sub === subcategory?.id) return;
         clearGroup();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [q, category?.id]);
+    }, [q, category?.id, subcategory?.id]);
 
     const goToSellers = (item) => navigate(`/brand-item/${item.slug || item.id}/sellers`, { state: { brandItem: item, category } });
 
