@@ -4150,14 +4150,14 @@ export default function HomeProductFeed({ category, subcategory = null, q = "", 
     return (
         <>
             <Seo {...seo} path={seoPath} noindex={thin} />
-            {!shopSlug && (
+            {/* {!shopSlug && (
                 <FeedQuickActions
                     active={activeTile}
                     brandLabel={brandName}
                     onBrands={handleBrands}
                     onMyShop={handleSellers}
                 />
-            )}
+            )} */}
             <div
                 ref={stickyRef}
                 className={`sticky z-30 -mx-3 bg-white px-3 sm:-mx-4 sm:px-4 lg:mx-0 lg:px-0 ${hasStickyContent ? "border-b pb-1" : ""}`}

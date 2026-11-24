@@ -329,8 +329,8 @@ export default function MarketplaceSearchBar({
 
                 <form
                     onSubmit={handleSubmit}
-                    className={`relative flex items-center overflow-hidden rounded-full bg-white px-3 pl-5 ${flush
-                        ? "h-[55px] lg:h-[52px] lg:px-4 lg:pl-5"
+                    className={`relative flex items-center overflow-hidden rounded-full bg-white px-3 pe-0 pl-5 ${flush
+                        ? "h-[45px] lg:h-[52px] lg:px-4 lg:pl-5"
                         : "h-[55px] lg:h-[62px] lg:px-5 lg:pl-7 xl:h-[64px]"
                         }`}
                 >
@@ -358,7 +358,7 @@ export default function MarketplaceSearchBar({
                             onFocus={() => suggestionsOn && suggestions.length > 0 && setShowSuggestions(true)}
                             placeholder={placeholder}
                             autoComplete="off"
-                            className="w-full min-w-0 bg-transparent text-[12px] lg:text-[14px] text-slate-700 placeholder:text-slate-400 outline-none tracking-wide"
+                            className="w-full min-w-0 bg-transparent text-[16px] lg:text-[14px] font-semibold text-slate-700 placeholder:text-slate-400 outline-none tracking-wide"
                         />
                         {value.length > 0 && (
                             <button
@@ -391,13 +391,13 @@ export default function MarketplaceSearchBar({
                         aria-label="Search"
                         onMouseEnter={() => setBtnHover(true)}
                         onMouseLeave={() => setBtnHover(false)}
-                        className="relative ml-2 lg:ml-3 flex h-9 w-9 lg:h-8 lg:w-8 shrink-0 items-center justify-center rounded-full text-black transition hover:scale-105 active:scale-95"
+                        className="relative ml-2 lg:ml-3 flex h-12 w-12 lg:h-8 lg:w-8 shrink-0 items-center justify-center rounded-r-xl text-black transition hover:scale-105 active:scale-95"
                         style={{
                             background: btnHover ? SEARCH_BTN_HOVER : SEARCH_BTN,
                             boxShadow: "0 0 0 2px #FFD60A",
                         }}
                     >
-                        <Search size={16} strokeWidth={2.5} className="lg:!w-[16px] lg:!h-[16px]" />
+                        <Search size={17} strokeWidth={2.5} className="lg:!w-[16px] lg:!h-[16px]" />
                     </button>
                 </form>
             </div>

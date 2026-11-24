@@ -378,7 +378,7 @@ export default function Header() {
 
           <SmartLink to="/" aria-label="BBM home" className="flex shrink-0 items-center">
             <span
-              className="whitespace-nowrap text-[21px] font-extrabold lowercase leading-none lg:text-[22px]"
+              className="whitespace-nowrap text-[21px] font-extrabold leading-none lg:text-[22px]"
               style={{ fontFamily: "'Manrope', sans-serif", color: "#092747" }}
             >
               bbm.business

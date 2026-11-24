@@ -208,11 +208,11 @@ function CompactAddressPill({ address, onClick, disabled }) {
             onClick={onClick}
             disabled={disabled}
             aria-label={`Delivering to ${address.pincode}. Change delivery address`}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-2 py-1.5 text-left transition-colors active:scale-[0.98] disabled:opacity-60"
+            className="inline-flex min-h-5 items-center gap-2 rounded-xl bg-white px-2 py-1.5 text-left transition-colors active:scale-[0.98] disabled:opacity-60"
             style={{ borderColor: C.hair }}
         >
             <MapPin className="h-5 w-5 shrink-0" style={{ color: "#006F83" }} strokeWidth={2.3} />
-            <span className="flex min-w-0 flex-col items-start leading-tight">
+            <span className="flex min-w-0 items-baseline gap-1.5 whitespace-nowrap leading-tight lg:flex-col lg:items-start lg:gap-0">
                 <span className="text-[10px] font-semibold tracking-wide" style={{ color: C.muted }}>Deliver to</span>
                 <span className="text-[15px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>{address.pincode}</span>
             </span>
@@ -231,7 +231,7 @@ function CompactEmptyPill({ onClick, disabled }) {
             style={{ borderColor: "#006F8366", color: "#006F83" }}
         >
             <MapPin className="h-6 w-6 shrink-0" strokeWidth={2.3} />
-            <span className="flex flex-col items-start leading-tight">
+            <span className="flex items-baseline gap-1.5 whitespace-nowrap leading-tight lg:flex-col lg:items-start lg:gap-0">
                 <span className="text-[10px] font-semibold" style={{ color: C.muted }}>Deliver to</span>
                 <span className="text-[13px]">Add address</span>
             </span>

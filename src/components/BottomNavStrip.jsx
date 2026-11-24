@@ -1,39 +1,34 @@
 // components/BottomNavStrip.jsx
 //
-// Floating dock (FABs) + CONSOLE sheet.
+// Bottom dock + CONSOLE sheet.
+//
+// DOCK
+//   Mobile  (< md): a docked, full-width tab bar glued to the bottom edge (like a native app).
+//                   Five equal slots: Brands, Sellers, Sell, Buy, Console/Home. It stays visible
+//                   while the Console is open; the Console sheet sits directly above it.
+//   Desktop (md+) : the same floating pill with the comet ring as before. While the Console is
+//                   open the tiles collapse and only the X button remains.
+//   Sequence everywhere: [Brands] [Sellers] [Sell] [Buy] [Console | Home | Sign in].
+//
+// BRANDS / SELLERS
+//   These are actions of the Home feed (FeedQuickActions). The dock navigates to
+//   /home?quick=brands or /home?quick=sellers; HomeProductFeed consumes that one-shot param
+//   (see the snippet in the chat reply) and runs its own onBrands / onMyShop handler.
 //
 // CONSOLE = notifications list + Team + Sales (team admins only) + Helpline + Sign out.
-//   Mobile : a bottom sheet (same height / open / close as before). Helpline + Sign out
-//            sit under the title, then a Notifications | Team | Sales switch, then the content.
-//   Desktop (md+): a single wide-ish panel above the dock. Only Sign out is shown
-//            (Helpline is reachable another way on desktop), top-right.
-// Notifications are read from NotificationsContext (no extra fetching). Popups / toasts
-// still appear as before; the Console is where they can be re-read afterwards.
-// Chat notifications are not listed (Chats has its own badge elsewhere).
+//   Mobile : a bottom sheet that rises from the top of the docked bar.
+//   Desktop: a single wide-ish panel above the dock. Only Sign out is shown, top-right.
+// Notifications are read from NotificationsContext (no extra fetching).
 //
-// TEAM: the Team tab (components/team/TeamPanel.jsx) lets the company admin invite people by
-// phone / email, manage members and read the activity log. Team members see the team list.
-//
-// SALES: the Sales tab (components/team/SalesMonitorPanel.jsx) is for the company owner / team admins only.
-// A live, per-salesperson view of enquiries, order book and customers, with idle-gap highlighting.
-//
-// QUICK ACTIONS: a notification about something that still waits for the seller (a new order, a
-// transport route proposal) carries its buttons right in the list (Confirm / Reject, Approve /
-// Decline). Whether the buttons show is decided by NotificationActionsContext from live data, so an
-// action taken here or on the page removes the buttons in both places at once.
-//
-// While the Console is open the other FABs collapse OUT of the dock (they take no space),
-// so the dock shrinks to just the X button, which stays exactly where the Console button was.
+// TEAM / SALES / QUICK ACTIONS: unchanged (see TeamPanel, SalesMonitorPanel, NotificationActionsContext).
 //
 // Dock, backdrop and sheet are rendered through a portal on document.body.
 // Only ONE instance ever renders (an extra copy renders nothing).
-//
-// Dock layout is the SAME on every page: [Grow] [Save] [Console | Home | Sign in].
 import { Fragment, useEffect, useId, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { LayoutGrid, X, LogOut, Home, LogIn } from "lucide-react";
+import { LayoutGrid, X, LogOut, Home, LogIn, Tag, Store, Pin } from "lucide-react";
 import EnquiryChatsPanel from "./team/EnquiryChatsPanel.jsx";
 import useChatUnread from "../hooks/useChatUnread.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -50,9 +45,11 @@ import useGrowBadges from "./growSeller/useGrowBadges.js";
 
 const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(20,27,34,0.09)", tile: "rgba(20,27,34,0.06)" };
 
-const FAB_BOTTOM_HOME = 12;
+const FAB_BOTTOM_HOME = 12; // desktop only: gap between the floating pill and the window edge
 // 52 (tallest circle) + 4 gap + 11 label + 12 padding + 3 border + 4 ring + ~2 slack
 const DOCK_HEIGHT = 88;
+// Mobile docked bar: 40 circle + 4 gap + 11 label + 4 top + 6 bottom padding + 1 border (+ safe area added in CSS)
+const BAR_HEIGHT = 68;
 
 // Layers (portal on document.body). Kept very high so page-level fixed bars sit underneath.
 const Z_BACKDROP = 9990;
@@ -66,28 +63,37 @@ const DOCK_COLLAPSE = { duration: 0.22, ease: "easeOut" };
 const HIDE_WHEN_MENU_OPEN = [".gl .dock"];
 
 const FAB_THEME = {
+    brands: { bg: "#D8420F", fg: "#FFFFFF" },
+    sellers: { bg: "#0F63B5", fg: "#FFFFFF" },
     grow: { bg: "#22A06B", fg: "#FFFFFF" },
     save: { bg: "#FFD60A", fg: "#06161C" },
     home: { bg: "#114072", fg: "#FFFFFF" },
     menu: { bg: "#0B5563", fg: "#FFFFFF" },
     login: { bg: "#08222B", fg: "#FFFFFF" },
+    pin: { bg: "#C2255C", fg: "#FFFFFF" },
 };
-
-const SLOT = [
-    { size: 44, icon: 20 },
-    { size: 52, icon: 22, raised: true }, // the "Save" slot: bigger, raised, with the ping ring
-];
 
 const svgBase = { viewBox: "0 0 24 24", width: 24, height: 24, fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
 const GrowIcon = () => <svg {...svgBase}><path d="M3 17l6-6 4 4 8-8M15 7h6v6" /></svg>;
 const SaveIcon = () => <span style={{ font: "900 1.5rem 'Figtree', system-ui, sans-serif", lineHeight: 1 }}>₹</span>;
 const HomeIcon = ({ size = 22 }) => <Home size={size} strokeWidth={1.8} aria-hidden="true" />;
+const BrandsIcon = ({ size = 20 }) => <Tag size={size} strokeWidth={2.3} aria-hidden="true" />;
+const SellersIcon = ({ size = 20 }) => <Store size={size} strokeWidth={2.3} aria-hidden="true" />;
+const PinIcon = ({ size = 20 }) => <Pin size={size} strokeWidth={2.3} aria-hidden="true" />;
 
 // Labels shown under each dock circle live here, change them in one place.
+// `quick` tiles open a Home feed view (see header comment); the others are plain routes.
 const TILES = {
+    brands: { key: "brands", label: "Brands", Icon: BrandsIcon, to: "/brands", theme: FAB_THEME.brands },
+    sellers: { key: "sellers", label: "Sellers", Icon: SellersIcon, to: "/sellers", theme: FAB_THEME.sellers },
     grow: { key: "grow", label: "Sell", Icon: GrowIcon, to: "/sell", theme: FAB_THEME.grow },
-    save: { key: "save", label: "Buy", Icon: SaveIcon, to: "/buy", theme: FAB_THEME.save },
+    pin: { key: "pin", label: "Pin", Icon: PinIcon, to: "/home?pinned=1", theme: FAB_THEME.pin },
+    save: { key: "save", label: "Buy", Icon: SaveIcon, to: "/buy", theme: FAB_THEME.save, raised: true }, // bigger + ping ring on desktop
 };
+
+const DESKTOP_SIZE = 44;
+const DESKTOP_SIZE_RAISED = 52;
+const MOBILE_SIZE = 40;
 
 const DOCK_BTN = "relative grid shrink-0 place-items-center rounded-full";
 
@@ -129,15 +135,31 @@ const DOCK_AURA_CSS = `
 .bbm-item:focus-visible .bbm-ic { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #141B22 !important; }
 `;
 
-// While the Console is open: our own tiles are forced hidden, plus any selectors listed above.
+// Dock position. Mobile: glued to the bottom edge. Desktop: floating above it.
+// Also reserves room under page content on mobile so the docked bar never covers the last row.
+const DOCK_POS_CSS = `
+.bbm-dock { bottom: 0; }
+@media (min-width: 768px) {
+    .bbm-dock { bottom: calc(${FAB_BOTTOM_HOME}px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 767px) {
+    body:has(.bbm-dock:not([data-hidden="true"])) {
+        padding-bottom: calc(${BAR_HEIGHT}px + env(safe-area-inset-bottom, 0px));
+    }
+}
+`;
+
+// While the Console is open on DESKTOP: our own tiles are forced hidden (they collapse out of the dock).
+// On mobile the bar stays fully visible.
 const MENU_OPEN_CSS = `
-body[data-bbm-menu="open"] .bbm-tile { opacity: 0 !important; pointer-events: none !important; }
+@media (min-width: 768px) {
+    body[data-bbm-menu="open"] .bbm-tile { opacity: 0 !important; pointer-events: none !important; }
+}
 ${HIDE_WHEN_MENU_OPEN.map((s) => `body[data-bbm-menu="open"] ${s}`).join(",\n")} { visibility: hidden !important; }
 `;
 
 // Hide the dock while a screen with its own sticky action bar, any modal dialog,
 // or a FilterSelect dropdown (.ddp: floating menu / phone bottom sheet) is open.
-
 const HIDE_DOCK_CSS = `
 .bbm-dock[data-hidden="true"],
 body:has(.gs .app.hb) .bbm-dock,
@@ -153,16 +175,16 @@ body:has(.ddp) .bbm-dock {
 }
 `;
 
-
-
-// Mobile: bottom sheet (unchanged height + motion). Desktop (md+): one panel above the dock.
+// Mobile: bottom sheet that rises from the top of the docked bar. Desktop (md+): one panel above the dock.
 const SHEET_CSS = `
 .bbm-sheet {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: ${Z_SHEET};
+    position: fixed; left: 0; right: 0;
+    bottom: calc(${BAR_HEIGHT}px + env(safe-area-inset-bottom, 0px));
+    z-index: ${Z_SHEET};
     margin-inline: auto; display: flex; flex-direction: column; overflow: hidden;
     background: #fff; border-radius: 24px 24px 0 0;
-    max-height: min(85dvh, calc(100dvh - 130px));
-    transform: translateY(calc(100% + 140px));
+    max-height: min(85dvh, calc(100dvh - ${BAR_HEIGHT}px - 56px - env(safe-area-inset-bottom, 0px)));
+    transform: translateY(calc(100% + ${BAR_HEIGHT + 80}px));
     visibility: hidden; pointer-events: none;
     transition: transform .3s ease-out, box-shadow .3s ease-out, visibility 0s linear .3s;
 }
@@ -208,6 +230,20 @@ function formatShopName(slug) {
         .filter(Boolean)
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ");
+}
+
+// True at md and above (desktop floating pill). False on phones (docked bar).
+function useIsDesktop() {
+    const query = "(min-width: 768px)";
+    const [match, setMatch] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+    useEffect(() => {
+        const mq = window.matchMedia(query);
+        const on = () => setMatch(mq.matches);
+        on();
+        mq.addEventListener("change", on);
+        return () => mq.removeEventListener("change", on);
+    }, []);
+    return match;
 }
 
 // True while any text field is focused (i.e. the mobile keyboard is up).
@@ -268,6 +304,7 @@ function DockBadge({ n }) {
 }
 
 // One dock button = coloured circle + text label underneath.
+// Mobile: slots share the bar equally (flex-1). Desktop: fixed 72px slots.
 function DockItem({
     label, active = false, current, theme, size = 44, ping = false, badge,
     onClick, ariaLabel, title, tabIndex, className = "", children, ...rest
@@ -282,7 +319,7 @@ function DockItem({
             tabIndex={tabIndex}
             whileTap={{ scale: 0.94 }}
             transition={{ type: "spring", stiffness: 500, damping: 32 }}
-            className={`bbm-item relative flex w-[72px] shrink-0 flex-col items-center gap-1 bg-transparent p-0 ${className}`}
+            className={`bbm-item relative flex min-w-0 flex-1 flex-col items-center gap-0.5 md:gap-1 bg-transparent p-0 md:w-[72px] md:flex-none md:shrink-0 ${className}`}
             {...rest}
         >
             <span
@@ -300,7 +337,7 @@ function DockItem({
             </span>
 
             <span
-                className={`block max-w-full truncate text-[10.5px] leading-none tracking-wide transition-colors duration-150 ${active ? "font-black" : "font-bold"}`}
+                className={`block max-w-full truncate text-[12px] leading-none tracking-wide transition-colors duration-150 ${active ? "font-black" : "font-bold"}`}
                 style={{ color: active ? C.ink : C.muted }}
             >
                 {label}
@@ -308,7 +345,7 @@ function DockItem({
 
             <span
                 aria-hidden
-                className={`absolute -bottom-[6px] h-[3px] w-[18px] rounded-full transition-opacity duration-150 ${active ? "opacity-100" : "opacity-0"}`}
+                className={`absolute -bottom-[6px] h-[3px] w-[18px] rounded-full transition-opacity duration-150 max-md:-bottom-[4px] ${active ? "opacity-100" : "opacity-0"}`}
                 style={{ background: theme.bg }}
             />
         </motion.button>
@@ -317,6 +354,7 @@ function DockItem({
 
 export default function BottomNavStrip({ onOpenRfq }) {
     const primary = useIsPrimaryInstance();
+    const isDesktop = useIsDesktop();
     const navigate = useNavigate();
     const { pathname, search } = useLocation();
     const { token, effectiveLoggedIn, profile, signOut } = useAuth();
@@ -343,6 +381,9 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const [deepId, setDeepId] = useState("");
     const typing = useTypingActive();
 
+    // The tiles only collapse out of the dock on desktop. On mobile the bar always stays whole.
+    const collapse = pageOpen && isDesktop;
+
     // Everything except chat, newest first (stable order when the server sends no timestamps).
     const consoleNotifs = useMemo(
         () => (notifications || [])
@@ -355,11 +396,18 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const inGrow = pathname === "/sell" || pathname.startsWith("/sell/");
     const inSave = pathname === "/buy" || pathname.startsWith("/buy/");
     const inLogin = pathname === "/login" || pathname.startsWith("/login/");
-    const inModule = inGrow || inSave; // third slot is Home inside Grow / Save, Console everywhere else
-    const activeKey = inGrow ? "grow" : inSave ? "save" : null;
-    const fabBottom = FAB_BOTTOM_HOME;
+    const inModule = inGrow || inSave; // last slot is Home inside Grow / Save, Console everywhere else
+    const isHomePage =
+        pathname === "/home" ||
+        pathname.startsWith("/brand/") ||
+        pathname.startsWith("/seller/");
+
+    // Last dock slot: Console (or Sign in for guests) on the home pages only, Home everywhere else.
+    const lastSlot = isHomePage ? (effectiveLoggedIn ? "console" : "login") : "home";
+    const pinnedView = pathname === "/home" && new URLSearchParams(search).get("pinned") === "1";
+    const activeKey = pinnedView ? "pin" : inGrow ? "grow" : inSave ? "save" : null;
     const shopName = profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM";
-    const tileGap = 8;
+    const tileGap = isDesktop ? 8 : 0;
 
     // The Sales monitor tab is for the company owner / team admins. The server enforces it too.
     const teamRole = profile?.team?.role;
@@ -372,12 +420,24 @@ export default function BottomNavStrip({ onOpenRfq }) {
     // Ready sellers go straight to their dashboard; everyone else goes to the Grow start page.
     const growTo = effectiveLoggedIn && isSellerReady(profile, token) ? "/sell/dashboard" : "/sell";
 
-    // Always the same two tiles, in the same order: Grow, Save.
-    const tiles = [TILES.grow, TILES.save].map((t, i) => ({
-        ...t, to: t.key === "grow" ? growTo : t.to, slot: SLOT[i], badge: t.key === "grow" ? growBadges.total : 0,
+    // Always the same four tiles, in the same order: Brands, Sellers, Sell, Buy.
+    const tiles = [TILES.brands, TILES.sellers, TILES.pin, TILES.save, TILES.grow].map((t) => ({
+        ...t,
+        to: t.key === "grow" ? growTo : t.to,
+        size: isDesktop ? (t.raised ? DESKTOP_SIZE_RAISED : DESKTOP_SIZE) : MOBILE_SIZE,
+        icon: isDesktop ? (t.raised ? 22 : 20) : 20,
+        ping: !!t.raised,
+        badge: t.key === "grow" ? growBadges.total : 0,
     }));
 
-    // Measurements used to keep the Console button exactly where it was while the dock shrinks.
+    const goTile = (t) => {
+        setPageOpen(false);
+        if (t.key === "pin" && pinnedView) { navigate("/home"); return; }
+        if (t.quick) navigate(`/home?quick=${t.quick}`);
+        else navigate(t.to);
+    };
+
+    // Measurements used to keep the Console button exactly where it was while the dock shrinks (desktop).
     const tilesInnerRef = useRef(null);
     const pillRef = useRef(null);
     const [tilesW, setTilesW] = useState(0);   // natural width of the tiles group
@@ -391,13 +451,15 @@ export default function BottomNavStrip({ onOpenRfq }) {
         ro.observe(inner);
         setTilesW(inner.offsetWidth);
         return () => ro.disconnect();
-    }, [primary]);
+    }, [primary, isDesktop]);
 
     useEffect(() => {
         if (!pageOpen && pillRef.current) setPillH(pillRef.current.offsetHeight);
-    }, [pageOpen, primary, tiles.length, inModule]);
+    }, [pageOpen, primary, tiles.length, lastSlot, isDesktop]);
 
-    useEffect(() => { if (pageOpen) { setClipTiles(true); setEverOpened(true); } }, [pageOpen]);
+    useEffect(() => { if (collapse) setClipTiles(true); }, [collapse]);
+    useEffect(() => { if (pageOpen) setEverOpened(true); }, [pageOpen]);
+    useEffect(() => { if (!isDesktop) setClipTiles(false); }, [isDesktop]);
 
     // Opening the Console re-checks what still waits for a decision, so the buttons are never stale.
     useEffect(() => { if (pageOpen) refreshActions({ force: true }); }, [pageOpen, refreshActions]);
@@ -444,11 +506,15 @@ export default function BottomNavStrip({ onOpenRfq }) {
     useEffect(() => {
         const id = new URLSearchParams(search).get("enquiry");
         if (!id || !effectiveLoggedIn || !profile) return;
+        if (!isHomePage) {
+            navigate(`/home?enquiry=${id}`, { replace: true });
+            return;
+        }
         setDeepId(id); setPageOpen(true);
         showTab(canMonitor ? "sales" : "enquiries");
         navigate({ pathname, search: "" }, { replace: true });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search, effectiveLoggedIn, profile, canMonitor]);
+    }, [search, effectiveLoggedIn, profile, canMonitor, isHomePage]);
 
     const openNotification = useCallback((n) => {
         if (!n.read) markRead(n.id);
@@ -467,11 +533,14 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const inSaveChatThread = /^\/buy\/chat\/[^/]+/.test(pathname);
     const inSaveCart = /^\/(buy\/)?cart(\/|$)/.test(pathname);
 
+    const lastSize = isDesktop ? DESKTOP_SIZE : MOBILE_SIZE;
+    const lastIcon = 20;
+
     const consoleButton = (
         <DockItem
             label={pageOpen ? "Close" : "Console"}
             theme={FAB_THEME.menu}
-            size={SLOT[0].size}
+            size={lastSize}
             active={pageOpen}
             current={false}
             onClick={() => setPageOpen((v) => !v)}
@@ -488,110 +557,132 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     transition={{ duration: 0.08 }}
                     className="flex"
                 >
-                    {pageOpen ? <X size={SLOT[0].icon} strokeWidth={2.4} /> : <LayoutGrid size={SLOT[0].icon} strokeWidth={2.4} />}
+                    {pageOpen ? <X size={lastIcon} strokeWidth={2.4} /> : <LayoutGrid size={lastIcon} strokeWidth={2.4} />}
                 </motion.span>
             </AnimatePresence>
         </DockItem>
     );
 
     const homeButton = (
-        <DockItem label="Home" theme={FAB_THEME.home} size={SLOT[0].size} onClick={() => navigate("/home")}>
-            <HomeIcon size={SLOT[0].icon} />
+        <DockItem label="Home" theme={FAB_THEME.home} size={lastSize} onClick={() => navigate("/home")}>
+            <HomeIcon size={lastIcon} />
         </DockItem>
     );
 
     const signInButton = (
-        <DockItem label="Sign in" theme={FAB_THEME.login} size={SLOT[0].size} active={inLogin} onClick={() => navigate("/login")}>
-            <LogIn size={SLOT[0].icon} strokeWidth={2.4} />
+        <DockItem label="Sign in" theme={FAB_THEME.login} size={lastSize} active={inLogin} onClick={() => navigate("/login")}>
+            <LogIn size={lastIcon} strokeWidth={2.4} />
         </DockItem>
     );
 
     if (!primary || typeof document === "undefined") return null;
 
+    // Pill look: mobile = flat docked bar. Desktop = floating pill (transparent while collapsed).
+    const pillStyle = isDesktop
+        ? {
+            background: collapse ? "transparent" : "rgba(255,255,255,.92)",
+            borderColor: collapse ? "transparent" : "#DFE7EA",
+            boxShadow: collapse ? "none" : "0 18px 40px -12px rgba(8,34,43,.4)",
+            minHeight: collapse && pillH ? pillH : undefined,
+        }
+        : {
+            background: "rgba(255,255,255,.97)",
+            borderColor: "#DFE7EA",
+            boxShadow: "0 -8px 24px -14px rgba(8,34,43,.28)",
+            paddingBottom: "calc(6px + env(safe-area-inset-bottom, 0px))",
+        };
+
     return createPortal(
         <>
-            <style>{DOCK_AURA_CSS + MENU_OPEN_CSS + HIDE_DOCK_CSS + SHEET_CSS}</style>
+            <style>{DOCK_AURA_CSS + DOCK_POS_CSS + MENU_OPEN_CSS + HIDE_DOCK_CSS + SHEET_CSS}</style>
 
             {/* ===================== DOCK ===================== */}
             <div
                 data-hidden={(inChatThread || inSaveChatThread || inSaveCart) ? "true" : undefined}
                 className={`bbm-dock pointer-events-none fixed inset-x-0 flex justify-center transition-opacity duration-150 ${typing ? "opacity-0" : ""}`}
-                style={{ zIndex: Z_DOCK, bottom: `calc(${fabBottom}px + env(safe-area-inset-bottom, 0px))` }}
+                style={{ zIndex: Z_DOCK }}
             >
-                {/* Slides sideways by half the removed width, so the Console button stays put.
-                    Outer radius 22 = inner radius 20 + the 2px margin, so the comet ring hugs the corners. */}
+                {/* Desktop: slides sideways by half the removed width, so the Console button stays put.
+                    Outer radius 22 = inner radius 20 + the 2px margin, so the comet ring hugs the corners.
+                    Mobile: full-width, square, no ring. */}
                 <motion.div
-                    className={`${typing ? "pointer-events-none" : "pointer-events-auto"} relative isolate rounded-[22px]`}
+                    className={`${typing ? "pointer-events-none" : "pointer-events-auto"} relative isolate ${isDesktop ? "rounded-[22px]" : "w-full"}`}
                     initial={false}
-                    animate={{ x: pageOpen ? (tilesW + tileGap) / 2 : 0 }}
+                    animate={{ x: collapse ? (tilesW + tileGap) / 2 : 0 }}
                     transition={DOCK_COLLAPSE}
                 >
-                    {/* aura: blurred halo (22 + 4 inset = 26) */}
-                    <span aria-hidden className={`pointer-events-none absolute -inset-[4px] -z-10 overflow-hidden rounded-[26px] blur-[8px] transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-70"}`}>
-                        <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
-                    </span>
+                    {isDesktop && (
+                        <>
+                            {/* aura: blurred halo (22 + 4 inset = 26) */}
+                            <span aria-hidden className={`pointer-events-none absolute -inset-[4px] -z-10 overflow-hidden rounded-[26px] blur-[8px] transition-opacity duration-300 ${collapse ? "opacity-0" : "opacity-70"}`}>
+                                <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
+                            </span>
 
-                    {/* aura: comet ring */}
-                    <span aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[22px] transition-opacity duration-300 ${pageOpen ? "opacity-0" : "opacity-100"}`} style={{ background: DOCK_RING }}>
-                        <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
-                    </span>
+                            {/* aura: comet ring */}
+                            <span aria-hidden className={`pointer-events-none absolute inset-0 overflow-hidden rounded-[22px] transition-opacity duration-300 ${collapse ? "opacity-0" : "opacity-100"}`} style={{ background: DOCK_RING }}>
+                                <span className="bbm-dock-spin absolute left-1/2 top-1/2 aspect-square w-[200%]" style={{ background: DOCK_CONIC }} />
+                            </span>
+                        </>
+                    )}
 
                     {/* the dock body */}
                     <div
                         ref={pillRef}
-                        className="relative m-[2px] flex items-end justify-center rounded-[20px] border-[1.5px] px-[20px] pb-[8px] pt-[4px] transition-[background-color,box-shadow] duration-200"
-                        style={{
-                            background: pageOpen ? "transparent" : "rgba(255,255,255,.92)",
-                            borderColor: pageOpen ? "transparent" : "#DFE7EA",
-                            boxShadow: pageOpen ? "none" : "0 18px 40px -12px rgba(8,34,43,.4)",
-                            minHeight: pageOpen && pillH ? pillH : undefined,
-                        }}
+                        className={
+                            isDesktop
+                                ? "relative m-[2px] flex items-end justify-center rounded-[20px] border-[1.5px] px-[20px] pb-[8px] pt-[4px] transition-[background-color,box-shadow] duration-200"
+                                : "relative flex w-full items-end border-t px-0 pt-[4px]"
+                        }
+                        style={pillStyle}
                     >
-                        {/* Tiles group: collapses to 0 width (and 0 gap) while the Console is open */}
+                        {/* Tiles group: collapses to 0 width (and 0 gap) while the Console is open (desktop only) */}
                         <motion.div
-                            className="relative"
+                            className={`relative ${isDesktop ? "" : "min-w-0 flex-[5]"}`}
                             initial={false}
-                            animate={{
-                                width: pageOpen ? 0 : "auto",
-                                marginRight: pageOpen ? 0 : tileGap,
-                                opacity: pageOpen ? 0 : 1,
-                            }}
+                            animate={
+                                isDesktop
+                                    ? { width: collapse ? 0 : "auto", marginRight: collapse ? 0 : tileGap, opacity: collapse ? 0 : 1 }
+                                    : { marginRight: 0, opacity: 1 }
+                            }
                             transition={DOCK_COLLAPSE}
-                            onAnimationComplete={() => { if (!pageOpen) setClipTiles(false); }}
-                            style={{ overflow: clipTiles ? "hidden" : "visible" }}
+                            onAnimationComplete={() => { if (!collapse) setClipTiles(false); }}
+                            style={{ overflow: isDesktop && clipTiles ? "hidden" : "visible" }}
                         >
-                            <div ref={tilesInnerRef} className="relative flex w-max items-end" style={{ gap: tileGap }}>
-                                {tiles.map(({ key, label, Icon, to, theme, slot, badge }) => (
-                                    <DockItem
-                                        key={key}
-                                        label={label}
-                                        theme={theme}
-                                        size={slot.size}
-                                        ping={!!slot.raised}
-                                        badge={badge}
-                                        active={activeKey === key}
-                                        ariaLabel={badge > 0 ? `${label}, ${badge} unread` : label}
-                                        tabIndex={pageOpen ? -1 : 0}
-                                        onClick={() => navigate(to)}
-                                        onPointerEnter={key === "grow" ? warmGrow : undefined}
-                                        onTouchStart={key === "grow" ? warmGrow : undefined}
-                                        className={`bbm-tile ${pageOpen ? "pointer-events-none" : ""}`}
-                                    >
-                                        <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon size={slot.icon} /></span>
-                                    </DockItem>
-                                ))}
+                            <div ref={tilesInnerRef} className={`relative flex items-end ${isDesktop ? "w-max" : "w-full"}`} style={{ gap: tileGap }}>
+                                {tiles.map((t) => {
+                                    const { key, label, Icon, theme, size, icon, ping, badge } = t;
+                                    return (
+                                        <DockItem
+                                            key={key}
+                                            label={label}
+                                            theme={theme}
+                                            size={size}
+                                            ping={ping}
+                                            badge={badge}
+                                            active={activeKey === key}
+                                            ariaLabel={badge > 0 ? `${label}, ${badge} unread` : label}
+                                            tabIndex={collapse ? -1 : 0}
+                                            onClick={() => goTile(t)}
+                                            onPointerEnter={key === "grow" ? warmGrow : undefined}
+                                            onTouchStart={key === "grow" ? warmGrow : undefined}
+                                            className={`bbm-tile ${collapse ? "pointer-events-none" : ""}`}
+                                        >
+                                            <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon size={icon} /></span>
+                                        </DockItem>
+                                    );
+                                })}
                             </div>
                         </motion.div>
 
                         {/* Instant swap (no exit/enter animation): the key makes React replace the button at once */}
-                        <Fragment key={inModule ? "home" : effectiveLoggedIn ? "console" : "login"}>
-                            {inModule ? homeButton : effectiveLoggedIn ? consoleButton : signInButton}
+                        <Fragment key={lastSlot}>
+                            {lastSlot === "console" ? consoleButton : lastSlot === "login" ? signInButton : homeButton}
                         </Fragment>
                     </div>
                 </motion.div>
             </div>
 
-            {/* ===================== BACKDROP (dims the whole page) ===================== */}
+            {/* ===================== BACKDROP (dims the page; the mobile bar stays above it) ===================== */}
             <div
                 aria-hidden="true"
                 onClick={() => setPageOpen(false)}
@@ -681,10 +772,16 @@ export default function BottomNavStrip({ onOpenRfq }) {
                     )}
                 </div>
 
-                {/* Body: notifications, team or sales. --sheet-pb clears the floating dock on mobile. */}
+                {/* Body: notifications, team or sales.
+                    --sheet-pb: desktop keeps the old clearance for the floating dock; on mobile the sheet already
+                    sits above the docked bar, so only a small breathing gap is needed. */}
                 <div
                     className="flex min-h-0 flex-1 flex-col"
-                    style={{ "--sheet-pb": `calc(${fabBottom + DOCK_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))` }}
+                    style={{
+                        "--sheet-pb": isDesktop
+                            ? `calc(${FAB_BOTTOM_HOME + DOCK_HEIGHT + 12}px + env(safe-area-inset-bottom, 0px))`
+                            : "12px",
+                    }}
                 >
                     {everOpened && effectiveLoggedIn && tab === "notifications" && (
                         <NotificationTimeline
