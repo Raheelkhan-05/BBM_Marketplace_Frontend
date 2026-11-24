@@ -330,7 +330,7 @@ export default function MarketplaceSearchBar({
                 <form
                     onSubmit={handleSubmit}
                     className={`relative flex items-center overflow-hidden rounded-full bg-white px-3 pl-5 ${flush
-                        ? "h-[50px] lg:h-[52px] lg:px-4 lg:pl-5"
+                        ? "h-[55px] lg:h-[52px] lg:px-4 lg:pl-5"
                         : "h-[55px] lg:h-[62px] lg:px-5 lg:pl-7 xl:h-[64px]"
                         }`}
                 >

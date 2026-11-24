@@ -13,7 +13,7 @@
 // meta 12/regular muted. A cart line = [checkbox | image | name + facts] then [stepper … total].
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Trash2, Loader2, ShoppingCart, MapPin, Clock, AlertCircle, X, ArrowRight, ArrowLeft, Compass, Package, Store, Minus, Plus } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchCart, updateCartItem, removeFromCart, checkoutCart } from "../utils/cartApi.js";
@@ -33,6 +33,7 @@ const EXPLORE_ROUTE = "/home";
 const T = {
     ink: "#0B2533", muted: "#5B6B75", soft: "#8795A0", teal: "#0E7C86", tealDk: "#0A6670", tealBg: "#E8F5F6",
     hair: "#E4EAEC", link: "#1A5FD0", cta: "#E8490F",
+    white: "#fff",
     amberBg: "#FFF8DB", amberBd: "#F3E0A0", amberTx: "#5C4300",
     red: "#D43806", redBg: "#FDF0EF", redBd: "#F5CFCC", redTx: "#B3261E",
 };
@@ -309,6 +310,9 @@ function CartPageInner() {
     const addressBookRef = useRef(null);
     const selectedAddressId = selectedAddress?.id || null;
 
+    const location = useLocation();
+    const isBuyCart = location.pathname === "/buy/cart";
+
     const [items, setItems] = useState([]);
     const itemsRef = useRef([]); itemsRef.current = items;
     const [loading, setLoading] = useState(true);
@@ -542,7 +546,10 @@ function CartPageInner() {
 
     if (loading) {
         return (
-            <div className="mx-auto w-full max-w-5xl bg-white px-4 pt-5" aria-busy="true">
+            <div
+                className={`mx-auto w-full ${isBuyCart ? "max-w-5xl" : ""} bg-white px-4 pt-5`}
+                aria-busy="true"
+            >
                 <div className="h-6 w-28 animate-pulse rounded-md" style={{ background: T.hair }} />
                 <div className="mt-4 grid gap-3">{[0, 1].map((i) => <div key={i} className="h-36 animate-pulse rounded-xl" style={{ background: T.hair }} />)}</div>
             </div>
@@ -551,7 +558,9 @@ function CartPageInner() {
 
     return (
         <div className="min-h-screen bg-white" style={{ color: T.ink }}>
-            <div className="mx-auto w-full max-w-5xl px-3 pb-36 pt-3 sm:px-4 lg:pb-10">
+            <div
+                className={`mx-auto w-full ${isBuyCart ? "max-w-5xl" : ""} px-3 pb-36 pt-3 sm:px-4 lg:pb-10`}
+            >
                 {/* Title */}
                 <div className="mb-3 flex items-center gap-2">
                     <Link to={EXPLORE_ROUTE} aria-label="Back to shopping" className="-ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full active:bg-black/5">
@@ -568,7 +577,7 @@ function CartPageInner() {
                         </span>
                         <p className="mt-1 text-[17px] font-bold">Your cart is empty</p>
                         <p className="max-w-xs text-[13px]" style={{ color: T.muted }}>Add products from sellers and they will wait for you here.</p>
-                        <button type="button" onClick={() => navigate(EXPLORE_ROUTE)} className="mt-2 flex h-11 items-center gap-2 rounded-xl px-5 text-[14px] font-bold text-white" style={{ background: T.cta }}>
+                        <button type="button" onClick={() => navigate(EXPLORE_ROUTE)} className="mt-2 flex h-11 items-center gap-2 rounded-xl px-5 text-[14px] font-bold text-white" style={{ background: T.cta, color: "#fff" }}>
                             Explore products <ArrowRight className="h-4 w-4" />
                         </button>
                     </div>
