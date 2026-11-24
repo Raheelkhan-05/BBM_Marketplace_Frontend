@@ -6,11 +6,11 @@ import { ChatProvider } from "../context/ChatContext.jsx";
 import { ListingsProvider } from "../context/ListingsContext.jsx";
 import { HelpRequestProvider } from "../context/HelpRequestContext.jsx";
 import { TransportLibraryProvider } from "../context/TransportLibraryContext.jsx";
-// NEW: must sit inside NotificationsProvider and TransportLibraryProvider, and wrap both the pages
-// (Outlet) and the Console (BottomNavStrip) so they share the same live "waiting for decision" state.
 import { NotificationActionsProvider } from "../context/NotificationActionsContext.jsx";
 import { DockVisibilityProvider, useDockHidden } from "../context/DockVisibilityContext.jsx";
 import { LightboxVisibilityContext } from "../context/LightboxVisibilityContext.jsx";
+// Home filters (search text, selected category, GST) live here so Header, Home, Brands and Sellers all share them.
+import { HomeFiltersProvider } from "../context/HomeFiltersContext.jsx";
 import BottomNavStrip from "./BottomNavStrip.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -46,8 +46,10 @@ export default function AppShell() {
             <NotificationActionsProvider>
                 <DockVisibilityProvider>
                     <LightboxVisibilityContext.Provider value={lightboxValue}>
-                        <Outlet />
-                        <Dock show={show} />
+                        <HomeFiltersProvider>
+                            <Outlet />
+                            <Dock show={show} />
+                        </HomeFiltersProvider>
                     </LightboxVisibilityContext.Provider>
                 </DockVisibilityProvider>
             </NotificationActionsProvider>

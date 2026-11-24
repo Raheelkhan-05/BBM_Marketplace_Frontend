@@ -1,17 +1,11 @@
 // src/components/Layout.jsx
 //
 // NOTE: NotificationsProvider, CartProvider, ChatProvider, ListingsProvider,
-// HelpRequestProvider and TransportLibraryProvider are provided ONCE by AppShell
-// (App.jsx wraps <Layout /> inside <AppShell />). Do not re-wrap them here, or every
-// page under Layout gets its own copy of state and socket listeners, and the
-// BottomNavStrip (which lives in AppShell) reads a different copy than the pages.
-//
-// The lightbox visibility context also lives in AppShell now (so Grow / Save / Sales pages can use
-// ImageLightbox too). It is re-exported below so existing imports from "./Layout.jsx" keep working.
+// HelpRequestProvider, TransportLibraryProvider and HomeFiltersProvider are provided ONCE by AppShell.
+// Do not re-wrap them here.
 import { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Header from "./Header.jsx";
-// import Footer from "./Footer.jsx";
 import { BuyerAddressProvider } from "../context/BuyerAddressContext.jsx";
 import PublicFooter from "./PublicFooter.jsx";
 import PublicServicesStrip from "./PublicServicesStrip.jsx";
@@ -30,7 +24,7 @@ export { useLightboxVisibility };
 export default function Layout() {
   const { pathname } = useLocation();
   const { isLoggedIn, initializing } = useAuth();
-  const isHome = pathname === "/home" || pathname === "/home";
+  const isHome = pathname === "/home";
 
   const isAdminPage = pathname.startsWith("/admin");
   const isWalletPage = pathname.startsWith("/seller/wallet");
@@ -41,7 +35,6 @@ export default function Layout() {
   const { lightboxOpen } = useLightboxVisibility();
   const [rfqOpen, setRfqOpen] = useState(false);
 
-  // Same rule AppShell uses to decide whether the bottom dock is shown.
   const showBottomNav = !isAdminPage && !isWalletPage && !isChatDetailPage
     && !isSalesOrdersPage && !isOrdersPage && !lightboxOpen;
 
@@ -58,17 +51,13 @@ export default function Layout() {
 
             {isHome && !isLoggedIn && !initializing && <PublicServicesStrip />}
 
-
             <PublicFooter dock />
           </div>
 
-          {/* Desktop only: mobile's helpline lives inside the BottomNavStrip menu. */}
-          <div className="hidden md:block">
+          {/* <div className="hidden md:block">
             <HelpBulb />
-          </div>
+          </div> */}
 
-          {/* Toasts portal to document.body; they only need to be inside the
-              providers (from AppShell) and the Router. */}
           <CreditNotificationToast />
           <OrderNotificationToast />
           <ChatNotificationToast />

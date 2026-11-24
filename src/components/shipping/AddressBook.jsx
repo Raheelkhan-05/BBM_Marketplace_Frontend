@@ -208,13 +208,15 @@ function CompactAddressPill({ address, onClick, disabled }) {
             onClick={onClick}
             disabled={disabled}
             aria-label={`Delivering to ${address.pincode}. Change delivery address`}
-            className="inline-flex h-9 items-center gap-1.5 rounded-full border bg-white px-2.5 text-[11.5px] tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98] disabled:opacity-60"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-2 py-1.5 text-left transition-colors active:scale-[0.98] disabled:opacity-60"
             style={{ borderColor: C.hair }}
         >
-            <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: "#006F83" }} strokeWidth={2.4} />
-            <span className="shrink-0 font-semibold capitalize" style={{ color: C.muted }}>Deliver to</span>
-            <span className="truncate font-extrabold tabular-nums" style={{ color: C.ink }}>{address.pincode}</span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} strokeWidth={2.4} />
+            <MapPin className="h-5 w-5 shrink-0" style={{ color: "#006F83" }} strokeWidth={2.3} />
+            <span className="flex min-w-0 flex-col items-start leading-tight">
+                <span className="text-[10px] font-semibold tracking-wide" style={{ color: C.muted }}>Deliver to</span>
+                <span className="text-[15px] font-extrabold tabular-nums tracking-wide" style={{ color: C.ink }}>{address.pincode}</span>
+            </span>
+            <ChevronDown className="-ml-1 h-3.5 w-3.5 shrink-0" style={{ color: C.muted }} strokeWidth={2.4} />
         </button>
     );
 }
@@ -225,12 +227,15 @@ function CompactEmptyPill({ onClick, disabled }) {
             type="button"
             onClick={onClick}
             disabled={disabled}
-            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-dashed bg-white pl-2.5 pr-2 text-[11.5px] font-bold tracking-wide disabled:opacity-60"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-dashed bg-white px-3 py-1.5 text-left font-bold tracking-wide disabled:opacity-60"
             style={{ borderColor: "#006F8366", color: "#006F83" }}
         >
-            <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
-            Add delivery address
-            <ChevronDown className="h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
+            <MapPin className="h-6 w-6 shrink-0" strokeWidth={2.3} />
+            <span className="flex flex-col items-start leading-tight">
+                <span className="text-[10px] font-semibold" style={{ color: C.muted }}>Deliver to</span>
+                <span className="text-[13px]">Add address</span>
+            </span>
+            <ChevronDown className="ml-1 h-3.5 w-3.5 shrink-0" strokeWidth={2.4} />
         </button>
     );
 }

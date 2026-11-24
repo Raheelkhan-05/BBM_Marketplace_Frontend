@@ -74,6 +74,7 @@ export default function MarketplaceSearchBar({
     glowSpread = DEFAULT_GLOW_SPREAD_PX,
     onSuggestionSelect,
     allowSuggestionsToggle = true,
+    flush = false,
 }) {
     const navigate = useNavigate();
     const glowRings = useMemo(() => buildGlowRings(glowSpread), [glowSpread]);
@@ -234,7 +235,7 @@ export default function MarketplaceSearchBar({
     };
 
     return (
-        <div className="w-full relative mt-2 sm:mt-1" ref={containerRef}>
+        <div className={`w-full relative ${flush ? "" : "mt-2 sm:mt-1"}`} ref={containerRef}>
             <style>{`
                 @property --bbm-angle {
                     syntax: '<angle>';
@@ -301,7 +302,7 @@ export default function MarketplaceSearchBar({
                 }
             `}</style>
 
-            <div className="relative rounded-full shadow-lg shadow-black/10 md:mt-2">
+            <div className={`relative rounded-full shadow-lg shadow-black/10 ${flush ? "" : "md:mt-2"}`}>
                 <div
                     aria-hidden="true"
                     className={`bbm-comet-glow-wrap ${glowFading ? "bbm-comet-glow-fade-out" : ""}`}
@@ -326,7 +327,13 @@ export default function MarketplaceSearchBar({
                     style={{ inset: `-${BORDER_WIDTH_PX}px` }}
                 />
 
-                <form onSubmit={handleSubmit} className="relative flex h-[55px] items-center overflow-hidden rounded-full bg-white px-3 pl-5 lg:h-[62px] lg:px-5 lg:pl-7 xl:h-[64px]">
+                <form
+                    onSubmit={handleSubmit}
+                    className={`relative flex items-center overflow-hidden rounded-full bg-white px-3 pl-5 ${flush
+                        ? "h-[50px] lg:h-[52px] lg:px-4 lg:pl-5"
+                        : "h-[55px] lg:h-[62px] lg:px-5 lg:pl-7 xl:h-[64px]"
+                        }`}
+                >
                     <div aria-hidden="true" className="bbm-glass-sheen pointer-events-none absolute inset-0 rounded-full" />
 
                     <div className="relative flex shrink-0 items-center pr-3 lg:pr-4">
@@ -384,7 +391,7 @@ export default function MarketplaceSearchBar({
                         aria-label="Search"
                         onMouseEnter={() => setBtnHover(true)}
                         onMouseLeave={() => setBtnHover(false)}
-                        className="relative ml-2 lg:ml-3 flex h-9 w-9 lg:h-9 lg:w-9 shrink-0 items-center justify-center rounded-full text-black transition hover:scale-105 active:scale-95"
+                        className="relative ml-2 lg:ml-3 flex h-9 w-9 lg:h-8 lg:w-8 shrink-0 items-center justify-center rounded-full text-black transition hover:scale-105 active:scale-95"
                         style={{
                             background: btnHover ? SEARCH_BTN_HOVER : SEARCH_BTN,
                             boxShadow: "0 0 0 2px #FFD60A",

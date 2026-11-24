@@ -1,52 +1,51 @@
 // src/pages/BrandsPage.jsx
 //
 // Logo grid of every brand, with search and infinite scroll. Tapping a brand
-// opens the Home feed filtered to that brand: /home?brand=<name>. The feed
+// opens the Home feed filtered to that brand: /brand/<name>. The feed
 // applies all the usual rules (wallet, visibility, custom prices, expiry).
 //
+// CATEGORY FILTER: when a category is applied (header chip / sidebar), only brands that have
+// products in it are listed and the product counts are for that category. A notice says so and
+// offers "Show all". Clicking a brand keeps the category applied, so the Home feed matches the count.
+//
 // Seamless-experience features:
-//  - Coming back from a brand (browser back) restores the list AND scroll
-//    position instantly from an in-memory cache (no reload, no flash).
+//  - Coming back from a brand (browser back) restores the list AND scroll position instantly
+//    from an in-memory cache (keyed by viewer + category + search).
 //  - Search text lives in the URL (?q=), so it survives refresh / back / share.
-//  - While a new search loads, the old results stay visible (dimmed) instead of
-//    flashing to a skeleton. Skeleton is only for the very first load.
-//  - Logos fade in over a placeholder, so cards never pop or jump.
-//  - Load-more failures retry inline without losing the list.
-//  - Enter applies the search immediately and closes the mobile keyboard;
-//    Esc clears. Matched text is highlighted in brand names.
-//  - Borderless cards: logo + name sit directly on the page, no boxes or dividers.
-//  - Dense responsive grid: 6 per row on phones, then 7 / 8 / 10 / 12 as the screen widens.
-//  - Back-to-top button, safe-area aware, reduced-motion friendly.
+//  - While a new search loads, the old results stay visible (dimmed). A CATEGORY change clears
+//    the list instead, so brands of the previous category are never shown.
+//  - Logos fade in over a placeholder; load-more failures retry inline.
+//  - Enter applies the search immediately; Esc clears. Matched text is highlighted.
+//  - Dense responsive grid, back-to-top button, safe-area aware, reduced-motion friendly.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowUp, Search, X, Loader2, Tags } from "lucide-react";
+import { ArrowLeft, ArrowUp, Search, X, Loader2, Tags, ListFilter } from "lucide-react";
 import { fetchBrandsPage } from "../utils/api";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
+import { shortLabel } from "../hooks/useCategories.js";
 import { resizedImageUrl } from "../utils/imageUrl";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useHomeFilters } from "../context/HomeFiltersContext.jsx";
 import Seo from "../components/Seo.jsx";
 
-
-// const FONT_BODY = "'Nunito Sans', -apple-system, BlinkMacSystemFont, 'Public Sans', Roboto, sans-serif";
 const INK = "#0B1116";
 const MUTED = "#667077";
 const HAIR_SOFT = "rgba(11,17,22,0.05)";
 const ACCENT = "#53344D";
+const FILTER_BLUE = "#0765CD";
 const PAGE = 48;
 const DEBOUNCE_MS = 250;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const BACK_TO_TOP_AFTER_PX = 1200;
 
 // ── In-memory cache (lives as long as the SPA session) ──────────────────────
-// key: search term → { brands, hasMore, scrollY, ts }
+// key: viewer + category + search term → { brands, hasMore, scrollY, ts }
 const listCache = new Map();
+const cacheKey = (viewer, categoryId, q) => `${viewer}::${categoryId || "all"}::${q}`;
 
-// cache helpers: key = viewer + search term
-const cacheKey = (viewer, q) => `${viewer}::${q}`;
-
-function readCache(viewer, q) {
-    const k = cacheKey(viewer, q);
+function readCache(viewer, categoryId, q) {
+    const k = cacheKey(viewer, categoryId, q);
     const entry = listCache.get(k);
     if (!entry) return null;
     if (Date.now() - entry.ts > CACHE_TTL_MS) {
@@ -74,14 +73,11 @@ function HighlightedName({ name, term }) {
     );
 }
 
-// Logos are small now, so request modest resolutions and let the browser pick
-// the right one for the screen density. Fades in once loaded.
 function BrandLogo({ src, name }) {
     const [failed, setFailed] = useState(false);
     const [loaded, setLoaded] = useState(false);
     const imgRef = useRef(null);
 
-    // Cached images can finish before React attaches onLoad
     useEffect(() => {
         const el = imgRef.current;
         if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
@@ -94,12 +90,7 @@ function BrandLogo({ src, name }) {
                 style={{ background: HAIR_SOFT, color: ACCENT }}
                 aria-label={`${name} logo`}
             >
-                {name
-                    .trim()
-                    .split(/\s+/)
-                    .map((word) => word[0])
-                    .join("")
-                    .toUpperCase()}
+                {name.trim().split(/\s+/).map((word) => word[0]).join("").toUpperCase()}
             </span>
         );
     }
@@ -135,7 +126,31 @@ function BrandCardSkeleton() {
     );
 }
 
-// 6 per row on phones, growing to 12 on wide screens. No borders anywhere.
+// "Showing only X in <category>" notice with a one-tap way back to the full list.
+function CategoryNotice({ category, noun, onClear }) {
+    return (
+        <div
+            role="status"
+            className="mb-4 flex items-center gap-2.5 rounded-xl border px-3 py-2.5"
+            style={{ background: "#EAF2FD", borderColor: "#C9DDF7" }}
+        >
+            <ListFilter className="h-4 w-4 shrink-0" style={{ color: FILTER_BLUE }} strokeWidth={2.4} />
+            <p className="min-w-0 flex-1 text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: INK }}>
+                Showing only {noun} with products in{" "}
+                <b className="font-extrabold" style={{ color: FILTER_BLUE }}>{shortLabel(category.name)}</b>
+            </p>
+            <button
+                type="button"
+                onClick={onClear}
+                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[12px] font-extrabold tracking-wide transition active:scale-95 hover:bg-[#F4F8FE]"
+                style={{ color: FILTER_BLUE }}
+            >
+                Show all {noun}
+            </button>
+        </div>
+    );
+}
+
 const GRID = "grid grid-cols-4 gap-x-7 gap-y-3 sm:grid-cols-5 sm:gap-x-8 md:grid-cols-6 lg:grid-cols-9 lg:gap-x-5 lg:gap-y-5 xl:grid-cols-12";
 
 // ── Page ────────────────────────────────────────────────────────────────────
@@ -145,11 +160,16 @@ export default function BrandsPage() {
     const initialQ = (searchParams.get("q") || "").trim();
 
     const { token } = useAuth();
+    const { activeCategory, setActiveCategory } = useHomeFilters();
+    const categoryId = activeCategory?.id || null;
     const viewer = token || "guest";
+
     const viewerRef = useRef(viewer);
     viewerRef.current = viewer;
+    const categoryRef = useRef(categoryId);
+    categoryRef.current = categoryId;
 
-    const initialCache = useRef(readCache(viewer, initialQ)).current;
+    const initialCache = useRef(readCache(viewer, categoryId, initialQ)).current;
 
     const [input, setInput] = useState(initialQ);
     const [q, setQ] = useState(initialQ);
@@ -164,10 +184,11 @@ export default function BrandsPage() {
 
     const abortRef = useRef(null);
     const seqRef = useRef(0);
-    const listRef = useRef(initialCache?.brands ?? []); // always-current list (for cache writes)
+    const listRef = useRef(initialCache?.brands ?? []);
     const qRef = useRef(initialQ);
     const scrollYRef = useRef(0);
     const firstRunRef = useRef(true);
+    const prevCategoryRef = useRef(categoryId);
     const inputRef = useRef(null);
 
     qRef.current = q;
@@ -178,7 +199,7 @@ export default function BrandsPage() {
         return () => clearTimeout(t);
     }, [input]);
 
-    // Keep ?q= in the URL in sync (replace, so Back leaves the page, not each keystroke)
+    // Keep ?q= in the URL in sync
     useEffect(() => {
         const current = (searchParams.get("q") || "").trim();
         if (current === q) return;
@@ -198,7 +219,7 @@ export default function BrandsPage() {
         setError(null);
         setMoreError(false);
 
-        fetchBrandsPage({ q, limit: PAGE, offset, signal: controller.signal, token })
+        fetchBrandsPage({ q, limit: PAGE, offset, categoryId, signal: controller.signal, token })
             .then((res) => {
                 if (seq !== seqRef.current) return;
                 if (!res?.success) throw new Error("bad response");
@@ -213,13 +234,12 @@ export default function BrandsPage() {
                 listRef.current = next;
                 setBrands(next);
                 setHasMore(!!res.hasMore);
-                listCache.set(cacheKey(viewer, q), { brands: next, hasMore: !!res.hasMore, scrollY: 0, ts: Date.now() });
+                listCache.set(cacheKey(viewer, categoryId, q), { brands: next, hasMore: !!res.hasMore, scrollY: 0, ts: Date.now() });
             })
             .catch((err) => {
                 if (err?.name === "AbortError") return;
                 if (seq !== seqRef.current) return;
                 if (append) {
-                    // keep the list, let the person retry in place
                     setMoreError(true);
                 } else {
                     setError("Couldn't load brands.");
@@ -231,15 +251,20 @@ export default function BrandsPage() {
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [q, token, viewer]);
+    }, [q, token, viewer, categoryId]);
 
-    // Search term changed (or first mount)
+    // Search term or category changed (or first mount)
     useEffect(() => {
         const isFirst = firstRunRef.current;
         firstRunRef.current = false;
 
-        const cached = readCache(q);
+        const categoryChanged = prevCategoryRef.current !== categoryId;
+        prevCategoryRef.current = categoryId;
+
+        const cached = readCache(viewer, categoryId, q);
         if (cached) {
+            abortRef.current?.abort();
+            seqRef.current += 1;
             listRef.current = cached.brands;
             setBrands(cached.brands);
             setHasMore(cached.hasMore);
@@ -248,7 +273,6 @@ export default function BrandsPage() {
             setError(null);
             setMoreError(false);
             if (isFirst && cached.scrollY > 0) {
-                // restore after the list has painted
                 requestAnimationFrame(() => window.scrollTo(0, cached.scrollY));
             } else if (!isFirst) {
                 window.scrollTo({ top: 0 });
@@ -256,12 +280,17 @@ export default function BrandsPage() {
             return;
         }
 
-        // No cache: keep old results on screen (dimmed) while the new ones load
         if (!isFirst) window.scrollTo({ top: 0 });
+        // A different category must never show the previous category's brands, even dimmed.
+        if (categoryChanged) {
+            listRef.current = [];
+            setBrands([]);
+        }
         setHasMore(true);
         load(0, false);
         return () => abortRef.current?.abort();
-    }, [q, load]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [q, categoryId, load]);
 
     // Track scroll for restore + back-to-top; save position on leave
     useEffect(() => {
@@ -279,7 +308,7 @@ export default function BrandsPage() {
         window.addEventListener("scroll", onScroll, { passive: true });
         return () => {
             window.removeEventListener("scroll", onScroll);
-            const key = cacheKey(viewerRef.current, qRef.current);
+            const key = cacheKey(viewerRef.current, categoryRef.current, qRef.current);
             const entry = listCache.get(key);
             if (entry) listCache.set(key, { ...entry, scrollY: scrollYRef.current });
         };
@@ -293,8 +322,8 @@ export default function BrandsPage() {
     const handleKeyDown = (e) => {
         if (e.key === "Enter") {
             e.preventDefault();
-            setQ(input.trim()); // apply now, skip the debounce
-            e.currentTarget.blur(); // close the mobile keyboard
+            setQ(input.trim());
+            e.currentTarget.blur();
         } else if (e.key === "Escape" && input) {
             setInput("");
         }
@@ -304,9 +333,10 @@ export default function BrandsPage() {
         setInput("");
         inputRef.current?.focus();
     };
+    const clearCategory = () => setActiveCategory(null);
 
     const showSkeleton = loading && brands.length === 0;
-    const refreshing = loading && brands.length > 0; // new search in flight, old list visible
+    const refreshing = loading && brands.length > 0;
 
     return (
         <div className="min-h-screen bg-white text-slate-900 antialiased">
@@ -314,13 +344,12 @@ export default function BrandsPage() {
                 title="Brands on BBM – Shop wholesale products by brand"
                 description="Browse industrial and wholesale brands on BBM. Compare verified sellers, MOQs and delivery times for every brand."
                 path="/brands"
-                noindex={!!q}
+                noindex={!!q || !!categoryId}
             />
             <header
-                className={`sticky top-0 z-30 bg-white/95 backdrop-blur transition-shadow duration-200 ${scrolled ? "shadow-[0_6px_16px_-12px_rgba(11,17,22,0.35)]" : ""}`}
-                style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+                className={`sticky top-[var(--bbm-header-h,0px)] z-30 bg-white/95 backdrop-blur transition-shadow duration-200 ${scrolled ? "shadow-[0_6px_16px_-12px_rgba(11,17,22,0.35)]" : ""}`}
             >
-                <div className="mx-auto max-w-7xl px-3 pb-3 pt-3 sm:px-4 lg:px-6">
+                <div className="mx-auto px-3 pb-3 pt-3 sm:px-4 lg:px-6">
                     <div className="flex items-center gap-2">
                         <Link
                             to="/home"
@@ -350,7 +379,7 @@ export default function BrandsPage() {
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Search brands…"
+                            placeholder={activeCategory ? `Search brands in ${shortLabel(activeCategory.name)}…` : "Search brands…"}
                             aria-label="Search brands"
                             autoComplete="off"
                             autoCorrect="off"
@@ -373,11 +402,12 @@ export default function BrandsPage() {
                 </div>
             </header>
 
-            <main className="mx-auto max-w-7xl px-3 pb-16 pt-4 sm:px-4 lg:px-6" aria-busy={loading}>
-                {/* Screen-reader status for search results */}
+            <main className="mx-auto px-3 pb-16 pt-4 sm:px-4 lg:px-6" aria-busy={loading}>
                 <p className="sr-only" role="status" aria-live="polite">
                     {loading ? "Loading brands" : brands.length ? `${brands.length} brands shown` : ""}
                 </p>
+
+                {activeCategory && <CategoryNotice category={activeCategory} noun="brands" onClear={clearCategory} />}
 
                 {showSkeleton ? (
                     <div className={GRID}>
@@ -400,26 +430,38 @@ export default function BrandsPage() {
                     <div className="flex flex-col items-center gap-2 py-20 text-center">
                         <Tags className="h-6 w-6" style={{ color: MUTED }} />
                         <p className="text-[13px] font-bold" style={{ color: INK }}>
-                            {q ? `No brands match “${q}”` : "No brands available yet"}
+                            {q
+                                ? `No brands match “${q}”${activeCategory ? ` in ${shortLabel(activeCategory.name)}` : ""}`
+                                : activeCategory
+                                    ? `No brands have products in ${shortLabel(activeCategory.name)} yet`
+                                    : "No brands available yet"}
                         </p>
-                        {q && (
-                            <>
-                                <p className="text-[11.5px] font-medium" style={{ color: MUTED }}>Check the spelling or try a shorter name.</p>
+                        {q && <p className="text-[11.5px] font-medium" style={{ color: MUTED }}>Check the spelling or try a shorter name.</p>}
+                        <div className="mt-2 flex flex-wrap justify-center gap-2">
+                            {q && (
                                 <button
                                     type="button"
                                     onClick={clearSearch}
-                                    className="mt-2 rounded-full px-4 py-2 text-[12px] font-extrabold tracking-wide"
+                                    className="rounded-full px-4 py-2 text-[12px] font-extrabold tracking-wide"
                                     style={{ background: HAIR_SOFT, color: ACCENT }}
                                 >
                                     Clear search
                                 </button>
-                            </>
-                        )}
+                            )}
+                            {activeCategory && (
+                                <button
+                                    type="button"
+                                    onClick={clearCategory}
+                                    className="rounded-full px-4 py-2 text-[12px] font-extrabold tracking-wide text-white"
+                                    style={{ background: FILTER_BLUE }}
+                                >
+                                    Show all brands
+                                </button>
+                            )}
+                        </div>
                     </div>
                 ) : (
-                    <div
-                        className={`${GRID} transition-opacity duration-200 motion-reduce:transition-none ${refreshing ? "opacity-50" : "opacity-100"}`}
-                    >
+                    <div className={`${GRID} transition-opacity duration-200 motion-reduce:transition-none ${refreshing ? "opacity-50" : "opacity-100"}`}>
                         {brands.map((b) => (
                             <Link
                                 key={b.brand_name.toLowerCase()}
@@ -442,7 +484,6 @@ export default function BrandsPage() {
                     </div>
                 )}
 
-                {/* Load-more states */}
                 {loadingMore && (
                     <div className="mt-3">
                         <div className={GRID}>
@@ -474,7 +515,6 @@ export default function BrandsPage() {
                 {hasMore && !loading && !moreError && <div ref={sentinelRef} className="h-1" />}
             </main>
 
-            {/* Back to top */}
             <button
                 type="button"
                 onClick={() => window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" })}

@@ -1,29 +1,37 @@
 // src/pages/SellersPage.jsx
 //
 // Logo grid of every seller, with search and infinite scroll. Tapping a seller
-// opens the Home feed scoped to that store: /home?shop=<slug>. The feed applies
+// opens the Home feed scoped to that store: /seller/<slug>. The feed applies
 // all the usual rules (wallet, visibility, custom prices, expiry) server-side.
+//
+// CATEGORY FILTER: when a category is applied (header chip / sidebar), only sellers that have
+// listings in it are shown. A notice says so and offers "Show all". Opening a seller keeps the
+// category applied, so the store feed matches what this page promised.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import Seo from "../components/Seo.jsx";
-import { ArrowLeft, ArrowUp, Search, X, Loader2, Store } from "lucide-react";
+import { ArrowLeft, ArrowUp, Search, X, Loader2, Store, ListFilter } from "lucide-react";
 import { fetchSellersPage } from "../utils/api";
 import useInfiniteScrollSentinel from "../hooks/useInfiniteScrollSentinel";
+import { shortLabel } from "../hooks/useCategories.js";
 import { resizedImageUrl } from "../utils/imageUrl";
 import { useAuth } from "../context/AuthContext.jsx";
+import { useHomeFilters } from "../context/HomeFiltersContext.jsx";
 
 const INK = "#0B1116";
 const MUTED = "#667077";
 const HAIR_SOFT = "rgba(11,17,22,0.05)";
 const ACCENT = "#53344D";
+const FILTER_BLUE = "#0765CD";
 const PAGE = 48;
 const DEBOUNCE_MS = 250;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const BACK_TO_TOP_AFTER_PX = 1200;
 
-// key: search term → { sellers, hasMore, scrollY, ts }
+// key: viewer + category + search term → { sellers, hasMore, scrollY, ts }
 const listCache = new Map();
+const cacheKey = (tokenKey, categoryId, q) => `${tokenKey}::${categoryId || "all"}::${q}`;
 
 function readCache(key) {
     const entry = listCache.get(key);
@@ -93,12 +101,7 @@ function SellerLogo({ src, name }) {
                     style={{ color: ACCENT }}
                     aria-label={`${name} logo`}
                 >
-                    {name
-                        .trim()
-                        .split(/\s+/)
-                        .map((word) => word[0])
-                        .join("")
-                        .toUpperCase()}
+                    {name.trim().split(/\s+/).map((word) => word[0]).join("").toUpperCase()}
                 </span>
             )}
         </div>
@@ -115,17 +118,42 @@ function SellerCardSkeleton() {
     );
 }
 
+function CategoryNotice({ category, noun, onClear }) {
+    return (
+        <div
+            role="status"
+            className="mb-4 flex items-center gap-2.5 rounded-xl border px-3 py-2.5"
+            style={{ background: "#EAF2FD", borderColor: "#C9DDF7" }}
+        >
+            <ListFilter className="h-4 w-4 shrink-0" style={{ color: FILTER_BLUE }} strokeWidth={2.4} />
+            <p className="min-w-0 flex-1 text-[12.5px] font-semibold leading-snug tracking-wide" style={{ color: INK }}>
+                Showing only {noun} with products in{" "}
+                <b className="font-extrabold" style={{ color: FILTER_BLUE }}>{shortLabel(category.name)}</b>
+            </p>
+            <button
+                type="button"
+                onClick={onClear}
+                className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[12px] font-extrabold tracking-wide transition active:scale-95 hover:bg-[#F4F8FE]"
+                style={{ color: FILTER_BLUE }}
+            >
+                Show all {noun}
+            </button>
+        </div>
+    );
+}
+
 const GRID = "grid grid-cols-4 gap-x-4 gap-y-4 sm:grid-cols-5 sm:gap-x-5 md:grid-cols-6 lg:grid-cols-6 lg:gap-x-6 xl:grid-cols-8";
 
 export default function SellersPage() {
     const [searchParams, setSearchParams] = useSearchParams();
     const { profile, token } = useAuth();
+    const { activeCategory, setActiveCategory } = useHomeFilters();
+    const categoryId = activeCategory?.id || null;
     const myShopSlug = profile?.shop_slug || null;
     const tokenKey = token ? token.slice(-16) : "anon";
-    const cacheKeyFor = (term) => `${tokenKey}::${term}`;
 
     const initialQ = (searchParams.get("q") || "").trim();
-    const initialCache = useRef(readCache(cacheKeyFor(initialQ))).current;
+    const initialCache = useRef(readCache(cacheKey(tokenKey, categoryId, initialQ))).current;
 
     const [input, setInput] = useState(initialQ);
     const [q, setQ] = useState(initialQ);
@@ -144,12 +172,15 @@ export default function SellersPage() {
     const qRef = useRef(initialQ);
     const scrollYRef = useRef(0);
     const firstRunRef = useRef(true);
+    const prevCategoryRef = useRef(categoryId);
     const inputRef = useRef(null);
 
     qRef.current = q;
 
     const tokenKeyRef = useRef(tokenKey);
     tokenKeyRef.current = tokenKey;
+    const categoryRef = useRef(categoryId);
+    categoryRef.current = categoryId;
 
     useEffect(() => {
         const t = setTimeout(() => setQ(input.trim()), DEBOUNCE_MS);
@@ -175,7 +206,7 @@ export default function SellersPage() {
         setError(null);
         setMoreError(false);
 
-        fetchSellersPage({ q, limit: PAGE, offset, signal: controller.signal, token })
+        fetchSellersPage({ q, limit: PAGE, offset, categoryId, signal: controller.signal, token })
             .then((res) => {
                 if (seq !== seqRef.current) return;
                 if (!res?.success) throw new Error("bad response");
@@ -190,7 +221,7 @@ export default function SellersPage() {
                 listRef.current = next;
                 setSellers(next);
                 setHasMore(!!res.hasMore);
-                listCache.set(`${tokenKey}::${q}`, { sellers: next, hasMore: !!res.hasMore, scrollY: 0, ts: Date.now() });
+                listCache.set(cacheKey(tokenKey, categoryId, q), { sellers: next, hasMore: !!res.hasMore, scrollY: 0, ts: Date.now() });
             })
             .catch((err) => {
                 if (err?.name === "AbortError") return;
@@ -207,15 +238,17 @@ export default function SellersPage() {
                 setLoading(false);
                 setLoadingMore(false);
             });
-    }, [q, token, tokenKey]);
+    }, [q, token, tokenKey, categoryId]);
 
     useEffect(() => {
         const isFirst = firstRunRef.current;
         firstRunRef.current = false;
 
-        const cached = readCache(cacheKeyFor(q));
+        const categoryChanged = prevCategoryRef.current !== categoryId;
+        prevCategoryRef.current = categoryId;
+
+        const cached = readCache(cacheKey(tokenKey, categoryId, q));
         if (cached) {
-            // Cancel anything in flight so a late response can't overwrite the cached list.
             abortRef.current?.abort();
             seqRef.current += 1;
             listRef.current = cached.sellers;
@@ -234,10 +267,15 @@ export default function SellersPage() {
         }
 
         if (!isFirst) window.scrollTo({ top: 0 });
+        if (categoryChanged) {
+            listRef.current = [];
+            setSellers([]);
+        }
         setHasMore(true);
         load(0, false);
         return () => abortRef.current?.abort();
-    }, [q, load]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [q, categoryId, load]);
 
     useEffect(() => {
         let ticking = false;
@@ -254,11 +292,11 @@ export default function SellersPage() {
         window.addEventListener("scroll", onScroll, { passive: true });
         return () => {
             window.removeEventListener("scroll", onScroll);
-            const key = `${tokenKeyRef.current}::${qRef.current}`;
+            const key = cacheKey(tokenKeyRef.current, categoryRef.current, qRef.current);
             const entry = listCache.get(key);
             if (entry) listCache.set(key, { ...entry, scrollY: scrollYRef.current });
         };
-    }, [token, tokenKey]);
+    }, []);
 
     const sentinelRef = useInfiniteScrollSentinel(
         () => !loadingMore && hasMore && load(listRef.current.length, true),
@@ -279,6 +317,7 @@ export default function SellersPage() {
         setInput("");
         inputRef.current?.focus();
     };
+    const clearCategory = () => setActiveCategory(null);
 
     const showSkeleton = loading && sellers.length === 0;
     const refreshing = loading && sellers.length > 0;
@@ -289,13 +328,12 @@ export default function SellersPage() {
                 title="Sellers on BBM – Verified wholesale suppliers"
                 description="Find verified wholesale sellers and suppliers on BBM. See their products, MOQs and delivery locations."
                 path="/sellers"
-                noindex={!!q}
+                noindex={!!q || !!categoryId}
             />
             <header
-                className={`sticky top-0 z-30 bg-white/95 backdrop-blur transition-shadow duration-200 ${scrolled ? "shadow-[0_6px_16px_-12px_rgba(11,17,22,0.35)]" : ""}`}
-                style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+                className={`sticky top-[var(--bbm-header-h,0px)] z-30 bg-white/95 backdrop-blur transition-shadow duration-200 ${scrolled ? "shadow-[0_6px_16px_-12px_rgba(11,17,22,0.35)]" : ""}`}
             >
-                <div className="mx-auto max-w-7xl px-3 pb-3 pt-3 sm:px-4 lg:px-6">
+                <div className="mx-auto px-3 pb-3 pt-3 sm:px-4 lg:px-6">
                     <div className="flex items-center gap-2">
                         <Link
                             to="/home"
@@ -307,7 +345,7 @@ export default function SellersPage() {
                         </Link>
                         <h1 className="text-[17px] font-extrabold tracking-wide" style={{ color: INK }}>Sellers</h1>
                         <p className="mt-1 px-1 text-[12px] font-medium sr-only" style={{ color: MUTED }}>
-                            Browse wholesale products by brand and compare verified sellers on BBM.
+                            Browse verified wholesale sellers on BBM.
                         </p>
                     </div>
 
@@ -325,7 +363,7 @@ export default function SellersPage() {
                             value={input}
                             onChange={(e) => setInput(e.target.value)}
                             onKeyDown={handleKeyDown}
-                            placeholder="Search sellers…"
+                            placeholder={activeCategory ? `Search sellers in ${shortLabel(activeCategory.name)}…` : "Search sellers…"}
                             aria-label="Search sellers"
                             autoComplete="off"
                             autoCorrect="off"
@@ -348,10 +386,12 @@ export default function SellersPage() {
                 </div>
             </header>
 
-            <main className="mx-auto max-w-7xl px-3 pb-16 pt-4 sm:px-4 lg:px-6" aria-busy={loading}>
+            <main className="mx-auto px-3 pb-16 pt-4 sm:px-4 lg:px-6" aria-busy={loading}>
                 <p className="sr-only" role="status" aria-live="polite">
                     {loading ? "Loading sellers" : sellers.length ? `${sellers.length} sellers shown` : ""}
                 </p>
+
+                {activeCategory && <CategoryNotice category={activeCategory} noun="sellers" onClear={clearCategory} />}
 
                 {showSkeleton ? (
                     <div className={GRID}>
@@ -374,21 +414,35 @@ export default function SellersPage() {
                     <div className="flex flex-col items-center gap-2 py-20 text-center">
                         <Store className="h-6 w-6" style={{ color: MUTED }} />
                         <p className="text-[13px] font-bold" style={{ color: INK }}>
-                            {q ? `No sellers match “${q}”` : "No sellers available yet"}
+                            {q
+                                ? `No sellers match “${q}”${activeCategory ? ` in ${shortLabel(activeCategory.name)}` : ""}`
+                                : activeCategory
+                                    ? `No sellers have products in ${shortLabel(activeCategory.name)} yet`
+                                    : "No sellers available yet"}
                         </p>
-                        {q && (
-                            <>
-                                <p className="text-[11.5px] font-medium" style={{ color: MUTED }}>Check the spelling or try a shorter name.</p>
+                        {q && <p className="text-[11.5px] font-medium" style={{ color: MUTED }}>Check the spelling or try a shorter name.</p>}
+                        <div className="mt-2 flex flex-wrap justify-center gap-2">
+                            {q && (
                                 <button
                                     type="button"
                                     onClick={clearSearch}
-                                    className="mt-2 rounded-full px-4 py-2 text-[12px] font-extrabold tracking-wide"
+                                    className="rounded-full px-4 py-2 text-[12px] font-extrabold tracking-wide"
                                     style={{ background: HAIR_SOFT, color: ACCENT }}
                                 >
                                     Clear search
                                 </button>
-                            </>
-                        )}
+                            )}
+                            {activeCategory && (
+                                <button
+                                    type="button"
+                                    onClick={clearCategory}
+                                    className="rounded-full px-4 py-2 text-[12px] font-extrabold tracking-wide text-white"
+                                    style={{ background: FILTER_BLUE }}
+                                >
+                                    Show all sellers
+                                </button>
+                            )}
+                        </div>
                     </div>
                 ) : (
                     <div className={`${GRID} transition-opacity duration-200 motion-reduce:transition-none ${refreshing ? "opacity-50" : "opacity-100"}`}>

@@ -875,19 +875,20 @@ export async function fetchLowestPriceForBrandItem(genericProductBrandId, token)
   return res.json();
 }
 
-export async function fetchBrandsPage({ q = "", limit = 24, offset = 0, signal, token } = {}) {
+export async function fetchSellersPage({ q = "", limit = 48, offset = 0, categoryId = null, signal, token } = {}) {
   const params = new URLSearchParams({ q, limit, offset });
-  const res = await fetch(`${API_BASE}/catalog/brands?${params}`, {
+  if (categoryId) params.set("categoryId", categoryId);
+  const res = await fetch(`${API_BASE}/catalog/sellers?${params}`, {
     signal,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) throw new Error(`Request failed with status ${res.status}`);
   return res.json();
 }
-
-export async function fetchSellersPage({ q = "", limit = 48, offset = 0, signal, token } = {}) {
+export async function fetchBrandsPage({ q = "", limit = 24, offset = 0, categoryId = null, signal, token } = {}) {
   const params = new URLSearchParams({ q, limit, offset });
-  const res = await fetch(`${API_BASE}/catalog/sellers?${params}`, {
+  if (categoryId) params.set("categoryId", categoryId);
+  const res = await fetch(`${API_BASE}/catalog/brands?${params}`, {
     signal,
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });

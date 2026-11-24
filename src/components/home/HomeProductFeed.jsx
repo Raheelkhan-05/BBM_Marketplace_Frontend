@@ -144,7 +144,7 @@ import { shareProductLink } from "../../utils/share.js";
 import { useSocket } from "../../context/SocketContext.jsx";
 import { resizedImageUrl } from "../../utils/imageUrl";
 import { useAuth } from "../../context/AuthContext.jsx";
-import DeliverToBar from "../shipping/DeliverToBar.jsx";
+// import DeliverToBar from "../shipping/DeliverToBar.jsx";
 import { round2 } from "../../shared/packUnits.js";
 import { checkLocationServiceable } from "../../shared/orderConstraints.js";
 import { InlineWheelField } from "../seller/listingForm/PriceWheelPicker.jsx";
@@ -156,7 +156,8 @@ import { GroupBannerCard } from "./GroupBannerCarousel.jsx";
 import GroupBannerBlock from "./GroupBannerBlock.jsx";
 import useHomeBannerPlan from "../../hooks/useHomeBannerPlan";
 import { track } from "../../lib/analytics.js";
-import HomeCartButton from "./HomeCartButton.jsx";
+// import HomeCartButton from "./HomeCartButton.jsx";
+import { useHomeFilters } from "../../context/HomeFiltersContext.jsx";
 import OfferActions from "./OfferActions.jsx";
 
 import useBrandLogo from "../../hooks/useBrandLogo";
@@ -610,19 +611,18 @@ function SellerSortToggle({ value, onChange, options = SELLER_SORT_OPTIONS }) {
 // the sm/lg breakpoints used elsewhere (1 col mobile, 2 col tablet, 3 col
 // desktop). Needed because manual column-bucketing can't respond to
 // Tailwind breakpoints on its own — it has to know the count in JS.
-function useResponsiveColumnCount() {
-    const getCount = () => {
-        if (typeof window === "undefined") return 1;
-        if (window.innerWidth >= 1024) return 3; // lg
-        if (window.innerWidth >= 640) return 2;  // sm
-        return 1;
-    };
-    const [count, setCount] = useState(getCount);
-    useEffect(() => {
-        const onResize = () => setCount(getCount());
-        window.addEventListener("resize", onResize);
-        return () => window.removeEventListener("resize", onResize);
-    }, []);
+function useResponsiveColumnCount(ref) {
+    const calc = (w) => Math.max(1, Math.min(5, Math.floor(w / 330)));
+    const [count, setCount] = useState(() => (typeof window === "undefined" ? 1 : calc(window.innerWidth)));
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return undefined;
+        const measure = () => { const w = el.getBoundingClientRect().width; if (w > 0) setCount(calc(w)); };
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [ref]);
     return count;
 }
 
@@ -3109,7 +3109,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
 
     const [sellerSortMode, setSellerSortMode] = useState("best_price");
 
-    const [includeGst, setIncludeGst] = useState(true);
+    const { includeGst } = useHomeFilters();
 
     const stickyTop = useHeaderStickyOffset();
 
@@ -4031,7 +4031,7 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         });
     }, []);
 
-    const columnCount = useResponsiveColumnCount();
+    const columnCount = useResponsiveColumnCount(listWrapRef);
 
     // ── Admin-curated group banners ──────────────────────────────────────────
     // Available in every view now (including a single seller's store). In the
@@ -4140,6 +4140,8 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
         };
     }
 
+    const hasStickyContent = myShopActive || !!brandName || !!groupId;
+
     return (
         <>
             <Seo {...seo} path={seoPath} noindex={thin} />
@@ -4151,33 +4153,23 @@ export default function HomeProductFeed({ category, q = "", shopSlug = null, bra
                     onMyShop={handleSellers}
                 />
             )}
-
             <div
                 ref={stickyRef}
-                className="sticky z-30 -mx-3 border-b bg-white px-3 pb-1 sm:-mx-4 sm:px-4 lg:-mx-6 lg:px-6"
+                className={`sticky z-30 -mx-3 bg-white px-3 sm:-mx-4 sm:px-4 lg:mx-0 lg:px-0 ${hasStickyContent ? "border-b pb-1" : ""}`}
                 style={{ top: stickyTop, borderColor: C.hairSoft }}
             >
-                <div className="flex items-center justify-between gap-3 px-1 pt-1">
-                    <div className="min-w-0">
-                        {myShopActive ? (
-                            <button
-                                type="button"
-                                onClick={handleShareShop}
-                                className="inline-flex h-7 items-center gap-1.5 rounded-full border bg-white px-2.5 text-[11px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98]"
-                                style={{ borderColor: C.hair, color: C.ink }}
-                            >
-                                <Share2 className="h-3 w-3" strokeWidth={2.3} /> Share shop
-                            </button>
-                        ) : (
-                            <DeliverToBar />
-                        )}
+                {myShopActive && (
+                    <div className="px-1 pt-1">
+                        <button
+                            type="button"
+                            onClick={handleShareShop}
+                            className="inline-flex h-7 items-center gap-1.5 rounded-full border bg-white px-2.5 text-[11px] font-bold tracking-wide transition-colors hover:bg-black/[0.03] active:scale-[0.98]"
+                            style={{ borderColor: C.hair, color: C.ink }}
+                        >
+                            <Share2 className="h-3 w-3" strokeWidth={2.3} /> Share shop
+                        </button>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3 me-1.5">
-                        <GstToggle includeGst={includeGst} onChange={setIncludeGst} />
-                        <span aria-hidden className="h-4 w-px" style={{ background: C.hair }} />
-                        <HomeCartButton />
-                    </div>
-                </div>
+                )}
 
                 {toolbar}
 
