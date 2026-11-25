@@ -15,6 +15,7 @@ import { useCart } from "../context/CartContext.jsx";
 import {
     fetchPaymentStatus, startOrderPayment, startGroupPayment, redirectToGateway, takePaymentReturnPath,
 } from "../utils/paymentsApi.js";
+import { returnToFromWalletPath } from "../components/growSeller/ads/adsHelpers.js";
 import { track } from "../lib/analytics.js";
 
 const REF_RE = /^BBM[0-9A-F]{17}$/;
@@ -113,6 +114,9 @@ export default function PaymentReturnPage() {
     // takePaymentReturnPath() consumes the stored path, so read it ONCE (calling it on every render
     // returned null after the first poll update and always fell back to /grow/wallet).
     const [walletPath] = useState(() => takePaymentReturnPath() || "/sell/wallet");
+
+    // "/sell/ads?resume=1" when the seller topped up from the Promote screen (validated, same-site only), else null.
+    const adReturn = returnToFromWalletPath(walletPath);
 
     // Give the session a moment to restore after the full-page return from the gateway.
     useEffect(() => {
@@ -235,10 +239,12 @@ export default function PaymentReturnPage() {
             tone: "good", icon: CheckCircle2,
             title: forWallet ? "Credits added" : "Payment received",
             text: forWallet
-                ? `${inr(payment.amount)} has been added to your wallet.`
+                ? `${inr(payment.amount)} has been added to your wallet.${adReturn ? " Your ad selection is saved." : ""}`
                 : `We received ${inr(payment.amount)}${payment.orderNumber ? ` for order ${payment.orderNumber}` : payment.groupNumber ? ` for ${payment.groupNumber}` : ""}. The seller has been notified.`,
             actions: forWallet
-                ? [["Back to wallet", () => navigate(walletPath), true]]
+                ? (adReturn
+                    ? [["Continue your ad booking", () => navigate(adReturn), true], ["Go to wallet", () => navigate("/sell/wallet"), false]]
+                    : [["Back to wallet", () => navigate(walletPath), true]])
                 : [[payment.orderId ? "View order" : "View my orders", () => navigate(payment.orderId ? `/buy/orders/${payment.orderId}` : ordersPath), true]],
         };
     } else if (payment.status === "refunded") {
@@ -259,7 +265,7 @@ export default function PaymentReturnPage() {
             title: payment.status === "expired" ? "Payment session expired" : "Payment didn't go through",
             text: "No money was taken. If an amount was deducted, it will be confirmed or refunded automatically.",
             actions: forWallet
-                ? [["Back to wallet", () => navigate(walletPath), true]]
+                ? [["Back to wallet", () => navigate(walletPath), true], ...(adReturn ? [["Back to your ad", () => navigate(adReturn), false]] : [])]
                 : [[retrying ? "Starting…" : "Try again", retry, true, RotateCcw], ["Go to my orders", () => navigate(ordersPath), false]],
         };
     } else if (timedOut) {

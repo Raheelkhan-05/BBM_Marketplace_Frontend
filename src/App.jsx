@@ -36,6 +36,8 @@ import PaymentAppBridge from "./components/PaymentAppBridge.jsx";
 import PaymentAppHandoff from "./components/PaymentAppHandoff.jsx";
 import ImpersonationBanner from "./components/ImpersonationBanner.jsx";
 
+import GrowAdsPage from "./pages/GrowAdsPage.jsx";
+
 // Every page below is now its own JS chunk instead of one bundle that
 // includes admin/seller/chat/catalog-review code on a first-time
 // visitor's home-page load. Pages registered in routeImports use that
@@ -226,6 +228,7 @@ function App() {
                     <Route path="/sell/orders/:id" element={<GrowOrderDetailPage />} />
                     <Route path="/sell/order-book/:id" element={<GrowOrderBookDetailPage />} />
                     <Route path="/sell/customers" element={<GrowCustomersPage />} />
+                    <Route path="/sell/ads" element={<GrowAdsPage />} />
                   </Route>
 
                   <Route path="/buy" element={<SaveLayout />}>

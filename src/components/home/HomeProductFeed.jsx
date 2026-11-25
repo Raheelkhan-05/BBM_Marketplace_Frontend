@@ -155,6 +155,9 @@ import ActiveViewStrip from "./ActiveViewStrip.jsx";
 import { GroupBannerCard } from "./GroupBannerCarousel.jsx";
 import GroupBannerBlock from "./GroupBannerBlock.jsx";
 import useHomeBannerPlan from "../../hooks/useHomeBannerPlan";
+import HomeAdsTop from "./HomeAdsTop.jsx";
+import AdBannerBlock from "./AdBannerBlock.jsx";
+import useLiveAds from "../../hooks/useLiveAds.js";
 import { track } from "../../lib/analytics.js";
 // import HomeCartButton from "./HomeCartButton.jsx";
 import { useHomeFilters } from "../../context/HomeFiltersContext.jsx";
@@ -4045,6 +4048,10 @@ export default function HomeProductFeed({ category, subcategory = null, q = "", 
     // 16:9 banner card in their column.
     // `loading` is optional: if the hook doesn't return it, it's just undefined.
     const { banners: groupBanners, plan: bannerPlan, loading: bannersLoading } = useHomeBannerPlan(true);
+    // Paid placements (Growth Center > Promote). Home "All" and category tabs only: never in search, brand,
+    // seller-store or variants views.
+    const paidAdsOn = !q.trim() && !brandName && !groupId && !shopSlug && !subcategory;
+    const { ads: liveAds } = useLiveAds(undefined, paidAdsOn);
     const bannerById = useMemo(
         () => new Map(groupBanners.map((b) => [String(b.group_id), b])),
         [groupBanners]
@@ -4111,6 +4118,15 @@ export default function HomeProductFeed({ category, subcategory = null, q = "", 
     if (!hasMore && !loading) {
         for (let bi = sections.length; bi < blocksPlan.length; bi++) sections.push({ items: [], block: blocksPlan[bi] });
     }
+
+    // Paid duo after the first section, paid strip after the second (or right after the duo when the feed
+    // has only one section so far). Each renders nothing when no ad is live.
+    const adSlotsAfter = (si, n) => {
+        const out = [];
+        if (si === 0) out.push("home_duo");
+        if (si === 1 || (si === 0 && n === 1)) out.push("home_strip");
+        return out;
+    };
 
     const seoPath = pathBrand ? `/brand/${encodeURIComponent(brandName)}`
         : pathShop ? `/seller/${encodeURIComponent(shopSlug)}`
@@ -4228,6 +4244,7 @@ export default function HomeProductFeed({ category, subcategory = null, q = "", 
                 className="-mx-3 bg-white sm:mx-0 sm:rounded-2xl"
                 ref={listWrapRef}
             >
+                {paidAdsOn && <HomeAdsTop ads={liveAds} categoryId={category?.id || null} />}
                 {/* While the banner plan loads, hold its place so banners don't pop in and shove the list down. */}
                 {groupId && (
                     <GroupBannerGallery
@@ -4400,6 +4417,9 @@ export default function HomeProductFeed({ category, subcategory = null, q = "", 
                                             ))}
                                         </div>
                                     )}
+                                    {paidAdsOn && adSlotsAfter(si, sections.length).map((k) => (
+                                        <AdBannerBlock key={k} placement={k} ads={liveAds[k]} />
+                                    ))}
                                     {section.block && (
                                         <GroupBannerBlock
                                             block={section.block}

@@ -3,7 +3,8 @@
 // Top-ups are paid on JioPay's hosted checkout: "Proceed to pay" redirects there and the seller comes
 // back through /payment/return, which shows the verified result and links back here.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { safeReturnTo } from "../components/growSeller/ads/adsHelpers.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchWalletStatus, fetchWalletTransactions, fetchWalletPayments } from "../utils/walletApi.js";
 import { startWalletPayment, redirectToGateway } from "../utils/paymentsApi.js";
@@ -28,6 +29,8 @@ const TXN_LABEL = {
     payment_made: { label: "Credits added", sign: 1, icon: "plus" },
     signup_credit: { label: "Welcome credits", sign: 1, icon: "plus" },
     manual_adjustment: { label: "Adjustment", sign: null, icon: "edit" },
+    ad_booking: { label: "Ad booking (incl. GST)", sign: -1, icon: "mega" },
+    ad_refund: { label: "Ad refund", sign: 1, icon: "repeat" },
 };
 
 function effectOnBalance(t) {
@@ -120,7 +123,12 @@ export default function GrowWalletPage() {
     const [txns, setTxns] = useState(walletCache?.txns ?? []);
     const [payments, setPayments] = useState(walletCache?.payments ?? []);
     const [loading, setLoading] = useState(!walletCache);
-    const [payAmount, setPayAmount] = useState("");
+    const [sp] = useSearchParams();
+    const adTopUp = !!safeReturnTo(sp.get("returnTo")); // sent here from the Promote screen
+    const [payAmount, setPayAmount] = useState(() => {
+        const a = sp.get("amount");
+        return a && /^\d+(\.\d{1,2})?$/.test(a) && Number(a) >= 1 && Number(a) <= 1000000 ? a : "";
+    });
     const [paying, setPaying] = useState(false);
     const [amountError, setAmountError] = useState(null);
     const [filter, setFilter] = useState("all");
@@ -297,7 +305,8 @@ export default function GrowWalletPage() {
                     </div>
 
                     <div className="card">
-                        <div className="ctl">{isThreshold ? "Add credits" : "Pay platform commission"}</div>
+                        <div className="ctl">{isThreshold || adTopUp ? "Add credits" : "Pay platform commission"}</div>
+                        {adTopUp && <p className="wx-hint" style={{ marginTop: 0 }}>These credits are for your ad booking. After the payment you go straight back to it, with your selection saved.</p>}
                         <div className="f" style={{ marginTop: 0 }}>
                             <label htmlFor="wx-amt">Amount</label>
                             <div className="inp">

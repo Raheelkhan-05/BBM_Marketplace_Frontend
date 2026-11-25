@@ -1296,7 +1296,7 @@ export default function BrandItemSellersPage() {
         <div className="min-h-screen bg-white">
             {/* Sticky header: back, product identity (only this product), sort + GST */}
             <div className="sticky top-0 z-20 border-b bg-white" style={{ borderColor: C.hair }}>
-                <div className="mx-auto max-w-3xl px-3 pt-3 sm:px-4">
+                <div className="mx-auto px-3 pt-3 sm:px-4">
                     <div className="flex items-start gap-2.5 pb-3">
                         <button
                             onClick={() => navigate(-1)}
@@ -1328,7 +1328,7 @@ export default function BrandItemSellersPage() {
                 </div>
             </div>
 
-            <div className="mx-auto max-w-3xl bg-white sm:my-3 sm:rounded-2xl sm:border" style={{ borderColor: C.hair, opacity: isRefreshing ? 0.7 : 1, transition: "opacity 0.15s ease" }}>
+            <div className="mx-auto bg-white sm:my-3 sm:rounded-2xl sm:border" style={{ borderColor: C.hair, opacity: isRefreshing ? 0.7 : 1, transition: "opacity 0.15s ease" }}>
                 {showFullSkeleton ? (
                     Array.from({ length: 6 }).map((_, i) => <RowSkeleton key={i} />)
                 ) : error && items.length === 0 ? (

@@ -4,7 +4,7 @@
 // Scroll up    -> expands back. The nav's layout height never changes, so the page never jumps.
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutGrid, Package, Megaphone, Receipt, Truck, MessageSquare, Store, Users, Film, ChevronDown, BookOpen } from "lucide-react";
+import { LayoutGrid, Package, Megaphone, Receipt, Truck, TrendingUp, MessageSquare, Store, Users, Film, ChevronDown, BookOpen } from "lucide-react";
 import useGrowBadges from "./useGrowBadges.js";
 import useOrderBookPending from "../../hooks/useOrderBookPending.js";
 import "./grow-modules.css";
@@ -20,6 +20,7 @@ const TABS = [
     { key: "shop", to: "/sell/shop", label: "Shop", Icon: Store, a: "var(--go, #FFD60A)", c: "#06161C", ai: "#9A7400", match: ["/sell/shop"] },
     // Coming soon: they open a friendly "coming soon" page and show a "Soon" tag on the tile.
     { key: "customers", to: "/sell/customers", label: "Customers", Icon: Users, a: "var(--tt, #0D6E7E)", ai: "var(--tt, #0D6E7E)", match: ["/sell/customers"], soon: true },
+    { key: "promote", to: "/sell/ads", label: "Promote", Icon: TrendingUp, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/sell/ads"] },
     // { key: "media", to: "/grow/media", label: "Media", Icon: Film, a: "var(--or, #F4511E)", ai: "var(--ot, #C23A0B)", match: ["/grow/media"], soon: true },
 ];
 
