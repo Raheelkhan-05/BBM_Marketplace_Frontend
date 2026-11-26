@@ -1,0 +1,664 @@
+/* ad-preview.css — prefixed pv- so it can't collide with grow-ads.css */
+.pv-split {
+    display: grid;
+    gap: 16px;
+}
+
+.pv-main {
+    min-width: 0;
+    display: grid;
+    gap: 16px;
+}
+
+@media (min-width: 900px) {
+    .pv-split {
+        grid-template-columns: minmax(0, 1fr) 340px;
+        align-items: start;
+    }
+
+    .pv-aside {
+        position: sticky;
+        top: 12px;
+    }
+}
+
+/* where box */
+.pv-where {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+}
+
+.pv-where b {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 2px;
+}
+
+.pv-where p {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.45;
+    opacity: .75;
+}
+
+.pv-pos {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #C44705;
+}
+
+/* wireframe */
+.pv-map {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px;
+    border-radius: 12px;
+    background: #F4F5F6;
+    border: 1px solid rgba(11, 17, 22, .08);
+}
+
+.pv-map.small {
+    padding: 6px;
+    gap: 3px;
+}
+
+.pv-map-b {
+    border-radius: 5px;
+    background: #DDE1E4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.pv-map-b.head {
+    background: #CBD1D5;
+}
+
+.pv-map-b.rows {
+    background: transparent;
+    flex-direction: column;
+    gap: 3px;
+    align-items: stretch;
+    justify-content: flex-start;
+}
+
+.pv-map-b.rows i {
+    flex: 1;
+    border-radius: 4px;
+    background: #E7EAEC;
+}
+
+.pv-map-b em {
+    font-style: normal;
+    font-size: 8.5px;
+    font-weight: 700;
+    color: #8A949B;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.pv-map-b.on {
+    background: #de3207;
+    box-shadow: 0 0 0 2px rgba(222, 50, 7, .25);
+}
+
+.pv-map-b.on span {
+    font-size: 9.5px;
+    font-weight: 800;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+}
+
+.pv-map.small .pv-map-b em {
+    display: none;
+}
+
+/* phone */
+.pv-wrap {
+    margin: 0;
+}
+
+.pv-cap {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin-bottom: 8px;
+}
+
+.pv-cap b {
+    font-size: 13px;
+}
+
+.pv-cap span {
+    font-size: 12px;
+    opacity: .65;
+}
+
+.pv-phone {
+    position: relative;
+    width: 100%;
+    max-width: 340px;
+    margin: 0 auto;
+    border: 6px solid #141B22;
+    border-radius: 28px;
+    background: #fff;
+    overflow: hidden;
+}
+
+.pv-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px 10px 28px;
+    max-height: 560px;
+    overflow: hidden;
+}
+
+.pv-fade {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 56px;
+    background: linear-gradient(to top, #fff, rgba(255, 255, 255, 0));
+    pointer-events: none;
+}
+
+.pv-note {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 1.4;
+    opacity: .55;
+    text-align: center;
+}
+
+.pv-sk {
+    display: block;
+    background: #E9ECEE;
+}
+
+/* static placeholder: nothing here is loading */
+.pv-top {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+}
+
+.pv-chips {
+    display: flex;
+    gap: 6px;
+    overflow: hidden;
+}
+
+.pv-row {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.pv-row-t,
+.pv-row-p {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.pv-row-p {
+    align-items: flex-end;
+}
+
+.pv-shelf {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pv-cards {
+    display: flex;
+    gap: 8px;
+    overflow: hidden;
+}
+
+.pv-card {
+    flex: 0 0 118px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    border: 1px solid rgba(20, 27, 34, .09);
+    border-radius: 14px;
+    background: #fff;
+}
+
+.pv-card.empty {
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+    min-height: 150px;
+    border-style: dashed;
+    font-size: 11px;
+    opacity: .7;
+}
+
+.pv-card-img {
+    position: relative;
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    background: #F4F5F6;
+    overflow: hidden;
+}
+
+.pv-card-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.pv-card-img b {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .65);
+    color: #fff;
+    font-size: 8.5px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.pv-card-n {
+    margin: 0;
+    font-size: 11.5px;
+    font-weight: 700;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.pv-card-b {
+    margin: 0;
+    font-size: 10px;
+    opacity: .6;
+}
+
+.pv-card-p {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.pv-card-p small {
+    font-size: 9px;
+    font-weight: 600;
+    opacity: .6;
+}
+
+.pv-gap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    opacity: .5;
+}
+
+.pv-gap i {
+    flex: 1;
+    border-top: 1px dashed currentColor;
+}
+
+.pv-slot {
+    position: relative;
+    margin: 8px -4px 2px;
+    padding: 8px 4px 4px;
+    border-radius: 16px;
+    outline: 2px solid #de3207;
+    outline-offset: 0;
+    background: rgba(222, 50, 7, .04);
+}
+
+.pv-slot-tag {
+    position: absolute;
+    left: 12px;
+    top: -9px;
+    z-index: 5;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #de3207;
+    color: #fff;
+    font-size: 9.5px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+
+.pv-empty {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    border: 2px dashed rgba(222, 50, 7, .4);
+    border-radius: 14px;
+    background: rgba(222, 50, 7, .04);
+    font-size: 12px;
+    font-weight: 600;
+    color: #8F3200;
+    text-align: center;
+    padding: 12px;
+}
+
+/* shared-spot badge */
+.pv-share {
+    align-self: flex-start;
+    margin-top: 4px;
+    padding: 2px 9px;
+    border-radius: 999px;
+    background: #F4F5F6;
+    color: #5B6770;
+    font-size: 11px;
+    font-style: normal;
+    font-weight: 700;
+}
+
+.pv-share.on {
+    background: rgba(222, 50, 7, .1);
+    color: #8F3200;
+}
+
+/* square product grid (matches Home) */
+.pv-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.pv-gcard {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid rgba(20, 27, 34, .09);
+    border-radius: 14px;
+}
+
+.pv-empty-row {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 8px;
+}
+
+.pv-empty.ghost {
+    border-color: #CBD1D5;
+    background: #F8F9FA;
+    color: #8A949B;
+}
+
+/* shelf title */
+.pv-shelf-h {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.pv-row-note {
+    margin: 6px 0 0;
+    font-size: 10px;
+    opacity: .6;
+}
+
+/* shared: dashed "other advertiser" card */
+.pv-card.ghostc {
+    align-items: center;
+    justify-content: center;
+    min-height: 150px;
+    border: 2px dashed #CBD1D5;
+    background: #F8F9FA;
+    color: #8A949B;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-align: center;
+}
+
+/* Deal of the Day: one large sponsored card (mirrors HomeShelves DealFeature) */
+.pv-deal {
+    display: grid;
+    grid-template-columns: 40% minmax(0, 1fr);
+    gap: 0;
+    margin-bottom: 8px;
+    border: 1px solid rgba(20, 27, 34, .09);
+    border-radius: 16px;
+    background: linear-gradient(135deg, #FFF3EB, #fff);
+    overflow: hidden;
+}
+
+.pv-deal.empty {
+    grid-template-columns: 1fr;
+    place-items: center;
+    min-height: 110px;
+    border-style: dashed;
+    font-size: 11px;
+    text-align: center;
+    padding: 12px;
+}
+
+.pv-deal-img {
+    aspect-ratio: 1;
+    display: grid;
+    place-items: center;
+    background: #F4F5F6;
+}
+
+.pv-deal-img img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.pv-deal-t {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    padding: 10px;
+}
+
+.pv-deal-tag {
+    font-size: 8.5px;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #de3207;
+}
+
+.pv-deal-cta {
+    align-self: flex-start;
+    margin-top: 3px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #de3207;
+    color: #fff;
+    font-size: 9.5px;
+    font-weight: 800;
+}
+
+/* ---- wireframe placeholders: static lines and crossed boxes (no skeleton blobs, no animation) ---- */
+.pv-ln {
+    display: block;
+    height: 3px;
+    border-radius: 2px;
+    background: #CBD1D5;
+}
+
+.pv-ph {
+    display: block;
+    border: 1px solid #D5DADE;
+    background:
+        linear-gradient(to top right, transparent calc(50% - .5px), #D5DADE, transparent calc(50% + .5px)),
+        linear-gradient(to bottom right, transparent calc(50% - .5px), #D5DADE, transparent calc(50% + .5px));
+}
+
+.pv-pill {
+    display: block;
+    border: 1px solid #D5DADE;
+}
+
+.pv-card.dummy {
+    gap: 8px;
+}
+
+/* product images sit on white, like Home */
+.pv-card-img {
+    background: #fff;
+    border-bottom: 1px solid #EEF0F2;
+}
+
+/* Deal of the Day: same card, highlighted */
+.pv-dealband {
+    padding: 8px;
+    border-radius: 14px;
+    background: linear-gradient(to bottom, #FFF1E6, #fff);
+}
+
+.pv-card.real.deal {
+    border: 2px solid #de3207;
+    box-shadow: 0 8px 20px -12px rgba(222, 50, 7, .7);
+}
+
+.pv-card-img b.deal {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #de3207;
+}
+
+.pv-card-s {
+    margin: 0;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #de3207;
+}
+
+/* hero carousel dots (empty state) */
+.pv-dots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.pv-dots i {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(11, 17, 22, .18);
+}
+
+.pv-dots i.on {
+    width: 18px;
+    background: #de3207;
+}
+
+.pv-dots-note {
+    margin: 4px 0 0;
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    opacity: .65;
+}
+
+/* priority bid */
+.ad-bid-sum {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 8px;
+    font-size: 12.5px;
+}
+
+.ad-bid-row {
+    display: grid;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+.ad-bid-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.ad-bid .ad-chip {
+    padding: 6px 12px;
+    border: 1px solid rgba(11, 17, 22, .15);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12.5px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ad-bid .ad-chip.on {
+    border-color: #de3207;
+    background: rgba(222, 50, 7, .08);
+    color: #8F3200;
+}
+
+.pv-card.ghostc.deal {
+    border-color: rgba(222, 50, 7, .4);
+    background: rgba(222, 50, 7, .04);
+    color: #8F3200;
+}
+
+/* APPEND this block to the end of ad-preview.css */
+
+/* Deal of the Day: all paid seats are scrollable and counted */
+.pv-cards.scroll {
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.pv-cards.scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.pv-seats {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.pv-seats span {
+    flex: 1;
+    min-width: 0;
+    padding: 3px 0;
+    border: 1px dashed rgba(222, 50, 7, .45);
+    border-radius: 6px;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 800;
+    color: #8F3200;
+}
+
+.pv-seats span.you {
+    border: 1px solid #de3207;
+    background: #de3207;
+    color: #fff;
+}

@@ -1,7 +1,7 @@
 // src/pages/GrowAdsPage.jsx — route: /sell/ads  (seller "Promote" screen in the GROW shell)
 //
-// Flow: pick a placement -> 1 Time (date, hour, duration) -> 2 Creative -> 3 Review & pay from credits.
-// Money safety:
+// Flow: pick a placement (with a map of where it appears) -> 1 Time -> 2 Creative (live preview) -> 3 Review & pay.
+// Money safety (unchanged):
 //   * nothing is charged until the seller ticks the consent box and presses Pay;
 //   * the exact total the seller saw is sent with the booking; if the price moved the server refuses (409)
 //     and we show the new price for a fresh confirmation;
@@ -10,13 +10,15 @@
 //     top-up PaymentReturnPage sends the seller back here with the selection restored.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { CalendarDays, CheckCircle2, ChevronLeft, ImageIcon, Megaphone, Package, Sparkles, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, ChevronLeft, ImageIcon, MapPin, Megaphone, Package, Sparkles, TrendingUp, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
 import { fetchPlacements, fetchQuote, postBooking, fetchMyBookings } from "../utils/adsApi.js";
 import SlotPicker from "../components/growSeller/ads/SlotPicker.jsx";
 import CreativeStep from "../components/growSeller/ads/CreativeStep.jsx";
 import ReviewStep from "../components/growSeller/ads/ReviewStep.jsx";
+import AdPlacementPreview, { PlacementMap, placementPosition, placementLabel } from "../components/growSeller/ads/AdPlacementPreview.jsx";
+import { SHAPE_BY_KEY } from "../components/home/bannerShapes.js";
 import {
     money, fmtDateTime, endIso, newIdemKey, readDraft, writeDraft, clearDraft, emptyCreative,
     creativeReady, toCreativeInput, topUpPath, bookingState, REASON_TEXT,
@@ -25,19 +27,22 @@ import "../components/growSeller/ads/grow-ads.css";
 
 const STEPS = [["slot", "Time", CalendarDays], ["creative", "Creative", ImageIcon], ["review", "Review", CheckCircle2]];
 const toTop = () => { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* ignore */ } };
+const sizesOf = (p) => (p.aspectKeys || []).map((k) => SHAPE_BY_KEY[k]?.label || k).join(" + ");
 
 export default function GrowAdsPage() {
     const nav = useNavigate();
     const [sp, setSp] = useSearchParams();
-    const { token } = useAuth();
+    const { token, profile } = useAuth();
     const { say, refreshWallet } = useGrowSeller();
+    // Shown on the ad itself ("Ad · <shop>"). Falls back to a neutral label if the profile has neither field.
+    const shopName = profile?.shop_name || profile?.display_name || "Your shop";
 
     const [tab, setTab] = useState("book"); // book | mine
     const [pl, setPl] = useState({ loading: true, list: [], gstPercent: 18, error: null });
-    const [flow, setFlow] = useState(null);  // { placementKey, start, hours, creative, step }
+    const [flow, setFlow] = useState(null);  // { placementKey, start, hours, bid, creative, step }
     const [saved, setSaved] = useState(() => readDraft());
     const [done, setDone] = useState(null);  // { booking, placement }
-    const [picked, setPicked] = useState(null); // { id, name } of the product being promoted (for the review preview)
+    const [picked, setPicked] = useState(null); // product being promoted: { id, name, image, brandName, price, masterPackSize }
     const [quote, setQuote] = useState({ loading: false, data: null, error: null });
     const [quoteTick, setQuoteTick] = useState(0);
     const [availKey, setAvailKey] = useState(0);
@@ -68,7 +73,7 @@ export default function GrowAdsPage() {
         if (!d || !pl.list.some((p) => p.key === d.placementKey)) return;
         const stillFuture = d.start && new Date(d.start).getTime() > Date.now();
         setFlow({
-            placementKey: d.placementKey, start: stillFuture ? d.start : null, hours: d.hours,
+            placementKey: d.placementKey, start: stillFuture ? d.start : null, hours: d.hours, bid: Number(d.bid) || 0,
             creative: d.creative || emptyCreative(), step: stillFuture ? "review" : "slot",
         });
         setTab("book");
@@ -79,13 +84,13 @@ export default function GrowAdsPage() {
     useEffect(() => { if (flow) writeDraft(flow); }, [flow]);
 
     /* ---------------- live quote ---------------- */
-    const qKey = flow ? `${flow.placementKey}|${flow.start}|${flow.hours}` : "";
+    const qKey = flow ? `${flow.placementKey}|${flow.start}|${flow.hours}|${flow.bid || 0}` : "";
     useEffect(() => {
         if (!flow?.start || !flow?.hours || !token) { setQuote({ loading: false, data: null, error: null }); return undefined; }
         const ac = new AbortController();
         setQuote((q) => ({ ...q, loading: true, error: null }));
         const t = setTimeout(async () => {
-            const res = await fetchQuote(token, flow.placementKey, flow.start, flow.hours, ac.signal);
+            const res = await fetchQuote(token, flow.placementKey, flow.start, flow.hours, ac.signal, flow.bid || 0);
             if (res.aborted) return;
             if (res.success) setQuote({ loading: false, data: res.quote, error: null });
             else setQuote({ loading: false, data: null, error: res });
@@ -114,13 +119,13 @@ export default function GrowAdsPage() {
     const patch = (p) => setFlow((f) => (f ? { ...f, ...p } : f));
     const startFlow = (p) => {
         setDone(null); setBookErr(null); setPicked(null);
-        setFlow({ placementKey: p.key, start: null, hours: p.minHours, creative: emptyCreative(), step: "slot" });
+        setFlow({ placementKey: p.key, start: null, hours: p.minHours, bid: 0, creative: emptyCreative(), step: "slot" });
         setSaved(null); clearDraft(); toTop();
     };
     const resumeSaved = () => {
         const d = saved; if (!d) return;
         const ok = d.start && new Date(d.start).getTime() > Date.now();
-        setFlow({ placementKey: d.placementKey, start: ok ? d.start : null, hours: d.hours, creative: d.creative || emptyCreative(), step: ok ? d.step || "slot" : "slot" });
+        setFlow({ placementKey: d.placementKey, start: ok ? d.start : null, hours: d.hours, bid: Number(d.bid) || 0, creative: d.creative || emptyCreative(), step: ok ? d.step || "slot" : "slot" });
         setSaved(null); toTop();
     };
     const discardSaved = () => { clearDraft(); setSaved(null); };
@@ -137,6 +142,7 @@ export default function GrowAdsPage() {
         const res = await postBooking(token, {
             placementKey: flow.placementKey, start: flow.start, hours: flow.hours,
             expectedTotal: quote.data.total, idempotencyKey: idemRef.current,
+            ...(placement.biddable ? { bidPerHour: Math.max(0, Math.floor(Number(flow.bid) || 0)) } : {}),
             creative: toCreativeInput(placement, flow.creative),
         });
         setBusy(false);
@@ -170,7 +176,17 @@ export default function GrowAdsPage() {
     };
 
     /* ---------------- views ---------------- */
-    const creativePreview = placement && flow ? <CreativePreview placement={placement} c={flow.creative} picked={picked} /> : null;
+    const rank = quote.data?.bid?.rank ?? null;
+    const creativePreview = placement && flow
+        ? (
+            <>
+                {placement.biddable && Number(flow.bid) > 0 && (
+                    <p className="ad-bid-sum"><TrendingUp size={14} aria-hidden="true" /> Priority bid: <b>{money(flow.bid)}</b> per hour × {flow.hours} h = <b>{money(Number(flow.bid) * Number(flow.hours))}</b> before GST{rank ? ` · position #${rank}` : ""}</p>
+                )}
+                <AdPlacementPreview placement={placement} creative={flow.creative} shopName={shopName} picked={picked} rank={rank} />
+            </>
+        )
+        : null;
 
     if (done) {
         const b = done.booking;
@@ -179,7 +195,7 @@ export default function GrowAdsPage() {
                 <section className="ad-card ad-done" role="status">
                     <CheckCircle2 size={44} aria-hidden="true" />
                     <h1>Your ad is booked</h1>
-                    <p>{done.placement.name}: <b>{fmtDateTime(b.start)}</b> to <b>{fmtDateTime(b.end)}</b> IST.</p>
+                    <p>{placementLabel(done.placement).kind} · {placementLabel(done.placement).name}: <b>{fmtDateTime(b.start)}</b> to <b>{fmtDateTime(b.end)}</b> IST.</p>
                     <p>{money(b.amount)} was deducted from your credits{b.balance_after != null ? `. Balance now ${money(b.balance_after)}` : ""}.</p>
                     <div className="ad-actions">
                         <button type="button" className="ad-btn primary" onClick={() => { setDone(null); setTab("mine"); }}>View my ads</button>
@@ -192,11 +208,12 @@ export default function GrowAdsPage() {
 
     if (flow && placement) {
         const idx = STEPS.findIndex((s) => s[0] === flow.step);
+        const pos = placementPosition(placement);
         return (
             <div className="v ad-page">
                 <div className="ad-top">
                     <button type="button" className="ad-ib" aria-label="Back to placements" onClick={leaveFlow}><ChevronLeft size={20} /></button>
-                    <div><h1>{placement.name}</h1><p className="ad-mute">{placement.description}</p></div>
+                    <div><h1>{placementLabel(placement).kind} · {placementLabel(placement).name}</h1><p className="ad-mute">{placementLabel(placement).count}</p></div>
                 </div>
 
                 <ol className="ad-steps" aria-label="Booking steps">
@@ -213,8 +230,20 @@ export default function GrowAdsPage() {
 
                 {flow.step === "slot" && (
                     <>
+                        <section className="ad-card pv-where" aria-label="Where your ad appears">
+                            <PlacementMap placement={placement} small />
+                            <div>
+                                <b>Where your ad appears</b>
+                                <p className="pv-pos"><MapPin size={14} aria-hidden="true" /> {pos.title}</p>
+                                <p>{pos.where}</p>
+                                <span className={`pv-share${placementLabel(placement).exclusive ? "" : " on"}`}>{placementLabel(placement).count}</span>
+                            </div>
+                        </section>
                         <SlotPicker token={token} placement={placement} start={flow.start} hours={flow.hours} refreshKey={availKey}
                             onChange={({ start, hours }) => patch({ start, hours })} />
+                        {placement.biddable && flow.start && (
+                            <BidBox placement={placement} value={flow.bid || 0} hours={flow.hours} quote={quote} onChange={(bid) => patch({ bid })} />
+                        )}
                         <StickyBar
                             summary={flow.start ? (
                                 quote.loading ? "Checking price…"
@@ -229,7 +258,8 @@ export default function GrowAdsPage() {
                 {flow.step === "creative" && (
                     <>
                         <CreativeStep token={token} placement={placement} value={flow.creative}
-                            onChange={(creative) => patch({ creative })} onPickProduct={setPicked} />
+                            onChange={(creative) => patch({ creative })} onPickProduct={setPicked}
+                            shopName={shopName} picked={picked} />
                         <StickyBar summary={creativeOk ? "Looks good" : "Add what is still missing"} disabled={!creativeOk}
                             label="Next: review" onClick={() => goStep("review")} />
                     </>
@@ -247,7 +277,7 @@ export default function GrowAdsPage() {
     /* ---------------- home: placements + my ads ---------------- */
     return (
         <div className="v ad-page">
-            <div className="hh"><h1>Promote</h1><div className="live"><i />Show your brand and products on the BBM Home page</div></div>
+            <div className="hh"><h1>Promote</h1><div className="live"><i />Put your brand and products in front of buyers on the BBM Home page</div></div>
 
             <div className="ad-tabs" role="tablist" aria-label="Promote sections">
                 <button type="button" role="tab" aria-selected={tab === "book"} className={tab === "book" ? "on" : ""} onClick={() => setTab("book")}>Book a placement</button>
@@ -268,19 +298,25 @@ export default function GrowAdsPage() {
                     {pl.error && <p className="ad-err" role="alert">{pl.error}</p>}
                     {!pl.loading && !pl.error && !pl.list.length && <p className="ad-mute">No placements are open for booking right now. Please check back soon.</p>}
                     <div className="ad-plgrid">
-                        {pl.list.map((p) => (
-                            <article key={p.key} className="ad-card ad-pl">
-                                <span className="ad-kind">{p.kind === "banner" ? <Megaphone size={14} aria-hidden="true" /> : <Package size={14} aria-hidden="true" />}{p.kind === "banner" ? "Banner" : "Product"}</span>
-                                <h3>{p.name}</h3>
-                                <p>{p.description}</p>
-                                <ul className="ad-facts">
-                                    <li>From <b>{money(p.fromRate)}</b>/hour + GST</li>
-                                    <li>{p.lanes} advertiser{p.lanes === 1 ? "" : "s"} at a time</li>
-                                    <li>{p.minHours} h minimum</li>
-                                </ul>
-                                <button type="button" className="ad-btn primary" onClick={() => startFlow(p)}>Choose dates</button>
-                            </article>
-                        ))}
+                        {pl.list.map((p) => {
+                            const pos = placementPosition(p);
+                            return (
+                                <article key={p.key} className="ad-card ad-pl">
+                                    <PlacementMap placement={p} />
+                                    <span className="ad-kind">{p.kind === "banner" ? <Megaphone size={14} aria-hidden="true" /> : <Package size={14} aria-hidden="true" />}{placementLabel(p).kind}</span>
+                                    <h3>{placementLabel(p).name}</h3>
+                                    <p className="pv-pos"><MapPin size={14} aria-hidden="true" /> {pos.title}</p>
+                                    <p>{pos.where}</p>
+                                    <span className={`pv-share${placementLabel(p).exclusive ? "" : " on"}`}>{placementLabel(p).count}</span>
+                                    <ul className="ad-facts">
+                                        <li>From <b>{money(p.fromRate)}</b>/hour + GST</li>
+                                        <li>{p.minHours} h minimum</li>
+                                        {p.kind === "banner" && sizesOf(p) ? <li>Image size: <b>{sizesOf(p)}</b></li> : null}
+                                    </ul>
+                                    <button type="button" className="ad-btn primary" onClick={() => startFlow(p)}>Choose dates</button>
+                                </article>
+                            );
+                        })}
                     </div>
                     {!!pl.list.length && <p className="ad-mute ad-fine">Prices move with demand: the fuller a time slot is, the more it costs. You always see the exact total before you pay, and nothing is charged until you confirm. GST {pl.gstPercent}% is added on top.</p>}
                 </>
@@ -326,10 +362,34 @@ function StickyBar({ summary, sub, label, disabled, onClick }) {
     );
 }
 
-function CreativePreview({ placement, c, picked }) {
-    if (placement.kind === "product") {
-        return picked && picked.id === c.submissionId ? <div className="ad-prev"><b>Promoting:</b> {picked.name}</div> : null;
-    }
-    const first = placement.aspectKeys.map((k) => c.images?.[k]).find(Boolean);
-    return first ? <div className="ad-prev"><img src={first} alt="" /><span>{c.linkType === "product" ? "Links to one of your products" : "Links to your shop"}</span></div> : null;
+// Optional priority bid: extra rupees per hour on top of the slot price. Highest bid is listed first in the shelf.
+// Only shown when the server marks the placement `biddable`, so nothing here appears until the backend supports it.
+function BidBox({ placement, value, hours, quote, onChange }) {
+    const step = Number(placement.bidStep) || 5;
+    const max = Number(placement.bidMax) || 1000;
+    const b = quote.data?.bid || null; // { per_hour, top_bid, rank, listed }
+    const set = (v) => onChange(Math.min(max, Math.max(0, Math.floor(Number(v) || 0))));
+    return (
+        <section className="ad-card ad-bid" aria-label="Priority bid">
+            <h3><TrendingUp size={16} aria-hidden="true" /> Get listed first <small>(optional)</small></h3>
+            <p className="ad-mute">Sponsored products are shown highest bid first. Add extra money per hour on top of the slot price to move ahead of other sellers. A bid of ₹0 still gets you listed, after the higher bids.</p>
+            <div className="ad-bid-row">
+                <label className="ad-field">
+                    <span>Extra per hour (₹)</span>
+                    <input type="number" inputMode="numeric" min={0} max={max} step={step} value={value} onChange={(e) => set(e.target.value)} />
+                </label>
+                <div className="ad-bid-chips" role="group" aria-label="Quick bids">
+                    {[0, 10, 25, 50, 100].map((v) => (
+                        <button key={v} type="button" className={`ad-chip${Number(value) === v ? " on" : ""}`} onClick={() => set(v)}>{v === 0 ? "No bid" : `+₹${v}`}</button>
+                    ))}
+                </div>
+            </div>
+            <p className="ad-mute">
+                {value > 0 ? <>Adds {money(value * hours)} for {hours} h, plus GST. </> : null}
+                {b?.top_bid != null ? <>Highest bid for this time: <b>{money(b.top_bid)}</b>/h. </> : null}
+                {b?.rank ? <>At this bid you would be <b>#{b.rank}</b>{b.listed ? ` of ${b.listed}` : ""}. </> : null}
+                Positions can change if another seller bids higher before the slot starts.
+            </p>
+        </section>
+    );
 }

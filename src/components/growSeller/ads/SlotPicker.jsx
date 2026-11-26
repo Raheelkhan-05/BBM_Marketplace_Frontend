@@ -1,5 +1,6 @@
 // SlotPicker.jsx — step 1 of the Promote flow: pick a DATE (month calendar with availability and price range),
 // then the START HOUR (hour grid for that day), then the duration. Everything is IST.
+// Unlimited placements (placement.unlimited, e.g. Sponsored product) never show seat counts or "filling up / full" wording.
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Loader2, Minus, Plus } from "lucide-react";
 import { fetchAvailability } from "../../../utils/adsApi.js";
@@ -13,6 +14,7 @@ const DAY_STATUS = { open: "Available", limited: "Filling up", full: "Fully book
 const HOUR_STATUS = { open: "Available", full: "Booked", blocked: "Closed", past: "Past", too_far: "Too far ahead" };
 
 export default function SlotPicker({ token, placement, start, hours, onChange, refreshKey = 0 }) {
+    const unlimited = !!placement.unlimited;
     const today = istDateKey();
     const lastDay = addDays(today, placement.maxDaysAhead);
     const startDay = start ? istDateKey(new Date(start)) : null;
@@ -87,12 +89,14 @@ export default function SlotPicker({ token, placement, start, hours, onChange, r
                         const status = out ? "closed" : info?.status || (mState.loading ? "open" : "closed");
                         const disabled = out || !info || status === "full" || status === "blocked" || status === "closed";
                         const price = info?.min_rate != null && !disabled ? Math.round(Number(info.min_rate)) : null;
+                        // unlimited placements are never "filling up": show those days as plainly available
+                        const shown = unlimited && status === "limited" ? "open" : status;
                         return (
                             <button
                                 key={key} type="button" role="gridcell" disabled={disabled}
-                                className={`ad-day s-${status}${day === key ? " sel" : ""}${key === today ? " today" : ""}`}
+                                className={`ad-day s-${shown}${day === key ? " sel" : ""}${key === today ? " today" : ""}`}
                                 aria-pressed={day === key}
-                                aria-label={`${fmtDay(key)}, ${DAY_STATUS[status] || ""}${price != null ? `, from ${money(price)} per hour` : ""}`}
+                                aria-label={`${fmtDay(key)}, ${DAY_STATUS[shown] || ""}${price != null ? `, from ${money(price)} per hour` : ""}`}
                                 onClick={() => pickDay(key)}
                             >
                                 <span>{Number(key.slice(8))}</span>
@@ -103,7 +107,9 @@ export default function SlotPicker({ token, placement, start, hours, onChange, r
                 </div>
                 {mState.error && <p className="ad-err" role="alert">{mState.error}</p>}
                 <ul className="ad-legend" aria-label="Legend">
-                    <li><i className="s-open" />Available</li><li><i className="s-limited" />Filling up</li><li><i className="s-full" />Full / closed</li>
+                    {unlimited
+                        ? <><li><i className="s-open" />Available</li><li><i className="s-full" />Closed</li></>
+                        : <><li><i className="s-open" />Available</li><li><i className="s-limited" />Filling up</li><li><i className="s-full" />Full / closed</li></>}
                 </ul>
             </section>
 
@@ -121,7 +127,7 @@ export default function SlotPicker({ token, placement, start, hours, onChange, r
                                 {dState.hours.map((h) => {
                                     const t = new Date(h.hour_start).getTime();
                                     const inRange = startMs != null && t >= startMs && t < endMs;
-                                    const hot = Number(h.occupancy) >= 0.66 && h.status === "open";
+                                    const hot = !unlimited && Number(h.occupancy) >= 0.66 && h.status === "open";
                                     return (
                                         <button
                                             key={h.hour_start} type="button" disabled={h.status !== "open"}
@@ -133,7 +139,7 @@ export default function SlotPicker({ token, placement, start, hours, onChange, r
                                         >
                                             <b>{fmtHour(h.hour_start)}</b>
                                             {h.status === "open"
-                                                ? <small>{money(h.rate)}{placement.lanes > 1 ? ` · ${h.free_lanes} left` : ""}</small>
+                                                ? <small>{money(h.rate)}{!unlimited && placement.lanes > 1 ? ` · ${h.free_lanes} left` : ""}</small>
                                                 : <small>{HOUR_STATUS[h.status]}</small>}
                                         </button>
                                     );

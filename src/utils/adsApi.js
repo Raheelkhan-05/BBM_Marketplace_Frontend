@@ -28,8 +28,10 @@ export function fetchAvailability(token, key, { month, day }, signal) {
     return call(token, "GET", `/ads/placements/${encodeURIComponent(key)}/availability?${qs}`, { signal });
 }
 
-export function fetchQuote(token, key, startIso, hours, signal) {
-    const qs = `start=${encodeURIComponent(startIso)}&hours=${encodeURIComponent(hours)}`;
+// bid = extra rupees PER HOUR above the slot price (only for placements the server marks biddable). 0 = no bid.
+export function fetchQuote(token, key, startIso, hours, signal, bid = 0) {
+    const b = Math.max(0, Math.floor(Number(bid) || 0));
+    const qs = `start=${encodeURIComponent(startIso)}&hours=${encodeURIComponent(hours)}${b > 0 ? `&bid=${b}` : ""}`;
     return call(token, "GET", `/ads/placements/${encodeURIComponent(key)}/quote?${qs}`, { signal });
 }
 
