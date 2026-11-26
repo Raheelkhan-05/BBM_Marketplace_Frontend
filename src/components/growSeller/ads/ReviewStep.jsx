@@ -51,7 +51,7 @@ export default function ReviewStep({ placement, quote, creativePreview, consent,
                     <div><dt>GST ({Number(q.gst_percent)}%)</dt><dd>{money(q.gst_amount)}</dd></div>
                     <div className="tot"><dt>Total</dt><dd>{money(q.total)}</dd></div>
                 </dl>
-                <p className={`ad-demand d-${demand.key}`}><Info size={14} aria-hidden="true" /> {demand.text}</p>
+                {/* <p className={`ad-demand d-${demand.key}`}><Info size={14} aria-hidden="true" /> {demand.text}</p> */}
             </section>
 
             {w && (
@@ -59,7 +59,7 @@ export default function ReviewStep({ placement, quote, creativePreview, consent,
                     <h3><Wallet size={16} aria-hidden="true" /> Your credits</h3>
                     <dl className="ad-sum">
                         <div><dt>Available now</dt><dd>{money(w.balance)}</dd></div>
-                        <div><dt>After this booking</dt><dd>{money(w.balanceAfter)}</dd></div>
+                        {/* <div><dt>After this booking</dt><dd>{money(w.balanceAfter)}</dd></div> */}
                     </dl>
                     {short > 0 ? (
                         <div className="ad-note warn" role="alert">

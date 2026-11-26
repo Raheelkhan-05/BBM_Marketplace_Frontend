@@ -33,7 +33,7 @@ function Card({ item, includeGst, priority }) {
             className="group flex w-[158px] shrink-0 snap-start flex-col overflow-hidden rounded-2xl border bg-white outline-none transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#0B7285] sm:w-[190px]"
             style={{ borderColor: "rgba(20,27,34,.09)" }}
         >
-            <div className="relative aspect-square w-full bg-[#F4F5F6]">
+            <div className="relative aspect-square w-full bg-[#FFF]">
                 {item.image && (
                     <img
                         src={resizedImageUrl(item.image, { width: 400 })}
@@ -41,14 +41,14 @@ function Card({ item, includeGst, priority }) {
                         loading={priority ? "eager" : "lazy"}
                         decoding="async"
                         referrerPolicy="no-referrer"
-                        className="absolute inset-0 h-full w-full object-contain p-2 transition-transform duration-300 group-hover:scale-[1.04]"
+                        className="absolute inset-0 h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.04]"
                     />
                 )}
                 {item.sponsored && (
                     <span className="absolute left-2 top-2 rounded-full bg-black/65 px-2 py-[3px] text-[10px] font-bold uppercase tracking-wide text-white">Sponsored</span>
                 )}
             </div>
-            <div className="flex flex-1 flex-col gap-1 p-2.5">
+            <div className="flex flex-1 flex-col gap-1 p-2.5 bg-[#F4F5F6]">
                 {item.reason && !item.sponsored && (
                     <span className="self-start rounded-md px-1.5 py-[2px] text-[10.5px] font-bold" style={{ background: tone.bg, color: tone.fg }}>{item.reason}</span>
                 )}
