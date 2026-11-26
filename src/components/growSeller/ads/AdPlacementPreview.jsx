@@ -73,7 +73,7 @@ export function PlacementMap({ placement, small = false }) {
                 const on = b.k === hi;
                 return (
                     <div key={i} className={`pv-map-b ${b.k}${on ? " on" : ""}`} style={{ height: b.h }}>
-                        {b.k === "rows" ? <><i /><i /><i /></> : on ? <span>Your ad{shared ? " (shared)" : ""}</span> : b.t ? <em>{b.t}</em> : null}
+                        {b.k === "rows" ? <><i /><i /><i /></> : on ? <span>Your ad{shared ? "" : ""}</span> : b.t ? <em>{b.t}</em> : null}
                     </div>
                 );
             })}

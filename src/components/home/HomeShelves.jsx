@@ -98,7 +98,7 @@ function Shelf({ shelf, includeGst, first }) {
     return (
         <section
             aria-labelledby={`shelf-${shelf.key}`}
-            className={isDeal ? "mx-2.5 my-3 rounded-2xl bg-gradient-to-b from-[#FFF1E6] to-white px-2.5 py-3 sm:mx-3 sm:px-3" : "px-2.5 py-3 sm:px-3"}
+            className={isDeal ? "mx-2.5 my-3 rounded-2xl px-2.5 py-3 sm:mx-3 sm:px-3" : "px-2.5 py-3 sm:px-3"}
         >
             <div className="mb-2 flex items-baseline justify-between gap-2 px-0.5">
                 <h2 id={`shelf-${shelf.key}`} className="flex items-center gap-1.5 text-[17px] font-extrabold leading-tight tracking-tight text-slate-900">
