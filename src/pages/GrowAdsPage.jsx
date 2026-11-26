@@ -13,7 +13,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { CalendarDays, CheckCircle2, ChevronLeft, ImageIcon, Megaphone, Package, Sparkles, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useGrowSeller } from "../context/GrowSellerContext.js";
-import { fetchPlacements, fetchQuote, postBooking, fetchMyBookings, fetchMyAdProducts } from "../utils/adsApi.js";
+import { fetchPlacements, fetchQuote, postBooking, fetchMyBookings } from "../utils/adsApi.js";
 import SlotPicker from "../components/growSeller/ads/SlotPicker.jsx";
 import CreativeStep from "../components/growSeller/ads/CreativeStep.jsx";
 import ReviewStep from "../components/growSeller/ads/ReviewStep.jsx";
@@ -37,7 +37,7 @@ export default function GrowAdsPage() {
     const [flow, setFlow] = useState(null);  // { placementKey, start, hours, creative, step }
     const [saved, setSaved] = useState(() => readDraft());
     const [done, setDone] = useState(null);  // { booking, placement }
-    const [products, setProducts] = useState({ loading: false, loaded: false, list: [], error: null });
+    const [picked, setPicked] = useState(null); // { id, name } of the product being promoted (for the review preview)
     const [quote, setQuote] = useState({ loading: false, data: null, error: null });
     const [quoteTick, setQuoteTick] = useState(0);
     const [availKey, setAvailKey] = useState(0);
@@ -78,20 +78,6 @@ export default function GrowAdsPage() {
     // Keep the draft fresh so a wallet round trip (or an accidental reload) never loses the selection.
     useEffect(() => { if (flow) writeDraft(flow); }, [flow]);
 
-    /* ---------------- products (needed on the creative step) ---------------- */
-    const needProducts = flow?.step === "creative" && !products.loaded && !products.loading;
-    useEffect(() => {
-        if (!needProducts || !token) return undefined;
-        const ac = new AbortController();
-        setProducts((s) => ({ ...s, loading: true, error: null }));
-        fetchMyAdProducts(token, ac.signal).then((res) => {
-            if (res.aborted) return;
-            if (res.success) setProducts({ loading: false, loaded: true, list: res.products || [], error: null });
-            else setProducts({ loading: false, loaded: true, list: [], error: res.message || "Couldn't load your products. Go back a step and return to try again." });
-        });
-        return () => ac.abort();
-    }, [needProducts, token]);
-
     /* ---------------- live quote ---------------- */
     const qKey = flow ? `${flow.placementKey}|${flow.start}|${flow.hours}` : "";
     useEffect(() => {
@@ -127,7 +113,7 @@ export default function GrowAdsPage() {
     /* ---------------- actions ---------------- */
     const patch = (p) => setFlow((f) => (f ? { ...f, ...p } : f));
     const startFlow = (p) => {
-        setDone(null); setBookErr(null);
+        setDone(null); setBookErr(null); setPicked(null);
         setFlow({ placementKey: p.key, start: null, hours: p.minHours, creative: emptyCreative(), step: "slot" });
         setSaved(null); clearDraft(); toTop();
     };
@@ -139,7 +125,7 @@ export default function GrowAdsPage() {
     };
     const discardSaved = () => { clearDraft(); setSaved(null); };
     const leaveFlow = () => { setFlow(null); setQuote({ loading: false, data: null, error: null }); toTop(); };
-    const goStep = (step) => { setBookErr(null); if (step !== "creative") { /* keep products cache */ } patch({ step }); toTop(); };
+    const goStep = (step) => { setBookErr(null); patch({ step }); toTop(); };
     const goTopUp = (shortfall) => { if (flow) writeDraft({ ...flow, step: "review" }); nav(topUpPath(shortfall)); };
 
     const slotOk = !!flow?.start && quote.data?.bookable === true;
@@ -184,7 +170,7 @@ export default function GrowAdsPage() {
     };
 
     /* ---------------- views ---------------- */
-    const creativePreview = placement && flow ? <CreativePreview placement={placement} c={flow.creative} products={products.list} /> : null;
+    const creativePreview = placement && flow ? <CreativePreview placement={placement} c={flow.creative} picked={picked} /> : null;
 
     if (done) {
         const b = done.booking;
@@ -242,8 +228,8 @@ export default function GrowAdsPage() {
 
                 {flow.step === "creative" && (
                     <>
-                        <CreativeStep token={token} placement={placement} value={flow.creative} products={products}
-                            onChange={(creative) => patch({ creative })} />
+                        <CreativeStep token={token} placement={placement} value={flow.creative}
+                            onChange={(creative) => patch({ creative })} onPickProduct={setPicked} />
                         <StickyBar summary={creativeOk ? "Looks good" : "Add what is still missing"} disabled={!creativeOk}
                             label="Next: review" onClick={() => goStep("review")} />
                     </>
@@ -340,10 +326,9 @@ function StickyBar({ summary, sub, label, disabled, onClick }) {
     );
 }
 
-function CreativePreview({ placement, c, products }) {
+function CreativePreview({ placement, c, picked }) {
     if (placement.kind === "product") {
-        const p = products.find((x) => x.submissionId === c.submissionId);
-        return p ? <div className="ad-prev"><b>Promoting:</b> {p.name}</div> : null;
+        return picked && picked.id === c.submissionId ? <div className="ad-prev"><b>Promoting:</b> {picked.name}</div> : null;
     }
     const first = placement.aspectKeys.map((k) => c.images?.[k]).find(Boolean);
     return first ? <div className="ad-prev"><img src={first} alt="" /><span>{c.linkType === "product" ? "Links to one of your products" : "Links to your shop"}</span></div> : null;

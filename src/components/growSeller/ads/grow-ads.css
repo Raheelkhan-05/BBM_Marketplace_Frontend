@@ -1164,3 +1164,57 @@
         transition: none !important
     }
 }
+
+
+.ad-picker {
+    display: grid;
+    gap: 8px;
+}
+
+.ad-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border: 1px solid #dcdcdc;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.ad-search:focus-within {
+    border-color: #111;
+}
+
+.ad-search input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    padding: 10px 0;
+    font: inherit;
+}
+
+.ad-pk-count,
+.ad-pk-chosen {
+    margin: 0;
+    font-size: 12.5px;
+}
+
+.ad-pk-more {
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 13px;
+    list-style: none;
+}
+
+/* the scroll container (needed for both Lenis-lock and the infinite-scroll observer) */
+.ad-plist {
+    max-height: 360px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}

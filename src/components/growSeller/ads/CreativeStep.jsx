@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { ImagePlus, Loader2, RefreshCw, Store, Package, AlertTriangle } from "lucide-react";
 import { uploadCreative } from "../../../utils/adsApi.js";
 import { SHAPE_BY_KEY } from "../../home/bannerShapes.js";
-import { money } from "./adsHelpers.js";
+import ProductPicker from "./ProductPicker.jsx";
 
 const MAX_BYTES = 2 * 1024 * 1024; // matches bannerImages.service.js
 const TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -43,7 +43,8 @@ function UploadTile({ shape, url, busy, error, onPick }) {
     );
 }
 
-export default function CreativeStep({ token, placement, value, onChange, products }) {
+// onPickProduct({ id, name }) lets the page show "Promoting: <name>" on the review step.
+export default function CreativeStep({ token, placement, value, onChange, onPickProduct }) {
     const [busy, setBusy] = useState({});
     const [errors, setErrors] = useState({});
     const set = (patch) => onChange({ ...value, ...patch });
@@ -74,7 +75,10 @@ export default function CreativeStep({ token, placement, value, onChange, produc
         return (
             <section className="ad-card">
                 <h3>Which product do you want to promote?</h3>
-                <ProductList products={products} selected={value.submissionId} onSelect={(id) => set({ submissionId: id })} />
+                <ProductPicker
+                    token={token} selected={value.submissionId}
+                    onSelect={(id, p) => { set({ submissionId: id }); onPickProduct?.({ id, name: p.name }); }}
+                />
             </section>
         );
     }
@@ -106,27 +110,9 @@ export default function CreativeStep({ token, placement, value, onChange, produc
                     </button>
                 </div>
                 {value.linkType === "product" && (
-                    <ProductList products={products} selected={value.linkSubmissionId} onSelect={(id) => set({ linkSubmissionId: id })} />
+                    <ProductPicker token={token} selected={value.linkSubmissionId} onSelect={(id) => set({ linkSubmissionId: id })} />
                 )}
             </section>
         </div>
-    );
-}
-
-function ProductList({ products, selected, onSelect }) {
-    if (products.loading) return <div className="ad-plist"><span className="ad-sk" /><span className="ad-sk" /></div>;
-    if (products.error) return <p className="ad-err" role="alert">{products.error}</p>;
-    if (!products.list.length) return <p className="ad-mute">You have no live products yet. Add and publish a product first, then come back.</p>;
-    return (
-        <ul className="ad-plist" role="radiogroup" aria-label="Your products">
-            {products.list.map((p) => (
-                <li key={p.submissionId}>
-                    <button type="button" role="radio" aria-checked={selected === p.submissionId} className={selected === p.submissionId ? "on" : ""} onClick={() => onSelect(p.submissionId)}>
-                        {p.image ? <img src={p.image} alt="" loading="lazy" /> : <span className="ad-ph"><Package size={18} aria-hidden="true" /></span>}
-                        <span><b>{p.name}</b><small>{[p.brandName, p.price ? money(p.price) : null].filter(Boolean).join(" · ")}</small></span>
-                    </button>
-                </li>
-            ))}
-        </ul>
     );
 }

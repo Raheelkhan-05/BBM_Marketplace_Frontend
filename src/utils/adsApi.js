@@ -42,4 +42,10 @@ export function uploadCreative(token, shape, file) {
 
 export const postBooking = (token, body) => call(token, "POST", "/ads/bookings", { body });
 export const fetchMyBookings = (token, signal) => call(token, "GET", "/ads/bookings", { signal });
-export const fetchMyAdProducts = (token, signal) => call(token, "GET", "/ads/my-products", { signal });
+
+// Paged + searchable: -> { products, total, totalAll, nextOffset, hasMore }
+export function fetchMyAdProducts(token, { q = "", offset = 0, limit = 30 } = {}, signal) {
+    const qs = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+    if (q) qs.set("q", q);
+    return call(token, "GET", `/ads/my-products?${qs.toString()}`, { signal });
+}
