@@ -48,8 +48,9 @@ const C = { ink: "#141B22", muted: "#5B6672", secondary: "#0B7285", hair: "rgba(
 const FAB_BOTTOM_HOME = 12; // desktop only: gap between the floating pill and the window edge
 // 52 (tallest circle) + 4 gap + 11 label + 12 padding + 3 border + 4 ring + ~2 slack
 const DOCK_HEIGHT = 88;
-// Mobile docked bar: 40 circle + 4 gap + 11 label + 4 top + 6 bottom padding + 1 border (+ safe area added in CSS)
-const BAR_HEIGHT = 68;
+
+// Mobile docked bar (Material 3 nav bar): 8 top + 32 indicator + 4 gap + 16 label + 4 bottom = 64 (+ safe area added in CSS)
+const BAR_HEIGHT = 64;
 
 // Layers (portal on document.body). Kept very high so page-level fixed bars sit underneath.
 const Z_BACKDROP = 9990;
@@ -66,7 +67,7 @@ const FAB_THEME = {
     brands: { bg: "#D8420F", fg: "#FFFFFF" },
     sellers: { bg: "#0F63B5", fg: "#FFFFFF" },
     grow: { bg: "#22A06B", fg: "#FFFFFF" },
-    save: { bg: "#FFD60A", fg: "#06161C" },
+    save: { bg: "#FFD60A", fg: "#06161C", tone: "#6B5200" },
     home: { bg: "#114072", fg: "#FFFFFF" },
     menu: { bg: "#0B5563", fg: "#FFFFFF" },
     login: { bg: "#08222B", fg: "#FFFFFF" },
@@ -133,6 +134,23 @@ const DOCK_AURA_CSS = `
 }
 .bbm-item { outline: none; -webkit-tap-highlight-color: transparent; }
 .bbm-item:focus-visible .bbm-ic { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #141B22 !important; }
+.bbm-m3-ind {
+    transform: scaleX(.3); opacity: 0;
+    transition: transform .25s cubic-bezier(.2,0,0,1), opacity .15s linear;
+}
+.bbm-m3[data-active="true"] .bbm-m3-ind { transform: scaleX(1); opacity: 1; }
+.bbm-m3:active:not([data-active="true"]) .bbm-m3-ind,
+.bbm-m3:focus-visible:not([data-active="true"]) .bbm-m3-ind { transform: scaleX(1); opacity: .6; }
+.bbm-m3:focus-visible .bbm-m3-pill { outline: 2px solid #141B22; outline-offset: 1px; }
+.bbm-m3-label {
+    font-size: 12px; line-height: 16px;
+    letter-spacing: .02em; word-spacing: .06em;
+    white-space: nowrap; -webkit-font-smoothing: antialiased;
+}
+@media (max-width: 349px) {
+    .bbm-m3-label { font-size: 11px; letter-spacing: .01em; }
+}
+@media (prefers-reduced-motion: reduce) { .bbm-m3-ind { transition: none; } }
 `;
 
 // Dock position. Mobile: glued to the bottom edge. Desktop: floating above it.
@@ -303,12 +321,69 @@ function DockBadge({ n }) {
     );
 }
 
-// One dock button = coloured circle + text label underneath.
-// Mobile: slots share the bar equally (flex-1). Desktop: fixed 72px slots.
+// M3 badge: small error-red pill on the icon. Always in the DOM, only fades/scales.
+function MobileBadge({ n }) {
+    const last = useRef(n);
+    if (n > 0) last.current = n;
+    return (
+        <span
+            aria-hidden="true"
+            className={`pointer-events-none absolute left-[calc(50%+5px)] top-[-5px] flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#B3261E] px-1 text-[10px] font-bold leading-none text-white transition-[opacity,transform] duration-150 ${n > 0 ? "scale-100 opacity-100" : "scale-50 opacity-0"}`}
+        >
+            {countLabel(last.current)}
+        </span>
+    );
+}
+
+// One dock button.
+// Mobile: Material 3 nav item (icon + pill indicator + label), slots share the bar equally.
+// Desktop: coloured circle + label, fixed 72px slots (unchanged).
 function DockItem({
-    label, active = false, current, theme, size = 44, ping = false, badge,
+    label, active = false, current, theme, size = 44, ping = false, badge, mobile = false,
     onClick, ariaLabel, title, tabIndex, className = "", children, ...rest
 }) {
+    if (mobile) {
+        const tone = theme.tone || theme.bg;
+        return (
+            <button
+                type="button"
+                onClick={onClick}
+                aria-label={ariaLabel || label}
+                aria-current={(current ?? active) ? "page" : undefined}
+                data-active={active ? "true" : "false"}
+                title={title || label}
+                tabIndex={tabIndex}
+                className={`bbm-item bbm-m3 relative flex min-w-0 flex-1 flex-col items-center justify-start bg-transparent px-0 pb-2 pt-2 ${className}`}
+                {...rest}
+            >
+                {/* Icon area: 32px pill, with a fixed 24x24 icon box inside it.
+                    items-end puts every icon (SVGs and the ₹ glyph) on the same bottom line. */}
+                <span className="bbm-m3-pill relative flex h-8 w-full max-w-[56px] items-center justify-center rounded-full">
+                    <span
+                        aria-hidden
+                        className="bbm-m3-ind absolute inset-0 rounded-full"
+                        style={{ background: `color-mix(in srgb, ${theme.bg} 18%, white)` }}
+                    />
+                    <span
+                        className="relative flex h-6 w-6 items-end justify-center transition-colors duration-150"
+                        style={{ color: active ? tone : C.muted }}
+                    >
+                        {children}
+                    </span>
+                    {badge !== undefined && <MobileBadge n={badge} />}
+                </span>
+
+                {/* Label: top-aligned directly under the pill, no gap */}
+                <span
+                    className={`bbm-m3-label block max-w-full truncate px-0.5 text-center ${active ? "font-bold" : "font-semibold"}`}
+                    style={{ color: active ? C.ink : C.muted }}
+                >
+                    {label}
+                </span>
+            </button>
+        );
+    }
+
     return (
         <motion.button
             type="button"
@@ -345,7 +420,7 @@ function DockItem({
 
             <span
                 aria-hidden
-                className={`absolute -bottom-[6px] h-[3px] w-[18px] rounded-full transition-opacity duration-150 max-md:-bottom-[4px] ${active ? "opacity-100" : "opacity-0"}`}
+                className={`absolute -bottom-[6px] h-[3px] w-[18px] rounded-full transition-opacity duration-150 ${active ? "opacity-100" : "opacity-0"}`}
                 style={{ background: theme.bg }}
             />
         </motion.button>
@@ -403,9 +478,16 @@ export default function BottomNavStrip({ onOpenRfq }) {
         pathname.startsWith("/seller/");
 
     // Last dock slot: Console (or Sign in for guests) on the home pages only, Home everywhere else.
-    const lastSlot = isHomePage ? (effectiveLoggedIn ? "console" : "login") : "home";
+
     const pinnedView = pathname === "/home" && new URLSearchParams(search).get("pinned") === "1";
-    const activeKey = pinnedView ? "pin" : inGrow ? "grow" : inSave ? "save" : null;
+    const inBrands = pathname === "/brands" || pathname.startsWith("/brands/") || pathname.startsWith("/brand/");
+    const inSellers = pathname === "/sellers" || pathname.startsWith("/sellers/") || pathname.startsWith("/seller/");
+
+    // Last dock slot: Console (or Sign in for guests) on the home pages only, Home everywhere else.
+    // The pinned view (/home?pinned=1) shows Home too.
+    const lastSlot = isHomePage && !pinnedView ? (effectiveLoggedIn ? "console" : "login") : "home";
+    const activeKey = pinnedView ? "pin" : inBrands ? "brands" : inSellers ? "sellers" : inGrow ? "grow" : inSave ? "save" : null;
+
     const shopName = profile?.shop_slug ? formatShopName(profile.shop_slug) : "BBM";
     const tileGap = isDesktop ? 8 : 0;
 
@@ -425,7 +507,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
         ...t,
         to: t.key === "grow" ? growTo : t.to,
         size: isDesktop ? (t.raised ? DESKTOP_SIZE_RAISED : DESKTOP_SIZE) : MOBILE_SIZE,
-        icon: isDesktop ? (t.raised ? 22 : 20) : 20,
+        icon: isDesktop ? (t.raised ? 22 : 20) : 24,
         ping: !!t.raised,
         badge: t.key === "grow" ? growBadges.total : 0,
     }));
@@ -534,13 +616,14 @@ export default function BottomNavStrip({ onOpenRfq }) {
     const inSaveCart = /^\/(buy\/)?cart(\/|$)/.test(pathname);
 
     const lastSize = isDesktop ? DESKTOP_SIZE : MOBILE_SIZE;
-    const lastIcon = 20;
+    const lastIcon = isDesktop ? 20 : 24;
 
     const consoleButton = (
         <DockItem
             label={pageOpen ? "Close" : "Console"}
             theme={FAB_THEME.menu}
             size={lastSize}
+            mobile={!isDesktop}
             active={pageOpen}
             current={false}
             onClick={() => setPageOpen((v) => !v)}
@@ -564,13 +647,13 @@ export default function BottomNavStrip({ onOpenRfq }) {
     );
 
     const homeButton = (
-        <DockItem label="Home" theme={FAB_THEME.home} size={lastSize} onClick={() => navigate("/home")}>
+        <DockItem label="Home" theme={FAB_THEME.home} size={lastSize} mobile={!isDesktop} onClick={() => navigate("/home")}>
             <HomeIcon size={lastIcon} />
         </DockItem>
     );
 
     const signInButton = (
-        <DockItem label="Sign in" theme={FAB_THEME.login} size={lastSize} active={inLogin} onClick={() => navigate("/login")}>
+        <DockItem label="Sign in" theme={FAB_THEME.login} size={lastSize} active={inLogin} mobile={!isDesktop} onClick={() => navigate("/login")}>
             <LogIn size={lastIcon} strokeWidth={2.4} />
         </DockItem>
     );
@@ -586,11 +669,12 @@ export default function BottomNavStrip({ onOpenRfq }) {
             minHeight: collapse && pillH ? pillH : undefined,
         }
         : {
-            background: "rgba(255,255,255,.97)",
-            borderColor: "#DFE7EA",
-            boxShadow: "0 -8px 24px -14px rgba(8,34,43,.28)",
-            paddingBottom: "calc(6px + env(safe-area-inset-bottom, 0px))",
-        };
+            background: "rgba(246,249,250,.96)",
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            boxShadow: "0 -1px 0 rgba(20,27,34,.08), 0 -10px 24px -16px rgba(8,34,43,.3)",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        }
 
     return createPortal(
         <>
@@ -631,7 +715,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                         className={
                             isDesktop
                                 ? "relative m-[2px] flex items-end justify-center rounded-[20px] border-[1.5px] px-[20px] pb-[8px] pt-[4px] transition-[background-color,box-shadow] duration-200"
-                                : "relative flex w-full items-end border-t px-0 pt-[4px]"
+                                : "relative flex w-full items-end px-1"
                         }
                         style={pillStyle}
                     >
@@ -658,6 +742,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                             theme={theme}
                                             size={size}
                                             ping={ping}
+                                            mobile={!isDesktop}
                                             badge={badge}
                                             active={activeKey === key}
                                             ariaLabel={badge > 0 ? `${label}, ${badge} unread` : label}
@@ -667,7 +752,7 @@ export default function BottomNavStrip({ onOpenRfq }) {
                                             onTouchStart={key === "grow" ? warmGrow : undefined}
                                             className={`bbm-tile ${collapse ? "pointer-events-none" : ""}`}
                                         >
-                                            <span className={`flex ${key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon size={icon} /></span>
+                                            <span className={`flex ${isDesktop && key === "grow" ? "bbm-dock-nudge" : ""}`}><Icon size={icon} /></span>
                                         </DockItem>
                                     );
                                 })}
