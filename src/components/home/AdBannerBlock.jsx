@@ -55,7 +55,7 @@ function Img({ ad, pick, width, priority }) {
             decoding="async"
             referrerPolicy="no-referrer"
             draggable={false}
-            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.005]"
         />
     );
 }
