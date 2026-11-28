@@ -360,7 +360,7 @@ export default function Header() {
   return (
     <header
       ref={headerRef}
-      className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur-[14px]"
+      className="sticky top-0 z-50 bg-white/95 backdrop-blur-[14px] lg:border-b"
       style={{ borderColor: "#E4E9EC", paddingTop: "env(safe-area-inset-top, 0px)" }}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0 md:gap-y-2 px-3 pb-2 pt-2 sm:px-4 lg:flex-nowrap lg:gap-4 lg:px-6">
