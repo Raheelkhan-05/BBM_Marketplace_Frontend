@@ -34,7 +34,7 @@ export const adCta = (ad) => (ad?.creative?.link?.type === "brand_item" ? "View 
 
 function AdTag({ name, short = false }) {
     return (
-        <span className="pointer-events-none absolute left-2 top-2 z-10 flex max-w-[80%] items-center gap-1 rounded-full bg-black/60 px-2 py-[3px] text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
+        <span className="pointer-events-none absolute left-1.5 top-1.5 z-10 flex max-w-[80%] items-center gap-1 rounded-full bg-black/60 px-1.5 py-[2px] text-[9px] font-bold uppercase tracking-wide text-white backdrop-blur-sm">
             Ad{!short && name ? <span className="truncate font-semibold normal-case tracking-normal opacity-90">· {name}</span> : null}
         </span>
     );
@@ -72,19 +72,26 @@ function Head({ title, hint }) {
 }
 
 /* ---------------- hero carousel ---------------- */
-function HeroSlide({ item, priority, preview, compact }) {
+function HeroSlide({ item, priority, preview }) {
     const { ad, pick } = item;
     return (
         <Frame
             preview={preview}
             ad={ad}
-            className={`group relative block w-full overflow-hidden rounded-2xl bg-[#F4F5F6] ${FOCUS} ${R(compact, "aspect-[16/9]", "sm:aspect-[2/1]")}`}
+            className={`group block w-full overflow-hidden rounded-2xl border border-slate-200 bg-white ${FOCUS}`}
         >
-            <Img ad={ad} pick={pick} width={1280} priority={priority} />
-            <AdTag name={ad.shop_name} />
-            <span className="absolute bottom-2.5 right-2.5 z-10 inline-flex items-center gap-0.5 rounded-full bg-white/95 py-1.5 pl-3 pr-2 text-[11.5px] font-extrabold text-slate-900 shadow-md backdrop-blur transition-transform group-hover:translate-x-0.5">
-                {adCta(ad)} <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.8} />
-            </span>
+            {/* Always 16:9 on every screen, so the 16:9 image is never cropped */}
+            <div className="relative aspect-[16/9] w-full bg-[#F4F5F6]">
+                <Img ad={ad} pick={pick} width={1280} priority={priority} />
+                <AdTag short />
+            </div>
+            {/* Name + CTA live BELOW the image, so they never cover it */}
+            <div className="flex items-center justify-between gap-2 px-3 py-2">
+                <span className="truncate text-[12px] font-bold text-slate-900 sm:text-[13px]">{ad.shop_name || "Seller"}</span>
+                <span className="inline-flex shrink-0 items-center text-[11px] font-extrabold text-[#C44705] sm:text-[12px]">
+                    {adCta(ad)} <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.8} />
+                </span>
+            </div>
         </Frame>
     );
 }
@@ -176,7 +183,7 @@ function DuoCard({ item, preview, compact }) {
             ad={ad}
             className={`group block overflow-hidden rounded-2xl border border-slate-200 bg-white transition-shadow hover:shadow-md ${FOCUS}`}
         >
-            <div className={`relative w-full bg-[#F4F5F6] ${R(compact, "aspect-square", "sm:aspect-[4/3]")}`}>
+            <div className="relative w-full aspect-[4/3] bg-[#F4F5F6]">
                 <Img ad={ad} pick={pick} width={800} priority={false} />
                 <AdTag short />
             </div>

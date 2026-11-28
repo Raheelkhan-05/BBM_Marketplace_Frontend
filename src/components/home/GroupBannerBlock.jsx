@@ -35,7 +35,7 @@ function Slot({ banner, ratio, cls = "", width = 720, priority = false, onOpen }
 
 // Simple grid templates. Each slot: its own aspect classes + the ratio used to pick the best image shape.
 const GRIDS = {
-    hero: (c) => ({ grid: "grid-cols-1", width: 1280, slots: [{ cls: c ? "aspect-[16/9]" : "aspect-[2/1]", ratio: 16 / 9 }] }),
+    hero: (c) => ({ grid: "grid-cols-1", width: 1280, slots: [{ cls: "aspect-[16/9]", ratio: 16 / 9 }] }),
     duo: (c) => ({ grid: "grid-cols-2", width: 800, slots: [0, 1].map(() => ({ cls: c ? "aspect-square" : "aspect-[4/3]", ratio: c ? 1 : 4 / 3 })) }),
     trio: (c) => c
         ? { grid: "grid-cols-2", width: 800, slots: [{ cls: "col-span-2 aspect-[16/9]", ratio: 16 / 9 }, { cls: "aspect-square", ratio: 1 }, { cls: "aspect-square", ratio: 1 }] }
