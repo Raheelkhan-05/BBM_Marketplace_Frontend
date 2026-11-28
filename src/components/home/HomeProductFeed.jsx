@@ -3123,7 +3123,7 @@ function PinnedViewStrip({ count, onBack }) {
 // back to Home by itself, so there is never a dead end.
 function PinnedNotice({ title, body, actionLabel, onAction, secondaryLabel, onSecondary }) {
     return (
-        <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
+        <div className="flex flex-col items-center gap-2 px-6 py-16 text-center tracking-wide">
             <span className="flex h-12 w-12 items-center justify-center rounded-full" style={{ background: PIN.tint }}>
                 <Pin className="h-5 w-5" style={{ color: PIN.color }} strokeWidth={2.3} />
             </span>
