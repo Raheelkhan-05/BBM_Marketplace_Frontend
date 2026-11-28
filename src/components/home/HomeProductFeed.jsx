@@ -3090,7 +3090,7 @@ function GroupViewStrip({ name, count, onBack }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // PIN VIEW (/home?pinned=1)
 // ─────────────────────────────────────────────────────────────────────────────
-const PIN = { color: "#C2255C", tint: "#FDF0F5", hair: "rgba(194,37,92,0.25)" };
+const PIN = { color: "#7125c2ff", tint: "#FDF0F5", hair: "rgba(194,37,92,0.25)" };
 
 function PinnedViewStrip({ count, onBack }) {
     return (

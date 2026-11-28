@@ -71,7 +71,7 @@ const FAB_THEME = {
     home: { bg: "#114072", fg: "#FFFFFF" },
     menu: { bg: "#0B5563", fg: "#FFFFFF" },
     login: { bg: "#08222B", fg: "#FFFFFF" },
-    pin: { bg: "#C2255C", fg: "#FFFFFF" },
+    pin: { bg: "#7125c2ff", fg: "#FFFFFF" },
 };
 
 const svgBase = { viewBox: "0 0 24 24", width: 24, height: 24, fill: "none", stroke: "currentColor", strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };

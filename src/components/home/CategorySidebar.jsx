@@ -1,33 +1,36 @@
 // src/components/home/CategorySidebar.jsx
 //
-//   <CategorySidebar />  desktop (lg+) sticky left column, sits under the sticky header
-//   <CategoryList />     the bare list, also used inside the header's mobile drawer
+//   <CategorySidebar />  desktop (lg+) sticky left column, under the sticky header. Phones / tablets use <CategoryFilterBar /> + <CategorySheet />.
 //
-// Each category lists its subcategories underneath (collapsible). Picking a category filters by the
-// whole category, picking a subcategory narrows it further. When a seller / brand page is open the
-// list shows only what that seller / brand sells, with a notice and a one-tap "Show all categories".
+// Text only, tight rows. Only the picked category is open by default; the chevron opens or closes any other.
+// Long lists get a "Find a category" box (sticky at the top) that filters categories AND subcategories.
+// Picking a category filters by the whole category, picking a subcategory narrows it. When a seller / brand
+// page is open the list shows only what that seller / brand sells, with a notice and "Show all categories".
 //
 // onSelect(category, subcategory):
 //   onSelect(null, null)  -> everything      onSelect(cat, null) -> whole category
 //   onSelect(cat, sub)    -> that subcategory
 //
 // scope (optional): { shopSlug, brandName, kind: "shop" | "brand", name, onClear }
-import { useCallback, useState } from "react";
-import { ChevronDown, ListFilter } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronDown, ListFilter, Search, X } from "lucide-react";
 import useCategoryTree from "../../hooks/useCategoryTree.js";
 import { shortLabel } from "../../hooks/useCategories.js";
-import { AllIcon, CategoryIcon } from "./CategoryIcons.jsx";
 
 const C = {
     ink: "#17202E", sub: "#3F4A57", muted: "#5B6575", accent: "#0765CD", activeBg: "#EAF2FD",
-    notice: "#C9DDF7", hair: "rgba(20,27,34,0.08)", hairSoft: "rgba(20,27,34,0.06)", dot: "rgba(20,27,34,0.2)",
+    notice: "#C9DDF7", hair: "rgba(20,27,34,0.08)", hairSoft: "rgba(20,27,34,0.06)",
 };
+
+const SEARCH_MIN_NODES = 15; // categories + subcategories before the search box appears
+
+const ROW = "relative flex w-full items-center rounded-lg text-left outline-none transition-colors duration-150 hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-[#0765CD]/50";
 
 // "Showing only what <seller/brand> sells" + the way back to the full list.
 function ScopeNotice({ scope }) {
     const isBrand = scope.kind === "brand";
     return (
-        <div role="status" className="mb-3 rounded-xl border px-3 py-2.5" style={{ background: C.activeBg, borderColor: C.notice }}>
+        <div role="status" className="mb-2.5 rounded-xl border px-3 py-2.5" style={{ background: C.activeBg, borderColor: C.notice }}>
             <div className="flex items-start gap-2">
                 <ListFilter className="mt-0.5 h-3.5 w-3.5 shrink-0" style={{ color: C.accent }} strokeWidth={2.4} />
                 <p className="min-w-0 text-[12px] font-semibold leading-snug tracking-wide" style={{ color: C.ink }}>
@@ -48,39 +51,12 @@ function ScopeNotice({ scope }) {
     );
 }
 
-function AllRow({ active, onClick }) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            aria-current={active ? "true" : undefined}
-            className="group relative flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left outline-none transition-colors duration-150 hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-[#0765CD]/50"
-            style={{ background: active ? C.activeBg : undefined }}
-        >
-            <span aria-hidden className="absolute bottom-2 left-0 top-2 w-[3px] rounded-full transition-opacity duration-150" style={{ background: C.accent, opacity: active ? 1 : 0 }} />
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center transition-transform duration-200 group-hover:scale-110">
-                <AllIcon active={active} />
-            </span>
-            <span className="min-w-0 flex-1 text-[13.5px] leading-tight tracking-wide" style={{ color: active ? C.accent : C.ink, fontWeight: active ? 800 : 600 }}>
-                All categories
-            </span>
-        </button>
-    );
-}
-
 function Skeleton() {
     return (
         <>
-            {Array.from({ length: 4 }).map((_, i) => (
-                <li key={i} className="pb-2">
-                    <div className="flex items-center gap-3 px-2.5 py-2">
-                        <div className="h-8 w-8 animate-pulse rounded-full motion-reduce:animate-none" style={{ background: C.hairSoft }} />
-                        <div className="h-3 w-32 animate-pulse rounded-full motion-reduce:animate-none" style={{ background: C.hairSoft }} />
-                    </div>
-                    <div className="ml-[22px] space-y-2 border-l py-1 pl-4" style={{ borderColor: C.hair }}>
-                        <div className="h-2.5 w-28 animate-pulse rounded-full motion-reduce:animate-none" style={{ background: C.hairSoft }} />
-                        <div className="h-2.5 w-24 animate-pulse rounded-full motion-reduce:animate-none" style={{ background: C.hairSoft }} />
-                    </div>
+            {Array.from({ length: 5 }).map((_, i) => (
+                <li key={i} className="px-3 py-2">
+                    <div className="h-3 w-36 animate-pulse rounded-full motion-reduce:animate-none" style={{ background: C.hairSoft }} />
                 </li>
             ))}
         </>
@@ -92,23 +68,22 @@ export function CategoryList({ activeCategoryId, activeSubcategoryId, onSelect, 
         shopSlug: scope?.shopSlug || null,
         brandName: scope?.brandName || null,
     });
-    const [collapsed, setCollapsed] = useState(() => new Set());
 
+    // Open categories. Starts with just the picked one.
+    const [expanded, setExpanded] = useState(() => new Set(activeCategoryId ? [activeCategoryId] : []));
     const toggle = useCallback((id) => {
-        setCollapsed((prev) => {
+        setExpanded((prev) => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id); else next.add(id);
             return next;
         });
     }, []);
     const expand = useCallback((id) => {
-        setCollapsed((prev) => {
-            if (!prev.has(id)) return prev;
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-        });
+        setExpanded((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
     }, []);
+
+    // Whatever becomes the picked category (rail chip, sidebar, URL) opens its subcategories.
+    useEffect(() => { if (activeCategoryId) expand(activeCategoryId); }, [activeCategoryId, expand]);
 
     const pickCategory = (cat) => {
         expand(cat.id);
@@ -121,16 +96,65 @@ export function CategoryList({ activeCategoryId, activeSubcategoryId, onSelect, 
 
     const allActive = !activeCategoryId;
 
+    // Search (long lists only). Matches category and subcategory names; a matching category keeps all its subcategories.
+    const [q, setQ] = useState("");
+    const term = q.trim().toLowerCase();
+    const all = categories || [];
+    const nodeCount = all.reduce((n, c) => n + 1 + (c.subcategories || []).length, 0);
+    const showSearch = !loading && !error && nodeCount >= SEARCH_MIN_NODES;
+    const list = useMemo(() => {
+        if (!term) return categories || [];
+        return (categories || []).map((c) => {
+            if (c.name.toLowerCase().includes(term)) return c;
+            const m = (c.subcategories || []).filter((s) => s.name.toLowerCase().includes(term));
+            return m.length ? { ...c, subcategories: m } : null;
+        }).filter(Boolean);
+    }, [categories, term]);
+
     return (
         <nav aria-label="Categories">
             {scope && <ScopeNotice scope={scope} />}
-            <ul className="flex flex-col gap-0.5">
-                <li><AllRow active={allActive} onClick={() => onSelect(null, null)} /></li>
+            {showSearch && (
+                <div className="sticky top-0 z-10 bg-white pb-2 pt-0.5">
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: C.muted }} strokeWidth={2.2} />
+                        <input
+                            value={q}
+                            onChange={(e) => setQ(e.target.value)}
+                            placeholder="Find a category"
+                            aria-label="Find a category"
+                            autoComplete="off"
+                            className="h-9 w-full rounded-lg border bg-[#F6F8FA] pl-8 pr-8 text-[13px] font-semibold tracking-wide outline-none placeholder:text-[#8A94A0] focus:border-[#0765CD] focus:bg-white focus:ring-2 focus:ring-[#0765CD]/20"
+                            style={{ borderColor: C.hair, color: C.ink }}
+                        />
+                        {q && (
+                            <button type="button" onClick={() => setQ("")} aria-label="Clear search" className="absolute right-1.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full hover:bg-black/[0.06]">
+                                <X className="h-3.5 w-3.5" style={{ color: C.muted }} strokeWidth={2.4} />
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+            <ul className="flex flex-col gap-px">
+                {!term && (
+                    <li>
+                        <button
+                            type="button"
+                            onClick={() => onSelect(null, null)}
+                            aria-current={allActive ? "true" : undefined}
+                            className={`${ROW} px-3 py-2 text-[13.5px] leading-tight tracking-wide`}
+                            style={{ background: allActive ? C.activeBg : undefined, color: allActive ? C.accent : C.ink, fontWeight: allActive ? 800 : 600 }}
+                        >
+                            <span aria-hidden className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-full transition-opacity duration-150" style={{ background: C.accent, opacity: allActive ? 1 : 0 }} />
+                            All categories
+                        </button>
+                    </li>
+                )}
 
                 {loading ? (
                     <Skeleton />
                 ) : error ? (
-                    <li className="px-2.5 py-4 text-center">
+                    <li className="px-3 py-4 text-center">
                         <p className="text-[12.5px] font-bold" style={{ color: C.ink }}>Couldn't load categories.</p>
                         <button
                             type="button"
@@ -141,37 +165,33 @@ export function CategoryList({ activeCategoryId, activeSubcategoryId, onSelect, 
                             Try again
                         </button>
                     </li>
-                ) : categories.length === 0 ? (
-                    <li className="px-2.5 py-4 text-center text-[12.5px] font-semibold" style={{ color: C.muted }}>
+                ) : all.length === 0 ? (
+                    <li className="px-3 py-4 text-center text-[12.5px] font-semibold" style={{ color: C.muted }}>
                         {scope ? "Nothing to filter here yet." : "No categories yet."}
                     </li>
+                ) : list.length === 0 ? (
+                    <li className="px-3 py-4 text-center text-[12.5px] font-semibold" style={{ color: C.muted }}>
+                        No category matches “{q.trim()}”.
+                    </li>
                 ) : (
-                    categories.map((cat) => {
+                    list.map((cat) => {
                         const subs = cat.subcategories || [];
                         const isCat = activeCategoryId === cat.id;
                         const catOnly = isCat && !activeSubcategoryId;      // whole category selected
-                        const highlighted = isCat;                          // category or one of its subs selected
-                        const open = !collapsed.has(cat.id);
+                        const open = term ? true : expanded.has(cat.id);
 
                         return (
                             <li key={cat.id}>
-                                <div
-                                    className="relative flex items-center rounded-xl transition-colors duration-150 hover:bg-black/[0.04]"
-                                    style={{ background: catOnly ? C.activeBg : undefined }}
-                                >
-                                    <span aria-hidden className="absolute bottom-2 left-0 top-2 w-[3px] rounded-full transition-opacity duration-150" style={{ background: C.accent, opacity: highlighted ? 1 : 0 }} />
+                                <div className="flex items-center">
                                     <button
                                         type="button"
                                         onClick={() => pickCategory(cat)}
                                         aria-current={catOnly ? "true" : undefined}
-                                        className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2.5 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-[#0765CD]/50"
+                                        className={`${ROW} min-w-0 flex-1 px-3 py-2 text-[13.5px] leading-tight tracking-wide`}
+                                        style={{ background: catOnly ? C.activeBg : undefined, color: isCat ? C.accent : C.ink, fontWeight: isCat ? 800 : 600 }}
                                     >
-                                        <span className="flex h-8 w-8 shrink-0 items-center justify-center transition-transform duration-200 group-hover:scale-110">
-                                            <CategoryIcon name={cat.name} slug={cat.slug} active={highlighted} />
-                                        </span>
-                                        <span className="min-w-0 flex-1 text-[13.5px] leading-tight tracking-wide" style={{ color: highlighted ? C.accent : C.ink, fontWeight: highlighted ? 800 : 600 }}>
-                                            {shortLabel(cat.name)}
-                                        </span>
+                                        <span aria-hidden className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-full transition-opacity duration-150" style={{ background: C.accent, opacity: isCat ? 1 : 0 }} />
+                                        <span className="min-w-0 flex-1">{shortLabel(cat.name)}</span>
                                     </button>
                                     {subs.length > 0 && (
                                         <button
@@ -179,7 +199,7 @@ export function CategoryList({ activeCategoryId, activeSubcategoryId, onSelect, 
                                             onClick={() => toggle(cat.id)}
                                             aria-expanded={open}
                                             aria-label={`${open ? "Collapse" : "Expand"} ${shortLabel(cat.name)} subcategories`}
-                                            className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full outline-none transition-colors hover:bg-black/[0.06] focus-visible:ring-2 focus-visible:ring-[#0765CD]/50"
+                                            className="ml-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full outline-none transition-colors hover:bg-black/[0.06] focus-visible:ring-2 focus-visible:ring-[#0765CD]/50"
                                         >
                                             <ChevronDown
                                                 className="h-4 w-4 transition-transform duration-200 motion-reduce:transition-none"
@@ -195,7 +215,7 @@ export function CategoryList({ activeCategoryId, activeSubcategoryId, onSelect, 
                                         className="grid transition-[grid-template-rows] duration-200 motion-reduce:transition-none"
                                         style={{ gridTemplateRows: open ? "1fr" : "0fr", visibility: open ? "visible" : "hidden" }}
                                     >
-                                        <ul className="ml-[22px] min-h-0 overflow-hidden border-l pl-1.5" style={{ borderColor: C.hair }}>
+                                        <ul className="ml-3 min-h-0 overflow-hidden border-l pl-1" style={{ borderColor: C.hair }}>
                                             {subs.map((sub) => {
                                                 const subActive = isCat && activeSubcategoryId === sub.id;
                                                 return (
@@ -204,11 +224,10 @@ export function CategoryList({ activeCategoryId, activeSubcategoryId, onSelect, 
                                                             type="button"
                                                             onClick={() => pickSub(cat, sub)}
                                                             aria-current={subActive ? "true" : undefined}
-                                                            className="flex w-full items-center gap-2 rounded-lg py-1.5 pl-2.5 pr-2 text-left text-[12.5px] leading-snug tracking-wide outline-none transition-colors duration-150 hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-[#0765CD]/50"
+                                                            className={`${ROW} px-2.5 py-1.5 text-[12.5px] leading-snug tracking-wide`}
                                                             style={{ background: subActive ? C.activeBg : undefined, color: subActive ? C.accent : C.sub, fontWeight: subActive ? 800 : 600 }}
                                                         >
-                                                            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: subActive ? C.accent : C.dot }} />
-                                                            <span className="min-w-0 flex-1">{shortLabel(sub.name)}</span>
+                                                            {shortLabel(sub.name)}
                                                         </button>
                                                     </li>
                                                 );
@@ -230,10 +249,10 @@ export default function CategorySidebar({ activeCategoryId, activeSubcategoryId,
         <aside
             aria-label="Browse categories"
             data-lenis-prevent
-            className="hidden w-[248px] shrink-0 overflow-y-auto overscroll-contain border-r pb-24 pr-3 pt-3 [scrollbar-width:thin] lg:sticky lg:top-[var(--bbm-header-h,78px)] lg:block lg:h-[calc(100dvh-var(--bbm-header-h,78px))] xl:w-[264px]"
+            className="hidden w-[232px] shrink-0 overflow-y-auto overscroll-contain border-r pb-24 pr-3 pt-3 [scrollbar-width:thin] lg:sticky lg:top-[var(--bbm-header-h,78px)] lg:block lg:h-[calc(100dvh-var(--bbm-header-h,78px))] xl:w-[248px]"
             style={{ borderColor: C.hair }}
         >
-            <h2 className="px-2.5 pb-2 text-[11px] font-extrabold uppercase tracking-[0.14em]" style={{ color: C.muted }}>
+            <h2 className="px-3 ps-1 pb-1.5 text-[15px] font-extrabold tracking-wide" style={{ color: C.ink }}>
                 Categories
             </h2>
             <CategoryList

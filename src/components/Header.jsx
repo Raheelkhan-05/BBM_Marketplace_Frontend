@@ -2,14 +2,17 @@
 //
 // One header for guests and signed-in users:
 //   lg+      logo | search (grows) | Deliver to | GST | cart | profile / Sign in
-//   < lg     row 1: menu, logo, cart, profile  ·  row 2: search  ·  row 3: Deliver to + GST
-//   + an "active filter" chip row (any size) while a category is selected.
+//   < lg     row 1: logo (full width, nothing in front of it), cart, profile  ·  row 2: search  ·  row 3: Deliver to + GST
+//   + the category filter row (ActiveFilterBar):
+//        < lg   category rail (chips, subcategory row once a category is picked) + a button for the searchable sheet.
+//               After you scroll down it shrinks to ONE compact line (current filter + clear button), and expands
+//               again when you are back near the top.
+//        lg+    "Filter: Category: X" chip while a category is selected (the sidebar on the Home page is the picker)
 // Search is ONE instance, repositioned with CSS order, so there is no duplicate autocomplete/animation.
 // Sticky; publishes its live height as --bbm-header-h (the sidebar and the feed's sticky offset use it).
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUpRight, LogOut, Mail, Menu, Phone, Store, User, X } from "lucide-react";
+import { ArrowUpRight, LogOut, Mail, Phone, Store, User, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { useHomeFilters } from "../context/HomeFiltersContext.jsx";
 import SmartLink from "./SmartLink.jsx";
@@ -17,11 +20,38 @@ import { useNavigate, useLocation } from "react-router-dom";
 import MarketplaceSearchBar from "./MarketplaceSearchBar";
 import DeliverToBar from "./shipping/DeliverToBar.jsx";
 import HomeCartButton from "./home/HomeCartButton.jsx";
-import { CategoryList } from "./home/CategorySidebar.jsx";
-import { shortLabel, filterLabel } from "../hooks/useCategories.js";
+import CategoryRail from "./home/CategoryRail.jsx";
+import CategorySheet from "./home/CategorySheet.jsx";
+import useCategoryTree from "../hooks/useCategoryTree.js";
+import { filterLabel } from "../hooks/useCategories.js";
 
 const C = { ink: "#141B22", muted: "#667077", hair: "rgba(11,17,22,0.09)", green: "#22A06B", greenInk: "#12794A", accent: "#0765CD", orange: "#D8420F" };
 const EASE = [0.16, 1, 0.3, 1];
+
+// Collapse the rail once the page has scrolled past `enter` px; expand again only below `leave` px.
+// The gap between the two avoids flicker: shrinking the sticky header changes the layout height.
+const COMPACT_ENTER_PX = 72;
+const COMPACT_LEAVE_PX = 16;
+
+function useScrolledPast(enter = COMPACT_ENTER_PX, leave = COMPACT_LEAVE_PX) {
+  const [past, setPast] = useState(false);
+  useEffect(() => {
+    let raf = 0;
+    const read = () => {
+      raf = 0;
+      const y = window.scrollY || document.documentElement.scrollTop || 0;
+      setPast((prev) => (prev ? y > leave : y > enter));
+    };
+    const onScroll = () => { if (!raf) raf = requestAnimationFrame(read); };
+    read();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [enter, leave]);
+  return past;
+}
 
 function formatShopName(slug) {
   if (!slug) return "";
@@ -147,87 +177,64 @@ function ProfileMenu({ info, onSignOut }) {
   );
 }
 
-function CategoryDrawer({ open, activeCategory, activeSubcategory, scope, onSelect, onClear, onClose }) {
-  useEffect(() => {
-    if (!open) return undefined;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open, onClose]);
+// Phones / tablets (< lg): the category rail + the searchable sheet. Rendered only on Home-type routes, so the
+// category tree is fetched only where it is used. Follows the seller / brand scope the page registered.
+// Collapses to a single compact line while the page is scrolled down.
+function MobileCategoryRail() {
+  const {
+    activeCategory, activeSubcategory, setCategoryFilter, viewScope, shopName,
+  } = useHomeFilters();
 
-  return createPortal(
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            key="bd"
-            className="fixed inset-0 z-[9994] bg-black/40"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-          />
-          <motion.div
-            key="panel"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Categories"
-            data-lenis-prevent
-            className="fixed inset-y-0 left-0 z-[9995] flex w-[min(320px,86vw)] flex-col bg-white shadow-2xl"
-            initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }}
-            transition={{ duration: 0.26, ease: EASE }}
-          >
-            <div className="flex items-center justify-between px-4 pb-2" style={{ paddingTop: "calc(16px + env(safe-area-inset-top, 0px))" }}>
-              <h2 className="text-[16px] font-extrabold tracking-wide" style={{ color: C.ink }}>Categories</h2>
-              <button
-                type="button" onClick={onClose} aria-label="Close categories"
-                className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-black/[0.05]"
-              >
-                <X className="h-5 w-5" style={{ color: C.ink }} />
-              </button>
-            </div>
+  const shopSlug = viewScope?.shopSlug || null;
+  const brandName = viewScope?.brandName || null;
+  const tree = useCategoryTree({ shopSlug, brandName });
+  const compact = useScrolledPast();
 
-            {activeCategory && (
-              <div className="mx-3 mb-2 flex items-center justify-between gap-2 rounded-xl px-3 py-2" style={{ background: "#EAF2FD" }}>
-                <span className="min-w-0 truncate text-[12.5px] font-bold tracking-wide" style={{ color: C.accent }}>
-                  Filtered: {filterLabel(activeCategory, activeSubcategory)}
-                </span>
-                <button
-                  type="button"
-                  onClick={onClear}
-                  className="shrink-0 rounded-full bg-white px-3 py-1 text-[12px] font-extrabold tracking-wide active:scale-95"
-                  style={{ color: C.accent }}
-                >
-                  Clear
-                </button>
-              </div>
-            )}
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const openSheet = useCallback(() => setSheetOpen(true), []);
+  const closeSheet = useCallback(() => setSheetOpen(false), []);
+  const pickFromSheet = (cat, sub) => { setCategoryFilter(cat, sub); setSheetOpen(false); };
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-8">
-              <CategoryList
-                activeCategoryId={activeCategory?.id}
-                activeSubcategoryId={activeSubcategory?.id}
-                onSelect={onSelect}
-                scope={scope}
-              />
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>,
-    document.body
+  const scopeName = brandName || shopName || formatShopName(shopSlug);
+  const scope = scopeName && viewScope
+    ? {
+      shopSlug, brandName, kind: brandName ? "brand" : "shop", name: scopeName,
+      onClear: () => { viewScope.clear?.(); setSheetOpen(false); },
+    }
+    : null;
+
+  const categories = tree.categories || [];
+
+  return (
+    <div className="lg:hidden">
+      <CategoryRail
+        categories={categories}
+        loading={!!tree.loading}
+        activeCategoryId={activeCategory?.id ?? null}
+        activeSubcategoryId={activeSubcategory?.id ?? null}
+        compact={compact}
+        onSelect={setCategoryFilter}
+        onBrowse={openSheet}
+      />
+      <CategorySheet
+        open={sheetOpen}
+        onClose={closeSheet}
+        categories={categories}
+        loading={!!tree.loading}
+        error={tree.error}
+        onRetry={tree.retry}
+        activeCategory={activeCategory}
+        activeSubcategory={activeSubcategory}
+        scope={scope}
+        onSelect={pickFromSheet}
+      />
+    </div>
   );
 }
 
-
-// Always-visible "what is filtered" row (category, or category › subcategory). Lives in the sticky
-// header, so it never scrolls away. The chip's X removes the most specific level first
-// (subcategory -> back to the whole category); "Clear" removes everything.
-function ActiveFilterBar({ category, subcategory, onRemoveLast, onClear }) {
+// "What is filtered" chip (category, or category › subcategory). The chip's X removes the most specific
+// level first (subcategory -> back to the whole category); "Clear" removes everything.
+function ActiveFilterChip({ category, subcategory, onRemoveLast, onClear, className = "" }) {
   return (
     <AnimatePresence initial={false}>
       {category && (
@@ -237,7 +244,7 @@ function ActiveFilterBar({ category, subcategory, onRemoveLast, onClear }) {
           animate={{ height: "auto", opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
           transition={{ duration: 0.2, ease: EASE }}
-          className="overflow-hidden"
+          className={`overflow-hidden ${className}`}
         >
           <div className="flex items-center gap-2 px-3 pb-2 sm:px-4 lg:px-6">
             <span className="shrink-0 text-[10.5px] font-extrabold uppercase tracking-[0.12em]" style={{ color: C.muted }}>
@@ -270,6 +277,24 @@ function ActiveFilterBar({ category, subcategory, onRemoveLast, onClear }) {
   );
 }
 
+// The header's category filter row.
+//   Home-type routes:  < lg -> category rail (+ sheet, compact on scroll);  lg+ -> active filter chip (the sidebar is the picker)
+//   other routes:      active filter chip at every size while a category is selected
+function ActiveFilterBar({ showRail, category, subcategory, onRemoveLast, onClear }) {
+  return (
+    <>
+      {showRail && <MobileCategoryRail />}
+      <ActiveFilterChip
+        className={showRail ? "hidden lg:block" : ""}
+        category={category}
+        subcategory={subcategory}
+        onRemoveLast={onRemoveLast}
+        onClear={onClear}
+      />
+    </>
+  );
+}
+
 
 export default function Header() {
   const location = useLocation();
@@ -285,11 +310,10 @@ export default function Header() {
   const { effectiveLoggedIn, profile, user, signOut } = useAuth();
   const {
     query, setQuery, shopName, feedActive,
-    activeCategory, activeSubcategory, setCategoryFilter, viewScope, includeGst, setIncludeGst,
+    activeCategory, activeSubcategory, setCategoryFilter, includeGst, setIncludeGst,
   } = useHomeFilters();
 
   const headerRef = useRef(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const info = accountInfo(profile, user);
 
   // Publish live height for the sidebar / feed sticky offsets.
@@ -330,134 +354,88 @@ export default function Header() {
     ensureFeed();
   };
 
-  const pickCategory = (cat, sub = null) => {
-    setCategoryFilter(cat, sub);
-    ensureFeed();
-    setDrawerOpen(false);
-  };
-  const clearCategory = useCallback(() => { setCategoryFilter(null, null); setDrawerOpen(false); }, [setCategoryFilter]);
+  const clearCategory = useCallback(() => setCategoryFilter(null, null), [setCategoryFilter]);
   const clearSubcategory = useCallback(() => setCategoryFilter(activeCategory, null), [setCategoryFilter, activeCategory]);
 
-  // When a seller / brand page is open, the drawer lists only what that seller / brand sells.
-  const scopeActive = !!(viewScope?.shopSlug || viewScope?.brandName);
-  const drawerScope = scopeActive
-    ? {
-      shopSlug: viewScope.shopSlug,
-      brandName: viewScope.brandName,
-      kind: viewScope.brandName ? "brand" : "shop",
-      name: viewScope.brandName || shopName || formatShopName(viewScope.shopSlug),
-      onClear: () => { viewScope.clear?.(); setDrawerOpen(false); },
-    }
-    : null;
-
-  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
-
   return (
-    <>
-      <header
-        ref={headerRef}
-        className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur-[14px]"
-        style={{ borderColor: "#E4E9EC", paddingTop: "env(safe-area-inset-top, 0px)" }}
-      >
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0 md:gap-y-2 px-3 pb-2 pt-2 sm:px-4 lg:flex-nowrap lg:gap-4 lg:px-6">
-          <button
-            type="button"
-            onClick={() => setDrawerOpen(true)}
-            aria-label={activeCategory ? `Open categories, filtered by ${activeCategory.name}` : "Open categories"}
-            className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full hover:bg-black/[0.05] active:scale-95 lg:hidden"
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur-[14px]"
+      style={{ borderColor: "#E4E9EC", paddingTop: "env(safe-area-inset-top, 0px)" }}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0 md:gap-y-2 px-3 pb-2 pt-2 sm:px-4 lg:flex-nowrap lg:gap-4 lg:px-6">
+        <SmartLink to="/" aria-label="BBM home" className="flex shrink-0 items-center">
+          <span
+            className="whitespace-nowrap text-[22px] ps-1 font-extrabold leading-none"
+            style={{ fontFamily: "'Manrope', sans-serif", color: "#092747" }}
           >
-            <Menu className="h-5 w-5" style={{ color: C.ink }} strokeWidth={2.2} />
-            {activeCategory && (
-              <span
-                aria-hidden
-                className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full border-2 border-white"
-                style={{ background: C.orange }}
-              />
-            )}
-          </button>
+            bbm.business
+          </span>
+        </SmartLink>
 
-          <SmartLink to="/" aria-label="BBM home" className="flex shrink-0 items-center">
-            <span
-              className="whitespace-nowrap text-[21px] font-extrabold leading-none lg:text-[22px]"
-              style={{ fontFamily: "'Manrope', sans-serif", color: "#092747" }}
-            >
-              bbm.business
-            </span>
-          </SmartLink>
-
-          {/* The single search instance: own row on phones, inline from md up. */}
-          {isHomePage && (
-            <div className="order-10 w-full basis-full min-w-0 md:order-none md:w-auto md:basis-0 md:flex-1 lg:max-w-[960px]">
-              <MarketplaceSearchBar
-                flush
-                value={query}
-                onChange={handleChange}
-                onSubmit={handleSubmit}
-                onSuggestionSelect={handleSuggestionSelect}
-                placeholder={shopName ? `Search in ${shopName}…` : undefined}
-                clearOnSubmit={false}
-                suggestionsDirection="down"
-              />
-            </div>
-          )}
-
-          <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0 lg:ml-auto lg:gap-4">
-            {isHomePage && (
-              <>
-                <div className="hidden lg:block">
-                  <DeliverToBar />
-                </div>
-                <GstToggle
-                  includeGst={includeGst}
-                  onChange={setIncludeGst}
-                  className="hidden lg:inline-flex"
-                />
-              </>
-            )}
-            <HomeCartButton />
-            {effectiveLoggedIn ? (
-              <ProfileMenu info={info} onSignOut={signOut} />
-            ) : (
-              <SmartLink
-                to="/login"
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#0F63B5] bg-[#0F63B5] px-4 text-[13px] font-extrabold text-white transition hover:brightness-105 active:scale-[.985] sm:px-5"
-              >
-                Sign In <ArrowUpRight className="h-3.5 w-3.5" />
-              </SmartLink>
-            )}
+        {/* The single search instance: own row on phones, inline from md up. */}
+        {isHomePage && (
+          <div className="order-10 w-full basis-full min-w-0 md:order-none md:w-auto md:basis-0 md:flex-1 lg:max-w-[960px]">
+            <MarketplaceSearchBar
+              flush
+              value={query}
+              onChange={handleChange}
+              onSubmit={handleSubmit}
+              onSuggestionSelect={handleSuggestionSelect}
+              placeholder={shopName ? `Search in ${shopName}…` : undefined}
+              clearOnSubmit={false}
+              suggestionsDirection="down"
+            />
           </div>
+        )}
 
-          {/* Below lg: Deliver to + GST under the search. */}
+        <div className="ml-auto flex shrink-0 items-center gap-2 md:ml-0 lg:ml-auto lg:gap-4">
           {isHomePage && (
-            <div className="order-20 flex w-full basis-full items-center justify-between gap-3 lg:hidden">
-              <div className="min-w-0">
+            <>
+              <div className="hidden lg:block">
                 <DeliverToBar />
               </div>
               <GstToggle
                 includeGst={includeGst}
                 onChange={setIncludeGst}
+                className="hidden lg:inline-flex"
               />
-            </div>
+            </>
+          )}
+          <HomeCartButton />
+          {effectiveLoggedIn ? (
+            <ProfileMenu info={info} onSignOut={signOut} />
+          ) : (
+            <SmartLink
+              to="/login"
+              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full border border-[#0F63B5] bg-[#0F63B5] px-4 text-[13px] font-extrabold text-white transition hover:brightness-105 active:scale-[.985] sm:px-5"
+            >
+              Sign In <ArrowUpRight className="h-3.5 w-3.5" />
+            </SmartLink>
           )}
         </div>
 
-        <ActiveFilterBar
-          category={activeCategory}
-          subcategory={activeSubcategory}
-          onRemoveLast={activeSubcategory ? clearSubcategory : clearCategory}
-          onClear={clearCategory}
-        />
-      </header>
+        {/* Below lg: Deliver to + GST under the search. */}
+        {isHomePage && (
+          <div className="order-20 flex w-full basis-full items-center justify-between gap-3 lg:hidden">
+            <div className="min-w-0">
+              <DeliverToBar />
+            </div>
+            <GstToggle
+              includeGst={includeGst}
+              onChange={setIncludeGst}
+            />
+          </div>
+        )}
+      </div>
 
-      <CategoryDrawer
-        open={drawerOpen}
-        activeCategory={activeCategory}
-        activeSubcategory={activeSubcategory}
-        scope={drawerScope}
-        onSelect={pickCategory}
+      <ActiveFilterBar
+        showRail={isHomePage}
+        category={activeCategory}
+        subcategory={activeSubcategory}
+        onRemoveLast={activeSubcategory ? clearSubcategory : clearCategory}
         onClear={clearCategory}
-        onClose={closeDrawer}
       />
-    </>
+    </header>
   );
 }

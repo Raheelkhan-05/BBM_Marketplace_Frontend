@@ -208,7 +208,7 @@ function CompactAddressPill({ address, onClick, disabled }) {
             onClick={onClick}
             disabled={disabled}
             aria-label={`Delivering to ${address.pincode}. Change delivery address`}
-            className="inline-flex min-h-5 items-center gap-2 rounded-xl bg-white px-2 py-1.5 text-left transition-colors active:scale-[0.98] disabled:opacity-60"
+            className="inline-flex min-h-5 items-center gap-2 rounded-xl bg-white px-2 ps-0 py-1.5 text-left transition-colors active:scale-[0.98] disabled:opacity-60"
             style={{ borderColor: C.hair }}
         >
             <MapPin className="h-5 w-5 shrink-0" style={{ color: "#006F83" }} strokeWidth={2.3} />

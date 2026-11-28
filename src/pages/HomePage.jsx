@@ -1,8 +1,11 @@
 // src/pages/HomePage.jsx
 //
-// Search, category, GST, Deliver-to and cart now live in the header / sidebar. This page only lays
-// out [sidebar | feed] and registers itself so the header knows results are on screen.
-import { useEffect, useRef } from "react";
+// Search, GST, Deliver-to, cart AND the mobile category rail live in the header. Categories live here only on lg+:
+//   lg+      sticky sidebar (CategorySidebar)
+//   < lg     the header's category rail + sheet (see Header.jsx -> ActiveFilterBar)
+// This page lays out [sidebar | feed], registers itself so the header knows results are on screen,
+// and publishes the seller / brand scope (setViewScope) so the header's rail follows it.
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation, useSearchParams, useParams } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import HomeProductFeed from "../components/home/HomeProductFeed.jsx";
@@ -30,8 +33,6 @@ const writePromoDismissed = () => {
     try { localStorage.setItem(PROMO_KEY, String(Date.now())); } catch { /* private mode */ }
 };
 
-import { useState } from "react";
-
 export default function HomePage() {
     const navigate = useNavigate();
     const location = useLocation();
@@ -57,9 +58,8 @@ export default function HomePage() {
         setSearchParams(next, { replace: true });
     };
 
-
     // ── Seller / brand scope ─────────────────────────────────────────────────
-    // The sidebar (and the header drawer) list only what this seller / brand sells.
+    // The sidebar (here) and the header's rail + sheet list only what this seller / brand sells.
     const scopeName = brandName || shopName
         || (shopSlug
             ? shopSlug.replace(/-\d+$/, "").split("-").filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
@@ -89,6 +89,8 @@ export default function HomePage() {
         }
     }, [tree.categories, activeCategory, activeSubcategory, setCategoryFilter]);
 
+    const scope = scopeName ? { shopSlug, brandName, kind: brandName ? "brand" : "shop", name: scopeName, onClear: clearScope } : null;
+
     const [promoDismissed, setPromoDismissed] = useState(readPromoDismissed);
     const showPromo = !effectiveLoggedIn && !promoDismissed && searchParams.get("pinned") !== "1";
     const dismissPromo = () => { setPromoDismissed(true); writePromoDismissed(); };
@@ -108,7 +110,7 @@ export default function HomePage() {
                         activeCategoryId={activeCategory?.id}
                         activeSubcategoryId={activeSubcategory?.id}
                         onSelect={setCategoryFilter}
-                        scope={scopeName ? { shopSlug, brandName, kind: brandName ? "brand" : "shop", name: scopeName, onClear: clearScope } : null}
+                        scope={scope}
                     />
 
                     <main className="min-w-0 flex-1 px-2.5 pb-28 pt-2 sm:px-4 md:pb-20 lg:px-0">
