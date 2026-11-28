@@ -90,7 +90,7 @@ export default function HomePage() {
     }, [tree.categories, activeCategory, activeSubcategory, setCategoryFilter]);
 
     const [promoDismissed, setPromoDismissed] = useState(readPromoDismissed);
-    const showPromo = !effectiveLoggedIn && !promoDismissed;
+    const showPromo = !effectiveLoggedIn && !promoDismissed && searchParams.get("pinned") !== "1";
     const dismissPromo = () => { setPromoDismissed(true); writePromoDismissed(); };
     const goSignIn = () =>
         navigate("/login", { state: { from: `${location.pathname}${location.search}${location.hash || ""}` } });
