@@ -7,7 +7,7 @@
 //       [ All ] [ Engine oil ] [ Industrial & Automotive Grease ] …                          (28px, only after a category is picked)
 //
 //   Compact (after scrolling, `compact` prop):
-//   [ ▦ Category | Lubricant › Engine oil ⌄ ] [✕]                                            (32px, one line)
+//   [ Category | Lubricant › Engine oil  (v) ] [✕]                                           (36px + 4px padding)
 //
 // - [▦] / the compact line open the searchable category sheet (pass onBrowse).
 // - [✕] clears the whole category filter. It only shows while a category is picked.
@@ -22,7 +22,8 @@ import { shortLabel } from "../../hooks/useCategories.js";
 
 const C = {
     ink: "#17202E", muted: "#5B6575", accent: "#0765CD", activeBg: "#EAF2FD",
-    line: "rgba(20,27,34,0.16)", soft: "rgba(20,27,34,0.06)",
+    line: "rgba(20,27,34,0.16)", lineStrong: "rgba(20,27,34,0.30)", soft: "rgba(20,27,34,0.06)",
+    rest: "#F1F4F8",
 };
 const EASE = [0.16, 1, 0.3, 1];
 const FADE_RIGHT = "linear-gradient(to right, #000 0, #000 calc(100% - 24px), transparent 100%)";
@@ -51,14 +52,14 @@ function Chip({ level, active, onClick, chipRef, children }) {
     );
 }
 
-function ClearButton({ onClick, size = "h-8 w-8" }) {
+function ClearButton({ onClick, size = "h-8 w-8", rounded = "rounded-full" }) {
     return (
         <button
             type="button"
             onClick={onClick}
             aria-label="Clear category filter"
-            className={`flex ${size} shrink-0 items-center justify-center rounded-full border bg-white outline-none transition active:scale-95 focus-visible:ring-2 focus-visible:ring-[#0765CD]/50`}
-            style={{ borderColor: C.line, color: C.ink }}
+            className={`flex ${size} shrink-0 items-center justify-center ${rounded} border bg-white outline-none transition active:scale-95 focus-visible:ring-2 focus-visible:ring-[#0765CD]/50`}
+            style={{ borderColor: C.lineStrong, color: C.ink }}
         >
             <X className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
         </button>
@@ -66,24 +67,37 @@ function ClearButton({ onClick, size = "h-8 w-8" }) {
 }
 
 // One slim line: the current filter + a way to open the sheet + a clear button.
+// Built to read as a dropdown button even when nothing is picked: filled background, strong border,
+// dark label, a blue chevron badge, and enough padding that the header border never touches it.
 function CompactLine({ label, active, onBrowse, onClear }) {
     return (
-        <div className="flex items-center gap-1.5 px-3 py-0.5 sm:px-4">
+        <div className="flex items-center gap-2 px-3 py-1 sm:px-4">
             <button
                 type="button"
                 onClick={onBrowse}
                 aria-haspopup="dialog"
                 aria-label={active ? `Category: ${label}. Change category` : "Category: all categories. Choose a category"}
-                className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-full border px-2.5 text-left outline-none transition-colors duration-150 active:bg-black/[0.03] focus-visible:ring-2 focus-visible:ring-[#0765CD]/50"
-                style={{ background: active ? C.activeBg : "#fff", borderColor: active ? C.accent : C.line }}
+                className="relative flex h-9 min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-xl border pl-3 pr-1.5 text-left outline-none transition-colors duration-150 active:brightness-95 focus-visible:ring-2 focus-visible:ring-[#0765CD]/50"
+                style={{
+                    background: active ? C.activeBg : C.rest,
+                    borderColor: active ? C.accent : C.lineStrong,
+                    boxShadow: "0 1px 2px rgba(20,27,34,0.08)",
+                }}
             >
-                <LayoutGrid className="h-3.5 w-3.5 shrink-0" style={{ color: active ? C.accent : C.muted }} strokeWidth={2.3} aria-hidden="true" />
-                <span className="shrink-0 text-[12px] font-semibold tracking-wide" style={{ color: active ? C.accent : C.muted }}>Category</span>
-                <span aria-hidden className="h-3.5 w-px shrink-0" style={{ background: active ? "rgba(7,101,205,0.3)" : C.line }} />
-                <span className="min-w-0 flex-1 truncate text-[12.5px] font-extrabold tracking-wide" style={{ color: active ? C.accent : C.ink }}>{label}</span>
-                <ChevronDown className="h-3.5 w-3.5 shrink-0" style={{ color: active ? C.accent : C.muted }} strokeWidth={2.4} aria-hidden="true" />
+                {active && <span aria-hidden className="absolute bottom-0 left-0 top-0 w-[3px]" style={{ background: C.accent }} />}
+                <LayoutGrid className="h-4 w-4 shrink-0" style={{ color: active ? C.accent : C.ink }} strokeWidth={2.2} aria-hidden="true" />
+                <span className="shrink-0 text-[12.5px] font-bold tracking-wide" style={{ color: active ? C.accent : C.ink }}>Category</span>
+                <span aria-hidden className="h-4 w-px shrink-0" style={{ background: active ? "rgba(7,101,205,0.35)" : C.lineStrong }} />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-extrabold tracking-wide" style={{ color: active ? C.accent : C.ink }}>{label}</span>
+                <span
+                    aria-hidden
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+                    style={{ background: C.accent }}
+                >
+                    <ChevronDown className="h-4 w-4 text-white" strokeWidth={2.8} />
+                </span>
             </button>
-            {active && <ClearButton onClick={onClear} size="h-7 w-7" />}
+            {active && <ClearButton onClick={onClear} size="h-9 w-9" rounded="rounded-xl" />}
         </div>
     );
 }
@@ -125,7 +139,7 @@ function FullRail({
                         aria-haspopup="dialog"
                         aria-label="Browse all categories"
                         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-white outline-none transition active:scale-95 focus-visible:ring-2 focus-visible:ring-[#0765CD]/50"
-                        style={{ borderColor: C.line, color: C.ink }}
+                        style={{ borderColor: C.lineStrong, color: C.ink }}
                     >
                         <LayoutGrid className="h-4 w-4" strokeWidth={2.3} aria-hidden="true" />
                     </button>
